@@ -186,6 +186,21 @@ static void close_interface(struct hid_if *hif, hid_host_device_handle_t h)
 	hid_host_device_close(h);
 }
 
+/* The device was unplugged while usb_task was still setting this interface
+   up: the HID driver's task (above usb_task) has made the first close and
+   freed the device, so no further request may go to it.  The slot is left
+   as it is for on_gone(), which the queued unplug reaches with the same
+   handle and which makes the second close. */
+static bool unplugged_in_setup(struct hid_if *hif, const hid_host_dev_params_t *p,
+			       uint16_t vid, uint16_t pid)
+{
+	if (!__atomic_load_n(&hif->gone, __ATOMIC_ACQUIRE))
+		return false;
+	console_printf(CON_INFO, "USB: interface %d of %04x:%04x was unplugged while it "
+		       "was being set up.", p->iface_num, vid, pid);
+	return true;
+}
+
 static void ascii_of(const wchar_t *w, char *out, int size)
 {
 	int o = 0;
@@ -236,23 +251,35 @@ static void on_connected(hid_host_device_handle_t h)
 		hif->handle = NULL;
 		return;
 	}
+	/* from here on, after every request: was it unplugged meanwhile? */
+	if (unplugged_in_setup(hif, &p, vid, pid))
+		return;
 
 	enum if_kind kind = IF_FREE;
 	const char *how = "";
 	if (p.sub_class == HID_SUBCLASS_BOOT_INTERFACE &&
 	    (p.proto == HID_PROTOCOL_KEYBOARD || p.proto == HID_PROTOCOL_MOUSE)) {
-		if (hid_class_request_set_protocol(h, HID_REPORT_PROTOCOL_BOOT) == ESP_OK) {
+		esp_err_t pr = hid_class_request_set_protocol(h, HID_REPORT_PROTOCOL_BOOT);
+		if (unplugged_in_setup(hif, &p, vid, pid))
+			return;
+		if (pr == ESP_OK) {
 			kind = p.proto == HID_PROTOCOL_KEYBOARD ? IF_KBD_BOOT : IF_MOUSE_BOOT;
 			how = "boot protocol";
-			if (kind == IF_KBD_BOOT)
+			if (kind == IF_KBD_BOOT) {
 				/* a report only when something changes; some
 				   keyboards refuse, which does no harm */
 				hid_class_request_set_idle(h, 0, 0);
+				if (unplugged_in_setup(hif, &p, vid, pid))
+					return;
+			}
 		}
 	}
 	if (kind == IF_FREE) {
 		size_t len = 0;
 		uint8_t *desc = hid_host_get_report_descriptor(h, &len);
+		/* the descriptor belongs to the device: not read once it is gone */
+		if (unplugged_in_setup(hif, &p, vid, pid))
+			return;
 		if (desc && hid_parse(desc, len, &hif->layout)) {
 			kind = IF_REPORT;
 			how = hif->layout.uses_ids ? "report protocol, report IDs" :
@@ -274,6 +301,9 @@ static void on_connected(hid_host_device_handle_t h)
 	}
 	hif->kind = kind;
 	err = hid_host_device_start(h);
+	/* gone: on_gone() lets go of its keys and makes the second close */
+	if (unplugged_in_setup(hif, &p, vid, pid))
+		return;
 	if (err != ESP_OK) {
 		console_printf(CON_WARN, "USB: interface %d of %04x:%04x could not be "
 			       "started (%s).", p.iface_num, vid, pid, esp_err_to_name(err));
@@ -297,8 +327,10 @@ static void on_gone(struct hid_if *hif, hid_host_device_handle_t h)
 {
 	if (!hif || !h || hif->handle != h)
 		return;
+	/* IF_FREE: unplugged before usb_task had finished setting it up */
 	const char *what = hif->kind == IF_KBD_BOOT ? "keyboard" :
-		hif->kind == IF_MOUSE_BOOT ? "mouse" : hid_layout_what(&hif->layout);
+		hif->kind == IF_MOUSE_BOOT ? "mouse" :
+		hif->kind == IF_REPORT ? hid_layout_what(&hif->layout) : "device";
 	int iface = hif->params.iface_num;
 	uint32_t errors = hif->errors;
 	/* every key it still held goes up first */

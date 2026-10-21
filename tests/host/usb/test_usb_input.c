@@ -18,6 +18,18 @@
  *      device (review F2)
  *   E  an interface that will not start: removed, and the next one kept
  *
+ * From the concurrency review's round 2 model (usbmodel2/model2.c): the HID
+ * driver's task, above usb_task, handles an unplug while usb_task is inside
+ * on_connected().  The stand-in counts every request begun on a device the
+ * driver has freed; there must be none after the unplug:
+ *   F, G, H  the unplug lands while SET_PROTOCOL, SET_IDLE or the first
+ *            SET_REPORT is in flight (that one request still meets the freed
+ *            device inside usb_host_hid: a limit of the component)
+ *   J, K, L  just after hid_host_device_open(), SET_PROTOCOL or SET_IDLE
+ *            returned
+ *   M        a report-protocol mouse, just after its report descriptor was
+ *            fetched: it is not parsed and not started
+ *
  *   test_usb_input            exit status 0 when every check passes
  */
 #include <setjmp.h>
@@ -27,6 +39,13 @@
 #include <string.h>
 
 #include USB_INPUT_C
+
+#ifndef ESP_ERR_INVALID_STATE
+#define ESP_ERR_INVALID_STATE 0x103
+#endif
+#ifndef ESP_ERR_TIMEOUT
+#define ESP_ERR_TIMEOUT 0x107
+#endif
 
 /* ==== FreeRTOS stand-ins ==== */
 
@@ -135,16 +154,56 @@ struct model_iface {
 
 static int s_bad_set_reports;
 
+/* round 2: where the unplug happens.  In flight: during the n-th request of
+   that name; after: just after the named call has returned, before
+   usb_task's next one (the driver's task preempts it). */
+static const char *s_unplug_in;
+static int s_unplug_nth, s_seen_nth;
+static const char *s_unplug_after;
+static int s_after_free;                /* requests begun on a freed device */
+static void model_unplug(struct model_iface *i);
+
+static esp_err_t request(struct model_iface *h, const char *name)
+{
+	if (h->dev_freed) {
+		printf("    !! %s begun on %s, whose device is freed\n", name, h->what);
+		s_after_free++;
+		return ESP_ERR_INVALID_STATE;
+	}
+	if (s_unplug_in && !strcmp(s_unplug_in, name) && ++s_seen_nth == s_unplug_nth) {
+		printf("    (unplugged while %s is in flight: the driver's task closes the\n"
+		       "     interface once and frees the device; the request fails)\n", name);
+		model_unplug(h);
+		return ESP_ERR_TIMEOUT;
+	}
+	if (s_unplug_after && !strcmp(s_unplug_after, name)) {
+		s_unplug_after = NULL;
+		printf("    (unplugged just after %s returned)\n", name);
+		model_unplug(h);
+	}
+	return ESP_OK;
+}
+
 esp_err_t hid_host_device_open(hid_host_device_handle_t h, const hid_host_device_config_t *c)
 {
 	h->st = M_READY;
 	h->cb = c->callback;
 	h->arg = c->callback_arg;
+	if (s_unplug_after && !strcmp(s_unplug_after, "open")) {
+		s_unplug_after = NULL;
+		printf("    (unplugged just after hid_host_device_open() returned)\n");
+		model_unplug(h);
+	}
 	return ESP_OK;
 }
 
 esp_err_t hid_host_device_start(hid_host_device_handle_t h)
 {
+	if (h->dev_freed) {
+		printf("    !! start begun on %s, whose device is freed\n", h->what);
+		s_after_free++;
+		return ESP_ERR_INVALID_STATE;
+	}
 	if (h->start_fails)
 		return ESP_FAIL;
 	h->st = M_ACTIVE;
@@ -196,11 +255,24 @@ esp_err_t hid_host_device_get_raw_input_report_data(hid_host_device_handle_t h, 
 uint8_t *hid_host_get_report_descriptor(hid_host_device_handle_t h, size_t *len)
 {
 	*len = h->desc_len;
+	if (s_unplug_after && !strcmp(s_unplug_after, "descriptor")) {
+		s_unplug_after = NULL;
+		printf("    (unplugged just after the report descriptor was fetched)\n");
+		model_unplug(h);
+	}
 	return (uint8_t *) h->desc;
 }
 
-esp_err_t hid_class_request_set_protocol(hid_host_device_handle_t h, int p) { (void) h; (void) p; return ESP_OK; }
-esp_err_t hid_class_request_set_idle(hid_host_device_handle_t h, int d, int id) { (void) h; (void) d; (void) id; return ESP_OK; }
+esp_err_t hid_class_request_set_protocol(hid_host_device_handle_t h, int p)
+{
+	(void) p;
+	return request(h, "set_protocol");
+}
+esp_err_t hid_class_request_set_idle(hid_host_device_handle_t h, int d, int id)
+{
+	(void) d; (void) id;
+	return request(h, "set_idle");
+}
 esp_err_t hid_class_request_set_report(hid_host_device_handle_t h, int t, int id, uint8_t *d, size_t n)
 {
 	(void) t; (void) id; (void) d; (void) n;
@@ -209,7 +281,9 @@ esp_err_t hid_class_request_set_report(hid_host_device_handle_t h, int t, int id
 		s_bad_set_reports++;
 	}
 	h->set_reports++;
-	return ESP_OK;
+	if (h->dev_freed)
+		return ESP_ERR_INVALID_STATE;
+	return request(h, "set_report");
 }
 
 /* the driver telling the user a device is gone, then freeing it:
@@ -285,6 +359,20 @@ static void reset_all(void)
 	memset(s_slot_used, 0, sizeof(s_slot_used));
 	s_queue = xQueueCreate(16, sizeof(struct usb_event));
 	s_bad_set_reports = 0;
+	s_unplug_in = NULL;
+	s_unplug_nth = 0;
+	s_seen_nth = 0;
+	s_unplug_after = NULL;
+	s_after_free = 0;
+}
+
+/* a keyboard slot of kbd_input.c still held */
+static int kbd_slots_held(void)
+{
+	int n = 0;
+	for (int i = 0; i < KBD_INPUT_DEVS; i++)
+		n += s_slot_used[i];
+	return n;
 }
 
 static int slot_of(struct model_iface *i)
@@ -310,6 +398,60 @@ static int report(const char *title, struct model_iface **ifs, int n, const enum
 		printf("    %d SET_REPORT to a freed device\n", s_bad_set_reports);
 		bad++;
 	}
+	printf("  %s: %s\n\n", title, bad ? "FAILS" : "passes");
+	return bad;
+}
+
+/* round 2: one interface, unplugged at the given place during its set-up.
+   After the run: no request begun on the freed device after the unplug,
+   both closes made (the driver's and on_gone()'s), its slot free and no
+   keyboard of kbd_input.c left held. */
+static const uint8_t mouse_desc[] = {
+	0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x09, 0x01, 0xA1, 0x00,
+	0x05, 0x09, 0x19, 0x01, 0x29, 0x03, 0x15, 0x00, 0x25, 0x01,
+	0x95, 0x03, 0x75, 0x01, 0x81, 0x02, 0x95, 0x01, 0x75, 0x05,
+	0x81, 0x01, 0x05, 0x01, 0x09, 0x30, 0x09, 0x31, 0x15, 0x81,
+	0x25, 0x7F, 0x75, 0x08, 0x95, 0x02, 0x81, 0x06, 0xC0, 0xC0,
+};
+
+static int unplug_case(const char *title, int report_mouse, const char *in, int nth,
+		       const char *after)
+{
+	printf("%s\n", title);
+	reset_all();
+	s_unplug_in = in;
+	s_unplug_nth = nth;
+	s_unplug_after = after;
+	struct model_iface k = { .what = "if0 boot keyboard", .num = 0,
+				 .sub_class = HID_SUBCLASS_BOOT_INTERFACE,
+				 .proto = HID_PROTOCOL_KEYBOARD };
+	if (report_mouse) {
+		k.what = "if0 report-protocol mouse";
+		k.sub_class = 0;
+		k.proto = 0;
+		k.desc = mouse_desc;
+		k.desc_len = sizeof(mouse_desc);
+	}
+	driver_callback(&k, HID_HOST_DRIVER_EVENT_CONNECTED, NULL);
+	run_usb_task();
+	struct model_iface *ifs[] = { &k };
+	const enum mstate want[] = { M_REMOVED };
+	int bad = 0;
+	if (!k.dev_freed) {
+		printf("    the unplug never happened: the case is wrong\n");
+		bad++;
+	}
+	if (s_after_free) {
+		printf("    %d request%s begun on the freed device after the unplug\n",
+		       s_after_free, s_after_free == 1 ? "" : "s");
+		bad++;
+	}
+	if (kbd_slots_held()) {
+		printf("    %d keyboard slot%s of kbd_input.c still held\n", kbd_slots_held(),
+		       kbd_slots_held() == 1 ? "" : "s");
+		bad++;
+	}
+	bad += report("driver state and slot", ifs, 1, want);
 	printf("  %s: %s\n\n", title, bad ? "FAILS" : "passes");
 	return bad;
 }
@@ -411,6 +553,19 @@ int main(void)
 		const enum mstate want[] = { M_REMOVED, M_ACTIVE };
 		fails += report("E", ifs, 2, want);
 	}
+
+	/* round 2 of the concurrency review: unplugged while being set up */
+	fails += unplug_case("F. unplugged while SET_PROTOCOL is in flight", 0, "set_protocol", 1, NULL);
+	fails += unplug_case("G. unplugged while SET_IDLE is in flight", 0, "set_idle", 1, NULL);
+	fails += unplug_case("H. unplugged while the first SET_REPORT (the lights) is in flight", 0,
+			     "set_report", 1, NULL);
+	fails += unplug_case("J. unplugged just after hid_host_device_open() returned", 0, NULL, 0,
+			     "open");
+	fails += unplug_case("K. unplugged just after SET_PROTOCOL returned", 0, NULL, 0,
+			     "set_protocol");
+	fails += unplug_case("L. unplugged just after SET_IDLE returned", 0, NULL, 0, "set_idle");
+	fails += unplug_case("M. a report-protocol mouse, unplugged just after its report "
+			     "descriptor was fetched", 1, NULL, 0, "descriptor");
 
 	printf("test_usb_input: %d check%s wrong\n", fails, fails == 1 ? "" : "s");
 	return fails ? 1 : 0;
