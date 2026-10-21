@@ -331,7 +331,7 @@ int ch9350_ps2_leds_to_usb(int ps2)
 	     | ((ps2 & 1) << 2);           /* Scroll */
 }
 
-/* ---- into kbd_input.c, and from there tiny386's PS/2 keyboard and mouse ---- */
+/* ==== into kbd_input.c, and from there tiny386's PS/2 keyboard and mouse ==== */
 
 #include "kbd_input.h"
 

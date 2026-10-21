@@ -26,7 +26,7 @@ static int failures, checks;
 		printf(__VA_ARGS__); printf("\n"); } \
 } while (0)
 
-/* ---- the emulator's side: clock, PIC, i8042 ---- */
+/* ==== the emulator's side: clock, PIC, i8042 ==== */
 
 static uint32_t now_us = 1000000;
 uint32_t get_uticks(void) { return now_us; }
@@ -61,7 +61,7 @@ static void guest_mouse_cmd(int b)
 	kbd_write_data(kc, 0x60, b);
 }
 
-/* ---- parser under test ---- */
+/* ==== parser under test ==== */
 
 static ch9350_parser_t p;
 static ch9350_input_t input = { .dev = -1 };

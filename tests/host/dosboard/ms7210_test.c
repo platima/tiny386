@@ -202,7 +202,7 @@ static const ms7210_io_t io = {
 	.row = f_row,
 };
 
-/* ---- a fake monitor ---- */
+/* ==== a fake monitor ==== */
 
 static uint8_t sum8(const uint8_t *p, int n)
 {
@@ -270,7 +270,7 @@ static void make_edid(uint8_t *e, int hdmi, int est, int dtd)
 	x[127] = (uint8_t)(0x100 - sum8(x, 127));
 }
 
-/* ---- checks on the log ---- */
+/* ==== checks on the log ==== */
 
 /* InfoFrames: from the log, the header registers and the bytes written
    to 0x050D after them must sum to zero; returns how many frames were found */

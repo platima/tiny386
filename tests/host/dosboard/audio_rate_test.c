@@ -26,7 +26,7 @@
 #include "pcspk.h"
 #include "adlib.h"
 
-/* ---- what the three need from the rest of the PC ---- */
+/* ==== what the three need from the rest of the PC ==== */
 
 static int pit_count = 1193;
 int pit_get_mode(PITState *pit, int channel) { return 3; }

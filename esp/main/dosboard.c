@@ -36,7 +36,7 @@
 #include "ms7210.h"
 #include "storage.h"
 
-/* ---- lines from before the boot console ---- */
+/* ==== lines from before the boot console ==== */
 
 #define NOTES_MAX 24
 #define NOTE_LEN 112
@@ -100,7 +100,7 @@ dosboard_cfg_t dosboard_cfg = {
 	.kbd_zero_guard_ms = 0,
 };
 
-/* ---- MS7210 on I2C0 (GPIO0 SDA, GPIO1 SCL) ---- */
+/* ==== MS7210 on I2C0 (GPIO0 SDA, GPIO1 SCL) ==== */
 
 static i2c_master_bus_handle_t i2c_bus;
 static i2c_master_dev_handle_t dev_fast, dev_slow, dev_edid;
@@ -207,7 +207,7 @@ static void i2c_close(void)
 	i2c_bus = NULL;
 }
 
-/* ---- board check ---- */
+/* ==== board check ==== */
 
 static void __attribute__((noreturn)) wrong_board(void)
 {
@@ -274,7 +274,7 @@ void board_early_init(void)
 		      HDMI_I2C_ADDR, gpio_get_level(SD_CD_GPIO) ? "out" : "in");
 }
 
-/* ---- [dosboard] settings ---- */
+/* ==== [dosboard] settings ==== */
 
 static int parse_cfg(void *user, const char *section, const char *name, const char *value)
 {
@@ -348,7 +348,7 @@ void dosboard_load_config(void)
 	}
 }
 
-/* ---- HDMI ---- */
+/* ==== HDMI ==== */
 
 static void hdmi_task(void *arg)
 {
