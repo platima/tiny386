@@ -356,8 +356,6 @@ static void i386_task(void *arg)
 	globals.pc = pc;
 	globals.kbd = pc->kbd;
 	globals.mouse = pc->mouse;
-	/* the keyboard and mouse now reach the PC */
-	kbd_input_set_target(pc->kbd, pc->mouse);
 	console_printf(CON_INFO, "PC built. Device memory (the 0xA0000 window): %ld "
 		       "of %ld bytes used. Internal RAM free %u KiB (largest "
 		       "block %u KiB).", pcram_off, pcram_len,
@@ -380,6 +378,10 @@ static void i386_task(void *arg)
 		     "with the speed.");
 	console_release_display();
 	xEventGroupSetBits(global_event_group, BIT0);
+	/* the keyboard and mouse reach the PC from now: keys pressed while
+	   the console was up would wait in the PS/2 queue ahead of the BIOS's
+	   keyboard reset */
+	kbd_input_set_target(pc->kbd, pc->mouse);
 
 	pc->boot_start_time = get_uticks();
 #ifdef TINY386_CRASH_TEST
