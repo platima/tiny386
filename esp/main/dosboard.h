@@ -13,11 +13,18 @@ typedef struct {
 	int pclk_neg;            /* pclk_neg = 0|1: S31 clocks data out on the falling PCLK edge */
 	int hdmi_mode;           /* hdmi_mode = auto|hdmi|dvi */
 	int audio;               /* hdmi_audio = 0|1 */
-	int bounce_px;           /* lcd_bounce_px = 0 or a divisor of 480000, such as 8000 */
+	int rb_swap;             /* rb_swap = 0|1: MS7210 0x1201 bit 4, red and blue swapped */
+	int bounce_px;           /* lcd_bounce_px = 0 or a divisor of 480000 up to 16000, such as 8000 */
 	int test_card_ms;        /* test_card_ms = how long the colour bars stay at start, 0 = none */
 	int ch9350_state;        /* ch9350_state = 2|0 */
 	int kbd_zero_guard_ms;   /* kbd_zero_guard_ms = 0 (off) or a few ms (ch9350.h) */
+	int i2s_slot_bits;       /* i2s_slot_bits = 16|32: I2S slot width, 16-bit samples in it */
+	int audio_shift;         /* audio_shift = 0..8: samples divided by 2 to this, 4 = tiny386's own */
 } dosboard_cfg_t;
+
+/* the largest lcd_bounce_px: 20 rows, two buffers of 32,000 bytes in
+   internal RAM */
+#define DOSBOARD_BOUNCE_MAX_PX (LCD_WIDTH * 20)
 
 extern dosboard_cfg_t dosboard_cfg;
 

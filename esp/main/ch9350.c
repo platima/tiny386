@@ -126,7 +126,11 @@ static void data_frame(ch9350_parser_t *p, uint32_t now)
 			d++;
 			n--;
 		}
-		if (n < 8) {
+		/* the device's own report, as it sent it: only one laid out as a
+		   boot report (8 bytes, reserved byte 0, key codes in range) is
+		   read as one; an NKRO bitmap or any other layout is counted, not
+		   turned into wrong keys, as state 2 frames are */
+		if (n != 8 || !boot_report_ok(d)) {
 			p->bad_frames++;
 			return;
 		}
@@ -324,12 +328,16 @@ void ch9350_led_frame(uint8_t out[CH9350_LED_FRAME_LEN], int usb_leds, int mode)
 		out[8] = 0x00;              /* state 0 and 1 (reported: DVPL, ch9350.md 6.5) */
 }
 
+#ifndef ESP_PLATFORM
+/* for the host test only: the firmware has kbd_input.c do this
+   (ps2_kbd_leds_changed()) */
 int ch9350_ps2_leds_to_usb(int ps2)
 {
 	return ((ps2 >> 1) & 1)            /* Num */
 	     | (((ps2 >> 2) & 1) << 1)     /* Caps */
 	     | ((ps2 & 1) << 2);           /* Scroll */
 }
+#endif
 
 /* ==== into kbd_input.c, and from there tiny386's PS/2 keyboard and mouse ==== */
 
@@ -406,12 +414,23 @@ static void send_leds(void)
 	uart_write_bytes(KM_UART_NUM, f, sizeof(f));
 }
 
+static uint32_t status_frames;          /* 0x80 and 0x82 frames, for the log */
+static int64_t last_answer;
+
 static void sink_status(void *ctx, uint8_t op, uint8_t arg)
 {
 	/* 0x80 (states 2 to 4) and 0x82 (states 0 and 1) want an answer
-	   status frame; it carries the LEDs */
-	if (op == 0x80 || op == 0x82)
-		send_leds();
+	   status frame; it carries the LEDs.  No more than one answer in 100
+	   ms: a chip that answered every LED frame with another status frame
+	   would otherwise keep both sides sending at wire speed. */
+	if (op == 0x80 || op == 0x82) {
+		int64_t now = esp_timer_get_time();
+		status_frames++;
+		if (now - last_answer >= 100000) {
+			send_leds();
+			last_answer = now;
+		}
+	}
 }
 
 /* kbd_input.c, from the emulator's core when the guest sets the lights
@@ -446,7 +465,7 @@ static void ch9350_task(void *arg)
 		.source_clk = UART_SCLK_DEFAULT,
 	};
 	int64_t last_led = 0, last_log = 0;
-	uint32_t last_errors = 0;
+	uint32_t last_errors = 0, last_status = 0;
 
 	ch9350_input_sink(&sink, &input);
 	sink.status = sink_status;
@@ -489,16 +508,21 @@ static void ch9350_task(void *arg)
 
 		uint32_t errors = parser.resyncs + parser.unknown_ops + parser.timeouts +
 				  parser.bad_frames + parser.bad_sums;
-		if (errors != last_errors && now - last_log > 10000000) {
-			console_uart_printf("ch9350: %lu frames (%lu keyboard, %lu mouse); "
-				"resyncs %lu, junk %lu, unknown %lu, timeouts %lu, bad %lu, "
+		/* every 10 s at most, when there were errors, or more status
+		   frames than a chip at rest sends (a few a second at most) */
+		if ((errors != last_errors || status_frames - last_status > 100) &&
+		    now - last_log > 10000000) {
+			console_uart_printf("ch9350: %lu frames (%lu keyboard, %lu mouse, %lu "
+				"status); resyncs %lu, junk %lu, unknown %lu, timeouts %lu, bad %lu, "
 				"bad sums %lu, zero frames dropped %lu",
 				(unsigned long)parser.frames, (unsigned long)parser.kbd_frames,
-				(unsigned long)parser.mouse_frames, (unsigned long)parser.resyncs,
+				(unsigned long)parser.mouse_frames, (unsigned long)status_frames,
+				(unsigned long)parser.resyncs,
 				(unsigned long)parser.junk_bytes, (unsigned long)parser.unknown_ops,
 				(unsigned long)parser.timeouts, (unsigned long)parser.bad_frames,
 				(unsigned long)parser.bad_sums, (unsigned long)parser.zero_ignored);
 			last_errors = errors;
+			last_status = status_frames;
 			last_log = now;
 		}
 	}
@@ -527,7 +551,8 @@ void ch9350_setup(int mode, int guard_ms)
 	input.dev = kbd_input_open();
 	kbd_input_set_leds_fn(leds_changed);
 	kbd_input_start();              /* typematic repeat */
-	xTaskCreatePinnedToCore(ch9350_task, "ch9350", 4096, NULL, 3, NULL, 0);
+	if (xTaskCreatePinnedToCore(ch9350_task, "ch9350", 4096, NULL, 3, NULL, 0) != pdPASS)
+		console_fatal("The task ch9350 could not be started (no memory).");
 	console_printf(CON_INFO, "CH9350L started in state %d on UART%d, %d baud: the "
 		       "keyboard and mouse go in its two USB-A ports.", chip_mode,
 		       KM_UART_NUM, KM_BAUD);

@@ -22,6 +22,7 @@
 #define AUD   MS7210_F_AUDIO
 #define HDMI  MS7210_F_HDMI
 #define PLL   MS7210_F_PLL
+#define RBSW  MS7210_F_RBSWAP
 
 const ms7210_row_t ms7210_rows[] = {
 	/* A. Reset and identity */
@@ -37,7 +38,7 @@ const ms7210_row_t ms7210_rows[] = {
 	R("B4",  WRITE,   0, 0x0061, 0,    0x54, 0),    /* RC oscillator trim */
 	R("B5",  RMW,     0, 0x0080, 0x03, 0x00, 0),    /* CSC input RGB */
 	R("B6",  RMW,     0, 0x1202, 0x07, 0x00, 0),    /* input mode RGB/YUV444 */
-	R("B7",  RMW,     0, 0x1201, 0x10, 0x00, 0),    /* no R/B swap */
+	R("B7",  RMW,  RBSW, 0x1201, 0x10, 0x00, 0),    /* no R/B swap ([dosboard] rb_swap) */
 	R("B8",  RMW,     0, 0x1202, 0x08, 0x00, 0),    /* SDR */
 	R("B9",  RMW,     0, 0x00C0, 0x03, 0x00, 0),    /* input clock ratio 1:1 */
 	R("B10", RMW,     0, 0x1200, 0x0C, 0x04, 0),    /* separate HSYNC, VSYNC, DE */
@@ -157,6 +158,7 @@ const ms7210_row_t ms7210_rows[] = {
 #undef AUD
 #undef HDMI
 #undef PLL
+#undef RBSW
 
 /* Status registers (encoder.md 8.6, 8.7) */
 #define REG_HPD        0x0502   /* bit 0: hot plug */
@@ -301,6 +303,8 @@ static int run(ms7210_t *m, const char *from, const char *to)
 
 		if (r->flags & MS7210_F_PHASE)
 			val = m->cfg.pclk_phase & 0x07;
+		if (r->flags & MS7210_F_RBSWAP)
+			val = m->cfg.rb_swap ? r->mask : 0x00;
 		if (r->flags & MS7210_F_DVI)
 			val = m->dvi ? 0x01 : 0x00;
 		if ((r->flags & MS7210_F_AUDIO) && (m->dvi || !m->cfg.audio))
@@ -411,27 +415,49 @@ static void choose_mode(ms7210_t *m)
 		return;
 	}
 	/* auto: a monitor whose EDID has no HDMI vendor block takes DVI;
-	   no EDID, or a bad one, is treated as HDMI, as the vendor's code does */
-	if (m->hpd && ms7210_read_edid(m) == 0)
-		m->dvi = !m->edid_info.hdmi;
-	else
+	   no EDID, or a bad one, is treated as HDMI, as the vendor's code does.
+	   That includes a good block 0 whose extension could not be read, or
+	   was not a CEA-861 block with a good checksum: DVI there would lose
+	   the sound on an HDMI set whose second block read badly. */
+	if (m->hpd && ms7210_read_edid(m) == 0) {
+		if (m->edid[0x7E] >= 1 && !m->edid_info.ext_ok) {
+			logf_(m, "ms7210: EDID extension unreadable or not CEA-861: HDMI assumed");
+			m->dvi = 0;
+		} else {
+			m->dvi = !m->edid_info.hdmi;
+		}
+	} else {
 		m->dvi = 0;
+	}
+}
+
+static unsigned meter_mhz100(uint16_t meter)
+{
+	return (unsigned) (meter * 2700u / 4096u);
 }
 
 static void report(ms7210_t *m)
 {
-	uint8_t v;
+	uint8_t v, lo, hi;
 
 	m->pll_locked = check_pll(m);
 	if (ms7210_read(m, REG_IN_STABLE, &v) == 0)
 		m->input_stable = (v >> 4) & 1;
 	if (ms7210_read(m, REG_HPD, &v) == 0)
 		m->hpd = v & 1;
-	logf_(m, "ms7210: %s, PLL %s after %d pass%s, input %s, monitor %s",
+	/* the PCLK meter again, long after it was switched on (row C1 reads it
+	   straight after B19): if the first reading was 0 only because the
+	   meter had not finished a count, this one says so */
+	if (ms7210_read(m, 0x001E, &lo) == 0 && ms7210_read(m, 0x001F, &hi) == 0)
+		m->pclk_meter_late = lo | (hi << 8);
+	logf_(m, "ms7210: %s, PLL %s after %d pass%s, input %s, monitor %s, PCLK meter "
+	      "now %u (about %u.%02u MHz)",
 	      m->dvi ? "DVI" : (m->cfg.audio ? "HDMI with sound" : "HDMI, no sound"),
 	      m->pll_locked ? "locked" : "NOT locked", m->pll_tries,
 	      m->pll_tries == 1 ? "" : "es",
-	      m->input_stable ? "stable" : "not stable", m->hpd ? "attached" : "not attached");
+	      m->input_stable ? "stable" : "not stable", m->hpd ? "attached" : "not attached",
+	      m->pclk_meter_late, meter_mhz100(m->pclk_meter_late) / 100,
+	      meter_mhz100(m->pclk_meter_late) % 100);
 }
 
 static int setup_output(ms7210_t *m)
@@ -452,10 +478,11 @@ int ms7210_init(ms7210_t *m)
 		m->io->i2c_speed(m->io->ctx, m->cfg.bus_hz);
 	r |= run(m, "B1", "B22");
 	r |= run(m, "C1", "C1");
-	/* 6068 for 40 MHz with the 27 MHz RC trim (encoder.md row C1) */
+	/* 6068 for 40 MHz with the 27 MHz RC trim (encoder.md row C1).  Read
+	   straight after B19 switched the meter on: report() reads it again */
 	logf_(m, "ms7210: PCLK meter %u, about %u.%02u MHz (40.00 expected)",
-	      m->pclk_meter, (unsigned)(m->pclk_meter * 2700u / 4096u) / 100,
-	      (unsigned)(m->pclk_meter * 2700u / 4096u) % 100);
+	      m->pclk_meter, meter_mhz100(m->pclk_meter) / 100,
+	      meter_mhz100(m->pclk_meter) % 100);
 	r |= run(m, "D1", "D15");
 	m->hpd = ms7210_read(m, REG_HPD, &v) == 0 ? (v & 1) : 0;
 	choose_mode(m);
@@ -467,7 +494,22 @@ int ms7210_poll(ms7210_t *m)
 {
 	uint8_t v;
 	int hpd;
+	int d1 = row_index("D1");
 
+	/* A chip that was reset under us (ESD as a cable goes in, a dip on its
+	   1.2 V) has lost sections B to E, which only ms7210_init() writes:
+	   0x120C holds D1's low byte from set-up on. */
+	if (d1 >= 0) {
+		if (ms7210_read(m, ms7210_rows[d1].reg, &v))
+			return -1;
+		if (v != (ms7210_rows[d1].arg & 0xFF)) {
+			logf_(m, "ms7210: register 0x%04X reads 0x%02X, not 0x%02X: the chip "
+			      "was reset; set up again", ms7210_rows[d1].reg, v,
+			      ms7210_rows[d1].arg & 0xFF);
+			ms7210_init(m);
+			return 2;
+		}
+	}
 	if (ms7210_read(m, REG_HPD, &v))
 		return -1;
 	hpd = v & 1;
@@ -504,8 +546,10 @@ int ms7210_read_edid(ms7210_t *m)
 	r = edid_block(m, 0x00, m->edid);
 	if (r == 0) {
 		blocks = 1;
-		/* one extension block is all a DOS board needs to look at */
-		if (m->edid[0x7E] >= 1 && edid_block(m, 0x80, m->edid + 128) == 0)
+		/* one extension block is all a DOS board needs to look at; read
+		   twice if the first try fails */
+		if (m->edid[0x7E] >= 1 && (edid_block(m, 0x80, m->edid + 128) == 0 ||
+					   edid_block(m, 0x80, m->edid + 128) == 0))
 			blocks = 2;
 	}
 	ms7210_write(m, REG_DDC_PASS, 0x0F);
@@ -524,7 +568,9 @@ int ms7210_read_edid(ms7210_t *m)
 	}
 	logf_(m, "ms7210: monitor %s %04X \"%s\": %s, %s, 800x600 at 60 Hz %s",
 	      m->edid_info.vendor, m->edid_info.product, m->edid_info.name,
-	      m->edid_info.hdmi ? "HDMI" : "DVI (no HDMI vendor block)",
+	      m->edid_info.hdmi ? "HDMI" :
+	      (m->edid[0x7E] >= 1 && !m->edid_info.ext_ok) ? "extension block unreadable" :
+	      "DVI (no HDMI vendor block)",
 	      m->edid_info.basic_audio ? "basic audio" : "no audio",
 	      (m->edid_info.est_800x600_60 || m->edid_info.std_800x600_60 ||
 	       m->edid_info.dtd_800x600) ? "listed" : "NOT listed");

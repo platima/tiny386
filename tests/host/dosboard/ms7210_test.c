@@ -35,6 +35,7 @@ typedef struct {
 	uint8_t chip_id0;
 	const uint8_t *edid;
 	int edid_nak;
+	int edid_ext_nak;      /* the extension block (offset 0x80) does not answer */
 	int pass_on;
 	FILE *log;
 	/* what was seen */
@@ -137,7 +138,7 @@ static int f_write_read(void *ctx, uint8_t addr, const uint8_t *w, int wlen, uin
 			f->ddc_wrong_speed++;
 		if (!f->pass_on)
 			f->ddc_closed++;
-		if (!f->pass_on || f->edid_nak || !f->edid) {
+		if (!f->pass_on || f->edid_nak || !f->edid || (f->edid_ext_nak && w[0] == 0x80)) {
 			lg(f, " NAK hz=%u\n", f->hz);
 			return -1;
 		}
@@ -450,6 +451,7 @@ int main(int argc, char **argv)
 	CHECK(!m.dvi && m.edid_ok && m.edid_info.hdmi, "HDMI mode chosen");
 	CHECK(m.pll_locked && m.pll_tries == 1, "PLL locked on the first pass");
 	CHECK(m.pclk_meter == 6068, "PCLK meter read %u", m.pclk_meter);
+	CHECK(m.pclk_meter_late == 6068, "PCLK meter read again after set-up %u", m.pclk_meter_late);
 	CHECK((fake.regs[0x0503] & 1) == 0, "0x0503 bit 0 clear (HDMI)");
 	CHECK(fake.regs[0x0531] == 0x84, "0x0531 = 0x84 (audio on, 48 kHz), is %02X", fake.regs[0x0531]);
 	CHECK((fake.regs[0x050E] & 0x60) == 0x60, "AVI and audio InfoFrames on");
@@ -546,6 +548,63 @@ int main(int argc, char **argv)
 	fclose(fake.log);
 	fake.log = NULL;
 
+	/* 9b. block 0 good, the extension unreadable or bad: HDMI, as with no
+	   EDID (the DOS board review, F1; the vendor's code does the same) */
+	printf("scenario edidext:\n");
+	{
+		static uint8_t e[256];
+		const char *what[3] = { "extension does not answer", "extension checksum wrong",
+					"block map in block 1" };
+		for (int k = 0; k < 3; k++) {
+			fake_reset(&fake);
+			fake.hpd = 1;
+			memcpy(e, edid_dvi, 256);
+			if (k == 0)
+				fake.edid_ext_nak = 1;
+			if (k == 1)
+				e[255] ^= 1;
+			if (k == 2) {
+				e[128] = 0xF0;
+				e[255] = (uint8_t)(0x100 - sum8(e + 128, 127));
+			}
+			fake.edid = e;
+			ms7210_default_cfg(&cfg);
+			ms7210_probe(&m, &io, &cfg);
+			ms7210_init(&m);
+			CHECK(!m.dvi && (fake.regs[0x0503] & 1) == 0 && fake.regs[0x0531] == 0x84,
+			      "%s: HDMI with sound (0x0503 %02X, 0x0531 %02X)", what[k],
+			      fake.regs[0x0503], fake.regs[0x0531]);
+		}
+		CHECK(fake.edid_reads == 2, "block map: %d reads, 2 wanted", fake.edid_reads);
+		/* a DVI monitor with no extension block at all stays DVI */
+		fake_reset(&fake);
+		fake.hpd = 1;
+		memcpy(e, edid_dvi, 256);
+		e[0x7E] = 0;
+		e[0x7F] = (uint8_t)(0x100 - sum8(e, 127));
+		fake.edid = e;
+		ms7210_probe(&m, &io, &cfg);
+		ms7210_init(&m);
+		CHECK(m.dvi && (fake.regs[0x0503] & 1) == 1, "no extension block: DVI");
+	}
+
+	/* 9c. the chip reset under the driver: the poll sees 0x120C lose D1's
+	   value and sets everything up again (the DOS board review, F8) */
+	printf("scenario chipreset:\n");
+	fake_reset(&fake);
+	fake.hpd = 1;
+	fake.edid = edid_hdmi;
+	ms7210_default_cfg(&cfg);
+	ms7210_probe(&m, &io, &cfg);
+	ms7210_init(&m);
+	CHECK(ms7210_poll(&m) == 0 && fake.e1_rows == 1, "no change: nothing done");
+	for (int a = 0; a < 0x10000; a++)
+		fake.regs[a] = pattern(a);      /* what a reset leaves */
+	r = ms7210_poll(&m);
+	CHECK(r == 2 && fake.e1_rows == 2 && fake.regs[0x120C] == 0x20 && fake.regs[0x120D] == 0x04 &&
+	      !m.dvi && fake.regs[0x0531] == 0x84, "reset seen: set up again from B (poll %d)", r);
+	CHECK(ms7210_poll(&m) == 0 && fake.e1_rows == 2, "after that: nothing to do");
+
 	/* 10. the other clock edge (plan B), forced DVI, audio off */
 	printf("scenario options:\n");
 	fake.log = open_log(dir, "options", path);
@@ -556,6 +615,17 @@ int main(int argc, char **argv)
 	ms7210_probe(&m, &io, &cfg);
 	ms7210_init(&m);
 	CHECK((fake.regs[0x1281] & 7) == 4, "0x1281 phase 4 (plan B)");
+	CHECK((fake.regs[0x1201] & 0x10) == 0, "0x1201 bit 4 clear: no R/B swap");
+	fake_reset(&fake);
+	fake.hpd = 1;
+	fake.edid = edid_hdmi;
+	cfg.rb_swap = 1;
+	ms7210_probe(&m, &io, &cfg);
+	ms7210_init(&m);
+	CHECK((fake.regs[0x1201] & 0x10) == 0x10 &&
+	      (fake.regs[0x1201] & ~0x10) == (pattern(0x1201) & ~0x10),
+	      "rb_swap: 0x1201 bit 4 set, the other bits left alone");
+	cfg.rb_swap = 0;
 	fake_reset(&fake);
 	fake.hpd = 1;
 	fake.edid = edid_hdmi;

@@ -84,6 +84,10 @@ def reg_of(ev):
 
 
 ALLOWED_EXTRA_READS = {0x0502, 0x091C, 0x051D}    # hot plug, PLL lock, input stable (8.6)
+# Not in 8.4, added after the DOS board review (2026-10-21): the PCLK meter
+# read again once set-up is done (F3), and D1's register read back by the
+# hot plug poll to see whether the chip was reset (F8).  Reads only.
+ALLOWED_EXTRA_READS |= {0x001E, 0x001F, 0x120C}
 ALLOWED_EXTRA_WRITES = {0x0013, 0x0012}           # DDC pass-through (8.6)
 
 

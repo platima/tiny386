@@ -46,6 +46,7 @@ typedef struct {
 	uint8_t pclk_phase;      /* register 0x1281 bits 2:0 (row B22): 0 = plan A, 4 = PCLK inverted */
 	uint8_t mode;            /* MS7210_MODE_* */
 	uint8_t audio;           /* 1 = audio enabled and its InfoFrame sent in HDMI mode */
+	uint8_t rb_swap;         /* 1 = register 0x1201 bit 4 set (row B7): red and blue swapped */
 	uint32_t bus_hz;         /* register access: 100 kHz */
 	uint32_t ddc_hz;         /* while the DDC pass-through is on: 20 kHz */
 } ms7210_cfg_t;
@@ -70,6 +71,7 @@ typedef struct {
 	uint8_t chip_id[3];
 	int found;               /* chip ID read back as A2 20 0A */
 	uint16_t pclk_meter;     /* row C1: about 6068 at 40 MHz */
+	uint16_t pclk_meter_late; /* the same, read again after section E */
 	int pll_tries;           /* passes through E7 to E40 in the last output set-up */
 	int pll_locked;
 	int hpd;                 /* last hot plug state seen */
@@ -91,7 +93,8 @@ int ms7210_probe(ms7210_t *m, const ms7210_io_t *io, const ms7210_cfg_t *cfg);
 int ms7210_init(ms7210_t *m);
 
 /* Hot plug, about twice a second: on a new connection read the EDID and set
-   up the output again (section E).  1 = set up again, 0 = nothing to do, -1 = I2C error. */
+   up the output again (section E).  1 = set up again, 0 = nothing to do, -1 = I2C error,
+   2 = the chip had lost its settings (it was reset) and was set up again from section B. */
 int ms7210_poll(ms7210_t *m);
 
 /* EDID through the DDC pass-through into m->edid, parsed into m->edid_info.  0 = valid. */
@@ -145,5 +148,6 @@ enum {
 #define MS7210_F_AUDIO   0x04    /* value only in HDMI mode with audio on, else 0x00 */
 #define MS7210_F_HDMI    0x08    /* row left out in DVI mode */
 #define MS7210_F_PLL     0x10    /* after the row: check PLL lock, maybe go back to E7 */
+#define MS7210_F_RBSWAP  0x20    /* value is the row's mask if cfg.rb_swap, else 0x00 */
 
 #endif /* MS7210_H */

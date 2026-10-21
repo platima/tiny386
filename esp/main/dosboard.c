@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
@@ -105,6 +106,9 @@ dosboard_cfg_t dosboard_cfg = {
 	.test_card_ms = 2000,
 	.ch9350_state = 2,
 	.kbd_zero_guard_ms = 0,
+	.rb_swap = 0,
+	.i2s_slot_bits = 16,
+	.audio_shift = 4,
 };
 
 /* ==== MS7210 on I2C0 (GPIO0 SDA, GPIO1 SCL) ==== */
@@ -285,32 +289,80 @@ void board_early_init(void)
 
 /* ==== [dosboard] settings ==== */
 
+/* 1, yes, on, true or 0, no, off, false; anything else is -1 */
+static int parse_bool(const char *v)
+{
+	static const char *const yes[] = { "1", "yes", "on", "true", NULL };
+	static const char *const no[] = { "0", "no", "off", "false", NULL };
+	for (int i = 0; yes[i]; i++)
+		if (strcasecmp(v, yes[i]) == 0)
+			return 1;
+	for (int i = 0; no[i]; i++)
+		if (strcasecmp(v, no[i]) == 0)
+			return 0;
+	return -1;
+}
+
 static int parse_cfg(void *user, const char *section, const char *name, const char *value)
 {
 	dosboard_cfg_t *c = user;
+	const char *bad = NULL;         /* what the value should have been */
+	int b = parse_bool(value);
 
 	if (strcmp(section, "dosboard") != 0)
 		return 1;
-	if (strcmp(name, "pclk_phase") == 0)
+	if (strcmp(name, "pclk_phase") == 0) {
 		c->pclk_phase = atoi(value) & 7;
-	else if (strcmp(name, "pclk_neg") == 0)
-		c->pclk_neg = atoi(value) != 0;
-	else if (strcmp(name, "hdmi_mode") == 0)
-		c->hdmi_mode = strcmp(value, "hdmi") == 0 ? MS7210_MODE_HDMI :
-			       strcmp(value, "dvi") == 0 ? MS7210_MODE_DVI : MS7210_MODE_AUTO;
-	else if (strcmp(name, "hdmi_audio") == 0)
-		c->audio = atoi(value) != 0;
-	else if (strcmp(name, "lcd_bounce_px") == 0)
+	} else if (strcmp(name, "pclk_neg") == 0) {
+		if (b < 0)
+			bad = "0 or 1";
+		else
+			c->pclk_neg = b;
+	} else if (strcmp(name, "hdmi_mode") == 0) {
+		if (strcasecmp(value, "hdmi") == 0)
+			c->hdmi_mode = MS7210_MODE_HDMI;
+		else if (strcasecmp(value, "dvi") == 0)
+			c->hdmi_mode = MS7210_MODE_DVI;
+		else if (strcasecmp(value, "auto") == 0)
+			c->hdmi_mode = MS7210_MODE_AUTO;
+		else
+			bad = "auto, hdmi or dvi";
+	} else if (strcmp(name, "hdmi_audio") == 0) {
+		if (b < 0)
+			bad = "0 or 1";
+		else
+			c->audio = b;
+	} else if (strcmp(name, "rb_swap") == 0) {
+		if (b < 0)
+			bad = "0 or 1";
+		else
+			c->rb_swap = b;
+	} else if (strcmp(name, "lcd_bounce_px") == 0) {
 		c->bounce_px = atoi(value);
-	else if (strcmp(name, "test_card_ms") == 0)
+	} else if (strcmp(name, "test_card_ms") == 0) {
 		c->test_card_ms = atoi(value);
-	else if (strcmp(name, "ch9350_state") == 0)
+	} else if (strcmp(name, "ch9350_state") == 0) {
 		c->ch9350_state = atoi(value) == 0 ? 0 : 2;
-	else if (strcmp(name, "kbd_zero_guard_ms") == 0)
+	} else if (strcmp(name, "kbd_zero_guard_ms") == 0) {
 		c->kbd_zero_guard_ms = atoi(value);
-	else {
+	} else if (strcmp(name, "i2s_slot_bits") == 0) {
+		if (atoi(value) == 16 || atoi(value) == 32)
+			c->i2s_slot_bits = atoi(value);
+		else
+			bad = "16 or 32";
+	} else if (strcmp(name, "audio_shift") == 0) {
+		if (atoi(value) >= 0 && atoi(value) <= 8 && value[0] >= '0' && value[0] <= '8')
+			c->audio_shift = atoi(value);
+		else
+			bad = "0 to 8";
+	} else {
 		dosboard_note("dosboard.ini: [dosboard] %s is not a setting tiny386 knows; "
 			      "ignored.", name);
+		return 1;
+	}
+	if (bad) {
+		dosboard_note("dosboard.ini: [dosboard] %s = %s could not be read: it is "
+			      "%s; the default is kept.", name, value, bad);
 		return 1;
 	}
 	dosboard_note("  [dosboard] %s = %s", name, value);
@@ -355,6 +407,16 @@ void dosboard_load_config(void)
 			      "bounce buffers).", dosboard_cfg.bounce_px, LCD_WIDTH * LCD_HEIGHT);
 		dosboard_cfg.bounce_px = 0;
 	}
+	/* and takes two of them from internal RAM: more than 20 rows' worth
+	   (2 x 32,000 bytes) would leave the board with no picture */
+	if (dosboard_cfg.bounce_px > DOSBOARD_BOUNCE_MAX_PX) {
+		dosboard_note("dosboard: lcd_bounce_px %d is more than internal RAM can spare; "
+			      "%d (20 rows) used.", dosboard_cfg.bounce_px, DOSBOARD_BOUNCE_MAX_PX);
+		dosboard_cfg.bounce_px = DOSBOARD_BOUNCE_MAX_PX;
+	}
+	/* what the sound path takes from this file, before i2s_main() runs */
+	i2s_slot_bits = dosboard_cfg.i2s_slot_bits;
+	i2s_audio_shift = dosboard_cfg.audio_shift;
 }
 
 /* ==== HDMI ==== */
@@ -365,9 +427,12 @@ static void hdmi_task(void *arg)
 
 	for (;;) {
 		vTaskDelay(pdMS_TO_TICKS(500));
-		ms7210_poll(&hdmi);
-		/* the status LED blinks once a second while all is well */
-		gpio_set_level(LED_STATUS_GPIO, led ^= 1);
+		/* the status LED blinks once a second while the MS7210 answers;
+		   it stays lit while it does not */
+		if (ms7210_poll(&hdmi) >= 0)
+			gpio_set_level(LED_STATUS_GPIO, led ^= 1);
+		else
+			gpio_set_level(LED_STATUS_GPIO, led = 0);
 	}
 }
 
@@ -378,12 +443,17 @@ int dosboard_video_start(void)
 	hdmi.cfg.pclk_phase = dosboard_cfg.pclk_phase;
 	hdmi.cfg.mode = dosboard_cfg.hdmi_mode;
 	hdmi.cfg.audio = dosboard_cfg.audio;
+	hdmi.cfg.rb_swap = dosboard_cfg.rb_swap;
 	dosboard_note("dosboard: MS7210 set-up, PCLK phase %d, S31 PCLK %s edge.",
 		      hdmi.cfg.pclk_phase, dosboard_cfg.pclk_neg ? "falling" : "rising");
 	r = ms7210_init(&hdmi);
 	if (r)
 		dosboard_note("dosboard: MS7210 set-up had %d I2C errors.", hdmi.errors);
-	xTaskCreatePinnedToCore(hdmi_task, "hdmi", 4096, NULL, 1, NULL, 0);
+	/* before the boot console: a note, and no hot plug, rather than a stop
+	   with nothing on the panel to say why */
+	if (xTaskCreatePinnedToCore(hdmi_task, "hdmi", 4096, NULL, 1, NULL, 0) != pdPASS)
+		dosboard_note("dosboard: the hot plug task could not be started (no "
+			      "memory): a monitor plugged in later is not set up.");
 	return r;
 }
 

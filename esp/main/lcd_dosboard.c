@@ -87,8 +87,13 @@ static esp_lcd_panel_handle_t panel_start(void)
 	for (int i = 0; i < 16; i++)
 		cfg.data_gpio_nums[i] = data_pins[i];
 	esp_err_t err = esp_lcd_new_rgb_panel(&cfg, &panel);
-	if (err == ESP_OK)
+	if (err == ESP_OK) {
 		err = esp_lcd_panel_init(panel);
+		if (err != ESP_OK) {
+			esp_lcd_panel_del(panel);
+			panel = NULL;
+		}
+	}
 	if (err != ESP_OK) {
 		/* only the UART can say so: there is no picture */
 		ESP_LOGE(TAG, "the RGB output did not start (%s)", esp_err_to_name(err));
@@ -108,6 +113,14 @@ void *lcd_init(void)
 	dosboard_load_config();
 
 	esp_lcd_panel_handle_t panel = panel_start();
+	if (!panel && dosboard_cfg.bounce_px > 0) {
+		/* the bounce buffers did not fit, most likely: once more without,
+		   so that a setting on the card cannot leave the board blind */
+		dosboard_note("dosboard: the RGB output did not start with lcd_bounce_px %d; "
+			      "trying again without bounce buffers.", dosboard_cfg.bounce_px);
+		dosboard_cfg.bounce_px = 0;
+		panel = panel_start();
+	}
 	void *fb_ptr = NULL;
 	if (!panel ||
 	    esp_lcd_rgb_panel_get_frame_buffer(panel, 1, &fb_ptr) != ESP_OK ||
