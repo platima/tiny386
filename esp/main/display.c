@@ -20,6 +20,7 @@
 #include "common.h"
 #include "console.h"
 #include "lcd.h"
+#include "speed.h"
 
 #ifndef LCD_FRAME_MS
 #define LCD_FRAME_MS 30
@@ -40,6 +41,9 @@ void vga_task(void *arg)
 	TickType_t last = xTaskGetTickCount();
 	int64_t stats_t0 = esp_timer_get_time();
 	uint32_t pictures = 0;
+	/* pictures in the last whole second, for the speed screen */
+	int64_t pps_t0 = stats_t0;
+	uint32_t pps_count = 0, pps = 0;
 	struct lcd_stats st;
 	lcd_get_stats(&st, true);
 
@@ -48,10 +52,19 @@ void vga_task(void *arg)
 		if (!console_owns_display()) {
 			pc_vga_step(globals.pc);
 			pictures++;
+			pps_count++;
 		}
 		display_unlock();
 
 		int64_t now = esp_timer_get_time();
+		if (now - pps_t0 >= 1000000) {
+			pps = pps_count;
+			pps_count = 0;
+			pps_t0 = now;
+		}
+		/* Ctrl+Alt+F12 and the end of BENCH: the console over the
+		   picture, or the picture back */
+		speed_screen_poll(globals.pc, pps);
 		if (now - stats_t0 >= DISPLAY_STATS_S * 1000000LL) {
 			lcd_get_stats(&st, true);
 			uint32_t mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;

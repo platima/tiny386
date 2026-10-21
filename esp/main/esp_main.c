@@ -34,6 +34,7 @@
 #include "setup.h"
 #include "storage.h"
 #include "bootmenu.h"
+#include "speed.h"
 #ifdef LCD_ZERO_COPY
 #include "lcd.h"
 #endif
@@ -317,9 +318,11 @@ static void run_pc(PC *pc)
 	uint32_t write_time = get_uticks();
 	bool unflushed = false;
 
+	speed_run_init(pc);
 	while (pc->shutdown_state != 8) {
 		pc_step(pc);
 		uint32_t now = get_uticks();
+		speed_run_step(pc, now);
 		unsigned w = ide_write_count();
 		if (w != writes) {
 			writes = w;
@@ -328,6 +331,7 @@ static void run_pc(PC *pc)
 		} else if (unflushed && now - write_time >= DISK_QUIET_US) {
 			ide_flush();
 			unflushed = false;
+			speed_run_aside(get_uticks());
 		}
 	}
 	if (unflushed)
@@ -372,7 +376,8 @@ static void i386_task(void *arg)
 		vTaskDelay(pdMS_TO_TICKS(hold_ms));
 	}
 	console_puts(CON_GOOD, "The PC is starting: its picture takes the panel. "
-		     "This log goes on on the UART.");
+		     "This log goes on on the UART. Ctrl+Alt+F12 shows it again, "
+		     "with the speed.");
 	console_release_display();
 	xEventGroupSetBits(global_event_group, BIT0);
 
@@ -826,6 +831,9 @@ void app_main(void)
 	console_hooks_install();
 	kbd_input_init();
 	banner();
+	/* the speed screen (speed.c), over the picture and back */
+	speed_set_title(s_title);
+	kbd_input_set_hotkey(HID_KEY_F12, speed_hotkey);
 
 #ifdef ESPDEBUG
 	uart_config_t uart_config = {

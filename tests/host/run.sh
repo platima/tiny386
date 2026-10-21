@@ -109,6 +109,13 @@ $CC $CFLAGS -DBOOTMENU_HOST -I"$TREE/esp/main" -o "$OUT/test_bootmenu" \
 "$OUT/test_bootmenu"
 result $? "bootmenu.c: countdown, keys, wrap, digits"
 
+# ==== 8. the speed readout and BENCH.COM's marks (FIRMWARE-PLAN 3.5) ====
+echo
+$CC $CFLAGS -DSPEED_HOST -I"$TREE/esp/main" -o "$OUT/test_speed" \
+    "$HERE/test_speed.c" "$TREE/esp/main/speed.c" || exit 1
+"$OUT/test_speed"
+result $? "speed.c: instructions a second, BENCH marks, lines as the Linux route prints them"
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]
