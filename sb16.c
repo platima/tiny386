@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "i8257.h"
+#include "audio_rate.h"
 
 #ifdef BUILD_ESP32
 void *pcmalloc(long size);
@@ -1505,11 +1506,11 @@ void sb16_audio_callback (void *opaque, uint8_t *stream, int free)
     switch (s->fmt) {
     case AUDIO_FORMAT_S16:
         if (s->fmt_stereo) {
-            i = resample_s16s((int16_t *) stream, free / 2, 44100,
+            i = resample_s16s((int16_t *) stream, free / 2, AUDIO_RATE,
                               (int16_t *) s->audio_buf, p / 2, len / 2,
                               AUDIO_BUF_LEN / 2, s->freq);
         } else {
-            i = resample_s16m((int16_t *) stream, free / 2, 44100,
+            i = resample_s16m((int16_t *) stream, free / 2, AUDIO_RATE,
                               (int16_t *) s->audio_buf, p / 2, len / 2,
                               AUDIO_BUF_LEN / 2, s->freq);
         }
@@ -1517,11 +1518,11 @@ void sb16_audio_callback (void *opaque, uint8_t *stream, int free)
         break;
     case AUDIO_FORMAT_U16:
         if (s->fmt_stereo) {
-            i = resample_u16s((int16_t *) stream, free / 2, 44100,
+            i = resample_u16s((int16_t *) stream, free / 2, AUDIO_RATE,
                               (int16_t *) s->audio_buf, p / 2, len / 2,
                               AUDIO_BUF_LEN / 2, s->freq);
         } else {
-            i = resample_u16m((int16_t *) stream, free / 2, 44100,
+            i = resample_u16m((int16_t *) stream, free / 2, AUDIO_RATE,
                               (int16_t *) s->audio_buf, p / 2, len / 2,
                               AUDIO_BUF_LEN / 2, s->freq);
         }
@@ -1529,10 +1530,10 @@ void sb16_audio_callback (void *opaque, uint8_t *stream, int free)
         break;
     case AUDIO_FORMAT_U8:
         if (s->fmt_stereo) {
-            i = resample_u8s((int16_t *) stream, free / 2, 44100,
+            i = resample_u8s((int16_t *) stream, free / 2, AUDIO_RATE,
                              s->audio_buf, p, len, AUDIO_BUF_LEN, s->freq);
         } else {
-            i = resample_u8m((int16_t *) stream, free / 2, 44100,
+            i = resample_u8m((int16_t *) stream, free / 2, AUDIO_RATE,
                              s->audio_buf, p, len, AUDIO_BUF_LEN, s->freq);
         }
         s->audio_p += i;

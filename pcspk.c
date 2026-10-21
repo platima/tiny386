@@ -23,6 +23,7 @@
  */
 
 #include "pcspk.h"
+#include "audio_rate.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -34,7 +35,7 @@ void *pcmalloc(long size);
 
 #define PCSPK_BUF_LEN 1792
 //#define PCSPK_SAMPLE_RATE 32000
-#define PCSPK_SAMPLE_RATE 44100
+#define PCSPK_SAMPLE_RATE AUDIO_RATE
 #define PCSPK_MAX_FREQ (PCSPK_SAMPLE_RATE >> 1)
 #define PCSPK_MIN_COUNT ((PIT_FREQ + PCSPK_MAX_FREQ - 1) / PCSPK_MAX_FREQ)
 

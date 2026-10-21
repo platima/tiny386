@@ -4,6 +4,7 @@
 #include "freertos/task.h"
 #include "driver/i2s_std.h"
 #include "common.h"
+#include "../../audio_rate.h"
 
 static i2s_chan_handle_t                tx_chan;        // I2S tx channel handler
 void mixer_callback (void *opaque, uint8_t *stream, int free);
@@ -119,7 +120,7 @@ static esp_err_t es8311_codec_init(void)
 		.bits_per_sample = I2S_DATA_BIT_WIDTH_16BIT,
 		.channel = 2,
 		.channel_mask = 0x03,
-		.sample_rate = 44100,
+		.sample_rate = AUDIO_RATE,
 	};
 	if (esp_codec_dev_open(codec_handle, &sample_cfg) != ESP_CODEC_DEV_OK) {
 		ESP_LOGE(TAG, "Open codec device failed");
@@ -154,7 +155,7 @@ void i2s_main()
 	 * These two helper macros is defined in 'i2s_std.h' which can only be used in STD mode.
 	 * They can help to specify the slot and clock configurations for initialization or re-configuring */
 	i2s_std_config_t tx_std_cfg = {
-		.clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(44100),
+		.clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(AUDIO_RATE),
 		.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
 		.gpio_cfg = {
 			.mclk = I2S_MCLK,
