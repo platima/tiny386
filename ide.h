@@ -37,6 +37,10 @@ void ide_change_cd(IDEIFState *sif, int drive, const char *filename);
    returns when all of them are on the medium */
 unsigned ide_write_count(void);
 void ide_flush(void);
+#ifdef BUILD_ESP32
+/* reads, writes and flushes of the disk images that failed */
+unsigned ide_error_count(void);
+#endif
 
 void ide_data_writew(void *opaque, uint32_t val);
 uint32_t ide_data_readw(void *opaque);

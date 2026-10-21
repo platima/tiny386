@@ -71,6 +71,11 @@ void console_show_previous(const char *why);
 void console_release_display(void);
 void console_take_display(void);
 bool console_owns_display(void);
+/* console_take_display() for good: after a fatal message or once the PC is
+   switched off, the speed screen (Ctrl+Alt+F12, the USER key) may no
+   longer give the panel back to the stopped PC's picture. */
+void console_hold(void);
+bool console_held(void);
 void display_lock(void);
 void display_unlock(void);
 

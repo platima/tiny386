@@ -4,9 +4,12 @@
 #include "freertos/task.h"
 #include "driver/i2s_std.h"
 #include "common.h"
+#include "console.h"
 #include "../../audio_rate.h"
 
 static i2s_chan_handle_t                tx_chan;        // I2S tx channel handler
+int i2s_slot_bits = 16;
+int i2s_audio_shift = 4;
 void mixer_callback (void *opaque, uint8_t *stream, int free);
 
 #ifndef MIXER_BUF_LEN
@@ -30,8 +33,9 @@ static void i2s_task(void *arg)
 		size_t bwritten;
 		memset(buf, 0, MIXER_BUF_LEN * 2);
 		mixer_callback(globals.pc, (uint8_t *) buf, MIXER_BUF_LEN * 2);
+		const int div = 1 << i2s_audio_shift;
 		for (int i = 0; i < MIXER_BUF_LEN; i++) {
-			buf[i] = buf[i] / 16;
+			buf[i] = buf[i] / div;
 		}
 		i2s_channel_write(tx_chan, buf, MIXER_BUF_LEN * 2, &bwritten, portMAX_DELAY);
 	}
@@ -170,10 +174,15 @@ void i2s_main()
 			},
 		},
 	};
+	/* 16-bit samples in 32-bit slots, if the receiver wants 64 bit clocks
+	   a frame */
+	if (i2s_slot_bits == 32)
+		tx_std_cfg.slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
 	ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_chan, &tx_std_cfg));
 #ifdef USE_ES8311
 	ESP_ERROR_CHECK(es8311_codec_init());
 #endif
-	xTaskCreatePinnedToCore(i2s_task, "i2s_task", 4096, NULL, 0, NULL, 0);
+	if (xTaskCreatePinnedToCore(i2s_task, "i2s_task", 4096, NULL, 0, NULL, 0) != pdPASS)
+		console_printf(CON_ERROR, "The sound task could not be started (no memory): no sound.");
 #endif
 }

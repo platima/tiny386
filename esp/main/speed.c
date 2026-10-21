@@ -181,7 +181,12 @@ void speed_run_init(void *opaque)
 {
 	PC *pc = opaque;
 	speed_init(&s_speed, get_uticks(), (uint32_t) cpui386_get_cycle(pc->cpu));
-	/* a Ctrl+Alt+F12 from before the PC ran is not for its screen */
+}
+
+void speed_forget_requests(void)
+{
+	/* a Ctrl+Alt+F12 from before the PC ran is not for its screen: called
+	   before vga_task is let go, so that it never sees one */
 	__atomic_store_n(&s_req, 0, __ATOMIC_RELEASE);
 }
 
@@ -277,6 +282,10 @@ void speed_screen_poll(void *opaque, uint32_t pps)
 {
 	PC *pc = opaque;
 	int req = __atomic_exchange_n(&s_req, 0, __ATOMIC_ACQ_REL);
+	/* a fatal message, or the PC switched off: the console stays, and
+	   neither the hotkey nor the USER key gives the panel back */
+	if (console_held())
+		return;
 	bool want = s_shown;
 	if (req == REQ_TOGGLE)
 		want = !s_shown;

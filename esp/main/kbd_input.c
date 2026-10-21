@@ -436,6 +436,7 @@ void kbd_input_mouse(int dx, int dy, int wheel, int buttons)
 
 #ifndef KBD_INPUT_HOST
 #include "freertos/task.h"
+#include "console.h"
 
 static TaskHandle_t s_repeat_task;
 
@@ -467,8 +468,9 @@ void kbd_input_start(void)
 {
 	if (s_repeat_task)
 		return;
-	xTaskCreatePinnedToCore(repeat_task, "kbd_repeat", 2048, NULL, 4,
-				&s_repeat_task, 0);
+	if (xTaskCreatePinnedToCore(repeat_task, "kbd_repeat", 2048, NULL, 4,
+				    &s_repeat_task, 0) != pdPASS)
+		console_fatal("The task kbd_repeat could not be started (no memory).");
 	kbd_input_set_wake(wake_repeat);
 }
 #endif

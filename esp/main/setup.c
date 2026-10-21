@@ -65,6 +65,10 @@ int setup_find(const struct setup_place *places, struct setup_list *out)
 {
 	memset(out, 0, sizeof(*out));
 	for (int p = 0; places[p].dir; p++) {
+		/* a folder whose path does not fit out->dir is passed over, not
+		   cut short to some other folder's name */
+		if (strlen(places[p].dir) >= sizeof(out->dir))
+			continue;
 		DIR *d = opendir(places[p].dir);
 		if (!d)
 			continue;

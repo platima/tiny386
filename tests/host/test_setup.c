@@ -129,9 +129,24 @@ int main(int argc, char **argv)
 		return 2;
 	}
 	const char *data = argv[2];
-	/* this test's own folder, made afresh each run */
-	snprintf(root, sizeof(root), "%s/test-setup-card", argv[1]);
+	/* this test's own folder, made afresh each run: under OUT if the card's
+	   tiny386 folder fits in setup_list.dir from there, else a short one
+	   made in TMPDIR (default /tmp) and removed at the end */
+	const char *suffix = "/test-setup-card/sdcard/tiny386";
+	bool made_tmp = false;
 	char cmd[1800];
+	if (strlen(argv[1]) + strlen(suffix) < sizeof(((struct setup_list *) 0)->dir)) {
+		snprintf(root, sizeof(root), "%s/test-setup-card", argv[1]);
+	} else {
+		const char *tmp = getenv("TMPDIR");
+		snprintf(root, sizeof(root), "%s/t386setup-XXXXXX", tmp && tmp[0] ? tmp : "/tmp");
+		if (!mkdtemp(root)) {
+			perror(root);
+			return 2;
+		}
+		made_tmp = true;
+		printf("(OUT is too long a path for the card's folder: the card is in %s)\n", root);
+	}
 	snprintf(cmd, sizeof(cmd), "rm -rf '%s' && mkdir -p '%s/sdcard/tiny386' "
 		 "'%s/sdcard3'", root, root, root);
 	sh(cmd);
@@ -147,6 +162,25 @@ int main(int argc, char **argv)
 
 	/* ==== nothing on the card ==== */
 	CHECK(setup_find(places, &l) == 0, "empty card: %d found", l.n);
+
+	/* ==== a folder longer than the list can keep: passed over ==== */
+	{
+		static const char *const deep = "sdcard/a-folder-name-long-enough-on-its-own-"
+			"to-pass-the-ninety-six-bytes-that-setup-list-keeps";
+		char longdir[700];
+		snprintf(longdir, sizeof(longdir), "%s/%s", root, deep);
+		snprintf(cmd, sizeof(cmd), "mkdir -p '%s'", longdir);
+		sh(cmd);
+		char rel[300];
+		snprintf(rel, sizeof(rel), "%s/long.ini", deep);
+		put(rel, "[pc]\n");
+		struct setup_place lp[] = { { longdir, NULL }, { NULL, NULL } };
+		CHECK(setup_find(lp, &l) == 0, "a folder path of %d characters gave %d inis",
+		      (int) strlen(longdir), l.n);
+		snprintf(cmd, sizeof(cmd), "rm -rf '%s/sdcard/a-folder-name-long-enough-on-its-own-"
+			 "to-pass-the-ninety-six-bytes-that-setup-list-keeps'", root);
+		sh(cmd);
+	}
 
 	/* ==== tiny386.ini in the top folder only ==== */
 	put("sdcard/tiny386.ini", "; top folder\n[pc]\nhda = /sdcard/a.img\n");
@@ -254,5 +288,9 @@ int main(int argc, char **argv)
 	      !setup_is_path_key("esp", "hda"), "path keys");
 
 	printf("setup: %d checks, %d failed\n", checks, fails);
+	if (made_tmp) {
+		snprintf(cmd, sizeof(cmd), "rm -rf '%s'", root);
+		sh(cmd);
+	}
 	return fails ? 1 : 0;
 }

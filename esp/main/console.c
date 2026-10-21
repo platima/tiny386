@@ -607,6 +607,20 @@ void console_take_display(void)
 	con_unlock();
 }
 
+/* set once: the console keeps the panel for good */
+static volatile bool s_held;
+
+void console_hold(void)
+{
+	s_held = true;
+	console_take_display();
+}
+
+bool console_held(void)
+{
+	return s_held;
+}
+
 void console_fatal(const char *fmt, ...)
 {
 	va_list ap;
@@ -614,7 +628,7 @@ void console_fatal(const char *fmt, ...)
 	console_vprintf(CON_ERROR, fmt, ap);
 	va_end(ap);
 	console_puts(CON_ERROR, "tiny386 has stopped. Put this right, then press RESET.");
-	console_take_display();
+	console_hold();
 #ifdef CONSOLE_HOST
 	exit(3);
 #else
@@ -695,7 +709,10 @@ static bool s_in_log;
 static int con_log_vprintf(const char *fmt, va_list ap)
 {
 	if (!xPortCanYield())
-		return 0;       /* ESP_LOGx where it is not allowed */
+		/* from an interrupt or a critical section: no locks, so the ROM's
+		   printf, which takes none and reaches the UART and, through
+		   con_rom_putc(), the ring */
+		return esp_rom_vprintf(fmt, ap);
 	con_lock();
 	int n;
 	if (s_in_log) {

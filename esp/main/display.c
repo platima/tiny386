@@ -30,6 +30,33 @@
 #define DISPLAY_STATS_S 10
 #endif
 
+/* The least stack each task has had free since it started, in bytes (the
+   ESP-IDF FreeRTOS counts stacks in bytes), to the UART with the drawing's
+   cost.  Under the display lock, which the PC's own task needs to switch
+   off and end itself (console_hold()), so that it is never looked at once
+   it is gone. */
+static void stacks_line(void)
+{
+	static const char *const names[] = {
+		"i386_main", "vga_task", "usb_events", "USB HID Host", "usb_task",
+		"kbd_repeat", "ch9350", "hdmi", "i2s_task", "IDLE0", "IDLE1", NULL
+	};
+	char line[240];
+	int o = snprintf(line, sizeof(line), "stacks, least free since start (bytes):");
+
+	display_lock();
+	if (!console_held()) {
+		for (int i = 0; names[i] && o < (int) sizeof(line); i++) {
+			TaskHandle_t t = xTaskGetHandle(names[i]);
+			if (t)
+				o += snprintf(line + o, sizeof(line) - o, " %s %u", names[i],
+					      (unsigned) uxTaskGetStackHighWaterMark(t));
+		}
+	}
+	display_unlock();
+	console_uart_printf("%s", line);
+}
+
 void vga_task(void *arg)
 {
 	(void) arg;
@@ -74,6 +101,7 @@ void vga_task(void *arg)
 				pictures, DISPLAY_STATS_S, st.flushes, st.rows,
 				st.flushes ? (uint32_t) (st.cycles / st.flushes / mhz) : 0,
 				st.cycles_max / mhz);
+			stacks_line();
 			pictures = 0;
 			stats_t0 = now;
 		}

@@ -460,6 +460,9 @@ void emulink_flush(EMULINK *e)
 		fflush(e->fdd[i]);
 #if defined(__linux__) && !defined(ANDROID)
 		fdatasync(fileno(e->fdd[i]));
+#elif defined(BUILD_ESP32)
+		/* FatFs's f_sync(), as ide_flush() */
+		fsync(fileno(e->fdd[i]));
 #endif
 	}
 }

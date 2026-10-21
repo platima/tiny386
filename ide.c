@@ -1943,6 +1943,16 @@ static int bf_get_chs(BlockDevice *bs, int *cylinders, int *heads, int *sectors)
 static FILE *bf_rw_files[BF_MAX_RW];
 static int bf_rw_count;
 static unsigned bf_writes;
+#ifdef BUILD_ESP32
+/* reads, writes and flushes the card refused (a card pulled out, or
+   failing): the guest's IDE driver is told of a failed write or read */
+static unsigned bf_errors;
+
+unsigned ide_error_count(void)
+{
+    return bf_errors;
+}
+#endif
 
 unsigned ide_write_count(void)
 {
@@ -1953,13 +1963,18 @@ void ide_flush(void)
 {
     int i;
     for (i = 0; i < bf_rw_count; i++) {
+#ifdef BUILD_ESP32
+        /* FatFs's f_sync(): the file's own buffer and its directory
+           entry onto the card */
+        if (fflush(bf_rw_files[i]) != 0 || fsync(fileno(bf_rw_files[i])) != 0) {
+            bf_errors++;
+            clearerr(bf_rw_files[i]);
+        }
+#else
         fflush(bf_rw_files[i]);
 #if defined(__linux__) && !defined(ANDROID)
         fdatasync(fileno(bf_rw_files[i]));
-#elif defined(BUILD_ESP32)
-        /* FatFs's f_sync(): the file's own buffer and its directory
-           entry onto the card */
-        fsync(fileno(bf_rw_files[i]));
+#endif
 #endif
     }
 }
@@ -1996,7 +2011,23 @@ static int bf_read_async(BlockDevice *bs,
         }
     } else {
         fseeko(bf->f, bf->start_offset + sector_num * SECTOR_SIZE, SEEK_SET);
+#ifdef BUILD_ESP32
+        size_t want = (size_t) n * SECTOR_SIZE;
+        size_t got = fread(buf, 1, want, bf->f);
+        if (got != want) {
+            if (ferror(bf->f)) {
+                /* the card refused it: the guest is told */
+                bf_errors++;
+                clearerr(bf->f);
+                return -1;
+            }
+            /* past the end of the image: zeros */
+            memset(buf + got, 0, want - got);
+            clearerr(bf->f);
+        }
+#else
         fread(buf, 1, n * SECTOR_SIZE, bf->f);
+#endif
     }
     /* synchronous read */
     return 0;
@@ -2015,10 +2046,22 @@ static int bf_write_async(BlockDevice *bs,
         break;
     case BF_MODE_RW:
         fseeko(bf->f, bf->start_offset + sector_num * SECTOR_SIZE, SEEK_SET);
+#ifdef BUILD_ESP32
+        /* a write the card refused is an error the guest is told of,
+           not a success */
+        if (fwrite(buf, 1, n * SECTOR_SIZE, bf->f) != (size_t) n * SECTOR_SIZE ||
+            fflush(bf->f) != 0) {
+            bf_errors++;
+            clearerr(bf->f);
+            ret = -1;
+            break;
+        }
+#else
         fwrite(buf, 1, n * SECTOR_SIZE, bf->f);
         /* to the kernel now: an emulator that is killed keeps nothing
            back in the C library */
         fflush(bf->f);
+#endif
         bf_writes++;
         ret = 0;
         break;
@@ -2118,7 +2161,11 @@ static BlockDevice *block_device_init(const char *filename,
     return bs;
 }
 
-#ifdef BUILD_ESP32
+/* The whole card as one raw disk (hda = /dev/mmcblk0).  Not in the
+   firmware of this tree: the card's FAT partitions are mounted by FatFs at
+   the same time, and Linux's root is on it too, so a guest given it could
+   write over all of them.  ide_attach() refuses the name instead. */
+#if defined(BUILD_ESP32) && defined(IDE_RAW_SD)
 #include "sdmmc_cmd.h"
 typedef struct BlockDeviceESPSD {
     sdmmc_card_t *card;
@@ -2358,8 +2405,14 @@ int ide_attach(IDEIFState *s, int drive, const char *filename)
 {
 #ifdef BUILD_ESP32
     BlockDevice *bs;
-    if (strcmp(filename, "/dev/mmcblk0") == 0) {
+    if (strncmp(filename, "/dev/mmcblk", 11) == 0) {
+#ifdef IDE_RAW_SD
         bs = block_device_init_espsd(0, -1);
+#else
+        tiny386_fatal("%s, the whole card as one disk, is not allowed: the "
+                      "guest could write over the card's partitions, Linux's "
+                      "among them. Name a disk image file instead.", filename);
+#endif
     } else {
         bs = block_device_init(filename, BF_MODE_RW);
     }

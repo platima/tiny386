@@ -129,10 +129,20 @@ static bool rom_exists(const char *file, char *why, int whylen)
 		}
 		return true;
 	}
-	if (!esp_partition_find_first(ESP_PARTITION_TYPE_ANY,
-				      ESP_PARTITION_SUBTYPE_ANY, file)) {
+	const esp_partition_t *part =
+		esp_partition_find_first(ESP_PARTITION_TYPE_ANY,
+					 ESP_PARTITION_SUBTYPE_ANY, file);
+	if (!part) {
 		snprintf(why, whylen, "there is no file %s beside %s, and no flash "
 			 "partition called \"%s\"", file, s_ini_name, file);
+		return false;
+	}
+	/* load_rom() reads the whole partition, below the BIOS's top: the
+	   same limit as for a file, so that "bios = linux" cannot read 7.5 MiB
+	   over the guest's memory */
+	if (part->size > 256 * 1024) {
+		snprintf(why, whylen, "the flash partition \"%s\" is %lu KiB, not a "
+			 "BIOS", file, (unsigned long) (part->size / 1024));
 		return false;
 	}
 	return true;
@@ -331,12 +341,42 @@ void *fbmalloc(long size)
 	return fb;
 }
 
+/* everything the guest writes to: the IDE disks and the floppies */
+static unsigned disk_writes(void)
+{
+	return ide_write_count() + emulink_write_count();
+}
+
+static void disk_flush(PC *pc)
+{
+	ide_flush();
+	emulink_flush(pc->emulink);
+}
+
+/* The card refusing a read or a write (pulled out, or failing): said once,
+   then again every 10 s while it goes on.  The guest is told of each one
+   by its IDE driver. */
+static void disk_errors(uint32_t now)
+{
+	static unsigned seen;
+	static uint32_t said_at;
+	unsigned e = ide_error_count();
+	if (e != seen && (!seen || now - said_at >= 10000000)) {
+		console_printf(CON_ERROR, "The card refused %u read%s or write%s of the "
+			       "disk images. Is it still in? Shut the guest down and "
+			       "check the card on a PC.", e - seen, e - seen == 1 ? "" : "s",
+			       e - seen == 1 ? "" : "s");
+		seen = e;
+		said_at = now;
+	}
+}
+
 /* Runs the PC, and puts what the guest wrote to its disks on the card
    once it has been quiet for DISK_QUIET_US: until then FatFs may hold the
    last sectors and the directory entry. */
 static void run_pc(PC *pc)
 {
-	unsigned writes = ide_write_count();
+	unsigned writes = disk_writes();
 	uint32_t write_time = get_uticks();
 	bool unflushed = false;
 
@@ -345,19 +385,21 @@ static void run_pc(PC *pc)
 		pc_step(pc);
 		uint32_t now = get_uticks();
 		speed_run_step(pc, now);
-		unsigned w = ide_write_count();
+		unsigned w = disk_writes();
 		if (w != writes) {
 			writes = w;
 			write_time = now;
 			unflushed = true;
 		} else if (unflushed && now - write_time >= DISK_QUIET_US) {
-			ide_flush();
+			disk_flush(pc);
 			unflushed = false;
 			speed_run_aside(get_uticks());
 		}
+		disk_errors(now);
 	}
 	if (unflushed)
-		ide_flush();
+		disk_flush(pc);
+	disk_errors(get_uticks());
 }
 
 static void i386_task(void *arg)
@@ -399,6 +441,9 @@ static void i386_task(void *arg)
 		     "This log goes on on the UART. Ctrl+Alt+F12 shows it again, "
 		     "with the speed.");
 	console_release_display();
+	/* a Ctrl+Alt+F12 from the boot console's time is not for the PC's
+	   screen: forgotten before vga_task can see it */
+	speed_forget_requests();
 	xEventGroupSetBits(global_event_group, BIT0);
 	/* the keyboard and mouse reach the PC from now: keys pressed while
 	   the console was up would wait in the PS/2 queue ahead of the BIOS's
@@ -417,7 +462,7 @@ static void i386_task(void *arg)
 	run_pc(pc);
 	kbd_input_set_target(NULL, NULL);
 	console_puts(CON_INFO, "The PC was switched off. Press RESET to start again.");
-	console_take_display();
+	console_hold();
 	vTaskDelete(NULL);
 }
 
@@ -980,6 +1025,9 @@ void app_main(void)
 #endif
 	}
 
-	xTaskCreatePinnedToCore(i386_task, "i386_main", 4096, &conf, 3, NULL, 1);
-	xTaskCreatePinnedToCore(vga_task, "vga_task", 4096, NULL, 0, NULL, 0);
+	if (xTaskCreatePinnedToCore(i386_task, "i386_main", 4096, &conf, 3, NULL, 1) != pdPASS ||
+	    xTaskCreatePinnedToCore(vga_task, "vga_task", 4096, NULL, 0, NULL, 0) != pdPASS)
+		console_fatal("The emulator's tasks could not be started: no memory "
+			      "(%u KiB of internal RAM free).",
+			      (unsigned) (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
 }

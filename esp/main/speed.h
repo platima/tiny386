@@ -76,6 +76,7 @@ void speed_run_step(void *pc, uint32_t now_us);        /* after each pc_step() *
    out, as the Linux route leaves it out */
 void speed_run_aside(uint32_t now_us);
 void speed_hotkey(void);                /* Ctrl+Alt+F12, from the USB task */
+void speed_forget_requests(void);       /* before vga_task starts drawing */
 void speed_set_title(const char *normal);       /* the console's usual title */
 void speed_screen_poll(void *pc, uint32_t pictures_per_s);     /* vga_task */
 #endif

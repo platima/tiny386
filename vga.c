@@ -1807,8 +1807,16 @@ static void vga_graphic_refresh(VGAState *s,
                     break;
                 }
                 default:
+#ifdef VGA_TWO_CORES
+                    /* a depth vbe_fixup_regs() has not corrected yet: the
+                       guest wrote it on the other core a moment ago.  Black
+                       for this picture, not a crash */
+                    color = 0;
+                    break;
+#else
                     fprintf(stderr, "vga bpp is %d\n", bpp);
                     abort();
+#endif
                 }
             }
             int i = (BPP / 8) * (y * fb_dev->width + x) + i0;
@@ -1845,8 +1853,16 @@ static void vga_graphic_refresh(VGAState *s,
                     break;
                 }
                 default:
+#ifdef VGA_TWO_CORES
+                    /* a depth vbe_fixup_regs() has not corrected yet: the
+                       guest wrote it on the other core a moment ago.  Black
+                       for this picture, not a crash */
+                    color = 0;
+                    break;
+#else
                     fprintf(stderr, "vga bpp is %d\n", bpp);
                     abort();
+#endif
                 }
             }
 #if defined(SCALE_3_2) || defined(SCALE_2_1) || defined(SWAPXY)
