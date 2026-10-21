@@ -32,6 +32,10 @@ CONFIG_FREERTOS_HZ=100
 # CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1 is not set
 CONFIG_FATFS_LFN_HEAP=y
 CONFIG_FATFS_MAX_LFN=255
+# The card's first FAT partition at /sdcard and up to three more at
+# /sdcardN (storage.c), and their labels (to find the one called WIN9X).
+CONFIG_FATFS_VOLUME_COUNT=4
+CONFIG_FATFS_USE_LABEL=y
 # A crash halts with the crash screen on the panel (crash.c) instead of
 # restarting at once.
 CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y

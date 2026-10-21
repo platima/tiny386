@@ -29,6 +29,8 @@
 #include <assert.h>
 #if defined(__linux__) && !defined(ANDROID)
 #include <unistd.h>
+#elif defined(BUILD_ESP32)
+#include <unistd.h>             /* fsync() */
 #endif
 
 //#include "cutils.h"
@@ -1954,6 +1956,10 @@ void ide_flush(void)
         fflush(bf_rw_files[i]);
 #if defined(__linux__) && !defined(ANDROID)
         fdatasync(fileno(bf_rw_files[i]));
+#elif defined(BUILD_ESP32)
+        /* FatFs's f_sync(): the file's own buffer and its directory
+           entry onto the card */
+        fsync(fileno(bf_rw_files[i]));
 #endif
     }
 }

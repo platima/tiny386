@@ -1,0 +1,3 @@
+freedos.ini, bench.ini and win95.ini as the Linux route has them
+(D:\Repos\esp32-s31-linux-release	iny386\conf), copied unchanged for
+test_setup.c: the firmware has to read them as they are.

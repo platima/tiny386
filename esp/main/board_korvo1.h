@@ -33,8 +33,11 @@
 #define SD_PWR_EN_GPIO 39
 
 // The emulator takes the largest PSRAM block but this much, which is left
-// for the panel's frame buffer (750 KiB) and ESP-IDF.
-#define PSRAM_KEEP_FREE (768000 + 256 * 1024)
+// for ESP-IDF (FatFs buffers, the console's text).  The panel's frame
+// buffer (750 KiB) is not in it: lcd_init() has taken that before the
+// pool is sized (app_main).  About 15,300 KiB is left for the guest:
+// mem_size 14M with vga_mem_size 256K or 320K.
+#define PSRAM_KEEP_FREE (256 * 1024)
 
 // No I2S: the Korvo-1 audio wiring is not described in the Linux sources.
 

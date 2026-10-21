@@ -1,3 +1,5 @@
+#include <string.h>
+#include <strings.h>
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -13,6 +15,7 @@
 #include "esp_system.h"
 #include "sdmmc_cmd.h"
 #include "common.h"
+#include "storage.h"
 #include "driver/gpio.h"
 #ifdef SD_PWR_CTRL_LDO_IO_ID
 #include "sd_pwr_ctrl_by_on_chip_ldo.h"
@@ -136,6 +139,183 @@ bool storage_sd_mount(void)
 	return false;
 }
 #endif
+
+/* ====
+ * The card's other partitions.  esp_vfs_fat_sdmmc_mount() mounts the first
+ * FAT partition of the card's MBR at /sdcard (FatFs's own choice when its
+ * partition is "auto").  Each other FAT partition goes at /sdcardN, N its
+ * number in the MBR (1 to 4): a second logical drive of FatFs on the same
+ * card, bound to that partition through VolToPart[] (FF_MULTI_PARTITION is
+ * on in this IDF's FatFs).  So a card laid out for Linux (FAT32 p1, ext4
+ * p2, and a FAT32 p3 labelled WIN9X for the Windows image) gives /sdcard and
+ * /sdcard3.
+ */
+#if defined(SD_CLK) && !defined(USE_RAWSD)
+#include "diskio_impl.h"
+#include "diskio_sdmmc.h"
+#include "ff.h"
+#include "esp_heap_caps.h"
+
+static struct storage_volume s_vols[4];
+static int s_nvols;
+
+static uint32_t le32(const uint8_t *p)
+{
+	return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t) p[3] << 24;
+}
+
+/* a FAT boot sector, as FatFs's check_fs() looks for one */
+static bool fat_vbr(const uint8_t *s)
+{
+	if (s[510] != 0x55 || s[511] != 0xAA)
+		return false;
+	if (s[0] != 0xEB && s[0] != 0xE9 && s[0] != 0xE8)
+		return false;
+	return !memcmp(s + 0x52, "FAT32", 5) || !memcmp(s + 0x36, "FAT", 3);
+}
+
+static uint32_t vbr_serial(const uint8_t *s)
+{
+	return !memcmp(s + 0x52, "FAT32", 5) ? le32(s + 0x43) : le32(s + 0x27);
+}
+
+static void trim_label(char *l)
+{
+	int n = strlen(l);
+	while (n > 0 && l[n - 1] == ' ')
+		l[--n] = 0;
+}
+
+int storage_sd_mount_others(void)
+{
+	sdmmc_card_t *card = rawsd;
+	s_nvols = 0;
+	if (!card)
+		return 0;
+	uint8_t *mbr = heap_caps_malloc(512, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+	uint8_t *vbr = heap_caps_malloc(512, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+	if (!mbr || !vbr || sdmmc_read_sectors(card, mbr, 0, 1) != ESP_OK)
+		goto out;
+
+	/* which partition FatFs mounted at /sdcard: its serial number */
+	BYTE pdrv0 = ff_diskio_get_pdrv_card(card);
+	char drv0[3] = { (char) ('0' + pdrv0), ':', 0 };
+	char label0[24] = "";
+	DWORD serial0 = 0;
+	f_getlabel(drv0, label0, &serial0);
+	trim_label(label0);
+
+	if (fat_vbr(mbr)) {
+		/* no partition table: the whole card is the one volume */
+		struct storage_volume *v = &s_vols[s_nvols++];
+		memset(v, 0, sizeof(*v));
+		strcpy(v->path, "/sdcard");
+		snprintf(v->label, sizeof(v->label), "%s", label0);
+		v->fat = v->mounted = true;
+		v->mib = (uint32_t) ((uint64_t) card->csd.capacity * card->csd.sector_size >> 20);
+		goto out;
+	}
+	if (mbr[510] != 0x55 || mbr[511] != 0xAA)
+		goto out;
+
+	bool first_seen = false;
+	for (int i = 0; i < 4; i++) {
+		const uint8_t *e = mbr + 446 + 16 * i;
+		uint8_t type = e[4];
+		uint32_t start = le32(e + 8), count = le32(e + 12);
+		if (!type || !count)
+			continue;
+		struct storage_volume *v = &s_vols[s_nvols++];
+		memset(v, 0, sizeof(*v));
+		v->part = i + 1;
+		v->type = type;
+		v->mib = count >> 11;
+		if (type == 0xEE || sdmmc_read_sectors(card, vbr, start, 1) != ESP_OK ||
+		    !fat_vbr(vbr))
+			continue;
+		v->fat = true;
+		if (!first_seen && (vbr_serial(vbr) == serial0 || !serial0)) {
+			first_seen = true;
+			strcpy(v->path, "/sdcard");
+			snprintf(v->label, sizeof(v->label), "%s", label0);
+			v->mounted = true;
+			continue;
+		}
+
+		/* a logical drive of its own, bound to MBR entry i + 1 */
+		BYTE ld = FF_DRV_NOT_USED;
+		if (ff_diskio_get_drive(&ld) != ESP_OK || ld == FF_DRV_NOT_USED) {
+			v->why = "no logical drive left (CONFIG_FATFS_VOLUME_COUNT)";
+			continue;
+		}
+		snprintf(v->path, sizeof(v->path), "/sdcard%d", i + 1);
+		char drv[3] = { (char) ('0' + ld), ':', 0 };
+		ff_diskio_register_sdmmc(ld, card);
+		VolToPart[ld].pd = ld;
+		VolToPart[ld].pt = i + 1;
+		FATFS *fs = NULL;
+		esp_vfs_fat_conf_t conf = {
+			.base_path = v->path,
+			.fat_drive = drv,
+			.max_files = 4,
+		};
+		if (esp_vfs_fat_register(&conf, &fs) != ESP_OK) {
+			v->why = "could not be registered";
+		} else if (f_mount(fs, drv, 1) != FR_OK) {
+			v->why = "FatFs could not mount it";
+			f_mount(NULL, drv, 0);
+			esp_vfs_fat_unregister_path(v->path);
+		} else {
+			char label[24] = "";
+			f_getlabel(drv, label, NULL);
+			trim_label(label);
+			snprintf(v->label, sizeof(v->label), "%s", label);
+			v->mounted = true;
+			continue;
+		}
+		ff_diskio_unregister(ld);
+		VolToPart[ld].pd = ld;
+		VolToPart[ld].pt = 0;
+		v->path[0] = 0;
+	}
+out:
+	free(mbr);
+	free(vbr);
+	return s_nvols;
+}
+
+const struct storage_volume *storage_volumes(int *n)
+{
+	*n = s_nvols;
+	return s_vols;
+}
+#else
+int storage_sd_mount_others(void)
+{
+	return 0;
+}
+
+const struct storage_volume *storage_volumes(int *n)
+{
+	*n = 0;
+	return NULL;
+}
+#endif
+
+/* the volume the Linux route calls /mnt/win: the one labelled WIN9X, else
+   the first FAT partition after /sdcard; NULL if none is mounted */
+const char *storage_win_path(void)
+{
+	int n;
+	const struct storage_volume *v = storage_volumes(&n);
+	for (int i = 0; i < n; i++)
+		if (v[i].mounted && !strcasecmp(v[i].label, "WIN9X"))
+			return v[i].path;
+	for (int i = 0; i < n; i++)
+		if (v[i].mounted && strcmp(v[i].path, "/sdcard"))
+			return v[i].path;
+	return NULL;
+}
 
 /* Bit 0: the card is mounted at /sdcard; bit 1: the flash's storage
    partition at /spiflash (tried only without a card). */

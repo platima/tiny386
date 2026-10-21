@@ -31,6 +31,8 @@
 #include "common.h"
 #include "console.h"
 #include "kbd_input.h"
+#include "setup.h"
+#include "storage.h"
 #ifdef LCD_ZERO_COPY
 #include "lcd.h"
 #endif
@@ -39,12 +41,28 @@
 #define BOARD_NAME "an ESP32 board"
 #endif
 
+/* guest disk writes go to the card once the guest has written nothing
+   for this long */
+#define DISK_QUIET_US 2000000
+
 //
 #include "esp_private/system_internal.h"
 uint32_t get_uticks()
 {
 	return esp_system_get_time();
 }
+
+/* the ini the PC is started from: its path, its name for messages, its
+   folder (a file named in it without a / is looked for there) */
+static char s_ini_path[176];
+static char s_ini_name[SETUP_NAME_MAX] = "tiny386.ini";
+static char s_ini_dir[96];
+/* the Linux route's mount points, as this firmware has them */
+static struct setup_map s_maps[2] = {
+	{ "/mnt/sd", "/sdcard" },
+	{ "/mnt/win", NULL },
+};
+static int s_ini_bad;           /* errors found while reading the ini */
 
 void *psmalloc(long size);
 void *fbmalloc(long size);
@@ -107,8 +125,8 @@ static bool rom_exists(const char *file, char *why, int whylen)
 	}
 	if (!esp_partition_find_first(ESP_PARTITION_TYPE_ANY,
 				      ESP_PARTITION_SUBTYPE_ANY, file)) {
-		snprintf(why, whylen, "\"%s\" (no / in front) means a flash "
-			 "partition of that name, and there is none", file);
+		snprintf(why, whylen, "there is no file %s beside %s, and no flash "
+			 "partition called \"%s\"", file, s_ini_name, file);
 		return false;
 	}
 	return true;
@@ -120,8 +138,8 @@ int load_rom(void *phys_mem, const char *file, uword addr, int backward)
 		FILE *fp = fopen(file, "rb");
 		if (!fp)
 			console_fatal("Cannot open %s (%s). Put it on the card, or "
-				      "correct its line in tiny386.ini.", file,
-				      strerror(errno));
+				      "correct its line in %s.", file,
+				      strerror(errno), s_ini_name);
 		fseek(fp, 0, SEEK_END);
 		int len = ftell(fp);
 		fprintf(stderr, "%s len %d\n", file, len);
@@ -142,9 +160,10 @@ int load_rom(void *phys_mem, const char *file, uword addr, int backward)
 					 ESP_PARTITION_SUBTYPE_ANY,
 					 file);
 	if (!part)
-		console_fatal("There is no flash partition called \"%s\". To load "
-			      "it from the card, give the whole path in tiny386.ini, "
-			      "for example bios = /sdcard/bios.bin", file ? file : "");
+		console_fatal("There is no flash partition called \"%s\", and no "
+			      "such file beside %s. Put the file there, or give its "
+			      "whole path, for example bios = /sdcard/bios.bin",
+			      file ? file : "", s_ini_name);
 	int len = part->size;
 	fprintf(stderr, "%s len %d\n", file, len);
 	if (backward)
@@ -219,8 +238,6 @@ void (*_Atomic esp32_send_packet)(uint8_t *buf, int size);
 #else
 void wifi_main(const char *, const char *);
 #endif
-int storage_init(void);
-bool storage_sd_mount(void);
 void usb_setup(void);
 
 struct esp_ini_config {
@@ -275,8 +292,8 @@ void *psmalloc(long size)
 	if (psram_off + size > psram_len) {
 		console_fatal("Out of emulator memory: %ld more KiB wanted, %ld of "
 			      "%ld KiB used. Lower mem_size or vga_mem_size in "
-			      "tiny386.ini.", size / 1024, psram_off / 1024,
-			      psram_len / 1024);
+			      "%s.", size / 1024, psram_off / 1024,
+			      psram_len / 1024, s_ini_name);
 	}
 	psram_off += size;
 	return ret;
@@ -288,6 +305,32 @@ void *fbmalloc(long size)
 	if (!fb)
 		console_fatal("No room for a %ld-byte drawing buffer.", size);
 	return fb;
+}
+
+/* Runs the PC, and puts what the guest wrote to its disks on the card
+   once it has been quiet for DISK_QUIET_US: until then FatFs may hold the
+   last sectors and the directory entry. */
+static void run_pc(PC *pc)
+{
+	unsigned writes = ide_write_count();
+	uint32_t write_time = get_uticks();
+	bool unflushed = false;
+
+	while (pc->shutdown_state != 8) {
+		pc_step(pc);
+		uint32_t now = get_uticks();
+		unsigned w = ide_write_count();
+		if (w != writes) {
+			writes = w;
+			write_time = now;
+			unflushed = true;
+		} else if (unflushed && now - write_time >= DISK_QUIET_US) {
+			ide_flush();
+			unflushed = false;
+		}
+	}
+	if (unflushed)
+		ide_flush();
 }
 
 static void i386_task(void *arg)
@@ -341,9 +384,7 @@ static void i386_task(void *arg)
 		abort();
 	}
 #endif
-	for (; pc->shutdown_state != 8;) {
-		pc_step(pc);
-	}
+	run_pc(pc);
 	kbd_input_set_target(NULL, NULL);
 	console_puts(CON_INFO, "The PC was switched off. Press RESET to start again.");
 	console_take_display();
@@ -387,14 +428,16 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		if (strlen(value) < sizeof(conf->ssid))
 			strcpy(conf->ssid, value);
 		else
-			console_printf(CON_WARN, "tiny386.ini: ssid is longer than "
-				       "%d characters; ignored.", (int) sizeof(conf->ssid) - 1);
+			console_printf(CON_WARN, "%s: ssid is longer than %d "
+				       "characters; ignored.", s_ini_name,
+				       (int) sizeof(conf->ssid) - 1);
 	} else if (NAME("pass")) {
 		if (strlen(value) < sizeof(conf->pass))
 			strcpy(conf->pass, value);
 		else
-			console_printf(CON_WARN, "tiny386.ini: pass is longer than "
-				       "%d characters; ignored.", (int) sizeof(conf->pass) - 1);
+			console_printf(CON_WARN, "%s: pass is longer than %d "
+				       "characters; ignored.", s_ini_name,
+				       (int) sizeof(conf->pass) - 1);
 	} else if (NAME("enable_usb")) {
 		conf->enable_usb = atoi(value);
 	} else if (NAME("console")) {
@@ -408,18 +451,48 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 	return 1;
 }
 
-/* every key: shown, checked against the list, then handed on */
+/* every key: shown, checked against the list, a file name resolved, then
+   handed on */
 static int parse_ini(void *user, const char *section,
 		     const char *name, const char *value)
 {
 	(void) user;
 	bool secret = !strcmp(section, "esp") && !strcmp(name, "pass");
-	console_printf(CON_INFO, "  [%s] %s = %s", section, name,
-		       secret ? "(not shown)" : value);
+	static char resolved[200];
+
+	if (known_key(section, name) && setup_is_path_key(section, name) && value[0]) {
+		bool missing;
+		setup_resolve(s_ini_dir, value, s_maps, 2, resolved, sizeof(resolved),
+			      &missing);
+		/* a BIOS named without a /, not beside the ini, may be a flash
+		   partition, as tiny386's own partition tables have them */
+		if ((!strcmp(name, "bios") || !strcmp(name, "vga_bios")) &&
+		    !strchr(value, '/') && access(resolved, R_OK) != 0 &&
+		    esp_partition_find_first(ESP_PARTITION_TYPE_ANY,
+					     ESP_PARTITION_SUBTYPE_ANY, value))
+			snprintf(resolved, sizeof(resolved), "%s", value);
+		if (missing) {
+			console_printf(CON_ERROR, "  [%s] %s = %s: /mnt/win is the "
+				       "Linux route's name for the card's WIN9X "
+				       "partition, and this card has no second FAT "
+				       "partition.", section, name, value);
+			s_ini_bad++;
+			return 1;
+		}
+		if (strcmp(resolved, value))
+			console_printf(CON_INFO, "  [%s] %s = %s   (%s)", section, name,
+				       value, resolved);
+		else
+			console_printf(CON_INFO, "  [%s] %s = %s", section, name, value);
+		value = resolved;
+	} else {
+		console_printf(CON_INFO, "  [%s] %s = %s", section, name,
+			       secret ? "(not shown)" : value);
+	}
 	if (!known_key(section, name)) {
-		console_printf(CON_WARN, "tiny386.ini: [%s] %s is not a setting "
-			       "tiny386 knows; it was ignored. Check the spelling "
-			       "and the [section] it is under.", section, name);
+		console_printf(CON_WARN, "%s: [%s] %s is not a setting tiny386 "
+			       "knows; it was ignored. Check the spelling and the "
+			       "[section] it is under.", s_ini_name, section, name);
 		return 1;
 	}
 	if (!strcmp(section, "esp"))
@@ -432,11 +505,54 @@ static long round4k(long n)
 	return (n + 4095) / 4096 * 4096;
 }
 
+/* The guest's memory: what the ini asks for if it fits; "mem_size = max",
+   0 or no line at all gives the most that fits (14M on the Korvo-1 with
+   vga_mem_size 256K or 320K); more than fits is lowered to that, with a
+   warning, rather than stopping. */
+static void settle_memory(void)
+{
+	long vga = round4k(conf.vga_mem_size + VGA_MEM_SLACK);
+	long fit = (psram_len - vga) / (1024 * 1024) * (1024 * 1024);
+	if (conf.mem_size <= 0) {
+		conf.mem_size = fit;
+		console_printf(CON_INFO, "mem_size: %ldM, the most there is room for "
+			       "(no mem_size line, or max).", fit / (1024 * 1024));
+	} else if (round4k(conf.mem_size) + vga > psram_len && fit >= 1024 * 1024) {
+		console_printf(CON_WARN, "mem_size %ldK with vga_mem_size %ldK needs "
+			       "%ldK, and the emulator has %ldK: mem_size lowered to "
+			       "%ldM, the most that fits.", conf.mem_size / 1024,
+			       conf.vga_mem_size / 1024, (round4k(conf.mem_size) + vga) / 1024,
+			       psram_len / 1024, fit / (1024 * 1024));
+		conf.mem_size = fit;
+	}
+}
+
+/* A BIOS the ini does not name: bios.bin and vgabios.bin beside the ini,
+   if they are there (else pc.c's default, a flash partition). */
+static void default_roms(void)
+{
+	static char bios[160], vga_bios[160];
+	if (!conf.bios) {
+		snprintf(bios, sizeof(bios), "%s/bios.bin", s_ini_dir);
+		if (access(bios, R_OK) == 0) {
+			conf.bios = bios;
+			console_printf(CON_INFO, "  bios (not in the ini): %s", bios);
+		}
+	}
+	if (!conf.vga_bios) {
+		snprintf(vga_bios, sizeof(vga_bios), "%s/vgabios.bin", s_ini_dir);
+		if (access(vga_bios, R_OK) == 0) {
+			conf.vga_bios = vga_bios;
+			console_printf(CON_INFO, "  vga_bios (not in the ini): %s", vga_bios);
+		}
+	}
+}
+
 /* Everything the ini names, before the PC is built: anything wrong is
    said here in plain words, rather than an abort later. */
 static int check_config(void)
 {
-	int bad = 0;
+	int bad = s_ini_bad;
 	char why[200];
 
 	if (conf.cpu_gen < 3 || conf.cpu_gen > 6) {
@@ -448,14 +564,14 @@ static int check_config(void)
 	const char *vga_bios = conf.vga_bios ? conf.vga_bios : "vgabios.bin";
 	if (!rom_exists(bios, why, sizeof(why))) {
 		console_printf(CON_ERROR, "The BIOS cannot be loaded: %s. Put bios.bin "
-			       "from the tiny386 release on the card and write "
-			       "bios = /sdcard/bios.bin under [pc].", why);
+			       "from the tiny386 release beside %s, or name it "
+			       "with bios = under [pc].", why, s_ini_name);
 		bad++;
 	}
 	if (!rom_exists(vga_bios, why, sizeof(why))) {
 		console_printf(CON_ERROR, "The VGA BIOS cannot be loaded: %s. Put "
-			       "vgabios.bin on the card and write vga_bios = "
-			       "/sdcard/vgabios.bin under [pc].", why);
+			       "vgabios.bin beside %s, or name it with vga_bios = "
+			       "under [pc].", why, s_ini_name);
 		bad++;
 	}
 	static const char *const disk_names[4][2] = {
@@ -471,9 +587,10 @@ static int check_config(void)
 		disks++;
 		struct stat st;
 		if (stat(path, &st) != 0) {
-			console_printf(CON_ERROR, "[pc] %s = %s: there is no such file "
-				       "on the card. Check the name (and the folder) "
-				       "in tiny386.ini.", key, path);
+			console_printf(CON_ERROR, "[pc] %s: there is no file %s. Check "
+				       "the name in %s (a name without a / in front "
+				       "is looked for beside the ini).", key, path,
+				       s_ini_name);
 			bad++;
 		} else {
 			console_printf(CON_INFO, "%s: %s, %ld KiB", key, path,
@@ -481,13 +598,12 @@ static int check_config(void)
 		}
 	}
 	if (!disks)
-		console_puts(CON_WARN, "No disk image is set (hda = /sdcard/... "
-			     "under [pc]): the PC will have nothing to start "
-			     "from but the network or a floppy.");
+		console_printf(CON_WARN, "No disk image is set (hda = ... under [pc] "
+			       "in %s): the PC will have nothing to start from but "
+			       "the network or a floppy.", s_ini_name);
 
 	long vga = round4k(conf.vga_mem_size + VGA_MEM_SLACK);
 	long need = round4k(conf.mem_size) + vga;
-	long fits_mb = (psram_len - vga) / (1024 * 1024);
 	if (conf.mem_size < 1024 * 1024) {
 		console_printf(CON_ERROR, "[pc] mem_size = %ld KiB is too small: give "
 			       "at least 1M.", conf.mem_size / 1024);
@@ -495,9 +611,9 @@ static int check_config(void)
 	} else if (need > psram_len) {
 		console_printf(CON_ERROR, "mem_size %ld KiB and vga_mem_size %ld KiB "
 			       "need %ld KiB, but the emulator has %ld KiB. Lower "
-			       "mem_size in tiny386.ini: %ldM fits.",
-			       conf.mem_size / 1024, conf.vga_mem_size / 1024,
-			       need / 1024, psram_len / 1024, fits_mb);
+			       "vga_mem_size in %s.", conf.mem_size / 1024,
+			       conf.vga_mem_size / 1024, need / 1024, psram_len / 1024,
+			       s_ini_name);
 		bad++;
 	}
 	return bad;
@@ -565,6 +681,52 @@ static void banner(void)
 				      "the crash screen" : why);
 }
 
+static const char *part_type(uint8_t t)
+{
+	switch (t) {
+	case 0x01: return "FAT12";
+	case 0x04: case 0x06: case 0x0E: return "FAT16";
+	case 0x0B: case 0x0C: return "FAT32";
+	case 0x07: return "NTFS or exFAT";
+	case 0x82: return "Linux swap";
+	case 0x83: return "Linux";
+	case 0xEE: return "GPT";
+	default:   return "other";
+	}
+}
+
+/* The card's partitions: the first FAT one is /sdcard; every other FAT one
+   is mounted too (/sdcardN), so that the WIN9X partition of a card laid
+   out for Linux can hold the Windows image. */
+static void card_volumes(void)
+{
+	storage_sd_mount_others();
+	int n;
+	const struct storage_volume *v = storage_volumes(&n);
+	for (int i = 0; i < n; i++) {
+		char name[24] = "";
+		if (v[i].label[0])
+			snprintf(name, sizeof(name), " \"%s\"", v[i].label);
+		if (v[i].mounted)
+			console_printf(CON_GOOD, "Card partition %d: %s, %u MiB%s, at %s.",
+				       v[i].part, v[i].type ? part_type(v[i].type) : "FAT",
+				       (unsigned) v[i].mib, name, v[i].path);
+		else if (v[i].fat)
+			console_printf(CON_WARN, "Card partition %d: FAT, %u MiB%s, not "
+				       "mounted: %s.", v[i].part, (unsigned) v[i].mib,
+				       name, v[i].why ? v[i].why : "unknown");
+		else
+			console_printf(CON_INFO, "Card partition %d: %s (type %02X), %u "
+				       "MiB, not FAT: not used.", v[i].part,
+				       part_type(v[i].type), v[i].type, (unsigned) v[i].mib);
+	}
+	s_maps[1].to = storage_win_path();
+	if (s_maps[1].to)
+		console_printf(CON_INFO, "In an ini, /mnt/sd/... means /sdcard/... and "
+			       "/mnt/win/... means %s/..., as on the Linux route.",
+			       s_maps[1].to);
+}
+
 /* The card, tried every two seconds until it is there.  No card detect
    line on the Korvo-1: so a card can go in without a RESET. */
 static void mount_storage(void)
@@ -572,6 +734,7 @@ static void mount_storage(void)
 	int got = storage_init();
 	if (got & 1) {
 		console_puts(CON_GOOD, "Card mounted at /sdcard.");
+		card_volumes();
 		return;
 	}
 #ifdef SD_CLK
@@ -581,8 +744,9 @@ static void mount_storage(void)
 		return;
 	}
 	console_puts(CON_ERROR, "No microSD card could be read. Put in a FAT32 "
-		     "card with tiny386.ini, bios.bin, vgabios.bin and the disk "
-		     "images in its top folder. Trying again every 2 seconds.");
+		     "card with a tiny386 folder (the ini files, bios.bin, "
+		     "vgabios.bin and the disk images) in its top folder. Trying "
+		     "again every 2 seconds.");
 	for (int tries = 1; ; tries++) {
 		vTaskDelay(pdMS_TO_TICKS(2000));
 		/* the drivers' own error lines once, not every two seconds */
@@ -591,6 +755,7 @@ static void mount_storage(void)
 		esp_log_level_set("*", ESP_LOG_INFO);
 		if (ok) {
 			console_puts(CON_GOOD, "Card mounted at /sdcard.");
+			card_volumes();
 			return;
 		}
 		if (tries % 15 == 0)
@@ -602,6 +767,39 @@ static void mount_storage(void)
 		console_puts(CON_INFO, "Using the flash's storage partition "
 			     "(/spiflash).");
 #endif
+}
+
+/* ==== which ini ==== */
+
+static const struct setup_place s_places[] = {
+	{ "/sdcard/tiny386", NULL },
+	{ "/sdcard", "tiny386.ini" },
+	{ "/spiflash", "tiny386.ini" },
+	{ NULL, NULL },
+};
+
+static void choose_ini(void)
+{
+	static struct setup_list inis;
+	if (!setup_find(s_places, &inis))
+		console_fatal("There is no ini file on the card. Put a folder called "
+			      "tiny386 in its top folder, with the ini files "
+			      "(freedos.ini, ...), bios.bin, vgabios.bin and the "
+			      "disk images, as the Linux route has it; or a "
+			      "tiny386.ini in the top folder. Then press RESET.");
+	char last[SETUP_NAME_MAX];
+	bool have_last = setup_last_read(inis.dir, last, sizeof(last));
+	int pick = setup_default(&inis, have_last ? last : NULL);
+	if (inis.n > 1) {
+		console_printf(CON_INFO, "%d ini files in %s:", inis.n, inis.dir);
+		for (int i = 0; i < inis.n; i++)
+			console_printf(CON_INFO, "  %-16s %s", inis.ini[i].name,
+				       inis.ini[i].desc);
+	}
+	setup_path(&inis, pick, s_ini_path, sizeof(s_ini_path));
+	snprintf(s_ini_name, sizeof(s_ini_name), "%s", inis.ini[pick].name);
+	snprintf(s_ini_dir, sizeof(s_ini_dir), "%s", inis.dir);
+	config.filename = s_ini_path;
 }
 
 void app_main(void)
@@ -642,7 +840,7 @@ void app_main(void)
 	esp_psram_init();
 #endif
 #if defined(PSRAM_KEEP_FREE)
-	// the largest PSRAM block, less what the panel and ESP-IDF need
+	// the largest PSRAM block, less what ESP-IDF needs
 	psram_len = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
 	psram_len = (psram_len - PSRAM_KEEP_FREE) & ~4095L;
 	psram = psram_len > 0 ?
@@ -667,23 +865,10 @@ void app_main(void)
 			       (psram_len - vga) / (1024 * 1024));
 	}
 
-	const static char *files[] = {
-		"/sdcard/tiny386.ini",
-		"/spiflash/tiny386.ini",
-		NULL,
-	};
-	for (int i = 0; files[i]; i++) {
-		if (access(files[i], R_OK) == 0) {
-			config.filename = files[i];
-			break;
-		}
-	}
-	if (!config.filename)
-		console_fatal("There is no tiny386.ini in the top folder of the card. "
-			      "Put one there (FLASH.txt has a sample) and press RESET.");
+	choose_ini();
 
 	memset(&conf, 0, sizeof(conf));
-	conf.mem_size = 8 * 1024 * 1024;
+	conf.mem_size = 0;              /* not given: the most that fits */
 	conf.vga_mem_size = 256 * 1024;
 	conf.cpu_gen = 4;
 	conf.fpu = 0;
@@ -694,9 +879,12 @@ void app_main(void)
 	if (err == -2)
 		console_fatal("Out of memory while reading %s.", config.filename);
 	if (err > 0)
-		console_printf(CON_WARN, "tiny386.ini line %d could not be read and "
-			       "was skipped (and any others like it). A line is "
-			       "[section], name = value, or a comment after ;", err);
+		console_printf(CON_WARN, "%s line %d could not be read and was "
+			       "skipped (and any others like it). A line is "
+			       "[section], name = value, or a comment after ;",
+			       s_ini_name, err);
+	default_roms();
+	settle_memory();
 
 	if (conf.width != LCD_WIDTH || conf.height != LCD_HEIGHT) {
 		if (conf.width || conf.height)
@@ -713,8 +901,8 @@ void app_main(void)
 
 	int bad = check_config();
 	if (bad)
-		console_fatal("%d problem%s in tiny386.ini, shown above in red.", bad,
-			      bad == 1 ? "" : "s");
+		console_fatal("%d problem%s in %s, shown above in red.", bad,
+			      bad == 1 ? "" : "s", s_ini_name);
 
 #ifdef LCD_ZERO_COPY
 	lcd_set_invalidate(config.lcd_invalidate);

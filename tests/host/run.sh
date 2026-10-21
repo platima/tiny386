@@ -93,6 +93,15 @@ $CC $CFLAGS -I"$TREE/esp/main" -o "$OUT/test_hid_parse" "$HERE/test_hid_parse.c"
 "$OUT/test_hid_parse"
 result $? "hid_parse.c: boot keyboard, wheel mouse, receiver with report IDs, NKRO, vendor, tablet"
 
+# ==== 6. which ini, and the files it names (FIRMWARE-PLAN 3.4) ====
+# setup.c with tiny386's own ini.c, on a pretend card under OUT/card, with
+# the Linux route's ini files (tests/host/data/linux-route).
+echo
+$CC $CFLAGS -I"$TREE" -I"$TREE/esp/main" -o "$OUT/test_setup" "$HERE/test_setup.c" \
+    "$TREE/esp/main/setup.c" "$TREE/ini.c" || exit 1
+"$OUT/test_setup" "$OUT" "$HERE/data/linux-route"
+result $? "setup.c: ini search, the menu's list and default, lastboot.txt, paths of the Linux route's inis"
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]
