@@ -776,6 +776,27 @@ static void ide_exec_cmd(IDEState *s, int val)
         s->status = READY_STAT;
         ide_set_irq(s);
         break;
+#ifdef BUILD_ESP32
+    case WIN_FLUSH_CACHE:
+    case WIN_FLUSH_CACHE_EXT:
+        {
+            /* The guest wants its writes on the medium now (Windows 98 and
+               later, and Linux, at shutdown): the image files flushed and
+               synced on the card, as the 2 s flush does, rather than the
+               command refused (emulator correctness review, round 2,
+               note 7).  A flush the card refuses is an error. */
+            unsigned before = ide_error_count();
+            ide_flush();
+            if (ide_error_count() != before) {
+                ide_abort_command(s);
+            } else {
+                s->error = 0;
+                s->status = READY_STAT | SEEK_STAT;
+            }
+            ide_set_irq(s);
+        }
+        break;
+#endif
     default:
         ide_abort_command(s);
         ide_set_irq(s);
@@ -1997,6 +2018,16 @@ static int bf_read_async(BlockDevice *bs,
 #endif
     if (!bf->f)
         return -1;
+#ifdef BUILD_ESP32
+    /* Nothing past the image's end.  On the card, FatFs's f_lseek() on a
+       file open for writing stretches the file to where it is sent, so a
+       guest that reads or writes past the end would make the image grow
+       until the partition is full (boot safety review, round 2, m1).  The
+       guest is told of an error, as on a disk that has no such sector;
+       not counted as the card's. */
+    if (n < 0 || sector_num + (uint64_t) n > (uint64_t) bf->nb_sectors)
+        return -1;
+#endif
     if (bf->mode == BF_MODE_SNAPSHOT) {
         int i;
         for(i = 0; i < n; i++) {
@@ -2021,7 +2052,8 @@ static int bf_read_async(BlockDevice *bs,
                 clearerr(bf->f);
                 return -1;
             }
-            /* past the end of the image: zeros */
+            /* short: an image made shorter on the card since it was
+               opened.  Zeros */
             memset(buf + got, 0, want - got);
             clearerr(bf->f);
         }
@@ -2045,6 +2077,14 @@ static int bf_write_async(BlockDevice *bs,
         ret = -1; /* error */
         break;
     case BF_MODE_RW:
+#ifdef BUILD_ESP32
+        /* nothing past the image's end, which would stretch the file on
+           the card (as in bf_read_async()) */
+        if (n < 0 || sector_num + (uint64_t) n > (uint64_t) bf->nb_sectors) {
+            ret = -1;
+            break;
+        }
+#endif
         fseeko(bf->f, bf->start_offset + sector_num * SECTOR_SIZE, SEEK_SET);
 #ifdef BUILD_ESP32
         /* a write the card refused is an error the guest is told of,

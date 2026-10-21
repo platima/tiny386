@@ -25,6 +25,10 @@ int emulink_attach_floppy(EMULINK *e, int i, const char *filename);
 int emulink_floppy_size_ok(long size);
 unsigned emulink_write_count(void);
 void emulink_flush(EMULINK *e);
+#if defined(BUILD_ESP32) || defined(EMULINK_CHECKED)
+/* reads, writes and flushes of the floppy images that failed */
+unsigned emulink_error_count(void);
+#endif
 uint32_t emulink_status_read(void *s);
 void emulink_cmd_write(void *s, uint32_t val);
 void emulink_data_write(void *s, uint32_t val);

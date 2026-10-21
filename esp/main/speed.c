@@ -44,13 +44,19 @@ int speed_step(struct speed *s, uint32_t now_us, uint32_t cycle, uint8_t m)
 		ev |= SPEED_SECOND;
 	}
 
-	/* the Linux route's -marks: a new mark ends the piece before it */
+	/* the Linux route's -marks: a new mark ends the piece before it.
+	   This firmware watches the byte all the time, where the Linux route
+	   does only when asked, so only a run that began with 0xA1 counts:
+	   another program's stray 0xA2 to 0xAF there is no BENCH (review
+	   round 2, emulator correctness 2) */
 	if (m != s->mark && m >= 0xA1 && m <= 0xAF) {
-		if (s->marks_done && m == 0xA1) {
-			s->marks_done = false;  /* BENCH again: a new table */
+		if (m == 0xA1) {
+			/* BENCH starts, or starts again: a new table */
+			s->marks_run = true;
+			s->marks_done = false;
 			s->nmarks = 0;
-		}
-		if (s->mark && s->mark != 0xAF && s->nmarks < SPEED_MAX_MARKS) {
+		} else if (s->marks_run && s->mark >= 0xA1 && s->mark != 0xAF &&
+			   s->nmarks < SPEED_MAX_MARKS) {
 			struct speed_mark *k = &s->marks[s->nmarks++];
 			k->mark = s->mark;
 			k->insns = s->insns - s->mark_insns;
@@ -59,9 +65,12 @@ int speed_step(struct speed *s, uint32_t now_us, uint32_t cycle, uint8_t m)
 		s->mark = m;
 		s->mark_insns = s->insns;
 		s->mark_us = s->run_us;
-		if (m == 0xAF && !s->marks_done) {
-			s->marks_done = true;
-			ev |= SPEED_MARKS_DONE;
+		if (m == 0xAF && s->marks_run) {
+			s->marks_run = false;
+			if (s->nmarks > 0) {
+				s->marks_done = true;
+				ev |= SPEED_MARKS_DONE;
+			}
 		}
 	}
 	return ev;

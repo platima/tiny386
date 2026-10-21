@@ -62,6 +62,7 @@ void *pcmalloc(long size);
    (CONFIG_SPIRAM_USE_CAPS_ALLOC), there is nowhere near that to spare, so
    they go in PSRAM.  free() gives back either. */
 #include "esp_heap_caps.h"
+#include "esp_rom_sys.h"        /* esp_rom_printf() */
 #define seen_malloc(size) heap_caps_malloc((size), MALLOC_CAP_SPIRAM)
 #else
 #define seen_malloc(size) malloc(size)
@@ -1623,8 +1624,21 @@ static void vga_graphic_refresh(VGAState *s,
         s->seen_cols = s->seen ? cols : 0;
         s->seen_rows = s->seen ? h : 0;
         s->seen_valid = false;
-        if (!s->seen)
+        if (!s->seen) {
             fast = false;
+#ifdef BUILD_ESP32
+            /* said once, on the UART: the quick way's words did not fit
+               in what PSRAM has left (emulator correctness review, round
+               2, note 11) */
+            static bool said;
+            if (!said) {
+                said = true;
+                esp_rom_printf("vga: no room in PSRAM for %u bytes of 16-colour "
+                               "picture cache; drawn the slow way\n",
+                               (unsigned) ((size_t) cols * h * sizeof(uint32_t)));
+            }
+#endif
+        }
     }
     if (fast) {
         trust = s->seen_valid && !full_update &&

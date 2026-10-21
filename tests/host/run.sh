@@ -75,6 +75,19 @@ if command -v convert >/dev/null; then
     done
 fi
 
+# ==== 3b. vga.c on the DOS board's 800x600 (review round 2) ====
+# The same vga.c built with board_dosboard.h: where text, the 16- and
+# 256-colour modes and VBE pictures land on 800x600.
+echo
+$CC $CFLAGS -c -I"$HERE/shim" -I"$TREE" -include "$TREE/esp/main/board_dosboard.h" \
+    -o "$OUT/test_vga_dosboard.o" "$HERE/test_vga_dosboard.c" || exit 1
+$CC -O1 -g -w -c -I"$HERE/shim" -I"$TREE" -include "$TREE/esp/main/board_dosboard.h" \
+    -o "$OUT/vga-dosboard.o" "$TREE/vga.c" || exit 1
+$CC -o "$OUT/test_vga_dosboard" "$OUT/test_vga_dosboard.o" "$OUT/vga-dosboard.o" \
+    "$OUT/vgafont.o" || exit 1
+"$OUT/test_vga_dosboard"
+result $? "vga.c on the DOS board: text, 16 and 256 colours, VBE whole, scaled and 8-bit, at 800x600"
+
 # ==== 4. the keyboard and mouse layer (FIRMWARE-PLAN 3.3) ====
 # kbd_input.c with i8042.c as the emulator has it, without BUILD_ESP32 (no
 # locks) and with PS2_KBD_HOOKS; usb_hid.c for v2's key table, to compare.
@@ -103,6 +116,13 @@ $CC $CFLAGS -Wno-unused-function -DBUILD_ESP32 -DPS2_KBD_HOOKS -DTWO_THREADS \
     "$HERE/test_ps2_mouse.c" "$TREE/i8042.c" -lpthread || exit 1
 "$OUT/test_ps2_mouse_threads"
 result $? "PS/2 mouse: a reporting thread and the emulator's thread"
+# the emulator's thread stopped for 120 ms at a time: the ring's overflow
+# used while the other thread reports (review round 2)
+$CC $CFLAGS -Wno-unused-function -DBUILD_ESP32 -DPS2_KBD_HOOKS -DTWO_THREADS -DSTALLS \
+    -I"$HERE/shim" -I"$TREE" -o "$OUT/test_ps2_mouse_stalls" \
+    "$HERE/test_ps2_mouse.c" "$TREE/i8042.c" -lpthread || exit 1
+"$OUT/test_ps2_mouse_stalls"
+result $? "PS/2 mouse: two threads, the emulator held up: every click through the ring's overflow"
 if git -C "$TREE" rev-parse -q --verify v3 >/dev/null; then
     git -C "$TREE" show v3:i8042.c > "$OUT/i8042-v3.c"
     $CC -O1 -g -w -DPS2_KBD_HOOKS -I"$TREE" -c -o "$OUT/i8042-v3-hooks.o" "$OUT/i8042-v3.c" || exit 1
@@ -132,7 +152,21 @@ $CC $CFLAGS -Wno-unused-function -DUSB_INPUT_C="\"$TREE/esp/main/usb_input.c\"" 
     -I"$HERE/usb/stubs" -I"$TREE/esp/main" -I"$TREE" -o "$OUT/test_usb_input" \
     "$HERE/usb/test_usb_input.c" "$TREE/esp/main/hid_parse.c" || exit 1
 "$OUT/test_usb_input"
-result $? "usb_input.c: interfaces given up, unplugged, queued behind others; lights after an unplug"
+result $? "usb_input.c: interfaces given up, unplugged, queued behind others; lights after an unplug; unplugged while being set up"
+# the round 2 cases (unplugged while being set up) against usb_input.c at
+# the v3.1 tag, where they have to fail
+if git -C "$TREE" rev-parse -q --verify v3.1 >/dev/null; then
+    git -C "$TREE" show v3.1:esp/main/usb_input.c > "$OUT/usb_input-v3.1.c"
+    $CC $CFLAGS -w -DUSB_INPUT_C="\"$OUT/usb_input-v3.1.c\"" \
+        -I"$HERE/usb/stubs" -I"$TREE/esp/main" -I"$TREE" -o "$OUT/test_usb_input_v3.1" \
+        "$HERE/usb/test_usb_input.c" "$TREE/esp/main/hid_parse.c" || exit 1
+    echo "(the same test against usb_input.c at the v3.1 tag, where it has to fail)"
+    "$OUT/test_usb_input_v3.1" > "$OUT/usb-v3.1.log" 2>&1
+    st=$?
+    grep "FAILS\|checks wrong" "$OUT/usb-v3.1.log" | sed 's/^/    | /'
+    [ $st != 0 ]
+    result $? "usb_input.c test catches requests to a freed device in v3.1's usb_input.c"
+fi
 
 # ==== 6. which ini, and the files it names (FIRMWARE-PLAN 3.4) ====
 # setup.c with tiny386's own ini.c, on a pretend card under OUT/card, with
@@ -222,6 +256,29 @@ else
     grep -E "FAILED|^FAIL|^storage:" "$OUT/storage.log"
     result $st "storage.c: the card's partitions with ESP-IDF's FatFs, on images laid out as Plat's card"
 fi
+
+# ==== 14. the disk images and the floppies: nothing past their end (review round 2) ====
+# ide.c's disk images through ESP-IDF's own FatFs (tests/host/disk), as
+# test 13 builds it: a guest sector past the end is refused and the image
+# does not grow on the card.  Then misc.c's floppies with the port's checks.
+echo
+if bash "$HERE/disk/run_disk.sh" "$OUT/disk" > "$OUT/disk.log" 2>&1; then
+    st=0
+else
+    st=1
+fi
+if grep -q "^SKIP" "$OUT/disk.log"; then
+    grep "^SKIP" "$OUT/disk.log"
+else
+    grep -E "FAILED|^disk:" "$OUT/disk.log"
+    result $st "ide.c: disk images through ESP-IDF's FatFs, nothing read or written past their end"
+fi
+echo
+$CC -O1 -g -w -DEMULINK_CHECKED -I"$TREE" -c -o "$OUT/misc-checked.o" "$TREE/misc.c" || exit 1
+$CC $CFLAGS -DEMULINK_CHECKED -I"$TREE" -o "$OUT/test_floppy" "$HERE/test_floppy.c" \
+    "$OUT/misc-checked.o" || exit 1
+"$OUT/test_floppy" "$OUT"
+result $? "misc.c: floppy drives 0 and 1 only, nothing past the image's end, refused writes counted"
 
 echo
 echo "host tests: $pass passed, $fail failed"

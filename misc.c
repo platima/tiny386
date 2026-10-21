@@ -7,6 +7,14 @@
 #include <errno.h>
 #include <stdio.h>
 
+/* The floppies' range checks and error count (boot safety review round 2,
+   m1; emulator correctness review round 2, note 6): the ESP-IDF port's.
+   The Linux route builds without them, as before; the host tests turn them
+   on without BUILD_ESP32. */
+#if defined(BUILD_ESP32) && !defined(EMULINK_CHECKED)
+#define EMULINK_CHECKED
+#endif
+
 #ifndef BUILD_ESP32
 #if !defined(_WIN32) && !defined(__wasm__)
 #include <sys/ioctl.h>
@@ -452,17 +460,52 @@ unsigned emulink_write_count(void)
 	return fdd_writes;
 }
 
+#ifdef EMULINK_CHECKED
+/* reads, writes and flushes of the floppy images that the card refused,
+   as ide_error_count() for the disks */
+static unsigned fdd_errors;
+
+unsigned emulink_error_count(void)
+{
+	return fdd_errors;
+}
+
+/* the guest's drive, cylinder, head, sector and count name sectors the
+   image has: no seek past its end, which on the card would make the file
+   grow */
+static int emulink_range_ok(EMULINK *e)
+{
+	if (e->args[0] >= 2 || !e->fdd[e->args[0]])
+		return 0;
+	const struct fdfmt *f = &(fmt[e->fdfmti[e->args[0]]]);
+	int64_t c = e->args[1] >> 16;
+	int64_t h = (e->args[1] >> 8) & 0xff;
+	int64_t s = e->args[1] & 0xff;
+	int64_t total = (int64_t) f->sectors * f->tracks * f->heads;
+	int64_t lba = (c * f->heads + h) * f->sectors + (s - 1);
+	return s >= 1 && lba >= 0 && lba + (int64_t) e->args[2] <= total;
+}
+#endif
+
 void emulink_flush(EMULINK *e)
 {
 	for (int i = 0; i < 2; i++) {
 		if (!e->fdd[i])
 			continue;
+#ifdef EMULINK_CHECKED
+		/* FatFs's f_sync(), as ide_flush(); a failure is counted */
+		if (fflush(e->fdd[i]) != 0 || fsync(fileno(e->fdd[i])) != 0) {
+			fdd_errors++;
+			clearerr(e->fdd[i]);
+		}
+#else
 		fflush(e->fdd[i]);
 #if defined(__linux__) && !defined(ANDROID)
 		fdatasync(fileno(e->fdd[i]));
 #elif defined(BUILD_ESP32)
 		/* FatFs's f_sync(), as ide_flush() */
 		fsync(fileno(e->fdd[i]));
+#endif
 #endif
 	}
 }
@@ -517,6 +560,14 @@ static void exec_cmd(EMULINK *e)
 	case 0x102:
 		if (e->argi == 3) {
 			int ret;
+#ifdef EMULINK_CHECKED
+			/* drive 0 or 1 only, and sectors the image has */
+			if (!emulink_range_ok(e)) {
+				e->status = -EIO;
+				e->cmd = -1;
+				break;
+			}
+#endif
 			if (!e->fdd[e->args[0]]) {
 				e->status = -EIO;
 				e->cmd = -1;
@@ -566,6 +617,10 @@ int emulink_data_write_string(void *s, uint8_t *buf, int size, int count)
 	EMULINK *e = s;
 	switch (e->cmd) {
 	case 0x102: // floppy write
+#ifdef EMULINK_CHECKED
+		if (e->args[0] >= 2)
+			break;
+#endif
 		if (!e->fdd[e->args[0]])
 			break;
 		if (e->argi == 3) {
@@ -573,9 +628,19 @@ int emulink_data_write_string(void *s, uint8_t *buf, int size, int count)
 			if (len > e->dataleft)
 				break;
 			int ret = fwrite(buf, 1, len, e->fdd[e->args[0]]);
+#ifdef EMULINK_CHECKED
+			/* taken by the C library but refused by the card, now or
+			   at the flush: an error for the guest, and counted */
+			if (ret != len || fflush(e->fdd[e->args[0]]) != 0) {
+				fdd_errors++;
+				clearerr(e->fdd[e->args[0]]);
+				break;
+			}
+#else
 			if (ret != len)
 				break;
 			fflush(e->fdd[e->args[0]]);
+#endif
 			fdd_writes++;
 			e->dataleft -= len;
 			if (e->dataleft == 0) {
@@ -597,6 +662,10 @@ int emulink_data_read_string(void *s, uint8_t *buf, int size, int count)
 	EMULINK *e = s;
 	switch (e->cmd) {
 	case 0x101: // floppy read
+#ifdef EMULINK_CHECKED
+		if (e->args[0] >= 2)
+			break;
+#endif
 		if (!e->fdd[e->args[0]])
 			break;
 		if (e->argi == 3) {
@@ -604,8 +673,17 @@ int emulink_data_read_string(void *s, uint8_t *buf, int size, int count)
 			if (len > e->dataleft)
 				break;
 			int ret = fread(buf, 1, len, e->fdd[e->args[0]]);
+#ifdef EMULINK_CHECKED
+			if (ret != len) {
+				if (ferror(e->fdd[e->args[0]]))
+					fdd_errors++;
+				clearerr(e->fdd[e->args[0]]);
+				break;
+			}
+#else
 			if (ret != len)
 				break;
+#endif
 			e->dataleft -= len;
 			if (e->dataleft == 0) {
 				e->cmd = -1;

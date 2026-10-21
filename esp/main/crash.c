@@ -2,8 +2,15 @@
  * The crash screen.
  *
  * The link wraps ESP-IDF's esp_panic_handler() (-Wl,-wrap=esp_panic_handler
- * in CMakeLists.txt), so every panic, abort, failed assert and watchdog
- * timeout comes here first.  By then the port's handler has stopped the
+ * in CMakeLists.txt), so every panic, abort, failed assert and interrupt
+ * watchdog timeout comes here first.  The task watchdog is not among them:
+ * without CONFIG_ESP_TASK_WDT_PANIC (not set in sdkconfig.korvo1 or
+ * sdkconfig.dosboard) a task watchdog timeout only prints its report on
+ * the UART and goes on (esp_system/task_wdt/task_wdt.c), so a starved
+ * core 0 shows no crash screen; setting it is Plat's choice (BUILD-NOTES,
+ * concurrency review round 2, note 4).
+ *
+ * By then the port's handler has stopped the
  * other core, turned the cache back on if it was off, turned off the timer
  * group watchdogs and set the RTC watchdog to 10 s (ESP-IDF
  * components/esp_system/port/panic_handler.c).

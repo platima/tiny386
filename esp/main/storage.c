@@ -61,7 +61,9 @@ bool storage_sd_mount(void)
 	// The slot's power switch is active low
 	gpio_set_direction(SD_PWR_EN_GPIO, GPIO_MODE_OUTPUT);
 	gpio_set_level(SD_PWR_EN_GPIO, 0);
-	vTaskDelay(pdMS_TO_TICKS(10));
+	/* at least 10 ms for the card's supply to come up: pdMS_TO_TICKS(10)
+	   alone is one tick at 100 Hz, which can end at once */
+	vTaskDelay(pdMS_TO_TICKS(10) + 1);
 #endif
 
 	// Use settings defined above to initialize SD card and mount FAT filesystem.

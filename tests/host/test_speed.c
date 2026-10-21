@@ -6,7 +6,9 @@
  *   thousand instructions a second each second, halted time apart;
  *   the marks: each piece from its mark to the next, halted time left
  *     out, 0xAF ends the table once, a second run starts a new one, a
- *     byte outside 0xA1 to 0xAF is not a mark;
+ *     byte outside 0xA1 to 0xAF is not a mark; only a run that begins
+ *     with 0xA1 counts (a lone 0xAF, or 0xA5 then 0xAF, is no BENCH), and
+ *     a run cut short and begun again gives the second run's table;
  *   the lines, character for character against the Linux route's own
  *     printf formats (tiny386-korvo.patch, print_marks() and
  *     print_counts()), printed here with the host's printf.
@@ -143,6 +145,42 @@ int main(void)
 	      s.marks[0].insns == 400000, "second run: done %d, %d marks", done_seen,
 	      s.nmarks);
 	printf("  BENCH run again: a new table (%d pieces)\n", s.nmarks);
+
+	/* review round 2 (emulator correctness 2): the byte is watched all
+	   the time, and other programs may write it */
+	printf("marks from a program that is not BENCH:\n");
+	{
+		/* as the reviewer's rev2_speed.c: a fresh count, the byte 0, then
+		   a lone 0xAF; and a stray 0xA5 followed by 0xAF */
+		struct speed s2;
+		uint32_t t2 = 1000000, c2 = 0;
+		int ev2 = 0;
+		speed_init(&s2, t2, c2);
+		for (int i = 0; i < 100; i++)
+			ev2 |= speed_step(&s2, t2 += 1000, c2 += 400, 0);
+		ev2 |= speed_step(&s2, t2 += 1000, c2 += 400, 0xAF);
+		CHECK(!(ev2 & SPEED_MARKS_DONE) && s2.nmarks == 0,
+		      "a lone 0xAF counted as the end of BENCH (%d marks)", s2.nmarks);
+		speed_init(&s2, t2, c2);
+		ev2 = speed_step(&s2, t2 += 1000, c2 += 400, 0xA5);
+		ev2 |= speed_step(&s2, t2 += 1000, c2 += 400, 0xAF);
+		CHECK(!(ev2 & SPEED_MARKS_DONE) && s2.nmarks == 0,
+		      "0xA5 then 0xAF counted as BENCH (%d marks)", s2.nmarks);
+		printf("  a lone 0xAF, and 0xA5 then 0xAF: no table, nothing shown\n");
+	}
+	/* BENCH stopped part way (A1 A2 A3), then run again from the start:
+	   the table is the second run's only */
+	static const uint8_t cut[] = { 0xA1, 0xA2, 0xA3, 0xA1, 0xA2, 0xA3, 0xAF };
+	for (unsigned i = 0; i < sizeof(cut); i++) {
+		byte_4f0 = cut[i];
+		run(100 + 10 * i, 400);
+	}
+	CHECK(done_seen == 3 && s.nmarks == 3 && s.marks[0].mark == 0xA1 &&
+	      s.marks[0].insns == 400ull * 130 && s.marks[2].mark == 0xA3 &&
+	      s.marks[2].insns == 400ull * 150,
+	      "a run cut short, then a whole one: done %d, %d marks, first %02x %llu",
+	      done_seen, s.nmarks, s.marks[0].mark, (unsigned long long) s.marks[0].insns);
+	printf("  BENCH stopped part way, then run again: the second run's %d pieces\n", s.nmarks);
 
 	printf("speed: %d checks, %d failed\n", checks, fails);
 	return fails ? 1 : 0;

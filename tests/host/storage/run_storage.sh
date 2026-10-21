@@ -105,12 +105,18 @@ python3 -c "import sys; sys.stdout.buffer.write(bytes((i * 7 + (i >> 9)) & 255 f
 
 # Plat's card: FAT32 KORVO_SD p1 at 8192 (64 MiB), ext4 p2 at 139264
 # (192 MiB), FAT32 WIN9X p3 at 532480 (512 MiB here; its real size is
-# Plat's choice)
-plat_card() {   # image p3-label p3-serial [p3-type: c, or 7 for exFAT]
-    local img=$1 t=${4:-c}
+# Plat's choice).  be5b725's own card image has p1 as FAT16 with 4 sectors
+# a cluster, in a type 0x0C partition (boot safety review, round 2, note
+# 5): p1-bits 16 makes that.
+plat_card() {   # image p3-label p3-serial [p3-type: c, or 7 for exFAT] [p1-bits: 32 or 16]
+    local img=$1 t=${4:-c} p1=${5:-32}
     new_image "$img" $((532480 + 1048576))
     printf 'label: dos\nstart=8192, size=131072, type=c\nstart=139264, size=393216, type=83\nstart=532480, size=1048576, type=%s\n' "$t" | mbr "$img"
-    fat "$img" 8192 131072 32 KORVO_SD 1a2b3c4d 1
+    if [ "$p1" = 16 ]; then
+        fat "$img" 8192 131072 16 KORVO_SD 1a2b3c4d 4
+    else
+        fat "$img" 8192 131072 32 KORVO_SD 1a2b3c4d 1
+    fi
     mkd "$img" 8192 /tiny386
     put "$img" 8192 "$OUT/freedos.ini" /tiny386/freedos.ini
     ext4ish "$img" 139264
@@ -207,6 +213,13 @@ plat_card "$IMG" WIN9X 5e6f7a8b
 m=$(sum "$IMG" 0 1); p2=$(sum "$IMG" 139264 393216)
 run plat "$IMG"
 check_written "$IMG" "$m" "$p2" plat
+
+echo "== Plat's card, p1 FAT16 as be5b725's card image has it"
+IMG=$OUT/card-plat16.img
+plat_card "$IMG" WIN9X 5e6f7a8b c 16
+m=$(sum "$IMG" 0 1); p2=$(sum "$IMG" 139264 393216)
+run plat16 "$IMG"
+check_written "$IMG" "$m" "$p2" plat16
 
 echo "== Plat's card, p3 with p1's serial number"
 IMG=$OUT/card-sameserial.img

@@ -8,6 +8,8 @@
 #include <inttypes.h>
 #include <assert.h>
 #include <errno.h>
+#include <stdbool.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include "sdkconfig.h"
@@ -355,12 +357,12 @@ static void disk_flush(PC *pc)
 
 /* The card refusing a read or a write (pulled out, or failing): said once,
    then again every 10 s while it goes on.  The guest is told of each one
-   by its IDE driver. */
+   by its IDE driver, or by the floppy BIOS's status. */
 static void disk_errors(uint32_t now)
 {
 	static unsigned seen;
 	static uint32_t said_at;
-	unsigned e = ide_error_count();
+	unsigned e = ide_error_count() + emulink_error_count();
 	if (e != seen && (!seen || now - said_at >= 10000000)) {
 		console_printf(CON_ERROR, "The card refused %u read%s or write%s of the "
 			       "disk images. Is it still in? Shut the guest down and "
@@ -420,11 +422,18 @@ static void i386_task(void *arg)
 	globals.pc = pc;
 	globals.kbd = pc->kbd;
 	globals.mouse = pc->mouse;
+	/* PSRAM free too: the 16-colour picture's cache (150 KB at 640x480,
+	   234 KB at 800x600) comes from what the emulator's pool left, and
+	   without room the picture is drawn the slow way (emulator correctness
+	   review, round 2, note 11) */
 	console_printf(CON_INFO, "PC built. Device memory (the 0xA0000 window): %ld "
 		       "of %ld bytes used. Internal RAM free %u KiB (largest "
-		       "block %u KiB).", pcram_off, pcram_len,
+		       "block %u KiB); PSRAM free %u KiB (largest block %u KiB).",
+		       pcram_off, pcram_len,
 		       (unsigned) (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
-		       (unsigned) (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024));
+		       (unsigned) (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024),
+		       (unsigned) (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024),
+		       (unsigned) (heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) / 1024));
 
 	load_bios_and_reset(pc);
 
@@ -666,6 +675,25 @@ static int check_config(void)
 		if (!path || !path[0])
 			continue;
 		disks++;
+		/* One image named twice (two disks, or a disk and a floppy) would
+		   be open twice, each with a cache of its own and FatFs's file
+		   lock off, and the two could leave its clusters crossed (boot
+		   safety review, round 2, note 6).  FAT names have no case. */
+		bool twice = false;
+		for (int j = 0; j < i && !twice; j++) {
+			const char *other = j < 4 ? conf.disks[j] : conf.fdd[j - 4];
+			if (other && other[0] && strcasecmp(other, path) == 0) {
+				console_printf(CON_ERROR, "[pc] %s and %s both name %s: one image "
+					       "cannot be two drives. Change one of them in %s.",
+					       j < 4 ? disk_names[j][conf.iscd[j] ? 1 : 0] :
+					       (j == 4 ? "fda" : "fdb"), key, path, s_ini_name);
+				twice = true;
+			}
+		}
+		if (twice) {
+			bad++;
+			continue;
+		}
 		struct stat st;
 		if (stat(path, &st) != 0) {
 			console_printf(CON_ERROR, "[pc] %s: there is no file %s. Check "

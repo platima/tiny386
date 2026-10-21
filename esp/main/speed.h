@@ -12,7 +12,8 @@
  *     writes 0xA1 to 0xAE to 0000:04F0 as it starts each piece of work and
  *     0xAF when it is done; each piece is timed from its mark to the next,
  *     and the lines printed have the Linux route's own form, so the two
- *     can be laid side by side.
+ *     can be laid side by side.  Only a run that begins with 0xA1 counts,
+ *     since the byte is watched all the time and any program may write it.
  *
  * On the board, Ctrl+Alt+F12 (or holding the board's USER key, where there
  * is one) shows the boot console over the picture, with the figures on its
@@ -47,6 +48,7 @@ struct speed {
 	uint32_t seconds;       /* whole seconds counted */
 	/* BENCH.COM */
 	uint8_t mark;
+	bool marks_run;         /* a run that began with 0xA1 is on */
 	bool marks_done;
 	uint64_t mark_insns, mark_us;
 	struct speed_mark marks[SPEED_MAX_MARKS];

@@ -266,10 +266,12 @@ int main(int argc, char **argv)
 	       host_card.reads);
 	list();
 
-	if (!strcmp(sc, "plat") || !strcmp(sc, "sameserial")) {
+	if (!strcmp(sc, "plat") || !strcmp(sc, "sameserial") || !strcmp(sc, "plat16")) {
 		/* Plat's card: p1 FAT32 at 8192, ext4 p2, FAT32 WIN9X p3 at
 		   532480; "sameserial": p3 with p1's volume serial number, as a
-		   copy made sector by sector would have */
+		   copy made sector by sector would have; "plat16": p1 FAT16 (4
+		   sectors a cluster, in a type 0x0C partition), as be5b725's
+		   card image really has it (boot safety review, round 2, note 5) */
 		struct want w[] = {
 			P1, P2_LINUX,
 			{ 3, 0x0C, true, true, "/sdcard3", "WIN9X", 512, 532480 },

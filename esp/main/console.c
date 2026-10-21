@@ -583,18 +583,31 @@ bool console_owns_display(void)
 	return s_owner_console;
 }
 
+/* set once: the console keeps the panel for good */
+static volatile bool s_held;
+
 void console_release_display(void)
 {
+	/* Held (a fatal message, or the PC switched off): the panel stays the
+	   console's, whoever asks (concurrency review, round 2).  A hold that
+	   comes while this runs on another core is seen by the second look:
+	   console_hold() sets s_held before it takes the panel, and both
+	   flags are sequentially consistent, so either that look sees it, or
+	   the hold's own take comes after the clear here. */
+	if (__atomic_load_n(&s_held, __ATOMIC_SEQ_CST))
+		return;
 	con_lock();
 	render();
-	s_owner_console = false;
+	__atomic_store_n(&s_owner_console, false, __ATOMIC_SEQ_CST);
 	con_unlock();
+	if (__atomic_load_n(&s_held, __ATOMIC_SEQ_CST))
+		console_take_display();         /* back, and drawn whole again */
 }
 
 void console_take_display(void)
 {
 	display_lock();
-	s_owner_console = true;
+	__atomic_store_n(&s_owner_console, true, __ATOMIC_SEQ_CST);
 	display_unlock();
 	con_lock();
 	if (s_shown) {
@@ -607,12 +620,9 @@ void console_take_display(void)
 	con_unlock();
 }
 
-/* set once: the console keeps the panel for good */
-static volatile bool s_held;
-
 void console_hold(void)
 {
-	s_held = true;
+	__atomic_store_n(&s_held, true, __ATOMIC_SEQ_CST);
 	console_take_display();
 }
 
