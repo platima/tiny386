@@ -12,7 +12,12 @@
  *     reset, the mouse off;
  *   with BUILD_ESP32 (THREAD_SAFE, the stand-in FreeRTOS of shim/) and
  *     TWO_THREADS: one thread reports as a USB task would, another runs
- *     kbd_step() and reads as the emulator would, with the real clock.
+ *     kbd_step() and reads as the emulator would, with the real clock;
+ *     with STALLS too, the emulator's thread stops for 120 ms at a time,
+ *     so that the ring's overflow is used while the other thread reports.
+ * Since the second review round the one-thread part also has clicks that
+ * fall wholly in the ring's overflow, a reset with reports still in the
+ * ring, and a double click at a slow sample rate.
  *
  * Exit status 0 when every check passes.
  */
@@ -261,6 +266,125 @@ static void test_reset_and_off(void)
 	CHECK(n == 1 && b[0] == 0xFA, "a move while the mouse was off came out: %d bytes", n);
 }
 
+/* Review round 2 (emulator correctness 1): the emulator's thread held up
+   for 100 reports (a long card access) while the mouse moves right one
+   count a report, the left button down for reports 40 to 49: past the
+   32-entry ring, so press and release both fall in the merged overflow.
+   The click must still reach the guest, as a press and then a release. */
+static void test_overflow_click(void)
+{
+	static uint8_t b[4096];
+
+	printf("a click in the ring's overflow:\n");
+	mouse_reset_enable(3);
+	mouse_cmd(0xF3);
+	mouse_cmd(200);
+	run_ms(10, b, sizeof(b), NULL, 1);
+	for (int at = 10; at <= 40; at += 30) {
+		for (int i = 0; i < 100; i++)
+			kbd_input_mouse(1, 0, 0, (i >= at && i < at + 10) ? 1 : 0);
+		int n = run_ms(500, b, sizeof(b), NULL, 3);
+		int sx = 0, presses = 0, last = 0;
+		for (int i = 0; i + 3 <= n; i += 3) {
+			sx += (int8_t) b[i + 1];
+			if ((b[i] & 1) && !last)
+				presses++;
+			last = b[i] & 1;
+		}
+		printf("  click in reports %d to %d: %d packets, %d counts right, %d press%s, "
+		       "left %s at the end\n", at, at + 9, n / 3, sx, presses,
+		       presses == 1 ? "" : "es", last ? "down" : "up");
+		CHECK(framed(b, n, 3, 1), "the stream is not whole packets");
+		CHECK(sx == 100, "movement: %d of 100", sx);
+		CHECK(presses == 1 && !last, "the click in reports %d to %d: %d presses, "
+		      "left %s at the end", at, at + 9, presses, last ? "down" : "up");
+	}
+	/* the left button held from before, let go at report 40 and pressed
+	   again at 45, held to the end; the right button clicked at 50 to 59:
+	   all in the overflow.  The guest must see left up, left down again,
+	   and the right click. */
+	for (int i = 0; i < 100; i++) {
+		int left = !(i >= 40 && i < 45);
+		int right = i >= 50 && i < 60;
+		kbd_input_mouse(1, 0, 0, left | (right << 1));
+	}
+	int n = run_ms(500, b, sizeof(b), NULL, 3);
+	int sx = 0, lp = 0, lr = 0, rp = 0, last = 0;
+	for (int i = 0; i + 3 <= n; i += 3) {
+		int bt = b[i] & 3;
+		sx += (int8_t) b[i + 1];
+		lp += (bt & 1) && !(last & 1);
+		lr += !(bt & 1) && (last & 1);
+		rp += (bt & 2) && !(last & 2);
+		last = bt;
+	}
+	printf("  held, let go and pressed again, and a right click, all in the overflow: "
+	       "%d packets, left down %d up %d, right down %d, %d counts\n", n / 3, lp, lr, rp, sx);
+	CHECK(lp == 2 && lr == 1 && rp == 1 && last == 1 && sx == 100,
+	      "left down %d (want 2), up %d (1), right down %d (1), end %d (1), %d counts",
+	      lp, lr, rp, last, sx);
+	kbd_input_mouse(0, 0, 0, 0);
+	run_ms(100, b, sizeof(b), NULL, 3);
+}
+
+/* Review round 2 (emulator correctness 4): reports wait in the ring when
+   the guest resets the mouse, reads FA AA 00 and enables it again, all
+   before the next kbd_step() (one pc_step() can hold all of that).  None
+   of the old movement may come after the reset. */
+static void test_reset_drops_ring(void)
+{
+	uint8_t b[256];
+
+	printf("reset with reports in the ring:\n");
+	mouse_reset_enable(3);
+	for (int i = 0; i < 10; i++)
+		kbd_input_mouse(10, 0, 0, 0);   /* in the ring, kbd_step() not yet run */
+	for (int i = 0; i < 40; i++)
+		kbd_input_mouse(1, 0, 0, 0);    /* and past it, into the overflow */
+	mouse_cmd(0xFF);
+	int n = guest_read(b, sizeof(b));
+	CHECK(n == 3 && b[0] == 0xFA && b[1] == 0xAA && b[2] == 0x00, "reset answer: %d bytes", n);
+	mouse_cmd(0xF4);
+	n = guest_read(b, sizeof(b));
+	CHECK(n == 1 && b[0] == 0xFA, "enable answer: %d bytes", n);
+	n = run_ms(100, b, sizeof(b), NULL, 3);
+	CHECK(n == 0, "movement from before the reset came after it: %d bytes", n);
+	kbd_input_mouse(0, 3, 0, 0);
+	n = run_ms(50, b, sizeof(b), NULL, 3);
+	CHECK(n == 3 && b[0] == 0x28 && b[1] == 0 && b[2] == 0xFD,
+	      "a move after the reset: %d bytes, want 28 00 FD", n);
+}
+
+/* A double click while moving, a 1,000 Hz mouse, the guest's sample rate
+   20 (50 ms a packet): both presses reach the guest (review round 2 case
+   G, which passed already; kept as a check). */
+static void test_double_click_slow_rate(void)
+{
+	static uint8_t b[8192];
+	int n = 0;
+
+	printf("double click at sample rate 20:\n");
+	mouse_reset_enable(3);
+	mouse_cmd(0xF3);
+	mouse_cmd(20);
+	run_ms(10, b, sizeof(b), NULL, 1);
+	for (int t = 0; t < 600; t++) {
+		int down = (t >= 100 && t < 140) || (t >= 180 && t < 220);
+		kbd_input_mouse(1, 0, 0, down);
+		n += run_ms(1, b + n, sizeof(b) - n, NULL, 3);
+	}
+	n += run_ms(1000, b + n, sizeof(b) - n, NULL, 3);
+	int presses = 0, last = 0, sx = 0;
+	for (int i = 0; i + 3 <= n; i += 3) {
+		sx += (int8_t) b[i + 1];
+		if ((b[i] & 1) && !last)
+			presses++;
+		last = b[i] & 1;
+	}
+	printf("  %d packets, %d counts right, %d presses\n", n / 3, sx, presses);
+	CHECK(presses == 2 && sx == 600, "%d presses (want 2), %d of 600 counts", presses, sx);
+}
+
 int main(void)
 {
 	ctrl = i8042_init(&kbd, &mouse, 1, 12, NULL, set_irq, NULL, sys_reset);
@@ -273,6 +397,9 @@ int main(void)
 	test_rate();
 	test_remote();
 	test_reset_and_off();
+	test_overflow_click();
+	test_reset_drops_ring();
+	test_double_click_slow_rate();
 
 	printf("test_ps2_mouse: %d checks, %d failed\n", checks, fails);
 	return fails ? 1 : 0;
@@ -381,7 +508,23 @@ int main(void)
 
 	pthread_create(&t, NULL, reporter, NULL);
 	uint32_t quiet_since = 0;
+#ifdef STALLS
+	/* the emulator's thread held up for 120 ms in every 250 (a card
+	   access, say): some 400 reports each time, far past the 32-entry
+	   ring, so the overflow word and its presses are used while the other
+	   thread reports */
+	uint32_t next_stall = get_uticks() + 100000;
+	int stalls = 0;
+#endif
 	for (;;) {
+#ifdef STALLS
+		if ((int32_t) (get_uticks() - next_stall) >= 0 &&
+		    !__atomic_load_n(&s_done, __ATOMIC_ACQUIRE)) {
+			usleep(120000);
+			stalls++;
+			next_stall = get_uticks() + 130000;
+		}
+#endif
 		kbd_step(ctrl);
 		int got = guest_read(b + n, sizeof(b) - n);
 		n += got;
@@ -409,11 +552,23 @@ int main(void)
 	printf("  %d reports in, %d packets out; %d right, %d down (sent %d, %d); "
 	       "%d presses seen\n", REPORTS, n / 3, sx, -sy, sent_dx, sent_dy, presses);
 	CHECK(framed(b, n, 3, 3), "the stream is not whole 3-byte packets");
+#ifdef STALLS
+	/* the overflow word holds 255 counts each way: some movement of each
+	   stall is dropped, never more than went in */
+	printf("  %d stalls of 120 ms\n", stalls);
+	CHECK(stalls >= 4, "only %d stalls", stalls);
+	CHECK(sx <= sent_dx && -sy <= sent_dy && sx > sent_dx / 2, "movement doubled or mostly lost");
+	/* a click (60 ms down, 60 ms up) can now lie wholly inside a stall's
+	   overflow and must still come through; a release and press again
+	   while held is the one pair that may merge (TEST-PLAN, BUILD-NOTES) */
+	CHECK(presses >= 8 && presses <= 10, "%d presses came through, 10 went in", presses);
+#else
 	CHECK(sx == sent_dx && -sy == sent_dy, "movement lost or doubled");
-	CHECK(last_buttons == 0, "the buttons end held: %d", last_buttons);
 	/* ten presses went in, each held for 60 ms; one could merge into the
 	   ring's overflow only if this thread stopped for that long */
 	CHECK(presses >= 8 && presses <= 10, "%d presses came through, 10 went in", presses);
+#endif
+	CHECK(last_buttons == 0, "the buttons end held: %d", last_buttons);
 	CHECK(host_mutex_errors == 0, "%d mutex errors", host_mutex_errors);
 
 	printf("test_ps2_mouse (two threads): %d checks, %d failed\n", checks, fails);

@@ -500,6 +500,7 @@ struct PS2MouseState {
     /* reports that found the ring full, merged into one (carry_pack());
        0 when there is none.  Newer than everything in the ring. */
     uint32_t carry;
+    uint8_t last_buttons;       /* the reporting thread's: its last report's */
     /* the emulator's only: movement or a button change not yet sent */
     bool pending;
     uint32_t next_send_us;      /* no packet before this (the sample rate) */
@@ -648,9 +649,11 @@ void kbd_step(void *opaque)
     ps2_mouse_step(s->mouse);
 #endif
 #ifdef THREAD_SAFE
-    if (s->kbd->common.queue.count)
+    /* a hint read without the queue's lock: relaxed atomic loads, so that
+       the read is whole and not a data race (concurrency review, round 2) */
+    if (__atomic_load_n(&s->kbd->common.queue.count, __ATOMIC_RELAXED))
         s->kbd->common.update_irq(s->kbd->common.update_arg, 1);
-    if (s->mouse->common.queue.count)
+    if (__atomic_load_n(&s->mouse->common.queue.count, __ATOMIC_RELAXED))
         s->mouse->common.update_irq(s->mouse->common.update_arg, 1);
 #endif
 }
@@ -702,7 +705,7 @@ static void ps2_reset_keyboard(PS2KbdState *s)
 /* bytes the guest has still to read from the keyboard (no lock: a hint) */
 int ps2_kbd_pending(PS2KbdState *s)
 {
-    return s->common.queue.count;
+    return __atomic_load_n(&s->common.queue.count, __ATOMIC_RELAXED);
 }
 #endif
 
@@ -829,28 +832,49 @@ static bool ps2_mouse_send_packet(PS2MouseState *s, int headroom)
 }
 
 /* The ring's overflow, packed in one word that both threads change with
-   compare-and-swap: bit 31 set, buttons 30..26, wheel 25..22 (-7..7), y
-   21..11 and x 10..0 (-1023..1023). */
-static uint32_t carry_pack(int dx, int dy, int dz, int buttons)
+   compare-and-swap: bit 31 set, buttons 30..26, presses 25..23, releases
+   22..20, wheel 19..18 (-1..1), y 17..9 and x 8..0 (-255..255).  Presses
+   and releases are the left, right and middle buttons that went down, or
+   up, in any of the reports merged, so that a click that falls wholly in
+   the overflow still reaches the guest, in order (review round 2,
+   emulator correctness 1).  All in one word, so that an edge is never
+   taken apart from the movement and buttons it came with; the movement
+   and the wheel it holds are the less important part, and are cut short
+   first. */
+#define CARRY_PRESSES  (7u << 23)
+#define CARRY_RELEASES (7u << 20)
+static uint32_t carry_pack(int dx, int dy, int dz, int buttons, int presses,
+                           int releases)
 {
     return 0x80000000u | ((uint32_t) (buttons & 0x1f) << 26) |
-        ((uint32_t) (clampi(dz, -7, 7) & 0xf) << 22) |
-        ((uint32_t) (clampi(dy, -1023, 1023) & 0x7ff) << 11) |
-        ((uint32_t) clampi(dx, -1023, 1023) & 0x7ff);
+        ((uint32_t) (presses & 7) << 23) | ((uint32_t) (releases & 7) << 20) |
+        ((uint32_t) (clampi(dz, -1, 1) & 0x3) << 18) |
+        ((uint32_t) (clampi(dy, -255, 255) & 0x1ff) << 9) |
+        ((uint32_t) clampi(dx, -255, 255) & 0x1ff);
 }
 
-static MouseReport carry_unpack(uint32_t c)
+static MouseReport carry_unpack(uint32_t c, int *presses, int *releases)
 {
     MouseReport r;
-    r.dx = (int16_t) ((int32_t) (c << 21) >> 21);
-    r.dy = (int16_t) ((int32_t) (c << 10) >> 21);
-    r.dz = (int8_t) ((int32_t) (c << 6) >> 28);
+    r.dx = (int16_t) ((int32_t) (c << 23) >> 23);
+    r.dy = (int16_t) ((int32_t) (c << 14) >> 23);
+    r.dz = (int8_t) ((int32_t) (c << 12) >> 30);
     r.buttons = (c >> 26) & 0x1f;
+    if (presses)
+        *presses = (c >> 23) & 7;
+    if (releases)
+        *releases = (c >> 20) & 7;
     return r;
 }
 
 /* The next report for the emulator, not yet taken: 1 from the ring, 2 the
-   merged one beside it (its word in *c), 0 none. */
+   merged one beside it (its word in *c), 0 none; or, before the merged
+   one, an edge merged into it that the guest has not seen yet, alone and
+   with no movement: 3 a release of a button the guest has down, 4 a press
+   of one it has up.  The merged reports began from the buttons the guest
+   has (the ring's last), so taking releases of held buttons and presses of
+   free ones in turn gives each button's edges in the order they came, up
+   to one press and one release each. */
 static int mouse_peek(PS2MouseState *s, MouseReport *r, uint32_t *c)
 {
     unsigned tail = s->ring_tail;
@@ -860,7 +884,14 @@ static int mouse_peek(PS2MouseState *s, MouseReport *r, uint32_t *c)
     }
     *c = __atomic_load_n(&s->carry, __ATOMIC_ACQUIRE);
     if (*c) {
-        *r = carry_unpack(*c);
+        int presses, releases;
+        *r = carry_unpack(*c, &presses, &releases);
+        if ((releases & s->mouse_buttons) || (presses & ~s->mouse_buttons)) {
+            int rel = releases & s->mouse_buttons;
+            r->dx = r->dy = r->dz = 0;
+            r->buttons = rel ? (s->mouse_buttons & ~rel) : (s->mouse_buttons | presses);
+            return rel ? 3 : 4;
+        }
         return 2;
     }
     return 0;
@@ -872,8 +903,15 @@ static bool mouse_take(PS2MouseState *s, int from, uint32_t c)
         __atomic_store_n(&s->ring_tail, s->ring_tail + 1, __ATOMIC_RELEASE);
         return true;
     }
-    /* false if another report was merged into it meanwhile: next time */
-    return __atomic_compare_exchange_n(&s->carry, &c, 0, false,
+    /* false if another report was merged into it meanwhile: next time.
+       An edge taken leaves the rest of the word, the other buttons' edges
+       too, for the next look (mouse_buttons is as mouse_peek() saw it) */
+    uint32_t left = 0;
+    if (from == 3)
+        left = c & ~((((c >> 20) & 7) & s->mouse_buttons) << 20);
+    else if (from == 4)
+        left = c & ~((((c >> 23) & 7) & ~(uint32_t) s->mouse_buttons) << 23);
+    return __atomic_compare_exchange_n(&s->carry, &c, left, false,
                                        __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
 }
 
@@ -893,9 +931,21 @@ static void mouse_apply(PS2MouseState *s, const MouseReport *r)
         s->pending = true;
 }
 
-/* movement the guest has not had yet is dropped: a reset, or new defaults */
+/* movement the guest has not had yet is dropped: a reset, or new defaults.
+   That includes the reports still in the ring and the one merged beside
+   it, which the guest would otherwise get after its reset (review round 2,
+   emulator correctness 4); their newest button state is kept, so that a
+   release among them does not leave a button held.  The emulator's thread,
+   the ring's only reader. */
 static void mouse_forget(PS2MouseState *s)
 {
+    unsigned head = __atomic_load_n(&s->ring_head, __ATOMIC_ACQUIRE);
+    if (head != s->ring_tail)
+        s->mouse_buttons = s->ring[(head - 1) % MOUSE_RING].buttons;
+    uint32_t c = __atomic_exchange_n(&s->carry, 0, __ATOMIC_ACQ_REL);
+    if (c)
+        s->mouse_buttons = carry_unpack(c, NULL, NULL).buttons;
+    __atomic_store_n(&s->ring_tail, head, __ATOMIC_RELEASE);
     s->mouse_dx = 0;
     s->mouse_dy = 0;
     s->mouse_dz = 0;
@@ -952,15 +1002,21 @@ void ps2_mouse_event(PS2MouseState *s,
 {
     unsigned head = s->ring_head;
     uint32_t c = __atomic_load_n(&s->carry, __ATOMIC_ACQUIRE);
+    /* left, right or middle newly down, or up, since the last report */
+    int press = buttons_state & ~s->last_buttons & 7;
+    int release = ~buttons_state & s->last_buttons & 7;
 
+    s->last_buttons = buttons_state & 0x1f;
     if (c || head - __atomic_load_n(&s->ring_tail, __ATOMIC_ACQUIRE) >= MOUSE_RING) {
         uint32_t n;
         do {
             if (c) {
-                MouseReport o = carry_unpack(c);
-                n = carry_pack(o.dx + dx, o.dy + dy, o.dz + dz, buttons_state);
+                int presses, releases;
+                MouseReport o = carry_unpack(c, &presses, &releases);
+                n = carry_pack(o.dx + dx, o.dy + dy, o.dz + dz, buttons_state,
+                               presses | press, releases | release);
             } else {
-                n = carry_pack(dx, dy, dz, buttons_state);
+                n = carry_pack(dx, dy, dz, buttons_state, press, release);
             }
         } while (!__atomic_compare_exchange_n(&s->carry, &c, n, false,
                                               __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE));
