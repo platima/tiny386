@@ -30,6 +30,8 @@ set(srcs "esp_main.c"
 "../../pcspk.c"
 "console.c"
 "display.c"
+"hid_parse.c"
+"kbd_input.c"
 "lcd_axs15231b.c"
 "lcd_st7701.c"
 "lcd_elecrow7s3.c"
@@ -85,6 +87,9 @@ if(BOARD STREQUAL "elecrow7s3")
         -Wl,--undefined=__wrap_sdmmc_init_spi_crc)
 endif()
 
+# i8042.c hands the guest's keyboard lights and typematic rate to
+# kbd_input.c (the Linux route builds it without).
+add_definitions(-DPS2_KBD_HOOKS)
 add_definitions(-DI386_ENABLE_FPU)
 add_definitions(-DUSE_FMOPL)
 

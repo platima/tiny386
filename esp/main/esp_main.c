@@ -30,6 +30,7 @@
 #include "../../vga.h"
 #include "common.h"
 #include "console.h"
+#include "kbd_input.h"
 #ifdef LCD_ZERO_COPY
 #include "lcd.h"
 #endif
@@ -259,6 +260,7 @@ static void crash_test(int what)
 
 static struct esp_ini_config config = {
 	.console_s = 2,
+	.enable_usb = 1,        /* a keyboard unless the ini says no */
 };
 static PCConfig conf;
 
@@ -306,6 +308,8 @@ static void i386_task(void *arg)
 	globals.pc = pc;
 	globals.kbd = pc->kbd;
 	globals.mouse = pc->mouse;
+	/* the keyboard and mouse now reach the PC */
+	kbd_input_set_target(pc->kbd, pc->mouse);
 	console_printf(CON_INFO, "PC built. Device memory (the 0xA0000 window): %ld "
 		       "of %ld bytes used. Internal RAM free %u KiB (largest "
 		       "block %u KiB).", pcram_off, pcram_len,
@@ -340,6 +344,7 @@ static void i386_task(void *arg)
 	for (; pc->shutdown_state != 8;) {
 		pc_step(pc);
 	}
+	kbd_input_set_target(NULL, NULL);
 	console_puts(CON_INFO, "The PC was switched off. Press RESET to start again.");
 	console_take_display();
 	vTaskDelete(NULL);
@@ -611,6 +616,7 @@ void app_main(void)
 	console_init(NULL, 0, 0, NULL);
 #endif
 	console_hooks_install();
+	kbd_input_init();
 	banner();
 
 #ifdef ESPDEBUG
@@ -715,11 +721,10 @@ void app_main(void)
 #endif
 
 	if (config.enable_usb) {
-		vTaskDelay(2000 / portTICK_PERIOD_MS);
 		usb_setup();
 	} else {
-		console_puts(CON_WARN, "USB is off, so there is no keyboard: write "
-			     "enable_usb = 1 under [esp] in tiny386.ini.");
+		console_puts(CON_WARN, "USB is off ([esp] enable_usb = 0 in the ini), so "
+			     "there is no keyboard or mouse.");
 	}
 
 	if (config.ssid[0]) {

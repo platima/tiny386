@@ -16,6 +16,18 @@ void ps2_put_keycode(PS2KbdState *s, int is_down, int keycode);
 void ps2_mouse_event(PS2MouseState *s,
                      int dx, int dy, int dz, int buttons_state);
 
+#ifdef PS2_KBD_HOOKS
+/* What the guest tells the keyboard, handed to the front end (the ESP-IDF
+   port's kbd_input.c), which defines these two: the lights of command 0xED
+   (bit 0 Scroll, 1 Num, 2 Caps Lock) and the typematic byte of 0xF3 (also
+   given 0x2B, the default, at a reset).  Called from the emulator's own
+   thread. */
+void ps2_kbd_leds_changed(int ps2_leds);
+void ps2_kbd_rate_changed(int rate);
+/* bytes waiting for the guest to read */
+int ps2_kbd_pending(PS2KbdState *s);
+#endif
+
 typedef struct KBDState KBDState;
 
 uint32_t kbd_read_status(void *opaque, uint32_t addr);

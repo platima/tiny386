@@ -621,7 +621,19 @@ uint32_t ps2_read_data(void *opaque)
 static void ps2_reset_keyboard(PS2KbdState *s)
 {
     s->scan_enabled = 1;
+#ifdef PS2_KBD_HOOKS
+    /* reset and both "set defaults" commands: 500 ms, 10.9 a second */
+    ps2_kbd_rate_changed(0x2b);
+#endif
 }
+
+#ifdef PS2_KBD_HOOKS
+/* bytes the guest has still to read from the keyboard (no lock: a hint) */
+int ps2_kbd_pending(PS2KbdState *s)
+{
+    return s->common.queue.count;
+}
+#endif
 
 void ps2_write_keyboard(void *opaque, int val)
 {
@@ -666,6 +678,9 @@ void ps2_write_keyboard(void *opaque, int val)
             break;
         case KBD_CMD_RESET:
             ps2_reset_keyboard(s);
+#ifdef PS2_KBD_HOOKS
+            ps2_kbd_leds_changed(0);
+#endif
             ps2_queue(&s->common, KBD_REPLY_ACK);
             ps2_queue(&s->common, KBD_REPLY_POR);
             break;
@@ -677,10 +692,16 @@ void ps2_write_keyboard(void *opaque, int val)
     case KBD_CMD_SET_LEDS:
         ps2_queue(&s->common, KBD_REPLY_ACK);
         s->common.write_cmd = -1;
+#ifdef PS2_KBD_HOOKS
+        ps2_kbd_leds_changed(val);
+#endif
         break;
     case KBD_CMD_SET_RATE:
         ps2_queue(&s->common, KBD_REPLY_ACK);
         s->common.write_cmd = -1;
+#ifdef PS2_KBD_HOOKS
+        ps2_kbd_rate_changed(val);
+#endif
         break;
     }
 }

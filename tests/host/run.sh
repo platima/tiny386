@@ -75,6 +75,24 @@ if command -v convert >/dev/null; then
     done
 fi
 
+# ==== 4. the keyboard and mouse layer (FIRMWARE-PLAN 3.3) ====
+# kbd_input.c with i8042.c as the emulator has it, without BUILD_ESP32 (no
+# locks) and with PS2_KBD_HOOKS; usb_hid.c for v2's key table, to compare.
+echo
+$CC -O1 -g -w -DPS2_KBD_HOOKS -I"$TREE" -c -o "$OUT/i8042-hooks.o" "$TREE/i8042.c" || exit 1
+$CC $CFLAGS -DKBD_INPUT_HOST -DPS2_KBD_HOOKS -I"$TREE" -I"$TREE/esp/main" \
+    -o "$OUT/test_kbd_input" "$HERE/test_kbd_input.c" "$TREE/esp/main/kbd_input.c" \
+    "$TREE/esp/main/usb_hid.c" "$OUT/i8042-hooks.o" || exit 1
+"$OUT/test_kbd_input"
+result $? "kbd_input.c: scancodes, sequences, typematic, keyboards, lights, hotkey, mouse"
+
+# ==== 5. HID report descriptors (FIRMWARE-PLAN 3.3) ====
+echo
+$CC $CFLAGS -I"$TREE/esp/main" -o "$OUT/test_hid_parse" "$HERE/test_hid_parse.c" \
+    "$TREE/esp/main/hid_parse.c" || exit 1
+"$OUT/test_hid_parse"
+result $? "hid_parse.c: boot keyboard, wheel mouse, receiver with report IDs, NKRO, vendor, tablet"
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]
