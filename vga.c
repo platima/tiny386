@@ -46,6 +46,9 @@ int vga_planar_fast = 1;
 #include "esp_attr.h"
 void *pcmalloc(long size);
 #define RETRACE_INTERVAL_US 5000
+/* The emulator writes the registers on one core (1) while the picture is
+   drawn on the other (0): see vga_clear_screen(). */
+#define VGA_TWO_CORES
 #else
 #define IRAM_ATTR
 #define pcmalloc malloc
@@ -63,6 +66,12 @@ void *pcmalloc(long size);
 #else
 #define seen_malloc(size) malloc(size)
 #endif
+#endif
+
+/* Only the rows drawn are given to redraw(): for a picture drawn 1:1. */
+#if defined(VGA_REDRAW_DIRTY_ROWS) && \
+    (defined(SCALE_3_2) || defined(SCALE_2_1) || defined(SWAPXY))
+#undef VGA_REDRAW_DIRTY_ROWS
 #endif
 
 //#define DEBUG_VBE
@@ -199,6 +208,21 @@ struct VGAState {
     bool cleared;           /* nothing drawn on the screen since it was cleared */
 #endif
 
+#ifdef VGA_TWO_CORES
+    /* Clears that the emulator asks for and the drawing does.  Each count
+       has one writer: the emulator counts what it asks for, the drawing
+       notes the count it has dealt with, so no request is lost between a
+       test and a store. */
+    uint32_t clear_req;         /* the CRT controller was written: a clear,
+                                   unless it would change nothing */
+    uint32_t clear_req_seen;
+    uint32_t force_clear_req;   /* a VBE mode was set: a clear */
+    uint32_t force_clear_seen;
+#endif
+#ifdef VGA_REDRAW_DIRTY_ROWS
+    bool fb_all_dirty;      /* cleared since the last redraw(): all rows */
+#endif
+
 #if defined(SCALE_3_2) || defined(SCALE_2_1) || defined(SWAPXY)
 #ifndef LCD_WIDTH
 #define LCD_WIDTH 2048
@@ -222,6 +246,13 @@ static void simplefb_clear(FBDevice *fb_dev)
    so any more. */
 static void vga_clear_screen(VGAState *s)
 {
+#ifdef VGA_TWO_CORES
+    /* Only the drawing (core 0) clears the screen.  This clear meets every
+       request made before it starts; one made while it runs is left for
+       the next picture. */
+    s->clear_req_seen = __atomic_load_n(&s->clear_req, __ATOMIC_ACQUIRE);
+    s->force_clear_seen = __atomic_load_n(&s->force_clear_req, __ATOMIC_ACQUIRE);
+#endif
     simplefb_clear(s->fb_dev);
 #ifdef VGA_PLANAR_FAST
     s->seen_valid = false;
@@ -230,7 +261,39 @@ static void vga_clear_screen(VGAState *s)
     s->drawn_w = 0;
     s->cleared = true;
 #endif
+#ifdef VGA_REDRAW_DIRTY_ROWS
+    s->fb_all_dirty = true;
+#endif
 }
+
+#ifdef VGA_TWO_CORES
+/* The emulator (core 1) asks for a clear: one count more, stored once. */
+static void vga_ask(uint32_t *count)
+{
+    __atomic_store_n(count, *count + 1, __ATOMIC_RELEASE);
+}
+#endif
+
+#ifdef VGA_REDRAW_DIRTY_ROWS
+/* redraw() for rows y0 to y1 - 1 of the screen, or all of them if it was
+   cleared since the last call; nothing if nothing was drawn */
+static void vga_redraw_rows(VGAState *s, SimpleFBDrawFunc *redraw_func,
+                            void *opaque, int y0, int y1)
+{
+    FBDevice *fb_dev = s->fb_dev;
+    if (s->fb_all_dirty) {
+        s->fb_all_dirty = false;
+        y0 = 0;
+        y1 = fb_dev->height;
+    }
+    if (y0 < 0)
+        y0 = 0;
+    if (y1 > fb_dev->height)
+        y1 = fb_dev->height;
+    if (y1 > y0)
+        redraw_func(opaque, 0, y0, fb_dev->width, y1 - y0);
+}
+#endif
 
 #if BPP == 32
 static void vga_draw_glyph8(uint8_t *d, int linesize,
@@ -829,7 +892,12 @@ static void vbe_update_vgaregs(VGAState *s)
     s->gr[VGA_GFX_MODE] = (s->gr[VGA_GFX_MODE] & ~0x60) |
         (shift_control << 5);
     s->cr[VGA_CRTC_MAX_SCAN] &= ~0x9f; /* no double scan */
+#ifdef VGA_TWO_CORES
+    /* this runs on the emulator's core: the drawing clears (vga_refresh()) */
+    vga_ask(&s->force_clear_req);
+#else
     vga_clear_screen(s);
+#endif
 }
 
 /* the text refresh is just for debugging and initial boot message, so
@@ -847,6 +915,9 @@ static void vga_text_refresh(VGAState *s,
     uint32_t fgcol, bgcol, cursor_offset, cursor_start, cursor_end;
     uint32_t now = get_uticks();
     int blink_changed = 0;
+#ifdef VGA_REDRAW_DIRTY_ROWS
+    int dy0 = fb_dev->height, dy1 = 0;      /* the rows drawn */
+#endif
     if (after_eq(now, s->cursor_blink_time)) {
         s->cursor_blink_time = now + 133333;
         s->cursor_visible_phase = !s->cursor_visible_phase;
@@ -871,7 +942,14 @@ static void vga_text_refresh(VGAState *s,
         }
     }
 
+#ifdef VGA_REDRAW_DIRTY_ROWS
+    /* The colours are taken every time, also when the screen is being
+       drawn in full anyway: with || first, a full redraw left last_palette
+       as it was, and the next picture was drawn in full again. */
+    full_update = update_palette16(s, s->last_palette) || full_update;
+#else
     full_update = full_update || update_palette16(s, s->last_palette);
+#endif
     /* AR10h bit 3: attribute bit 7 makes a character blink, and the
        background has only eight colours */
     int blink = s->ar[0x10] & 0x08;
@@ -1114,6 +1192,14 @@ static void vga_text_refresh(VGAState *s,
             ch_addr += 4;
             dst += (BPP / 8) * cwidth * dw;
         }
+#ifdef VGA_REDRAW_DIRTY_ROWS
+        if (cx_max >= cx_min) {
+            if (y1 + top + first < dy0)
+                dy0 = y1 + top + first;
+            if (y1 + top + last > dy1)
+                dy1 = y1 + top + last;
+        }
+#endif
 #if defined(SCALE_3_2) || defined(SCALE_2_1) || defined(SWAPXY)
 #if defined(SCALE_2_1)
 #define KLINE 2
@@ -1172,7 +1258,11 @@ static void vga_text_refresh(VGAState *s,
     stride = (cxend - cxbegin) * cwidth * (BPP / 8);
     }
 #endif
+#ifdef VGA_REDRAW_DIRTY_ROWS
+    vga_redraw_rows(s, redraw_func, opaque, dy0, dy1);
+#else
     redraw_func(opaque, 0, 0, fb_dev->width, fb_dev->height);
+#endif
 }
 
 static void vga_graphic_refresh(VGAState *s,
@@ -1333,6 +1423,12 @@ static void vga_graphic_refresh(VGAState *s,
      * other case.
      */
     bool same_place = s->drawn_w == w && s->drawn_h == h;
+#ifdef VGA_TWO_CORES
+    /* asked for from the other core: see vga_clear_screen() */
+    uint32_t clear_req = __atomic_load_n(&s->clear_req, __ATOMIC_ACQUIRE);
+    s->clear_wanted = clear_req != s->clear_req_seen;
+    s->clear_req_seen = clear_req;
+#endif
     if (s->clear_wanted && !(s->rest_black && same_place))
         vga_clear_screen(s);
     s->clear_wanted = false;
@@ -1401,8 +1497,15 @@ static void vga_graphic_refresh(VGAState *s,
         s->seen_cols = s->seen_rows = 0;
     }
 #endif
+#ifdef VGA_REDRAW_DIRTY_ROWS
+    int gy0 = fb_dev->height, gy1 = 0;      /* the rows drawn */
+    int yoff = i0 / fb_dev->stride;         /* where the picture's top is */
+#endif
     for (int y = 0; y < h; y++) {
         uint32_t addr = addr1;
+#ifdef VGA_REDRAW_DIRTY_ROWS
+        bool row_drawn = false;
+#endif
         if (!(s->cr[0x17] & 1)) {
             int shift;
             /* CGA compatibility handling */
@@ -1440,6 +1543,9 @@ static void vga_graphic_refresh(VGAState *s,
                     if (trust && seen[c] == pl)
                         continue;
                     seen[c] = pl;
+#ifdef VGA_REDRAW_DIRTY_ROWS
+                    row_drawn = true;
+#endif
                     int n = w - 8 * c;
                     if (n > 8)
                         n = 8;
@@ -1462,6 +1568,9 @@ static void vga_graphic_refresh(VGAState *s,
                     if (trust && seen[c] == pl)
                         continue;
                     seen[c] = pl;
+#ifdef VGA_REDRAW_DIRTY_ROWS
+                    row_drawn = true;
+#endif
                     int n = w - 16 * c;
                     if (n > 16)
                         n = 16;
@@ -1603,8 +1712,15 @@ static void vga_graphic_refresh(VGAState *s,
                buffer in memory that is slow to write: the picture is
                the same.  i is even and so is the frame buffer. */
             uint16_t *d = (uint16_t *) (fb_dev->fb_data + i);
+#ifdef VGA_REDRAW_DIRTY_ROWS
+            if (*d != (uint16_t) color) {
+                *d = color;
+                row_drawn = true;
+            }
+#else
             if (*d != (uint16_t) color)
                 *d = color;
+#endif
 #else
             fb_dev->fb_data[i + 0] = color;
             fb_dev->fb_data[i + 1] = color >> 8;
@@ -1614,6 +1730,17 @@ static void vga_graphic_refresh(VGAState *s,
 #error "bad bpp"
 #endif
         }
+#ifdef VGA_REDRAW_DIRTY_ROWS
+#if !defined(VGA_STORE_CHANGED) || BPP != 16
+        if (x0 < w)
+            row_drawn = true;   /* every pixel of the line was stored */
+#endif
+        if (row_drawn) {
+            if (y + yoff < gy0)
+                gy0 = y + yoff;
+            gy1 = y + yoff + 1;
+        }
+#endif
         if (!multi_run) {
             int mask = (s->cr[0x17] & 3) ^ 3;
             if ((y1 & mask) == mask)
@@ -1664,11 +1791,82 @@ static void vga_graphic_refresh(VGAState *s,
     /* every line of the screen is now what s->seen says, or not */
     s->seen_valid = fast;
 #endif
+#ifdef VGA_REDRAW_DIRTY_ROWS
+    vga_redraw_rows(s, redraw_func, opaque, gy0, gy1);
+#else
     redraw_func(opaque, 0, 0, fb_dev->width, fb_dev->height);
+#endif
 }
+
+#ifdef VGA_RETRACE_REALTIME
+/*
+ * Port 3DAh (and 3BAh) as a VGA would show it now, worked out from the
+ * clock and the CRT controller's timing, so that a program that waits for
+ * the retrace sees about 70 a second in the 400-line modes (text, 13h) and
+ * 60 in the 480-line ones, however often the picture is drawn here.
+ *
+ * Bit 0 (not in the picture) is set in the blanking between lines and
+ * during the vertical blanking; bit 3 (vertical retrace) from the retrace
+ * start (CR10h) to the end of the frame.  On a VGA bit 3 lasts two lines,
+ * 64 us; here it lasts the rest of the blanking, about 1.1 ms, so that a
+ * guest this slow, or one that a timer interrupt holds up, still sees each
+ * retrace begin.  A VBE mode, or registers that make no sense yet, count
+ * as 60 Hz.
+ */
+static uint8_t vga_retrace_status(VGAState *s)
+{
+    uint32_t now = get_uticks();
+    /* the dot clock: misc output bits 2-3 choose 25.175 or 28.322 MHz */
+    uint32_t khz = (s->msr & 0x0c) == 0x04 ? 28322 : 25175;
+    uint32_t cw = (s->sr[0x01] & 0x01) ? 8 : 9;    /* dots a character */
+    if (s->sr[0x01] & 0x08)
+        cw *= 2;                                    /* half the dot clock */
+    uint32_t htotal = s->cr[0x00] + 5;
+    uint32_t hdisp = s->cr[0x01] + 1;
+    uint32_t vtotal = (s->cr[0x06] | ((s->cr[0x07] & 0x01) << 8) |
+                       ((s->cr[0x07] & 0x20) << 4)) + 2;
+    uint32_t vdisp = (s->cr[0x12] | ((s->cr[0x07] & 0x02) << 7) |
+                      ((s->cr[0x07] & 0x40) << 3)) + 1;
+    uint32_t vrs = s->cr[0x10] | ((s->cr[0x07] & 0x04) << 6) |
+        ((s->cr[0x07] & 0x80) << 2);
+    uint32_t line16 = htotal * cw * 16000 / khz;   /* a line, in 1/16 us */
+    uint32_t frame = vtotal * line16 / 16;          /* a frame, in us */
+
+    if (vbe_enabled(s) || frame < 8000 || frame > 40000 ||
+        vdisp >= vtotal || hdisp >= htotal || line16 == 0) {
+        frame = 16667;
+        vtotal = 625;
+        vdisp = 600;
+        vrs = 601;
+        line16 = frame * 16 / vtotal;
+        htotal = 5;
+        hdisp = 4;
+    }
+    if (vrs < vdisp || vrs >= vtotal)
+        vrs = vdisp + (vtotal - vdisp) / 4;
+
+    uint32_t pos16 = (now % frame) * 16;
+    uint32_t line = pos16 / line16;
+    uint8_t st = 0;
+    if (line >= vdisp) {
+        st |= ST01_DISP_ENABLE;
+        if (line >= vrs)
+            st |= ST01_V_RETRACE;
+    } else if ((pos16 % line16) * htotal >= line16 * hdisp) {
+        st |= ST01_DISP_ENABLE;         /* between two lines */
+    }
+    return st;
+}
+#endif
 
 int vga_step(VGAState *s)
 {
+#ifdef VGA_RETRACE_REALTIME
+    /* the retrace bits follow the clock (vga_retrace_status()); the caller
+       decides how often to draw */
+    (void) s;
+    return 1;
+#else
     uint32_t now = get_uticks();
     int ret = 0;
     if (after_eq(now, s->retrace_time)) {
@@ -1688,6 +1886,7 @@ int vga_step(VGAState *s)
         }
     }
     return ret;
+#endif
 }
 
 void vga_refresh(VGAState *s,
@@ -1712,6 +1911,14 @@ void vga_refresh(VGAState *s,
         s->cleared = false;
     }
 #endif
+#ifdef VGA_TWO_CORES
+    /* a VBE mode set on the emulator's core asked for this */
+    if (__atomic_load_n(&s->force_clear_req, __ATOMIC_ACQUIRE) !=
+        s->force_clear_seen) {
+        vga_clear_screen(s);
+        full_update = 1;
+    }
+#endif
     if (graphic_mode != s->graphic_mode) {
         s->graphic_mode = graphic_mode;
         full_update = 1;
@@ -1724,6 +1931,12 @@ void vga_refresh(VGAState *s,
     } else if (s->graphic_mode == 1) {
         vga_text_refresh(s, redraw_func, opaque, full_update);
     }
+#ifdef VGA_REDRAW_DIRTY_ROWS
+    else if (s->fb_all_dirty) {
+        /* blanked: the black screen must reach the panel too */
+        vga_redraw_rows(s, redraw_func, opaque, 0, 0);
+    }
+#endif
 }
 
 /* force some bits to zero */
@@ -1839,6 +2052,9 @@ uint32_t vga_ioport_read(VGAState *s, uint32_t addr)
         case 0x3da:
             /* just toggle to fool polling */
 //            s->st01 ^= ST01_V_RETRACE | ST01_DISP_ENABLE;
+#ifdef VGA_RETRACE_REALTIME
+            s->st01 = vga_retrace_status(s);
+#endif
             val = s->st01;
             s->ar_flip_flop = 0;
             break;
@@ -1980,12 +2196,22 @@ void vga_ioport_write(VGAState *s, uint32_t addr, uint32_t val)
                glass itself, each clear is a black flash and a whole
                picture stored again.  So it waits for the next picture,
                which can tell whether it would make a difference. */
+#ifdef VGA_TWO_CORES
+            /* this runs on the emulator's core: the drawing clears */
+#ifdef VGA_PLANAR_FAST
+            if (vga_planar_fast)
+                vga_ask(&s->clear_req);
+            else
+#endif
+            vga_ask(&s->force_clear_req);
+#else
 #ifdef VGA_PLANAR_FAST
             if (vga_planar_fast)
                 s->clear_wanted = true;
             else
 #endif
             vga_clear_screen(s);
+#endif
         }
         if (s->vga_text_ops && s->graphic_mode == 1) {
             int width = (s->cr[0x01] + 1);
@@ -2570,6 +2796,9 @@ VGAState *vga_init(char *vga_ram, int vga_ram_size,
     s->cursor_visible_phase = 1;
     s->retrace_time = get_uticks();
     s->retrace_phase = 0;
+#ifdef VGA_REDRAW_DIRTY_ROWS
+    s->fb_all_dirty = true;     /* whatever is on the screen now is not ours */
+#endif
     fb_dev->width = width;
     fb_dev->height = height;
 #ifdef SWAPXY
