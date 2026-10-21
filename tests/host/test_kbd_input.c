@@ -555,12 +555,18 @@ static void test_keyboards(void)
 static int mouse_read(uint8_t *out, int max)
 {
 	int n = 0;
-	/* the mouse queue: ps2_read_data on the mouse; how much is there is
-	   not exported, so read until a repeat of the last byte is all that
-	   comes (ps2_read_data gives the last byte again when empty) */
+	/* the mouse queue: ps2_read_data on the mouse, as much as is there
+	   (i8042.c keeps the count to itself: see below).  The packets are
+	   made in the controller's step, at most one a sample (10 ms at the
+	   default 100 a second), so the clock goes on by 20 ms a round, 400 ms
+	   in all. */
 	extern int ps2_mouse_pending_for_test(void);
-	while (n < max && ps2_mouse_pending_for_test() > 0)
-		out[n++] = ps2_read_data(mouse);
+	for (int round = 0; round < 20; round++) {
+		now_us += 20000;
+		kbd_step(ctrl);
+		while (n < max && ps2_mouse_pending_for_test() > 0)
+			out[n++] = ps2_read_data(mouse);
+	}
 	return n;
 }
 

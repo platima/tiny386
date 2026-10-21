@@ -43,6 +43,17 @@ static int after_eq(uint32_t a, uint32_t b)
 #include "freertos/semphr.h"
 #endif
 
+#ifdef PS2_KBD_HOOKS
+/* The ESP-IDF port: the mouse reaches the PS/2 side on the emulator's own
+   thread.  ps2_mouse_event(), called from a USB or CH9350L task on the
+   other core, only puts each report in a small ring; kbd_step() turns them
+   into packets there: a whole packet or none, no faster than the sample
+   rate the guest has set, and never two button states in one packet.  The
+   Linux route builds this file without PS2_KBD_HOOKS and keeps tiny386's
+   own way. */
+#define PS2_MOUSE_DEFERRED
+#endif
+
 /* debug PC keyboard */
 //#define DEBUG_KBD
 
@@ -459,6 +470,16 @@ struct  PS2KbdState {
 #endif
 };
 
+#ifdef PS2_MOUSE_DEFERRED
+#define MOUSE_RING 32           /* reports waiting for kbd_step(), a power of two */
+#define MOUSE_BACKLOG 1023      /* counts kept back for the guest, each way */
+typedef struct {
+    int16_t dx, dy;
+    int8_t dz;
+    uint8_t buttons;
+} MouseReport;
+#endif
+
 struct PS2MouseState {
     PS2State common;
     uint8_t mouse_status;
@@ -471,6 +492,18 @@ struct PS2MouseState {
     int mouse_dy;
     int mouse_dz;
     uint8_t mouse_buttons;
+#ifdef PS2_MOUSE_DEFERRED
+    /* from the reporting thread to kbd_step(): one writer for each index */
+    MouseReport ring[MOUSE_RING];
+    unsigned ring_head;         /* the reporting thread's */
+    unsigned ring_tail;         /* the emulator's */
+    /* reports that found the ring full, merged into one (carry_pack());
+       0 when there is none.  Newer than everything in the ring. */
+    uint32_t carry;
+    /* the emulator's only: movement or a button change not yet sent */
+    bool pending;
+    uint32_t next_send_us;      /* no packet before this (the sample rate) */
+#endif
 };
 
 void ps2_queue(void *opaque, int b)
@@ -502,6 +535,37 @@ void ps2_queue(void *opaque, int b)
     s->update_irq(s->update_arg, 1);
 #endif
 }
+
+#ifdef PS2_MOUSE_DEFERRED
+/* n bytes, all of them or none: none if fewer than n + headroom places are
+   free.  A mouse packet cut short by a full queue would put every packet
+   after it out of step in the guest's driver. */
+static bool ps2_queue_bytes(PS2State *s, const uint8_t *b, int n, int headroom)
+{
+    PS2Queue *q = &s->queue;
+    bool ok;
+
+#ifdef THREAD_SAFE
+    xSemaphoreTake(q->mutex, portMAX_DELAY);
+#endif
+    ok = q->count + n <= PS2_QUEUE_SIZE - headroom;
+    if (ok) {
+        for (int i = 0; i < n; i++) {
+            q->data[q->wptr] = b[i];
+            if (++q->wptr == PS2_QUEUE_SIZE)
+                q->wptr = 0;
+        }
+        q->count += n;
+    }
+#ifdef THREAD_SAFE
+    xSemaphoreGive(q->mutex);
+#else
+    if (ok)
+        s->update_irq(s->update_arg, 1);
+#endif
+    return ok;
+}
+#endif
 
 #define INPUT_MAKE_KEY_MIN 96
 #define INPUT_MAKE_KEY_MAX 127
@@ -557,6 +621,10 @@ out:;
 #endif
 }
 
+#ifdef PS2_MOUSE_DEFERRED
+static void ps2_mouse_step(PS2MouseState *s);
+#endif
+
 /* to be called in main loop */
 void kbd_step(void *opaque)
 {
@@ -575,6 +643,9 @@ void kbd_step(void *opaque)
 #ifdef THREAD_SAFE
     atomic_flag_clear_explicit(&(kbd->delay_flag), memory_order_release);
     }
+#endif
+#ifdef PS2_MOUSE_DEFERRED
+    ps2_mouse_step(s->mouse);
 #endif
 #ifdef THREAD_SAFE
     if (s->kbd->common.queue.count)
@@ -716,6 +787,195 @@ void ps2_keyboard_set_translation(void *opaque, int mode)
     s->translate = mode;
 }
 
+#ifdef PS2_MOUSE_DEFERRED
+static int clampi(int v, int lo, int hi)
+{
+    return v < lo ? lo : v > hi ? hi : v;
+}
+
+/* One packet from what has not been sent yet, whole or not at all (see
+   ps2_queue_bytes()); false if it did not fit. */
+static bool ps2_mouse_send_packet(PS2MouseState *s, int headroom)
+{
+    uint8_t p[4];
+    int n = 3;
+    int dx1 = clampi(s->mouse_dx, -127, 127);
+    int dy1 = clampi(s->mouse_dy, -127, 127);
+    int dz1 = s->mouse_dz;
+
+    p[0] = 0x08 | ((dx1 < 0) << 4) | ((dy1 < 0) << 5) | (s->mouse_buttons & 0x07);
+    p[1] = dx1 & 0xff;
+    p[2] = dy1 & 0xff;
+    /* extra byte for IMPS/2 or IMEX */
+    switch(s->mouse_type) {
+    default:
+        break;
+    case 3:
+        dz1 = clampi(dz1, -127, 127);
+        p[n++] = dz1 & 0xff;
+        break;
+    case 4:
+        dz1 = clampi(dz1, -7, 7);
+        p[n++] = (dz1 & 0x0f) | ((s->mouse_buttons & 0x18) << 1);
+        break;
+    }
+    if (!ps2_queue_bytes(&s->common, p, n, headroom))
+        return false;
+    s->mouse_dx -= dx1;
+    s->mouse_dy -= dy1;
+    s->mouse_dz -= dz1;
+    s->pending = s->mouse_dx || s->mouse_dy || s->mouse_dz;
+    return true;
+}
+
+/* The ring's overflow, packed in one word that both threads change with
+   compare-and-swap: bit 31 set, buttons 30..26, wheel 25..22 (-7..7), y
+   21..11 and x 10..0 (-1023..1023). */
+static uint32_t carry_pack(int dx, int dy, int dz, int buttons)
+{
+    return 0x80000000u | ((uint32_t) (buttons & 0x1f) << 26) |
+        ((uint32_t) (clampi(dz, -7, 7) & 0xf) << 22) |
+        ((uint32_t) (clampi(dy, -1023, 1023) & 0x7ff) << 11) |
+        ((uint32_t) clampi(dx, -1023, 1023) & 0x7ff);
+}
+
+static MouseReport carry_unpack(uint32_t c)
+{
+    MouseReport r;
+    r.dx = (int16_t) ((int32_t) (c << 21) >> 21);
+    r.dy = (int16_t) ((int32_t) (c << 10) >> 21);
+    r.dz = (int8_t) ((int32_t) (c << 6) >> 28);
+    r.buttons = (c >> 26) & 0x1f;
+    return r;
+}
+
+/* The next report for the emulator, not yet taken: 1 from the ring, 2 the
+   merged one beside it (its word in *c), 0 none. */
+static int mouse_peek(PS2MouseState *s, MouseReport *r, uint32_t *c)
+{
+    unsigned tail = s->ring_tail;
+    if (tail != __atomic_load_n(&s->ring_head, __ATOMIC_ACQUIRE)) {
+        *r = s->ring[tail % MOUSE_RING];
+        return 1;
+    }
+    *c = __atomic_load_n(&s->carry, __ATOMIC_ACQUIRE);
+    if (*c) {
+        *r = carry_unpack(*c);
+        return 2;
+    }
+    return 0;
+}
+
+static bool mouse_take(PS2MouseState *s, int from, uint32_t c)
+{
+    if (from == 1) {
+        __atomic_store_n(&s->ring_tail, s->ring_tail + 1, __ATOMIC_RELEASE);
+        return true;
+    }
+    /* false if another report was merged into it meanwhile: next time */
+    return __atomic_compare_exchange_n(&s->carry, &c, 0, false,
+                                       __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+}
+
+static void mouse_apply(PS2MouseState *s, const MouseReport *r)
+{
+    /* nothing is kept while the guest has the mouse off, as before */
+    if (!(s->mouse_status & MOUSE_STATUS_ENABLED))
+        return;
+    s->mouse_dx = clampi(s->mouse_dx + r->dx, -MOUSE_BACKLOG, MOUSE_BACKLOG);
+    s->mouse_dy = clampi(s->mouse_dy - r->dy, -MOUSE_BACKLOG, MOUSE_BACKLOG);
+    s->mouse_dz = clampi(s->mouse_dz + r->dz, -127, 127);
+    if (r->buttons != s->mouse_buttons) {
+        s->mouse_buttons = r->buttons;
+        s->pending = true;
+    }
+    if (s->mouse_dx || s->mouse_dy || s->mouse_dz)
+        s->pending = true;
+}
+
+/* movement the guest has not had yet is dropped: a reset, or new defaults */
+static void mouse_forget(PS2MouseState *s)
+{
+    s->mouse_dx = 0;
+    s->mouse_dy = 0;
+    s->mouse_dz = 0;
+    s->pending = false;
+}
+
+/* kbd_step(), on the emulator's thread: the reports into packets. */
+static void ps2_mouse_step(PS2MouseState *s)
+{
+    uint32_t now = get_uticks();
+
+    /* further ahead than any sample (10 a second at the slowest): a time
+       from long ago, or the 0 it starts at, seen across the clock's wrap */
+    if ((int32_t) (s->next_send_us - now) > 1000000)
+        s->next_send_us = now;
+    for (;;) {
+        bool streaming = (s->mouse_status & MOUSE_STATUS_ENABLED) &&
+            !(s->mouse_status & MOUSE_STATUS_REMOTE);
+        MouseReport r;
+        uint32_t c = 0;
+        int from;
+
+        /* movement merges into what has not gone out yet; a change of the
+           buttons waits until that has gone, so that a press and a release
+           make two packets however close together they came */
+        while ((from = mouse_peek(s, &r, &c))) {
+            if (streaming && s->pending && r.buttons != s->mouse_buttons)
+                break;
+            if (!mouse_take(s, from, c))
+                break;
+            mouse_apply(s, &r);
+        }
+        if (!streaming || !s->pending) {
+            /* nothing to send: the next packet may go at once */
+            if (after_eq(now, s->next_send_us))
+                s->next_send_us = now;
+            return;
+        }
+        /* no faster than the guest's sample rate, and 16 places kept for
+           its commands' answers, as before */
+        if (!after_eq(now, s->next_send_us) || !ps2_mouse_send_packet(s, 16))
+            return;
+        s->next_send_us = now + 1000000u /
+            (s->mouse_sample_rate ? s->mouse_sample_rate : 100);
+    }
+}
+
+/* Any thread, one report at a time (kbd_input.c holds a lock round it):
+   into the ring for kbd_step().  While the ring is full, or once a report
+   has had to wait beside it, reports are merged into that one, which
+   kbd_step() takes when the ring is empty. */
+void ps2_mouse_event(PS2MouseState *s,
+                     int dx, int dy, int dz, int buttons_state)
+{
+    unsigned head = s->ring_head;
+    uint32_t c = __atomic_load_n(&s->carry, __ATOMIC_ACQUIRE);
+
+    if (c || head - __atomic_load_n(&s->ring_tail, __ATOMIC_ACQUIRE) >= MOUSE_RING) {
+        uint32_t n;
+        do {
+            if (c) {
+                MouseReport o = carry_unpack(c);
+                n = carry_pack(o.dx + dx, o.dy + dy, o.dz + dz, buttons_state);
+            } else {
+                n = carry_pack(dx, dy, dz, buttons_state);
+            }
+        } while (!__atomic_compare_exchange_n(&s->carry, &c, n, false,
+                                              __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE));
+        return;
+    }
+    MouseReport *r = &s->ring[head % MOUSE_RING];
+    r->dx = clampi(dx, -MOUSE_BACKLOG, MOUSE_BACKLOG);
+    r->dy = clampi(dy, -MOUSE_BACKLOG, MOUSE_BACKLOG);
+    r->dz = clampi(dz, -127, 127);
+    r->buttons = buttons_state & 0x1f;
+    __atomic_store_n(&s->ring_head, head + 1, __ATOMIC_RELEASE);
+}
+
+#else /* tiny386's own: the packets made where the report comes in */
+
 static void ps2_mouse_send_packet(PS2MouseState *s)
 {
     unsigned int b;
@@ -791,6 +1051,7 @@ void ps2_mouse_event(PS2MouseState *s,
         }
     }
 }
+#endif /* PS2_MOUSE_DEFERRED */
 
 void ps2_write_mouse(void *opaque, int val)
 {
@@ -850,7 +1111,11 @@ void ps2_write_mouse(void *opaque, int val)
             break;
         case AUX_POLL:
             ps2_queue(&s->common, AUX_ACK);
+#ifdef PS2_MOUSE_DEFERRED
+            ps2_mouse_send_packet(s, 0);
+#else
             ps2_mouse_send_packet(s);
+#endif
             break;
         case AUX_ENABLE_DEV:
             s->mouse_status |= MOUSE_STATUS_ENABLED;
@@ -864,6 +1129,9 @@ void ps2_write_mouse(void *opaque, int val)
             s->mouse_sample_rate = 100;
             s->mouse_resolution = 2;
             s->mouse_status = 0;
+#ifdef PS2_MOUSE_DEFERRED
+            mouse_forget(s);
+#endif
             ps2_queue(&s->common, AUX_ACK);
             break;
         case AUX_RESET:
@@ -871,6 +1139,9 @@ void ps2_write_mouse(void *opaque, int val)
             s->mouse_resolution = 2;
             s->mouse_status = 0;
             s->mouse_type = 0;
+#ifdef PS2_MOUSE_DEFERRED
+            mouse_forget(s);
+#endif
             ps2_queue(&s->common, AUX_ACK);
             ps2_queue(&s->common, 0xaa);
             ps2_queue(&s->common, s->mouse_type);

@@ -86,6 +86,37 @@ $CC $CFLAGS -DKBD_INPUT_HOST -DPS2_KBD_HOOKS -I"$TREE" -I"$TREE/esp/main" \
 "$OUT/test_kbd_input"
 result $? "kbd_input.c: scancodes, sequences, typematic, keyboards, lights, hotkey, mouse"
 
+# ==== 4b. the PS/2 mouse: whole packets, the sample rate, two threads ====
+# The same i8042.c object through kbd_input.c with a fake clock; then
+# i8042.c built as on the board (BUILD_ESP32, the stand-in mutex) with a
+# reporting thread and an emulator thread.  If the tree has the v3 tag (the
+# review's starting point), the first part is also run against v3's
+# i8042.c, where the backlog has to put the packets out of step.
+echo
+$CC $CFLAGS -DKBD_INPUT_HOST -DPS2_KBD_HOOKS -I"$TREE" -I"$TREE/esp/main" \
+    -o "$OUT/test_ps2_mouse" "$HERE/test_ps2_mouse.c" "$TREE/esp/main/kbd_input.c" \
+    "$OUT/i8042-hooks.o" || exit 1
+"$OUT/test_ps2_mouse"
+result $? "PS/2 mouse: backlog, clicks, sample rate, remote mode, reset, mouse off"
+$CC $CFLAGS -Wno-unused-function -DBUILD_ESP32 -DPS2_KBD_HOOKS -DTWO_THREADS \
+    -I"$HERE/shim" -I"$TREE" -o "$OUT/test_ps2_mouse_threads" \
+    "$HERE/test_ps2_mouse.c" "$TREE/i8042.c" -lpthread || exit 1
+"$OUT/test_ps2_mouse_threads"
+result $? "PS/2 mouse: a reporting thread and the emulator's thread"
+if git -C "$TREE" rev-parse -q --verify v3 >/dev/null; then
+    git -C "$TREE" show v3:i8042.c > "$OUT/i8042-v3.c"
+    $CC -O1 -g -w -DPS2_KBD_HOOKS -I"$TREE" -c -o "$OUT/i8042-v3-hooks.o" "$OUT/i8042-v3.c" || exit 1
+    $CC $CFLAGS -DKBD_INPUT_HOST -DPS2_KBD_HOOKS -I"$TREE" -I"$TREE/esp/main" \
+        -o "$OUT/test_ps2_mouse_v3" "$HERE/test_ps2_mouse.c" "$TREE/esp/main/kbd_input.c" \
+        "$OUT/i8042-v3-hooks.o" || exit 1
+    echo "(the same test against i8042.c at the v3 tag, where it has to fail)"
+    "$OUT/test_ps2_mouse_v3" > "$OUT/mouse-v3.log" 2>&1
+    st=$?
+    grep "FAIL\|last packet\|bytes read" "$OUT/mouse-v3.log" | head -8 | sed 's/^/    | /'
+    [ $st != 0 ]
+    result $? "PS/2 mouse test catches the backlog fault in v3's i8042.c"
+fi
+
 # ==== 5. HID report descriptors (FIRMWARE-PLAN 3.3) ====
 echo
 $CC $CFLAGS -I"$TREE/esp/main" -o "$OUT/test_hid_parse" "$HERE/test_hid_parse.c" \

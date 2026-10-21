@@ -13,6 +13,9 @@ void ps2_queue(void *, int b);
 void ps2_keyboard_set_translation(void *opaque, int mode);
 
 void ps2_put_keycode(PS2KbdState *s, int is_down, int keycode);
+/* With PS2_KBD_HOOKS this may be called from another thread than the
+   emulator's (one caller at a time): the report waits in a ring and
+   kbd_step() makes the packets. */
 void ps2_mouse_event(PS2MouseState *s,
                      int dx, int dy, int dz, int buttons_state);
 
