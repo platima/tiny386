@@ -24,7 +24,7 @@ $CC $CFLAGS -I"$T/esp/main" -o "$O/ms7210_test" \
 cat "$O/ms7210_test.txt"
 
 echo "== check_ms7210_table.py (HDMI scenario, phase 0)"
-python3 "$HERE/check_ms7210_table.py" "$MD" "$O/ms7210_hdmi.log" --phase 0 \
+python3 "$HERE/check_ms7210_table.py" "$MD" "$O/ms7210_hdmi.log" 0 \
     > "$O/check_table.txt" 2>&1 || rc=1
 cat "$O/check_table.txt"
 

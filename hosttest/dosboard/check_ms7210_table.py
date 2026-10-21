@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check an ms7210_test log against the register table in encoder.md 8.4.
 
-    check_ms7210_table.py ENCODER_MD LOG [--phase N]
+    check_ms7210_table.py ENCODER_MD LOG [PHASE]
 
 Reads every row of the A, B, C, D and E tables in section 8.4 (register,
 operation, value) and, for each, the bus events the driver produced under
@@ -202,9 +202,8 @@ def main():
     if len(sys.argv) < 3:
         raise SystemExit(__doc__)
     md, log = sys.argv[1], sys.argv[2]
-    phase = 0
-    if '--phase' in sys.argv:
-        phase = int(sys.argv[sys.argv.index('--phase') + 1], 0)
+    # the value the scenario put in 0x1281 bits 2:0 (row B22 allows 0x00 or 0x04)
+    phase = int(sys.argv[3], 0) if len(sys.argv) > 3 else 0
     table = parse_table(md)
     groups, final = parse_log(log)
     by_id = {}
