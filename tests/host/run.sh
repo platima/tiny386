@@ -102,6 +102,13 @@ $CC $CFLAGS -I"$TREE" -I"$TREE/esp/main" -o "$OUT/test_setup" "$HERE/test_setup.
 "$OUT/test_setup" "$OUT" "$HERE/data/linux-route"
 result $? "setup.c: ini search, the menu's list and default, lastboot.txt, paths of the Linux route's inis"
 
+# ==== 7. the boot menu's state machine ====
+echo
+$CC $CFLAGS -DBOOTMENU_HOST -I"$TREE/esp/main" -o "$OUT/test_bootmenu" \
+    "$HERE/test_bootmenu.c" "$TREE/esp/main/bootmenu.c" || exit 1
+"$OUT/test_bootmenu"
+result $? "bootmenu.c: countdown, keys, wrap, digits"
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]

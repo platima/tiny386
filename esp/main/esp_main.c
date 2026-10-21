@@ -33,6 +33,7 @@
 #include "kbd_input.h"
 #include "setup.h"
 #include "storage.h"
+#include "bootmenu.h"
 #ifdef LCD_ZERO_COPY
 #include "lcd.h"
 #endif
@@ -647,13 +648,14 @@ static const char *reset_words(esp_reset_reason_t r, bool *bad)
 	}
 }
 
+static char s_title[160];       /* the console's title row */
+
 static void banner(void)
 {
 	const esp_app_desc_t *app = esp_app_get_description();
-	char title[160];
-	snprintf(title, sizeof(title), " tiny386 on %s   %s   ESP-IDF %s",
+	snprintf(s_title, sizeof(s_title), " tiny386 on %s   %s   ESP-IDF %s",
 		 BOARD_NAME, app->version, esp_get_idf_version());
-	console_set_title(title);
+	console_set_title(s_title);
 	console_printf(CON_INFO, "tiny386 for %s, version %s, ESP-IDF %s, ELF "
 		       "%.16s", BOARD_NAME, app->version, esp_get_idf_version(),
 		       esp_app_get_elf_sha256_str());
@@ -778,28 +780,36 @@ static const struct setup_place s_places[] = {
 	{ NULL, NULL },
 };
 
-static void choose_ini(void)
+/* The ini to start from: the only one, or the one the boot menu gives.
+   Returns true if the USB host was started for the menu. */
+static bool choose_ini(void)
 {
-	static struct setup_list inis;
-	if (!setup_find(s_places, &inis))
+	/* 2 KiB: PSRAM, not internal RAM, and only while choosing */
+	struct setup_list *inis = heap_caps_malloc(sizeof(*inis), MALLOC_CAP_SPIRAM);
+	if (!inis)
+		inis = malloc(sizeof(*inis));
+	if (!inis || !setup_find(s_places, inis))
 		console_fatal("There is no ini file on the card. Put a folder called "
 			      "tiny386 in its top folder, with the ini files "
 			      "(freedos.ini, ...), bios.bin, vgabios.bin and the "
 			      "disk images, as the Linux route has it; or a "
 			      "tiny386.ini in the top folder. Then press RESET.");
 	char last[SETUP_NAME_MAX];
-	bool have_last = setup_last_read(inis.dir, last, sizeof(last));
-	int pick = setup_default(&inis, have_last ? last : NULL);
-	if (inis.n > 1) {
-		console_printf(CON_INFO, "%d ini files in %s:", inis.n, inis.dir);
-		for (int i = 0; i < inis.n; i++)
-			console_printf(CON_INFO, "  %-16s %s", inis.ini[i].name,
-				       inis.ini[i].desc);
+	bool have_last = setup_last_read(inis->dir, last, sizeof(last));
+	int pick = setup_default(inis, have_last ? last : NULL);
+	bool usb = false;
+	if (inis->n > 1) {
+		/* the keyboard is needed now, before any ini says enable_usb */
+		usb_setup();
+		usb = true;
+		pick = boot_menu(inis, pick, s_title);
 	}
-	setup_path(&inis, pick, s_ini_path, sizeof(s_ini_path));
-	snprintf(s_ini_name, sizeof(s_ini_name), "%s", inis.ini[pick].name);
-	snprintf(s_ini_dir, sizeof(s_ini_dir), "%s", inis.dir);
+	setup_path(inis, pick, s_ini_path, sizeof(s_ini_path));
+	snprintf(s_ini_name, sizeof(s_ini_name), "%s", inis->ini[pick].name);
+	snprintf(s_ini_dir, sizeof(s_ini_dir), "%s", inis->dir);
 	config.filename = s_ini_path;
+	free(inis);
+	return usb;
 }
 
 void app_main(void)
@@ -865,7 +875,7 @@ void app_main(void)
 			       (psram_len - vga) / (1024 * 1024));
 	}
 
-	choose_ini();
+	bool usb_started = choose_ini();
 
 	memset(&conf, 0, sizeof(conf));
 	conf.mem_size = 0;              /* not given: the most that fits */
@@ -909,7 +919,10 @@ void app_main(void)
 #endif
 
 	if (config.enable_usb) {
-		usb_setup();
+		usb_setup();            /* once: it may be running for the menu */
+	} else if (usb_started) {
+		console_puts(CON_INFO, "[esp] enable_usb = 0 is ignored: USB was "
+			     "started for the boot menu, and stays on.");
 	} else {
 		console_puts(CON_WARN, "USB is off ([esp] enable_usb = 0 in the ini), so "
 			     "there is no keyboard or mouse.");
