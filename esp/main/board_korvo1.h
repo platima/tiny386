@@ -60,3 +60,8 @@
 // vga.c: redraw() is given only the rows of the screen that changed, so
 // lcd_flush() writes back only those.
 #define VGA_REDRAW_DIRTY_ROWS
+// vga.c: a graphics picture larger than the panel (800x600 and up) is
+// scaled down to fit and centred (800x600 as 640x480), rather than cut.
+// Smaller ones are centred as they are: 720x400 text at (40,40), 640x480
+// at (80,0), 320x200 doubled to 640x400 at (80,40).
+#define VGA_SHRINK_LARGE

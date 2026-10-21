@@ -67,8 +67,13 @@ $CC -O1 -g -w -c -I"$HERE/shim" -I"$TREE" -include "$TREE/esp/main/board_korvo1.
     -o "$OUT/vga.o" "$TREE/vga.c" || exit 1
 $CC -O1 -g -w -c -o "$OUT/vgafont.o" "$TREE/vgafont.c" || exit 1
 $CC -o "$OUT/test_vga" "$OUT/test_vga.o" "$OUT/vga.o" "$OUT/vgafont.o" || exit 1
-"$OUT/test_vga"
-result $? "vga.c: retrace against the clock, rows redrawn, clears from the other core"
+"$OUT/test_vga" "$OUT"
+result $? "vga.c: retrace against the clock, rows redrawn, clears from the other core, placement"
+if command -v convert >/dev/null; then
+    for p in "$OUT"/vga-*.ppm; do
+        convert "$p" "${p%.ppm}.png"
+    done
+fi
 
 echo
 echo "host tests: $pass passed, $fail failed"

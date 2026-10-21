@@ -306,8 +306,11 @@ static void i386_task(void *arg)
 	globals.pc = pc;
 	globals.kbd = pc->kbd;
 	globals.mouse = pc->mouse;
-	console_printf(CON_INFO, "Device memory (the 0xA0000 window): %ld of %ld "
-		       "bytes used.", pcram_off, pcram_len);
+	console_printf(CON_INFO, "PC built. Device memory (the 0xA0000 window): %ld "
+		       "of %ld bytes used. Internal RAM free %u KiB (largest "
+		       "block %u KiB).", pcram_off, pcram_len,
+		       (unsigned) (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+		       (unsigned) (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024));
 
 	load_bios_and_reset(pc);
 

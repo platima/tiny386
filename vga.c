@@ -68,10 +68,15 @@ void *pcmalloc(long size);
 #endif
 #endif
 
-/* Only the rows drawn are given to redraw(): for a picture drawn 1:1. */
+/* Only the rows drawn are given to redraw(), and a picture larger than the
+   screen is scaled down to fit: for a picture drawn 1:1 in RGB565. */
 #if defined(VGA_REDRAW_DIRTY_ROWS) && \
     (defined(SCALE_3_2) || defined(SCALE_2_1) || defined(SWAPXY))
 #undef VGA_REDRAW_DIRTY_ROWS
+#endif
+#if defined(VGA_SHRINK_LARGE) && (BPP != 16 || \
+    defined(SCALE_3_2) || defined(SCALE_2_1) || defined(SWAPXY))
+#undef VGA_SHRINK_LARGE
 #endif
 
 //#define DEBUG_VBE
@@ -221,6 +226,9 @@ struct VGAState {
 #endif
 #ifdef VGA_REDRAW_DIRTY_ROWS
     bool fb_all_dirty;      /* cleared since the last redraw(): all rows */
+#endif
+#ifdef VGA_SHRINK_LARGE
+    int shrunk_w, shrunk_h; /* a picture larger than the screen, as drawn */
 #endif
 
 #if defined(SCALE_3_2) || defined(SCALE_2_1) || defined(SWAPXY)
@@ -1265,6 +1273,139 @@ static void vga_text_refresh(VGAState *s,
 #endif
 }
 
+#ifdef VGA_SHRINK_LARGE
+/* One pixel of the picture, as the main loop of vga_graphic_refresh()
+   works it out (RGB565). */
+static uint32_t vga_pixel(VGAState *s, uint32_t addr, int x1,
+                          int shift_control, int bpp, uint32_t plane_mask,
+                          const uint32_t *palette)
+{
+    const uint8_t *vram = s->vga_ram;
+    if (shift_control == 0) {
+        const uint8_t *p = vram + addr + 4 * (x1 >> 3);
+        int bit = 7 - (x1 & 7);
+        if (plane_mask == 1)
+            return palette[(p[0] >> bit) & 1];
+        return palette[((p[0] >> bit) & 1) | (((p[1] >> bit) & 1) << 1) |
+                       (((p[2] >> bit) & 1) << 2) | (((p[3] >> bit) & 1) << 3)];
+    }
+    if (shift_control == 1)
+        return palette[(vram[addr + 4 * (x1 >> 3) + ((x1 & 4) >> 2)] >>
+                        (6 - 2 * (x1 & 3))) & 3];
+    switch (bpp) {
+    case 8:
+        return palette[vram[addr + x1]];
+    case 15: {
+        int k = vram[addr + 2 * x1] | (vram[addr + 2 * x1 + 1] << 8);
+        return (k & 0x1f) | ((k & ~0x1f) << 1);
+    }
+    case 16:
+        return vram[addr + 2 * x1] | (vram[addr + 2 * x1 + 1] << 8);
+    case 24:
+        return (vram[addr + 3 * x1] >> 3) |
+            ((vram[addr + 3 * x1 + 1] >> 2) << 5) |
+            ((vram[addr + 3 * x1 + 2] >> 3) << 11);
+    case 32:
+        return (vram[addr + 4 * x1] >> 3) |
+            ((vram[addr + 4 * x1 + 1] >> 2) << 5) |
+            ((vram[addr + 4 * x1 + 2] >> 3) << 11);
+    }
+    return 0;
+}
+
+/*
+ * A picture larger than the screen (an SVGA or VBE mode above 800x480 on
+ * the Korvo-1): scaled down by the same factor both ways, each pixel of
+ * the screen taken from the nearest pixel of the picture, and centred, so
+ * that all of it can be seen instead of its top left corner.  800x600 shows
+ * as 640x480 in the middle of the screen.  Drawn the plain way, every
+ * pixel every time: these modes are rare here.  No split screen, no
+ * panning and no CGA line addressing in them.
+ */
+static void vga_graphic_refresh_shrunk(VGAState *s,
+                                       SimpleFBDrawFunc *redraw_func,
+                                       void *opaque, int w, int h,
+                                       uint32_t addr1, uint32_t line_offset,
+                                       int multi_scan, int shift_control,
+                                       int xdiv, int bpp,
+                                       const uint32_t *palette)
+{
+    FBDevice *fb_dev = s->fb_dev;
+    int fw = fb_dev->width, fh = fb_dev->height;
+    int sw, sh;
+    if ((uint64_t) fw * h <= (uint64_t) fh * w) {
+        sw = fw;
+        sh = (int) ((uint64_t) h * fw / w);
+    } else {
+        sh = fh;
+        sw = (int) ((uint64_t) w * fh / h);
+    }
+    int ox = (fw - sw) / 2, oy = (fh - sh) / 2;
+    bool vbe = vbe_enabled(s);
+    uint32_t plane_mask = s->ar[0x12];
+
+#ifdef VGA_TWO_CORES
+    /* requests to clear are met by the clear below, when the size changes:
+       in between, the picture's area is drawn in full every time and the
+       rest stays black */
+    s->clear_req_seen = __atomic_load_n(&s->clear_req, __ATOMIC_ACQUIRE);
+#endif
+#ifdef VGA_PLANAR_FAST
+    s->clear_wanted = false;
+    if (s->drawn_w != sw || s->drawn_h != sh || !s->rest_black)
+        vga_clear_screen(s);
+    s->drawn_w = sw;
+    s->drawn_h = sh;
+    s->cleared = false;
+    s->seen_valid = false;
+#else
+    if (s->shrunk_w != sw || s->shrunk_h != sh)
+        vga_clear_screen(s);
+#endif
+    s->shrunk_w = sw;
+    s->shrunk_h = sh;
+
+    /* the bytes of video memory one line of the picture takes */
+    uint32_t line_bytes;
+    if (shift_control <= 1)
+        line_bytes = (w / xdiv + 7) / 8 * 4;
+    else
+        line_bytes = (uint32_t) (w / xdiv) * ((bpp + 7) / 8);
+
+    int gy0 = fh, gy1 = 0;
+    for (int dy = 0; dy < sh; dy++) {
+        int y = (int) ((int64_t) dy * h / sh);
+        uint32_t addr = addr1 + (uint32_t) (y / (multi_scan + 1)) * line_offset;
+        if (!vbe)
+            addr &= 0x3ffff;
+        bool blank = (uint64_t) addr + line_bytes >
+            (uint64_t) s->vga_ram_size + VGA_MEM_SLACK;
+        uint16_t *d = (uint16_t *) (fb_dev->fb_data) + (oy + dy) * fw + ox;
+        bool row_drawn = false;
+        for (int dx = 0; dx < sw; dx++) {
+            int x = (int) ((int64_t) dx * w / sw);
+            uint16_t px = blank ? 0 :
+                vga_pixel(s, addr, x / xdiv, shift_control, bpp, plane_mask,
+                          palette);
+            if (d[dx] != px) {
+                d[dx] = px;
+                row_drawn = true;
+            }
+        }
+        if (row_drawn) {
+            if (oy + dy < gy0)
+                gy0 = oy + dy;
+            gy1 = oy + dy + 1;
+        }
+    }
+#ifdef VGA_REDRAW_DIRTY_ROWS
+    vga_redraw_rows(s, redraw_func, opaque, gy0, gy1);
+#else
+    redraw_func(opaque, 0, 0, fw, fh);
+#endif
+}
+#endif
+
 static void vga_graphic_refresh(VGAState *s,
                                 SimpleFBDrawFunc *redraw_func, void *opaque,
                                 int full_update)
@@ -1381,6 +1522,14 @@ static void vga_graphic_refresh(VGAState *s,
     int yyt = 0;
     int yy = 0;
 #else
+#ifdef VGA_SHRINK_LARGE
+    if (w > fb_dev->width || h > fb_dev->height) {
+        vga_graphic_refresh_shrunk(s, redraw_func, opaque, w, h, addr1,
+                                   line_offset, multi_scan, shift_control,
+                                   xdiv, bpp, palette);
+        return;
+    }
+#endif
     int hx = fb_dev->height;
     int wx = fb_dev->width;
     if (h < hx)

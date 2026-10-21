@@ -55,6 +55,27 @@ void pci_register_bar(PCIDevice *d, unsigned int bar_num, uint32_t size, int typ
 /* ---- checks ---- */
 
 static int failures;
+static const char *out_dir;
+
+/* the frame buffer as a picture, for a person to look at */
+static void write_ppm(const char *name, const uint16_t *p, int w, int h)
+{
+	char path[512];
+	if (!out_dir)
+		return;
+	snprintf(path, sizeof(path), "%s/%s", out_dir, name);
+	FILE *f = fopen(path, "wb");
+	if (!f)
+		return;
+	fprintf(f, "P6\n%d %d\n255\n", w, h);
+	for (int i = 0; i < w * h; i++) {
+		unsigned r = (p[i] >> 11) & 31, g = (p[i] >> 5) & 63, b = p[i] & 31;
+		unsigned char px[3] = { r << 3 | r >> 2, g << 2 | g >> 4, b << 3 | b >> 2 };
+		fwrite(px, 1, 3, f);
+	}
+	fclose(f);
+	printf("  wrote %s\n", path);
+}
 
 static void check(int ok, const char *what)
 {
@@ -142,6 +163,52 @@ static void set_mode_12h(VGAState *s)
 	vga_ioport_write(s, 0x3c0, 0x20);  /* the picture on */
 }
 
+/* an 800x600 picture: a red and green ramp, white lines every 100 pixels
+   and a white frame round the edge, so that a picture of the screen shows
+   whether all of it is there */
+static uint16_t pattern(int x, int y)
+{
+	if (x % 100 == 0 || y % 100 == 0 || x >= 796 || y >= 596 || x < 4 || y < 4)
+		return 0xffff;
+	int r = x * 31 / 799, g = y * 63 / 599;
+	return (uint16_t) ((r << 11) | (g << 5) | 8);
+}
+
+/* the registers of mode 13h (320x200, 256 colours) */
+static void set_mode_13h(VGAState *s)
+{
+	static const uint8_t cr[25] = {
+		0x5f, 0x4f, 0x50, 0x82, 0x54, 0x80, 0xbf, 0x1f,
+		0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x9c, 0x8e, 0x8f, 0x28, 0x40, 0x96, 0xb9, 0xa3,
+		0xff };
+	static const uint8_t ar[21] = {
+		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+		0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+		0x41, 0x00, 0x0f, 0x00, 0x00 };
+	static const uint8_t sr[5] = { 0x03, 0x01, 0x0f, 0x00, 0x0e };
+	static const uint8_t gr[9] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x05, 0x0f, 0xff };
+
+	vga_ioport_write(s, 0x3c2, 0x63);
+	for (int i = 0; i < 5; i++) {
+		vga_ioport_write(s, 0x3c4, i);
+		vga_ioport_write(s, 0x3c5, sr[i]);
+	}
+	crtc(s, 0x11, 0x0e);
+	for (int i = 0; i < 25; i++)
+		crtc(s, i, cr[i]);
+	for (int i = 0; i < 9; i++) {
+		vga_ioport_write(s, 0x3ce, i);
+		vga_ioport_write(s, 0x3cf, gr[i]);
+	}
+	vga_ioport_read(s, 0x3da);
+	for (int i = 0; i < 21; i++) {
+		vga_ioport_write(s, 0x3c0, i);
+		vga_ioport_write(s, 0x3c0, ar[i]);
+	}
+	vga_ioport_write(s, 0x3c0, 0x20);
+}
+
 /* ---- redraw ---- */
 
 static int calls, last_y, last_h;
@@ -179,10 +246,13 @@ static void expect_rows(const char *what, int y, int h)
 	printf("  %s: %d call(s), rows %d+%d\n", what, calls, last_y, last_h);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
 	VGAState *s;
 	struct retrace r;
+
+	if (argc > 1)
+		out_dir = argv[1];
 
 	/* ---- retrace ---- */
 	printf("retrace in 80x25 text (as vga_init() leaves it: 28 MHz, 9 dots, 449 lines)\n");
@@ -230,10 +300,23 @@ int main(void)
 	vram[(20 * 80 + 79) * 4] = 'B';
 	refresh(s);
 	expect_rows("a letter on row 20", 40 + 160, 11 * 16);
+	/* a picture of the whole text screen: every cell written */
+	for (int row = 0; row < 25; row++)
+		for (int col = 0; col < 80; col++) {
+			const char *t = "tiny386 80x25 text at (40,40)  ";
+			vram[(row * 80 + col) * 4] = t[col % 31];
+			vram[(row * 80 + col) * 4 + 1] = (row % 7 + 9) | (row % 2 ? 0x10 : 0);
+		}
+	refresh(s);
+	expect_rows("every cell changed", 40, 400);
+	check(fb[39 * W + 400] == 0 && fb[440 * W + 400] == 0 && fb[200 * W + 39] == 0 &&
+	      fb[200 * W + 760] == 0, "text: black outside 40..759 x 40..439");
+	write_ppm("vga-text-80x25.ppm", fb, W, H);
 
 	/* ---- graphics ---- */
 	printf("rows redrawn in 640x480x16 (at 80,0)\n");
 	set_mode_12h(s);
+	memset(vram, 0, VRAM);  /* a black picture (the text and font gone) */
 	refresh(s);
 	expect_rows("into graphics: cleared, all of it", 0, H);
 	refresh(s);
@@ -244,6 +327,13 @@ int main(void)
 	vram[(300 * 80 + 79) * 4 + 3] = 0xff;
 	refresh(s);
 	expect_rows("eight more on line 300", 300, 1);
+	/* where they are: 640 wide in the middle of 800, so column 3's eight
+	   pixels are at x 104 to 111, the first and the last of them set */
+	check(fb[100 * W + 104] != 0 && fb[100 * W + 111] != 0 &&
+	      fb[100 * W + 105] == 0 && fb[100 * W + 103] == 0,
+	      "640x480: the picture's x 24 is the screen's x 104");
+	check(fb[300 * W + 80 + 632] != 0 && fb[300 * W + 80 + 639] != 0 &&
+	      fb[300 * W + 80 + 640] == 0, "640x480: its last column at x 719");
 
 	/* ---- the clears the emulator's core asks for ---- */
 	printf("clears asked for by the emulator\n");
@@ -271,6 +361,64 @@ int main(void)
 	r = measure(s, 0, 1000000);
 	printf("  VBE: %d retraces in 1 s\n", r.edges);
 	check(r.edges >= 59 && r.edges <= 61, "60 retraces a second in a VBE mode");
+
+	/* ---- mode 13h: 320x200 doubled to 640x400 in the middle ---- */
+	printf("mode 13h (320x200x256) placement\n");
+	memset(vram, 0, sizeof(vram));
+	s = vga_init((char *) vram, VRAM, (uint8_t *) fb, W, H);
+	set_mode_13h(s);
+	memset(vram, 0, VRAM);
+	vram[0] = 15;           /* pixel (0,0) */
+	vram[320 * 199 + 319] = 15;     /* pixel (319,199) */
+	refresh(s);
+	expect_rows("into mode 13h", 0, H);
+	check(fb[40 * W + 80] != 0 && fb[40 * W + 81] == fb[40 * W + 80] &&
+	      fb[41 * W + 80] == fb[40 * W + 80] && fb[41 * W + 81] == fb[40 * W + 80],
+	      "13h: pixel (0,0) is the 2x2 block at (80,40)");
+	check(fb[40 * W + 82] == 0 && fb[42 * W + 80] == 0 && fb[39 * W + 80] == 0 &&
+	      fb[40 * W + 79] == 0, "13h: and nothing round it");
+	check(fb[439 * W + 719] != 0 && fb[438 * W + 718] != 0 && fb[440 * W + 719] == 0 &&
+	      fb[439 * W + 720] == 0, "13h: pixel (319,199) is the 2x2 block at (718,438)");
+	for (int y = 0; y < 200; y++)   /* a picture: the 256 colours in bands */
+		for (int x = 0; x < 320; x++)
+			vram[y * 320 + x] = (x / 20) + (y / 25) * 16;
+	refresh(s);
+	write_ppm("vga-13h-320x200.ppm", fb, W, H);
+
+	/* ---- larger than the panel: VBE 800x600x16, scaled to 640x480 ---- */
+	printf("VBE 800x600x16 on an 800x480 panel\n");
+	static uint8_t bigvram[1024 * 1024 + VGA_MEM_SLACK];
+	s = vga_init((char *) bigvram, 1024 * 1024, (uint8_t *) fb, W, H);
+	refresh(s);
+	vbe_write(s, 0, 1); vbe_write(s, 1, 800);
+	vbe_write(s, 0, 2); vbe_write(s, 1, 600);
+	vbe_write(s, 0, 3); vbe_write(s, 1, 16);
+	vbe_write(s, 0, 4); vbe_write(s, 1, 0x41);
+	for (int y = 0; y < 600; y++)
+		for (int x = 0; x < 800; x++) {
+			uint16_t p = pattern(x, y);
+			bigvram[(y * 800 + x) * 2] = p;
+			bigvram[(y * 800 + x) * 2 + 1] = p >> 8;
+		}
+	refresh(s);
+	expect_rows("VBE 800x600 on", 0, H);
+	int good = 1;
+	for (int dy = 0; dy < 480; dy += 7)
+		for (int dx = 0; dx < 640; dx += 5) {
+			int x = dx * 800 / 640, y = dy * 600 / 480;
+			uint16_t want = pattern(x, y);
+			if (fb[dy * W + 80 + dx] != want)
+				good = 0;
+		}
+	check(good, "800x600: each screen pixel is the nearest picture pixel, 640x480 at (80,0)");
+	check(fb[100 * W + 79] == 0 && fb[100 * W + 720] == 0,
+	      "800x600: black either side");
+	write_ppm("vga-vbe-800x600-scaled.ppm", fb, W, H);
+	refresh(s);
+	expect_rows("800x600, nothing changed", 0, 0);
+	bigvram[(300 * 800 + 400) * 2] ^= 0xff;  /* a pixel on line 300 = row 240 */
+	refresh(s);
+	expect_rows("800x600, one pixel changed", 240, 1);
 
 	if (failures) {
 		printf("test_vga: %d checks FAILED\n", failures);
