@@ -26,7 +26,7 @@
 #include "vga.h"
 #include "pci.h"
 
-/* ---- what vga.c needs from the rest of the emulator ---- */
+/* ==== what vga.c needs from the rest of the emulator ==== */
 
 static uint32_t fake_us;
 uint32_t get_uticks(void)
@@ -52,7 +52,7 @@ void pci_register_bar(PCIDevice *d, unsigned int bar_num, uint32_t size, int typ
 {
 }
 
-/* ---- checks ---- */
+/* ==== checks ==== */
 
 static int failures;
 static const char *out_dir;
@@ -91,7 +91,7 @@ static void check(int ok, const char *what)
 static uint16_t fb[W * H];
 static uint8_t vram[VRAM + VGA_MEM_SLACK];
 
-/* ---- retrace ---- */
+/* ==== retrace ==== */
 
 struct retrace {
 	int edges;              /* vertical retraces begun */
@@ -209,7 +209,7 @@ static void set_mode_13h(VGAState *s)
 	vga_ioport_write(s, 0x3c0, 0x20);
 }
 
-/* ---- redraw ---- */
+/* ==== redraw ==== */
 
 static int calls, last_y, last_h;
 
@@ -254,7 +254,7 @@ int main(int argc, char **argv)
 	if (argc > 1)
 		out_dir = argv[1];
 
-	/* ---- retrace ---- */
+	/* ==== retrace ==== */
 	printf("retrace in 80x25 text (as vga_init() leaves it: 28 MHz, 9 dots, 449 lines)\n");
 	s = vga_init((char *) vram, VRAM, (uint8_t *) fb, W, H);
 	r = measure(s, 123456, 1000000);
@@ -282,7 +282,7 @@ int main(int argc, char **argv)
 	check(r.edges >= 59 && r.edges <= 61, "60 a second when the registers make no sense");
 	set_mode_12h(s);
 
-	/* ---- which rows are redrawn: text ---- */
+	/* ==== which rows are redrawn: text ==== */
 	printf("rows redrawn in 80x25 text (720x400 at 40,40)\n");
 	memset(vram, 0, sizeof(vram));
 	s = vga_init((char *) vram, VRAM, (uint8_t *) fb, W, H);
@@ -313,7 +313,7 @@ int main(int argc, char **argv)
 	      fb[200 * W + 760] == 0, "text: black outside 40..759 x 40..439");
 	write_ppm("vga-text-80x25.ppm", fb, W, H);
 
-	/* ---- graphics ---- */
+	/* ==== graphics ==== */
 	printf("rows redrawn in 640x480x16 (at 80,0)\n");
 	set_mode_12h(s);
 	memset(vram, 0, VRAM);  /* a black picture (the text and font gone) */
@@ -335,7 +335,7 @@ int main(int argc, char **argv)
 	check(fb[300 * W + 80 + 632] != 0 && fb[300 * W + 80 + 639] != 0 &&
 	      fb[300 * W + 80 + 640] == 0, "640x480: its last column at x 719");
 
-	/* ---- the clears the emulator's core asks for ---- */
+	/* ==== the clears the emulator's core asks for ==== */
 	printf("clears asked for by the emulator\n");
 	crtc(s, 0x0e, 0x12);    /* what the BIOS does for every character */
 	refresh(s);
@@ -362,7 +362,7 @@ int main(int argc, char **argv)
 	printf("  VBE: %d retraces in 1 s\n", r.edges);
 	check(r.edges >= 59 && r.edges <= 61, "60 retraces a second in a VBE mode");
 
-	/* ---- mode 13h: 320x200 doubled to 640x400 in the middle ---- */
+	/* ==== mode 13h: 320x200 doubled to 640x400 in the middle ==== */
 	printf("mode 13h (320x200x256) placement\n");
 	memset(vram, 0, sizeof(vram));
 	s = vga_init((char *) vram, VRAM, (uint8_t *) fb, W, H);
@@ -385,7 +385,7 @@ int main(int argc, char **argv)
 	refresh(s);
 	write_ppm("vga-13h-320x200.ppm", fb, W, H);
 
-	/* ---- larger than the panel: VBE 800x600x16, scaled to 640x480 ---- */
+	/* ==== larger than the panel: VBE 800x600x16, scaled to 640x480 ==== */
 	printf("VBE 800x600x16 on an 800x480 panel\n");
 	static uint8_t bigvram[1024 * 1024 + VGA_MEM_SLACK];
 	s = vga_init((char *) bigvram, 1024 * 1024, (uint8_t *) fb, W, H);

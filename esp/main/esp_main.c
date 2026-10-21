@@ -345,7 +345,7 @@ static void i386_task(void *arg)
 	vTaskDelete(NULL);
 }
 
-/* ---- the ini file ---- */
+/* ==== the ini file ==== */
 
 static const char *const known_keys[] = {
 	"esp:ssid", "esp:pass", "esp:enable_usb", "esp:console",

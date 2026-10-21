@@ -20,7 +20,7 @@ result() {
     if [ "$1" = 0 ]; then pass=$((pass + 1)); echo "PASS $2"; else fail=$((fail + 1)); echo "FAIL $2"; fi
 }
 
-# ---- 1. the PS/2 queue's lock (FIRMWARE-PLAN 3.3.1) ----
+# ==== 1. the PS/2 queue's lock (FIRMWARE-PLAN 3.3.1) ====
 # i8042.c as it is now must pass; i8042.c as tiny386 released it (the
 # pristine tag) must fail, which shows that the test sees the bug.
 $CC $CFLAGS -Wno-unused-function -DBUILD_ESP32 -I"$HERE/shim" -I"$TREE" \
@@ -41,7 +41,7 @@ if git -C "$TREE" rev-parse -q --verify pristine >/dev/null; then
     result $? "ps2 queue lock test catches the bug in pristine i8042.c"
 fi
 
-# ---- 2. the boot console and the crash screen (FIRMWARE-PLAN 3.2) ----
+# ==== 2. the boot console and the crash screen (FIRMWARE-PLAN 3.2) ====
 # console.c as the firmware has it, built with CONSOLE_HOST: no ESP-IDF.
 # Pictures of each stage go to OUT as PPM (and PNG if ImageMagick is there).
 echo
@@ -56,7 +56,7 @@ if command -v convert >/dev/null; then
     done
 fi
 
-# ---- 3. the display side of vga.c (FIRMWARE-PLAN 3.1) ----
+# ==== 3. the display side of vga.c (FIRMWARE-PLAN 3.1) ====
 # vga.c with the Korvo-1's board header, a fake clock and stand-ins for the
 # few ESP-IDF headers it includes.  The emulator's own warnings are not
 # this test's business (-w for vga.c), the test's are.

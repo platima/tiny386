@@ -29,7 +29,7 @@
 #include "freertos/semphr.h"
 #include "i8042.h"
 
-/* ---- the stand-in mutex ---- */
+/* ==== the stand-in mutex ==== */
 
 struct HostMutex {
     pthread_mutex_t m;
@@ -91,7 +91,7 @@ int host_mutex_held(SemaphoreHandle_t h)
     return h->held;
 }
 
-/* ---- what i8042.c needs from the rest of the emulator ---- */
+/* ==== what i8042.c needs from the rest of the emulator ==== */
 
 static uint32_t fake_us;
 uint32_t get_uticks(void)
@@ -119,7 +119,7 @@ static void update_irq(void *opaque, int level)
     irq_level = level;
 }
 
-/* ---- checks ---- */
+/* ==== checks ==== */
 
 static int failures;
 

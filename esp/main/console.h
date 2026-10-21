@@ -80,7 +80,7 @@ void display_unlock(void);
 void console_fatal(const char *fmt, ...)
 	__attribute__((noreturn, format(printf, 1, 2)));
 
-/* ---- for the crash screen (crash.c); nothing here takes a lock ---- */
+/* ==== for the crash screen (crash.c); nothing here takes a lock ==== */
 
 #define CRASH_BT_MAX 12
 struct crash_report {

@@ -81,7 +81,7 @@ static const uint16_t bg_of[CON_NLEVELS] = {
 #define CELL_H 16
 #define CARD_H 16       /* the colour card along the bottom */
 
-/* ---------------------------------------------------------------------
+/* ====
  * The ring: the last 8 KiB of log text, in memory that a reset does not
  * clear (RTC_NOINIT_ATTR: the LP SRAM), for the next boot to show.
  */
@@ -201,7 +201,7 @@ int console_ring_tail(char *out, int size, int lines)
 	return found;
 }
 
-/* ---------------------------------------------------------------------
+/* ====
  * The text on the panel: a grid of characters and their colours as they
  * should be (want) and as they are drawn (shown).  Drawing goes over the
  * cells that differ and writes back the rows it drew.
@@ -384,7 +384,7 @@ static void grid_put_line(int level, const char *s, int n)
 	s_pending_nl = true;
 }
 
-/* ---------------------------------------------------------------------
+/* ====
  * Lines out: UART, ring, panel.
  */
 
@@ -503,7 +503,7 @@ void console_set_title(const char *title)
 	con_unlock();
 }
 
-/* ---------------------------------------------------------------------
+/* ====
  * The run before this reset.
  */
 
@@ -539,7 +539,7 @@ void console_show_previous(const char *why)
 	con_unlock();
 }
 
-/* ---------------------------------------------------------------------
+/* ====
  * Who has the panel.
  */
 
@@ -623,7 +623,7 @@ void console_fatal(const char *fmt, ...)
 #endif
 }
 
-/* ---------------------------------------------------------------------
+/* ====
  * Start-up.
  */
 
@@ -682,7 +682,7 @@ uint16_t *console_fb(int *width, int *height)
 	return s_fb;
 }
 
-/* ---------------------------------------------------------------------
+/* ====
  * The hooks.
  */
 
@@ -768,7 +768,7 @@ void console_host_ring_preset(const char *text, bool crashed)
 }
 #endif
 
-/* ---------------------------------------------------------------------
+/* ====
  * The crash screen.  Runs inside the panic handler: interrupts off, the
  * other core stopped, so no locks, no heap, no stdio; straight stores into
  * base.

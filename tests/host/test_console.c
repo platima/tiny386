@@ -45,7 +45,7 @@ static void check(int ok, const char *what)
 	}
 }
 
-/* ---- the flush function: which rows were handed over ---- */
+/* ==== the flush function: which rows were handed over ==== */
 
 static unsigned char flushed[H];
 static int flush_calls;
@@ -72,7 +72,7 @@ static void panel_take(void)
 		}
 }
 
-/* ---- pictures ---- */
+/* ==== pictures ==== */
 
 static void write_ppm(const char *name, const uint16_t *p)
 {
@@ -94,7 +94,7 @@ static void write_ppm(const char *name, const uint16_t *p)
 	printf("  wrote %s\n", path);
 }
 
-/* ---- reading text back off the pixels ---- */
+/* ==== reading text back off the pixels ==== */
 
 /* the character in the cell at (col, row), or -1 if no glyph matches;
    *fg gets its foreground colour (the colour that is not bg) */
@@ -171,7 +171,7 @@ int main(int argc, char **argv)
 	FILE *uart = fopen(line, "w");
 	console_host_set_uart(uart);
 
-	/* ---- 1. a previous run that ended on the crash screen ---- */
+	/* ==== 1. a previous run that ended on the crash screen ==== */
 	printf("previous run and start-up\n");
 	console_host_ring_preset(
 		"I (100) storage: Filesystem mounted\n"
@@ -246,7 +246,7 @@ int main(int argc, char **argv)
 	/* every row with text on it was flushed: the panel copy matches */
 	check(!memcmp(panel, fb, sizeof(fb)), "every drawn row was handed to the flush");
 
-	/* ---- 2. scrolling ---- */
+	/* ==== 2. scrolling ==== */
 	printf("scrolling\n");
 	for (int i = 1; i <= 60; i++)
 		console_printf(i % 10 ? CON_INFO : CON_WARN, "line %d of 60", i);
@@ -270,7 +270,7 @@ int main(int argc, char **argv)
 	console_set_title(" tiny386 on the ESP32-S31-Korvo-1   v3 host test   ESP-IDF v6.1");
 	check(flush_calls == calls_before, "the same title again flushes nothing");
 
-	/* ---- 3. the ring ---- */
+	/* ==== 3. the ring ==== */
 	printf("ring\n");
 	int n = console_ring_tail(tail, sizeof(tail), 3);
 	check(n == 3, "three lines from the ring's tail");
@@ -288,7 +288,7 @@ int main(int argc, char **argv)
 			     "filler 399: the quick brown fox jumps over the lazy dog\n"),
 	      "the tail after the ring wrapped");
 
-	/* ---- 4. the emulator takes the panel, and the console takes it back ---- */
+	/* ==== 4. the emulator takes the panel, and the console takes it back ==== */
 	printf("handing the panel over and back\n");
 	panel_take();
 	uint16_t before[W * H];
@@ -309,7 +309,7 @@ int main(int argc, char **argv)
 	check(panel[470 * W + 4 * 50 + 25] == rgb(255, 0, 0), "the colour card drawn again");
 	check(!memcmp(panel, fb, sizeof(fb)), "the whole screen drawn again and flushed");
 
-	/* ---- 5. the crash screen ---- */
+	/* ==== 5. the crash screen ==== */
 	printf("crash screen\n");
 	struct crash_report r = {
 		.core = 1,
