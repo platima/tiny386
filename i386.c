@@ -1,4 +1,5 @@
 #include "i386.h"
+#include "unaligned.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -268,24 +269,25 @@ static inline void pstore32(CPUI386 *cpu, uword addr, u32 val)
 	q->v = val;
 }
 #else
+/* as they were, unless I386_ALIGNED_ONLY is defined: see unaligned.h */
 static inline u16 pload16(CPUI386 *cpu, uword addr)
 {
-	return *(u16 *)&(cpu->phys_mem[addr]);
+	return ldu16(&(cpu->phys_mem[addr]));
 }
 
 static inline u32 pload32(CPUI386 *cpu, uword addr)
 {
-	return *(u32 *)&(cpu->phys_mem[addr]);
+	return ldu32(&(cpu->phys_mem[addr]));
 }
 
 static inline void pstore16(CPUI386 *cpu, uword addr, u16 val)
 {
-	*(u16 *)&(cpu->phys_mem[addr]) = val;
+	stu16(&(cpu->phys_mem[addr]), val);
 }
 
 static inline void pstore32(CPUI386 *cpu, uword addr, u32 val)
 {
-	*(u32 *)&(cpu->phys_mem[addr]) = val;
+	stu32(&(cpu->phys_mem[addr]), val);
 }
 #endif
 #else

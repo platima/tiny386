@@ -33,6 +33,11 @@ int ide_attach(IDEIFState *s, int drive, const char *filename);
 int ide_attach_cd(IDEIFState *s, int drive, const char *filename);
 void ide_change_cd(IDEIFState *sif, int drive, const char *filename);
 
+/* how many writes the guest has made to its disk images, and a call that
+   returns when all of them are on the medium */
+unsigned ide_write_count(void);
+void ide_flush(void);
+
 void ide_data_writew(void *opaque, uint32_t val);
 uint32_t ide_data_readw(void *opaque);
 

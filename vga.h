@@ -24,6 +24,9 @@ uint32_t vga_ioport_read(VGAState *s, uint32_t addr);
 void vbe_write(VGAState *s, uint32_t offset, uint32_t val);
 uint32_t vbe_read(VGAState *s, uint32_t offset);
 
+/* bytes behind video memory that a line of the picture may be read into */
+#define VGA_MEM_SLACK 16384
+
 void vga_mem_write(VGAState *s, uint32_t addr, uint8_t val);
 uint8_t vga_mem_read(VGAState *s, uint32_t addr);
 void vga_mem_write16(VGAState *s, uint32_t addr, uint16_t val);
@@ -38,6 +41,11 @@ PCIDevice *vga_pci_init(VGAState *s, PCIBus *bus,
 #ifndef BPP
 #define BPP 32
 #endif
+
+/* In a build with BPP 16 and VGA_STORE_CHANGED: 0 draws the 16-colour modes
+   pixel by pixel like every other mode, 1 (which it starts as) the quick
+   way.  See vga_graphic_refresh(). */
+extern int vga_planar_fast;
 
 typedef struct VGATextOps {
     void (*set_cursor)(void *o, int y, int x);

@@ -433,6 +433,37 @@ EMULINK *emulink_init()
 	return e;
 }
 
+/* 1 if a file of this many bytes is a floppy that the table above knows */
+int emulink_floppy_size_ok(long size)
+{
+	for (int j = 0; fmt[j].sectors; j++) {
+		if (size == fmt[j].sectors * fmt[j].tracks * fmt[j].heads * 512)
+			return 1;
+	}
+	return 0;
+}
+
+/* How many writes there have been to the floppies, and a call that returns
+   when they are on the medium: as ide_write_count() and ide_flush(). */
+static unsigned fdd_writes;
+
+unsigned emulink_write_count(void)
+{
+	return fdd_writes;
+}
+
+void emulink_flush(EMULINK *e)
+{
+	for (int i = 0; i < 2; i++) {
+		if (!e->fdd[i])
+			continue;
+		fflush(e->fdd[i]);
+#if defined(__linux__) && !defined(ANDROID)
+		fdatasync(fileno(e->fdd[i]));
+#endif
+	}
+}
+
 int emulink_attach_floppy(EMULINK *e, int i, const char *filename)
 {
 	if (i >= 0 && i < 2) {
@@ -541,6 +572,8 @@ int emulink_data_write_string(void *s, uint8_t *buf, int size, int count)
 			int ret = fwrite(buf, 1, len, e->fdd[e->args[0]]);
 			if (ret != len)
 				break;
+			fflush(e->fdd[e->args[0]]);
+			fdd_writes++;
 			e->dataleft -= len;
 			if (e->dataleft == 0) {
 				e->cmd = -1;

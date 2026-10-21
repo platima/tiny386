@@ -21,6 +21,7 @@ idf_component_register(SRCS "esp_main.c"
 "lcd_axs15231b.c"
 "lcd_st7701.c"
 "lcd_elecrow7s3.c"
+"lcd_korvo1.c"
 "sdmmc_crc_wrap.c"
 "i2s.c"
 "storage.c"
@@ -35,6 +36,14 @@ endif()
 message(STATUS "Building for BOARD=${BOARD}")
 
 add_definitions(-include ${CMAKE_CURRENT_SOURCE_DIR}/board_${BOARD}.h)
+
+# The emulator's own sources are outside the project directory, where
+# ESP-IDF's path maps do not reach.  Map them too, so that the file names
+# that assert() keeps and the debug information do not depend on where the
+# tree is: with CONFIG_APP_REPRODUCIBLE_BUILD two builds of the same sources
+# in different directories then give the same bytes.
+get_filename_component(TINY386_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+target_compile_options(${COMPONENT_LIB} PRIVATE "-ffile-prefix-map=${TINY386_ROOT}=/TINY386")
 
 # Linker wrap for SPI SD CMD59 workaround (elecrow7s3 only)
 if(BOARD STREQUAL "elecrow7s3")

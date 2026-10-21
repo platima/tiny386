@@ -12,6 +12,7 @@
 #include "esp_system.h"
 #include "sdmmc_cmd.h"
 #include "common.h"
+#include "driver/gpio.h"
 #ifdef SD_PWR_CTRL_LDO_IO_ID
 #include "sd_pwr_ctrl_by_on_chip_ldo.h"
 #endif
@@ -46,6 +47,13 @@ void storage_init(void)
 	sdmmc_card_t *card;
 	esp_err_t ret;
 	ESP_LOGI(TAG, "Initializing SD card");
+
+#ifdef SD_PWR_EN_GPIO
+	// The slot's power switch is active low
+	gpio_set_direction(SD_PWR_EN_GPIO, GPIO_MODE_OUTPUT);
+	gpio_set_level(SD_PWR_EN_GPIO, 0);
+	vTaskDelay(pdMS_TO_TICKS(10));
+#endif
 
 	// Use settings defined above to initialize SD card and mount FAT filesystem.
 	// Note: esp_vfs_fat_sdmmc/sdspi_mount is all-in-one convenience functions.

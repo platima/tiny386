@@ -1,4 +1,5 @@
 #include "pc.h"
+#include "unaligned.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -139,12 +140,18 @@ static void cpu_enable_fpu(CPUABS *cpu)
 void pcmalloc_init(void *ptr, long len);
 #else
 #define MIXER_BUF_LEN 2048
+#ifndef PC_STEP_COUNT	/* may be given on the compiler command line */
 #ifdef ANDROID
 #define PC_STEP_COUNT 4096
 #else
 #define PC_STEP_COUNT 10240
 #endif
+#endif
 #define pcmalloc_init(ptr, len)
+#endif
+
+#ifndef PC_DEBUGCON	/* where what the BIOS writes to port 0x402 goes */
+#define PC_DEBUGCON stdout
 #endif
 
 static u8 pc_io_read(void *o, int addr)
@@ -194,6 +201,7 @@ static u8 pc_io_read(void *o, int addr)
 	case 0x376:
 		val = ide_status_read(pc->ide2);
 		return val;
+	case 0x3b4: case 0x3b5: case 0x3ba:	/* the CRTC and status, monochrome */
 	case 0x3c0: case 0x3c1: case 0x3c2: case 0x3c3:
 	case 0x3c4: case 0x3c5: case 0x3c6: case 0x3c7:
 	case 0x3c8: case 0x3c9: case 0x3ca: case 0x3cb:
@@ -393,6 +401,7 @@ static void pc_io_write(void *o, int addr, u8 val)
 	case 0x376:
 		ide_cmd_write(pc->ide2, val);
 		return;
+	case 0x3b4: case 0x3b5: case 0x3ba:	/* the CRTC and status, monochrome */
 	case 0x3c0: case 0x3c1: case 0x3c2: case 0x3c3:
 	case 0x3c4: case 0x3c5: case 0x3c6: case 0x3c7:
 	case 0x3c8: case 0x3c9: case 0x3ca: case 0x3cb:
@@ -404,8 +413,9 @@ static void pc_io_write(void *o, int addr, u8 val)
 		vga_ioport_write(pc->vga, addr, val);
 		return;
 	case 0x402:
-		putchar(val);
-		fflush(stdout);
+		/* the BIOS's debug messages */
+		putc(val, PC_DEBUGCON);
+		fflush(PC_DEBUGCON);
 		return;
 	case 0x92:
 		if (val & 1)
@@ -510,6 +520,7 @@ static void pc_io_write16(void *o, int addr, u16 val)
 	case 0x170:
 		ide_data_writew(pc->ide2, val);
 		return;
+	case 0x3b4:	/* the CRTC, monochrome: index and data at once */
 	case 0x3c0: case 0x3c1: case 0x3c2: case 0x3c3:
 	case 0x3c4: case 0x3c5: case 0x3c6: case 0x3c7:
 	case 0x3c8: case 0x3c9: case 0x3ca: case 0x3cb:
@@ -677,7 +688,7 @@ static void iomem_write16(void *iomem, uword addr, u16 val)
 	if (addr >= vga_addr2) {
 		addr -= vga_addr2;
 		if (addr + 1 < pc->vga_mem_size)
-			*(uint16_t *)&(pc->vga_mem[addr]) = val;
+			stu16((uint8_t *) &(pc->vga_mem[addr]), val);
 		return;
 	}
 	vga_mem_write16(pc->vga, addr - 0xa0000, val);
@@ -698,7 +709,7 @@ static void iomem_write32(void *iomem, uword addr, u32 val)
 		uword vga_addr2 = pc->pci_vga_ram_addr;
 		addr -= vga_addr2;
 		if (addr + 3 < pc->vga_mem_size)
-			*(uint32_t *)&(pc->vga_mem[addr]) = val;
+			stu32((uint8_t *) &(pc->vga_mem[addr]), val);
 		return;
 	}
 	vga_mem_write32(pc->vga, addr - 0xa0000, val);
@@ -831,7 +842,10 @@ PC *pc_new(SimpleFBDrawFunc *redraw, void *redraw_data,
 	pc->boot_start_time = 0;
 
 	pc->vga_mem_size = conf->vga_mem_size;
-	pc->vga_mem = bigmalloc(pc->vga_mem_size);
+	/* with slack behind it: a line of the picture that starts near the
+	   end of video memory is read on a little past it (see vga.c) */
+	pc->vga_mem = bigmalloc(pc->vga_mem_size + VGA_MEM_SLACK);
+	memset(pc->vga_mem + pc->vga_mem_size, 0, VGA_MEM_SLACK);
 	memset(pc->vga_mem, 0, pc->vga_mem_size);
 	pc->vga = vga_init(pc->vga_mem, pc->vga_mem_size,
 			   fb, conf->width, conf->height);

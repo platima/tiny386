@@ -100,7 +100,9 @@ typedef struct {
 Console *console_init(int width, int height)
 {
 	Console *c = malloc(sizeof(Console));
+#ifndef LCD_ZERO_COPY
 	c->fb1 = fbmalloc(LCD_WIDTH * LCD_HEIGHT / NN * 2);
+#endif
 	if (globals.panel_fb) {
 		/* Zero-copy: VGA renders directly into the RGB DMA frame buffer */
 		c->fb = globals.panel_fb;
@@ -111,9 +113,14 @@ Console *console_init(int width, int height)
 }
 
 void lcd_draw(int x_start, int y_start, int x_end, int y_end, void *src);
+void lcd_flush(int x, int y, int w, int h);
 static void redraw(void *opaque,
 		   int x, int y, int w, int h)
 {
+#ifdef LCD_ZERO_COPY
+	lcd_flush(x, y, w, h);
+	return;
+#endif
 	Console *s = opaque;
 	for (int i = 0; i < NN; i++) {
 		uint16_t *src = (uint16_t *) s->fb;
@@ -270,7 +277,13 @@ void app_main(void)
 	storage_init();
 
 	esp_psram_init();
-#ifndef PSRAM_ALLOC_LEN
+#if defined(PSRAM_KEEP_FREE)
+	// the largest PSRAM block, less what the panel and ESP-IDF need
+	psram_len = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+	psram_len = (psram_len - PSRAM_KEEP_FREE) & ~4095L;
+	psram = heap_caps_aligned_alloc(4096, psram_len, MALLOC_CAP_SPIRAM);
+	fprintf(stderr, "psram pool %ld bytes at %p\n", psram_len, psram);
+#elif !defined(PSRAM_ALLOC_LEN)
 	// use the whole psram
 	size_t len;
 	psram = esp_psram_get(&len);

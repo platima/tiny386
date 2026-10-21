@@ -27,6 +27,9 @@
 #include <string.h>
 #include <inttypes.h>
 #include <assert.h>
+#if defined(__linux__) && !defined(ANDROID)
+#include <unistd.h>
+#endif
 
 //#include "cutils.h"
 #include "ide.h"
@@ -783,14 +786,21 @@ static void lba_to_msf(uint8_t *buf, int lba)
     buf[2] = lba % 75;
 }
 
+/* these two store at any address: a byte at a time */
 static void cpu_to_be32wu(uint32_t *o, uint32_t v)
 {
-    *o = __builtin_bswap32(v);
+    uint8_t *p = (uint8_t *) o;
+    p[0] = v >> 24;
+    p[1] = v >> 16;
+    p[2] = v >> 8;
+    p[3] = v;
 }
 
 static void cpu_to_be16wu(uint16_t *o, uint16_t v)
 {
-    *o = __builtin_bswap16(v);
+    uint8_t *p = (uint8_t *) o;
+    p[0] = v >> 8;
+    p[1] = v;
 }
 
 /* same toc as bochs. Return -1 if error or the toc length */
@@ -1919,6 +1929,32 @@ static int bf_get_chs(BlockDevice *bs, int *cylinders, int *heads, int *sectors)
     return 0;
 }
 
+/* The disk images that are open for writing, and how many writes the guest
+   has made to them.  What a write hands to the C library and the kernel is
+   on the medium some time later, or never if the machine is switched off
+   first; ide_flush() waits until it is.  A front end that wants that calls
+   it when ide_write_count() has stood still for a while. */
+#define BF_MAX_RW 4
+static FILE *bf_rw_files[BF_MAX_RW];
+static int bf_rw_count;
+static unsigned bf_writes;
+
+unsigned ide_write_count(void)
+{
+    return bf_writes;
+}
+
+void ide_flush(void)
+{
+    int i;
+    for (i = 0; i < bf_rw_count; i++) {
+        fflush(bf_rw_files[i]);
+#if defined(__linux__) && !defined(ANDROID)
+        fdatasync(fileno(bf_rw_files[i]));
+#endif
+    }
+}
+
 //#define DUMP_BLOCK_READ
 
 static int bf_read_async(BlockDevice *bs,
@@ -1971,6 +2007,10 @@ static int bf_write_async(BlockDevice *bs,
     case BF_MODE_RW:
         fseeko(bf->f, bf->start_offset + sector_num * SECTOR_SIZE, SEEK_SET);
         fwrite(buf, 1, n * SECTOR_SIZE, bf->f);
+        /* to the kernel now: an emulator that is killed keeps nothing
+           back in the C library */
+        fflush(bf->f);
+        bf_writes++;
         ret = 0;
         break;
     case BF_MODE_SNAPSHOT:
@@ -2035,6 +2075,8 @@ static BlockDevice *block_device_init(const char *filename,
     bf->nb_sectors = file_size / 512;
     bf->f = f;
     bf->start_offset = start_offset;
+    if (mode == BF_MODE_RW && bf_rw_count < BF_MAX_RW)
+        bf_rw_files[bf_rw_count++] = f;
 
     if (mode == BF_MODE_SNAPSHOT) {
         bf->sector_table = pcmalloc(sizeof(bf->sector_table[0]) *
