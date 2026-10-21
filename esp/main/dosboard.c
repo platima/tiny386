@@ -7,12 +7,18 @@
  *   app_main     board_early_init(): probe the MS7210 (chip ID A2 20 0A at
  *                I2C 0x59); on any other board stop here, before a single
  *                pin that is new on the DOS board has been driven.
- *   vga_task     dosboard_load_config(), the RGB panel (PCLK starts), the
- *                test card, dosboard_video_start() (MS7210 sections B to E,
- *                which need PCLK), then ch9350_start().
+ *   lcd_init     dosboard_load_config() (the card, dosboard.ini), the RGB
+ *                output (PCLK starts), the test card, dosboard_video_start()
+ *                (MS7210 sections B to E, which need PCLK).
+ *   app_main     the boot console, then board_console_ready(): the lines
+ *                noted so far go onto it.
+ *   app_main     the CH9350L (ch9350_setup()) where the Korvo-1 starts its
+ *                USB host: for the boot menu, or once the ini is read.
  */
 #ifdef USE_LCD_RGB_DOSBOARD
 
+#include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,12 +26,68 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
+#include "esp_heap_caps.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
 #include "../../ini.h"
 #include "common.h"
+#include "console.h"
 #include "dosboard.h"
 #include "ms7210.h"
+#include "storage.h"
+
+/* ---- lines from before the boot console ---- */
+
+#define NOTES_MAX 24
+#define NOTE_LEN 112
+static char (*s_notes)[NOTE_LEN];       /* in PSRAM, freed once shown */
+static int s_nnotes;
+static bool s_console_up;
+
+/* a line that says something went wrong, to be shown in yellow */
+static bool sounds_bad(const char *s)
+{
+	static const char *const words[] = {
+		"NOT ", "not stable", "not attached", "no answer", "no EDID",
+		"wrong", " reads 0x", "I2C errors", "does not divide", "not a ",
+		"could not", NULL
+	};
+	for (int i = 0; words[i]; i++)
+		if (strstr(s, words[i]))
+			return true;
+	return false;
+}
+
+void dosboard_note(const char *fmt, ...)
+{
+	char line[NOTE_LEN];
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsnprintf(line, sizeof(line), fmt, ap);
+	va_end(ap);
+	if (s_console_up) {
+		console_puts(sounds_bad(line) ? CON_WARN : CON_INFO, line);
+		return;
+	}
+	fprintf(stderr, "%s\n", line);
+	if (!s_notes)
+		s_notes = heap_caps_calloc(NOTES_MAX, NOTE_LEN, MALLOC_CAP_SPIRAM);
+	if (s_notes && s_nnotes < NOTES_MAX)
+		snprintf(s_notes[s_nnotes++], NOTE_LEN, "%s", line);
+}
+
+void board_console_ready(void)
+{
+	/* console_puts() also writes to the UART, which had these already;
+	   a second copy there marks where the console began */
+	for (int i = 0; i < s_nnotes; i++)
+		console_puts(sounds_bad(s_notes[i]) ? CON_WARN : CON_INFO, s_notes[i]);
+	free(s_notes);
+	s_notes = NULL;
+	s_nnotes = 0;
+	s_console_up = true;
+}
 
 dosboard_cfg_t dosboard_cfg = {
 	.pclk_phase = 0,
@@ -88,7 +150,7 @@ static void io_delay(void *ctx, uint32_t us)
 
 static void io_log(void *ctx, const char *line)
 {
-	fprintf(stderr, "%s\n", line);
+	dosboard_note("%s", line);
 }
 
 static const ms7210_io_t hdmi_io = {
@@ -187,7 +249,7 @@ void board_early_init(void)
 		.mode = GPIO_MODE_OUTPUT,
 	};
 	const gpio_config_t ins = {
-		.pin_bit_mask = (1ULL << USER_BTN_GPIO) | (1ULL << SD_CD_GPIO),
+		.pin_bit_mask = (1ULL << USER_KEY_GPIO) | (1ULL << SD_CD_GPIO),
 		.mode = GPIO_MODE_INPUT,
 		.pull_up_en = GPIO_PULLUP_ENABLE,
 	};
@@ -208,8 +270,8 @@ void board_early_init(void)
 	gpio_set_level(USB_VBUS_EN_GPIO, 1);     /* USB-A ports on (R309 does so too) */
 	gpio_config(&outs);
 	gpio_config(&ins);
-	fprintf(stderr, "dosboard: MS7210 found; card %s\n",
-		gpio_get_level(SD_CD_GPIO) ? "NOT in the slot" : "in the slot");
+	dosboard_note("dosboard: MS7210 found at I2C 0x%02X; card detect says the card is %s.",
+		      HDMI_I2C_ADDR, gpio_get_level(SD_CD_GPIO) ? "out" : "in");
 }
 
 /* ---- [dosboard] settings ---- */
@@ -237,29 +299,51 @@ static int parse_cfg(void *user, const char *section, const char *name, const ch
 		c->ch9350_state = atoi(value) == 0 ? 0 : 2;
 	else if (strcmp(name, "kbd_zero_guard_ms") == 0)
 		c->kbd_zero_guard_ms = atoi(value);
-	else
+	else {
+		dosboard_note("dosboard.ini: [dosboard] %s is not a setting tiny386 knows; "
+			      "ignored.", name);
 		return 1;
-	fprintf(stderr, "dosboard: %s = %s\n", name, value);
+	}
+	dosboard_note("  [dosboard] %s = %s", name, value);
 	return 1;
 }
 
 void dosboard_load_config(void)
 {
+	/* beside the inis, but not one the boot menu offers (setup.c leaves
+	   dosboard.ini out of its list) */
 	static const char *files[] = {
-		"/sdcard/tiny386.ini",
-		"/sdcard/tiny386/tiny386.ini",
-		"/spiflash/tiny386.ini",
+		"/sdcard/tiny386/dosboard.ini",
+		"/sdcard/dosboard.ini",
 		NULL,
 	};
 
-	for (int i = 0; files[i]; i++)
-		if (ini_parse(files[i], parse_cfg, &dosboard_cfg) == 0)
-			break;
+	/* the card, now rather than in app_main's mount_storage(), which then
+	   finds it mounted; without one, the defaults */
+	if (!storage_sd_mount()) {
+		dosboard_note("dosboard: no card could be read yet: the [dosboard] "
+			      "settings are the defaults.");
+		return;
+	}
+	int i;
+	for (i = 0; files[i]; i++) {
+		int err = ini_parse(files[i], parse_cfg, &dosboard_cfg);
+		if (err == -1)
+			continue;               /* not there */
+		dosboard_note("dosboard: settings from %s.", files[i]);
+		if (err > 0)
+			dosboard_note("dosboard: %s line %d could not be read (and any "
+				      "others like it).", files[i], err);
+		break;
+	}
+	if (!files[i])
+		dosboard_note("dosboard: no dosboard.ini on the card: the [dosboard] "
+			      "settings are the defaults.");
 	/* the RGB driver wants the frame to be a whole number of bounce buffers */
 	if (dosboard_cfg.bounce_px < 0 ||
 	    (dosboard_cfg.bounce_px && (LCD_WIDTH * LCD_HEIGHT) % dosboard_cfg.bounce_px)) {
-		fprintf(stderr, "dosboard: lcd_bounce_px %d does not divide %d, using 0\n",
-			dosboard_cfg.bounce_px, LCD_WIDTH * LCD_HEIGHT);
+		dosboard_note("dosboard: lcd_bounce_px %d does not divide %d, so 0 (no "
+			      "bounce buffers).", dosboard_cfg.bounce_px, LCD_WIDTH * LCD_HEIGHT);
 		dosboard_cfg.bounce_px = 0;
 	}
 }
@@ -285,11 +369,11 @@ int dosboard_video_start(void)
 	hdmi.cfg.pclk_phase = dosboard_cfg.pclk_phase;
 	hdmi.cfg.mode = dosboard_cfg.hdmi_mode;
 	hdmi.cfg.audio = dosboard_cfg.audio;
-	fprintf(stderr, "dosboard: MS7210 set-up, PCLK phase %d, S31 PCLK %s edge\n",
-		hdmi.cfg.pclk_phase, dosboard_cfg.pclk_neg ? "falling" : "rising");
+	dosboard_note("dosboard: MS7210 set-up, PCLK phase %d, S31 PCLK %s edge.",
+		      hdmi.cfg.pclk_phase, dosboard_cfg.pclk_neg ? "falling" : "rising");
 	r = ms7210_init(&hdmi);
 	if (r)
-		fprintf(stderr, "dosboard: MS7210 set-up had %d I2C errors\n", hdmi.errors);
+		dosboard_note("dosboard: MS7210 set-up had %d I2C errors.", hdmi.errors);
 	xTaskCreatePinnedToCore(hdmi_task, "hdmi", 4096, NULL, 1, NULL, 0);
 	return r;
 }

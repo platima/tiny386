@@ -24,15 +24,25 @@ CONFIG_SPIRAM_MEMTEST=y
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 CONFIG_ESP_MAIN_TASK_AFFINITY_CPU0=y
-# FIRMWARE-PLAN section 4: 100 Hz is enough (vga_task waits 10 ms).
+# 100 ticks a second: vga_task paces itself in whole ticks (LCD_FRAME_MS), and
+# core 1 takes ten times fewer tick interrupts (FIRMWARE-PLAN section 4).
 CONFIG_FREERTOS_HZ=100
 # i386_task never yields on core 1.
 # CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1 is not set
 CONFIG_FATFS_LFN_HEAP=y
 CONFIG_FATFS_MAX_LFN=255
-# FIRMWARE-PLAN section 4
+# The card's first FAT partition at /sdcard and up to three more at
+# /sdcardN (storage.c), and their labels (to find the one called WIN9X).
+CONFIG_FATFS_VOLUME_COUNT=4
+CONFIG_FATFS_USE_LABEL=y
+# A crash halts with the crash screen on the picture (crash.c) instead of
+# restarting at once.
 CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y
+# app_main brings up the picture, the HDMI transmitter and the console,
+# mounts the card and reads the ini.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+# esp_cache_msync() writes back in pieces, so that core 0's interrupts are
+# not held off for a whole frame buffer.
 CONFIG_ESP_MM_CACHE_MSYNC_C2M_CHUNKED_OPS=y
 # Needed with it: ESP-IDF 188e3e55bb gives this no default for esp32s31, and
 # kconfgen stops on the empty hex value.  32 KiB, the ESP32-S3 default.

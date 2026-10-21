@@ -17,14 +17,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include "../../audio_rate.h"
+#include "audio_rate.h"
 /* run.sh points this at a patched copy to try a resampler change */
 #ifndef SB16_C
-#define SB16_C "../../sb16.c"
+#define SB16_C "sb16.c"
 #endif
 #include SB16_C
-#include "../../pcspk.h"
-#include "../../adlib.h"
+#include "pcspk.h"
+#include "adlib.h"
 
 /* ---- what the three need from the rest of the PC ---- */
 

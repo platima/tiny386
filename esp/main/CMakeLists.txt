@@ -42,13 +42,20 @@ set(srcs "esp_main.c"
 "sdmmc_crc_wrap.c"
 "i2s.c"
 "storage.c"
-"usb_hid.c"
-"usb_input.c")
+"usb_hid.c")
 if(NOT BOARD IN_LIST TINY386_NO_WIFI_BOARDS)
     list(APPEND srcs "wifi.c")
 endif()
 if(BOARD IN_LIST TINY386_CONSOLE_BOARDS)
     list(APPEND srcs "crash.c")
+endif()
+# The DOS board: its panel file, the board check and HDMI start-up, the
+# MS7210 and CH9350L drivers.  Its keyboard and mouse come through the
+# CH9350L, so the S31's own USB host (usb_input.c) is not built for it.
+if(BOARD STREQUAL "dosboard")
+    list(APPEND srcs "lcd_dosboard.c" "dosboard.c" "ms7210.c" "ch9350.c")
+else()
+    list(APPEND srcs "usb_input.c")
 endif()
 
 idf_component_register(SRCS ${srcs}

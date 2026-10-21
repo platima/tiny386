@@ -4,7 +4,8 @@
  *
  *   the card as the Linux route lays it out: tiny386/ with its ini files
  *     (the Linux route's own, copied into tests/host/data/linux-route),
- *     with a desktop.ini and a macOS "._" file that must not be listed;
+ *     with a desktop.ini, a macOS "._" file and the DOS board's
+ *     dosboard.ini, none of which may be listed;
  *   the list sorted, each with its first comment line;
  *   the default: tiny386.ini, else freedos.ini, else the first; the last
  *     choice from lastboot.txt; lastboot.txt written only when it changes;
@@ -167,6 +168,7 @@ int main(int argc, char **argv)
 	}
 	put("sdcard/tiny386/desktop.ini", "[.ShellClassInfo]\n");
 	put("sdcard/tiny386/._freedos.ini", "junk");
+	put("sdcard/tiny386/DOSBOARD.INI", "[dosboard]\npclk_phase = 4\n");
 	put("sdcard/tiny386/BIOS.BIN", "");
 	put("sdcard/tiny386/notes.txt", "");
 	CHECK(setup_find(places, &l) == 3, "tiny386 folder: %d found", l.n);

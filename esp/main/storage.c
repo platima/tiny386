@@ -40,9 +40,13 @@ static esp_err_t sdmmc_host_deinit_dummy(void)
 #if defined(SD_CLK) && !defined(USE_RAWSD)
 /* Mounts the card at /sdcard, true if that worked.  May be called again
    after a failure: esp_vfs_fat_sdmmc_mount() undoes what it did when it
-   fails. */
+   fails.  Once mounted, true at once (the DOS board mounts the card before
+   its panel starts, to read dosboard.ini). */
+static bool s_sd_mounted;
 bool storage_sd_mount(void)
 {
+	if (s_sd_mounted)
+		return true;
 	// Options for mounting the filesystem.
 	esp_vfs_fat_sdmmc_mount_config_t sdmount_config = {
 		.format_if_mount_failed = false,
@@ -131,6 +135,7 @@ bool storage_sd_mount(void)
 	}
 	ESP_LOGI(TAG, "Filesystem mounted");
 	rawsd = card;
+	s_sd_mounted = true;
 	return true;
 }
 #else

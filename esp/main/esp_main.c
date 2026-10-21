@@ -38,6 +38,10 @@
 #ifdef LCD_ZERO_COPY
 #include "lcd.h"
 #endif
+#ifdef KM_UART_NUM
+#include "ch9350.h"
+#include "dosboard.h"
+#endif
 
 #ifndef BOARD_NAME
 #define BOARD_NAME "an ESP32 board"
@@ -241,6 +245,24 @@ void (*_Atomic esp32_send_packet)(uint8_t *buf, int size);
 void wifi_main(const char *, const char *);
 #endif
 void usb_setup(void);
+
+/* A board's own start-up, where it has one (dosboard.c): the first thing
+   in app_main(), before any pin is driven, and once the boot console is
+   up, for what it noted before that. */
+void __attribute__((weak)) board_early_init(void) {}
+void __attribute__((weak)) board_console_ready(void) {}
+
+/* The keyboard and mouse: the USB host, or on the DOS board the CH9350L
+   (which has its own USB host chip), once; either may be running already
+   for the boot menu. */
+static void input_setup(void)
+{
+#ifdef KM_UART_NUM
+	ch9350_setup(dosboard_cfg.ch9350_state, dosboard_cfg.kbd_zero_guard_ms);
+#else
+	usb_setup();
+#endif
+}
 
 struct esp_ini_config {
 	const char *filename;
@@ -496,6 +518,12 @@ static int parse_ini(void *user, const char *section,
 	} else {
 		console_printf(CON_INFO, "  [%s] %s = %s", section, name,
 			       secret ? "(not shown)" : value);
+	}
+	if (!strcmp(section, "dosboard")) {
+		console_printf(CON_WARN, "%s: [dosboard] %s is ignored here: the DOS "
+			       "board's settings go in dosboard.ini beside the inis, "
+			       "which is read before the picture starts.", s_ini_name, name);
+		return 1;
 	}
 	if (!known_key(section, name)) {
 		console_printf(CON_WARN, "%s: [%s] %s is not a setting tiny386 "
@@ -807,7 +835,7 @@ static bool choose_ini(void)
 	bool usb = false;
 	if (inis->n > 1) {
 		/* the keyboard is needed now, before any ini says enable_usb */
-		usb_setup();
+		input_setup();
 		usb = true;
 		pick = boot_menu(inis, pick, s_title);
 	}
@@ -822,8 +850,12 @@ static bool choose_ini(void)
 void app_main(void)
 {
 	global_event_group = xEventGroupCreate();
+	/* the DOS board's check: on another board it stops here, before any
+	   pin that is new on the DOS board has been driven */
+	board_early_init();
 
-	/* the panel first, so that everything after it can be seen */
+	/* the panel first, so that everything after it can be seen (on the
+	   DOS board this also brings the HDMI transmitter up) */
 #ifdef LCD_ZERO_COPY
 	void *fb = lcd_init();
 	console_init(fb, LCD_WIDTH, LCD_HEIGHT, lcd_flush);
@@ -833,6 +865,7 @@ void app_main(void)
 	console_hooks_install();
 	kbd_input_init();
 	banner();
+	board_console_ready();
 	/* the speed screen (speed.c), over the picture and back */
 	speed_set_title(s_title);
 	kbd_input_set_hotkey(HID_KEY_F12, speed_hotkey);
@@ -929,7 +962,7 @@ void app_main(void)
 #endif
 
 	if (config.enable_usb) {
-		usb_setup();            /* once: it may be running for the menu */
+		input_setup();          /* once: it may be running for the menu */
 	} else if (usb_started) {
 		console_puts(CON_INFO, "[esp] enable_usb = 0 is ignored: USB was "
 			     "started for the boot menu, and stays on.");

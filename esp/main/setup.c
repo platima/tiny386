@@ -17,10 +17,12 @@ static bool ends_with_ini(const char *n)
 }
 
 /* names that are not a setup: hidden files (macOS leaves "._name" copies),
-   and the one Windows writes into folders it has shown */
+   the one Windows writes into folders it has shown, and the DOS board's
+   own settings (dosboard.c reads them before the panel starts) */
 static bool skip_name(const char *n)
 {
-	return n[0] == '.' || !strcasecmp(n, "desktop.ini");
+	return n[0] == '.' || !strcasecmp(n, "desktop.ini") ||
+		!strcasecmp(n, "dosboard.ini");
 }
 
 /* the first line that is a comment (";" or "#"), without the marker */

@@ -15,6 +15,20 @@ endif()
 # This ensures switching boards (via -DBOARD=) just works without manual cleanup.
 # If you use menuconfig, save changes back to sdkconfig.${BOARD}.
 set(BOARD_SDKCONFIG "${CMAKE_CURRENT_SOURCE_DIR}/sdkconfig.${BOARD}")
+# -DPARTITION_CSV=<file in this folder>: the board's sdkconfig with another
+# partition table, and nothing else changed.  The Korvo-1's standalone image
+# set is built this way with tiny386's own partitions.csv; its default
+# table is the dual-boot one beside Linux (sdkconfig.korvo1).
+if(DEFINED PARTITION_CSV AND EXISTS "${BOARD_SDKCONFIG}")
+    file(READ "${BOARD_SDKCONFIG}" _tiny386_cfg)
+    string(REGEX REPLACE "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"[^\"]*\""
+        "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"${PARTITION_CSV}\""
+        _tiny386_cfg "${_tiny386_cfg}")
+    file(WRITE "${CMAKE_BINARY_DIR}/sdkconfig.${BOARD}.table.tmp" "${_tiny386_cfg}")
+    file(COPY_FILE "${CMAKE_BINARY_DIR}/sdkconfig.${BOARD}.table.tmp"
+        "${CMAKE_BINARY_DIR}/sdkconfig.${BOARD}.table" ONLY_IF_DIFFERENT)
+    set(BOARD_SDKCONFIG "${CMAKE_BINARY_DIR}/sdkconfig.${BOARD}.table")
+endif()
 if(EXISTS "${BOARD_SDKCONFIG}")
     file(COPY_FILE "${BOARD_SDKCONFIG}" "${CMAKE_CURRENT_SOURCE_DIR}/sdkconfig" ONLY_IF_DIFFERENT)
 endif()

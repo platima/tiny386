@@ -4,7 +4,10 @@
 
 #include <stdint.h>
 
-/* [dosboard] in tiny386.ini; every key is optional */
+/* [dosboard] in dosboard.ini, beside the inis on the card
+   (/sdcard/tiny386/dosboard.ini, else /sdcard/dosboard.ini); read before
+   the panel starts, so not in the inis the boot menu offers.  Every key is
+   optional. */
 typedef struct {
 	int pclk_phase;          /* pclk_phase = 0..7: MS7210 0x1281 bits 2:0 (4 = PCLK inverted) */
 	int pclk_neg;            /* pclk_neg = 0|1: S31 clocks data out on the falling PCLK edge */
@@ -18,9 +21,21 @@ typedef struct {
 
 extern dosboard_cfg_t dosboard_cfg;
 
-void board_early_init(void);         /* app_main, first thing: board check and pins */
-void dosboard_load_config(void);     /* after the card is mounted */
-int dosboard_video_start(void);      /* after the RGB panel runs: MS7210 set-up, hot plug task */
+/* app_main(), first thing: the board check (MS7210 chip ID at I2C 0x59),
+   then the pins that are new on this board.  Never returns on another
+   board. */
+void board_early_init(void);
+/* lcd_init(), before the panel: mounts the card if it can and reads
+   dosboard.ini */
+void dosboard_load_config(void);
+/* lcd_init(), once the RGB output runs: MS7210 set-up, hot plug task */
+int dosboard_video_start(void);
 void dosboard_test_card(uint16_t *fb, int w, int h);
+
+/* A line for the UART now and, until the boot console is up, kept to be
+   shown on it then (board_console_ready()). */
+void dosboard_note(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+/* app_main(), once the boot console is up: the lines kept so far. */
+void board_console_ready(void);
 
 #endif /* DOSBOARD_H */

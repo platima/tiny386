@@ -5,14 +5,22 @@
  * H 800 active, 40 front porch, 128 sync, 88 back porch; V 600, 1, 4, 23;
  * both syncs positive (FIRMWARE-PLAN 5.2, values in board_dosboard.h).
  *
- * As on the Korvo-1 (lcd_korvo1.c) the frame buffer is in PSRAM, which
- * ESP-IDF runs write-back, the VGA code draws straight into it, and
- * lcd_flush() only writes the drawn lines back from the cache.
+ * This file gives what lcd.h asks of a board, as lcd_korvo1.c does for the
+ * Korvo-1: the frame buffer is in PSRAM, which ESP-IDF runs write-back, the
+ * VGA code and the boot console draw straight into it, and lcd_flush()
+ * writes the drawn rows back from the cache.  The drawing loop is
+ * display.c's, shared with the Korvo-1.
  *
  * With bounce buffers (LCD_BOUNCE_BUFFER_PX or [dosboard] lcd_bounce_px) the
  * driver copies the frame buffer into two internal RAM buffers from an
  * interrupt on core 0, reading through the cache, so nothing needs writing
- * back and lcd_flush() does nothing.
+ * back and lcd_flush() does nothing.  The crash screen then stays only as
+ * long as that interrupt runs.
+ *
+ * lcd_init() is where the HDMI side starts too, because the MS7210 meters
+ * PCLK and locks its PLL to it: the [dosboard] settings (dosboard.ini on
+ * the card), the panel, the test card, the MS7210 (dosboard.c), then the
+ * test card's hold.  Only then does app_main() start the boot console.
  */
 
 #include <stdio.h>
@@ -22,34 +30,22 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_err.h"
+#include "esp_cache.h"
+#include "esp_cpu.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_rgb.h"
 
 #include "common.h"
+#include "lcd.h"
 #include "dosboard.h"
-#include "ch9350.h"
 
 static const char *TAG = "lcd";
-static int bounce;
 
-void pc_vga_step(void *o);
-
-void lcd_draw(int x_start, int y_start, int x_end, int y_end, void *src)
-{
-	(void)x_start; (void)y_start; (void)x_end; (void)y_end; (void)src;
-}
-
-void lcd_flush(int x, int y, int w, int h)
-{
-	uint16_t *fb = globals.panel_fb;
-
-	(void)x; (void)w;
-	if (!globals.panel || h <= 0 || bounce)
-		return;
-	ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(globals.panel,
-						  0, y, LCD_WIDTH, y + h,
-						  fb + y * LCD_WIDTH));
-}
+static uint16_t *s_fb;
+static bool s_bounce;
+static bool s_invalidate;
+static struct lcd_stats s_stats;
+static portMUX_TYPE s_stats_lock = portMUX_INITIALIZER_UNLOCKED;
 
 static esp_lcd_panel_handle_t panel_start(void)
 {
@@ -90,59 +86,98 @@ static esp_lcd_panel_handle_t panel_start(void)
 
 	for (int i = 0; i < 16; i++)
 		cfg.data_gpio_nums[i] = data_pins[i];
-	ESP_ERROR_CHECK(esp_lcd_new_rgb_panel(&cfg, &panel));
-	ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
-	bounce = dosboard_cfg.bounce_px > 0;
-	ESP_LOGI(TAG, "800x600 at %d Hz pixel clock, data on the %s edge, %s",
-		 LCD_PCLK_HZ, dosboard_cfg.pclk_neg ? "falling" : "rising",
-		 bounce ? "bounce buffers" : "no bounce buffers");
+	esp_err_t err = esp_lcd_new_rgb_panel(&cfg, &panel);
+	if (err == ESP_OK)
+		err = esp_lcd_panel_init(panel);
+	if (err != ESP_OK) {
+		/* only the UART can say so: there is no picture */
+		ESP_LOGE(TAG, "the RGB output did not start (%s)", esp_err_to_name(err));
+		return NULL;
+	}
+	s_bounce = dosboard_cfg.bounce_px > 0;
+	dosboard_note("dosboard: 800x600 at %d Hz pixel clock, data on the %s edge, %s.",
+		      LCD_PCLK_HZ, dosboard_cfg.pclk_neg ? "falling" : "rising",
+		      s_bounce ? "bounce buffers" : "no bounce buffers");
 	return panel;
 }
 
-void vga_task(void *arg)
+void *lcd_init(void)
 {
-	int core_id = esp_cpu_get_core_id();
-	fprintf(stderr, "vga runs on core %d\n", core_id);
-
+	/* [dosboard] from the card: the PCLK edge and the bounce buffers are
+	   needed before the panel starts */
 	dosboard_load_config();
+
 	esp_lcd_panel_handle_t panel = panel_start();
-
 	void *fb_ptr = NULL;
-	ESP_ERROR_CHECK(esp_lcd_rgb_panel_get_frame_buffer(panel, 1, &fb_ptr));
-	ESP_LOGI(TAG, "Panel FB @ %p (%d bytes)", fb_ptr, LCD_WIDTH * LCD_HEIGHT * 2);
-
+	if (!panel ||
+	    esp_lcd_rgb_panel_get_frame_buffer(panel, 1, &fb_ptr) != ESP_OK ||
+	    !fb_ptr) {
+		ESP_LOGE(TAG, "no frame buffer: no picture, and no HDMI set-up");
+		return NULL;
+	}
 	globals.panel = panel;
 	globals.panel_fb = fb_ptr;
+	s_fb = fb_ptr;
 
-	/* colour bars first, so they are there the moment the MS7210 starts */
+	/* colour bars first, so that they are there the moment the MS7210
+	   starts sending */
 	if (dosboard_cfg.test_card_ms > 0) {
-		dosboard_test_card(fb_ptr, LCD_WIDTH, LCD_HEIGHT);
+		dosboard_test_card(s_fb, LCD_WIDTH, LCD_HEIGHT);
 		lcd_flush(0, 0, LCD_WIDTH, LCD_HEIGHT);
 	}
 	/* the MS7210 meters PCLK and locks its PLL to it, so PCLK runs first */
 	dosboard_video_start();
 	if (dosboard_cfg.test_card_ms > 0) {
-		vTaskDelay(pdMS_TO_TICKS(dosboard_cfg.test_card_ms));
-		/* the guest picture is centred and does not cover the edges */
-		memset(fb_ptr, 0, LCD_WIDTH * LCD_HEIGHT * 2);
+		vTaskDelay(pdMS_TO_TICKS(dosboard_cfg.test_card_ms) + 1);
+		/* the boot console draws all but the last rows; black under it */
+		memset(s_fb, 0, LCD_WIDTH * LCD_HEIGHT * 2);
 		lcd_flush(0, 0, LCD_WIDTH, LCD_HEIGHT);
 	}
+	return fb_ptr;
+}
 
-	/* keyboard and mouse; the task waits for the emulator */
-	ch9350_start(dosboard_cfg.ch9350_state, dosboard_cfg.kbd_zero_guard_ms);
+void lcd_set_invalidate(bool on)
+{
+	s_invalidate = on;
+}
 
-	/* Tell i386_task that the panel and its frame buffer are ready */
-	xEventGroupSetBits(global_event_group, BIT1);
-	xEventGroupWaitBits(global_event_group,
-			    BIT0,
-			    pdFALSE,
-			    pdFALSE,
-			    portMAX_DELAY);
-
-	while (1) {
-		pc_vga_step(globals.pc);
-		vTaskDelay(pdMS_TO_TICKS(10));
+void lcd_flush(int x, int y, int w, int h)
+{
+	(void) x; (void) w;
+	if (!s_fb || s_bounce)
+		return;
+	if (y < 0) {
+		h += y;
+		y = 0;
 	}
+	if (y + h > LCD_HEIGHT)
+		h = LCD_HEIGHT - y;
+	if (h <= 0)
+		return;
+
+	int flags = ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED;
+	if (s_invalidate)
+		flags |= ESP_CACHE_MSYNC_FLAG_INVALIDATE;
+	uint32_t t0 = esp_cpu_get_cycle_count();
+	esp_cache_msync(s_fb + y * LCD_WIDTH, (size_t) h * LCD_WIDTH * 2, flags);
+	uint32_t dt = esp_cpu_get_cycle_count() - t0;
+
+	portENTER_CRITICAL_SAFE(&s_stats_lock);
+	s_stats.flushes++;
+	s_stats.rows += h;
+	s_stats.cycles += dt;
+	if (dt > s_stats.cycles_max)
+		s_stats.cycles_max = dt;
+	portEXIT_CRITICAL_SAFE(&s_stats_lock);
+}
+
+void lcd_get_stats(struct lcd_stats *st, bool reset)
+{
+	portENTER_CRITICAL_SAFE(&s_stats_lock);
+	*st = s_stats;
+	if (reset)
+		s_stats = (struct lcd_stats) { 0 };
+	portEXIT_CRITICAL_SAFE(&s_stats_lock);
 }
 
 #endif /* USE_LCD_RGB_DOSBOARD */

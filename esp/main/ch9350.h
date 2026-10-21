@@ -6,7 +6,7 @@
  * tiny386-hdmi-board/research/ch9350.md section 6.
  *
  * The frame parser is plain C (no ESP-IDF) so that it runs on a PC
- * (hosttest/ch9350_test.c).  The UART task, the reset and state pins and the
+ * (tests/host/dosboard/ch9350_test.c).  The UART task, the reset and state pins and the
  * keyboard LED frames are at the end of ch9350.c, for the DOS board only.
  */
 #ifndef CH9350_H
@@ -76,19 +76,20 @@ void ch9350_led_frame(uint8_t out[CH9350_LED_FRAME_LEN], int usb_leds, int mode)
 /* PS/2 "set LEDs" byte (bit 0 Scroll, bit 1 Num, bit 2 Caps) to the USB order. */
 int ch9350_ps2_leds_to_usb(int ps2_leds);
 
-/* Sink callbacks that drive tiny386's PS/2 keyboard and mouse (i8042.c):
-   keyboard reports through ch9350_kbd.c, the mouse into ps2_mouse_event(). */
-#include "ch9350_kbd.h"
+/* Sink callbacks into kbd_input.c, the keyboard and mouse layer the USB
+   host uses too: a keyboard report to kbd_input_report() (typematic repeat,
+   the lights, the boot menu and the Ctrl+Alt+F12 key come from there), the
+   mouse to kbd_input_mouse(), frame 0x86 to kbd_input_release_all(). */
 typedef struct {
-	void *kbd;                   /* PS2KbdState (globals.kbd) */
-	void *mouse;                 /* PS2MouseState (globals.mouse) */
-	bootkbd_t keys;
-	uint8_t buttons;
-} ch9350_ps2_t;
-void ch9350_ps2_sink(ch9350_sink_t *sink, ch9350_ps2_t *t);
+	int dev;                     /* kbd_input_open()'s slot for the chip's keyboards */
+	uint8_t buttons;             /* mouse buttons held */
+} ch9350_input_t;
+void ch9350_input_sink(ch9350_sink_t *sink, ch9350_input_t *t);
 
-/* DOS board only (ch9350.c, ESP-IDF part) */
-void ch9350_start(int mode, int zero_guard_ms);
-void ch9350_set_leds_ps2(int ps2_leds);   /* from the PS/2 0xED hook; any task */
+/* DOS board only (ch9350.c, ESP-IDF part): resets the chip into state
+   mode (2, or 0 for the fallback) and starts its UART task, once.  Its
+   keyboards and mice reach kbd_input.c from then on: the boot menu before
+   the PC exists, the PC once kbd_input_set_target() names it. */
+void ch9350_setup(int mode, int zero_guard_ms);
 
 #endif /* CH9350_H */

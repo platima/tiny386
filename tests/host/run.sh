@@ -116,6 +116,55 @@ $CC $CFLAGS -DSPEED_HOST -I"$TREE/esp/main" -o "$OUT/test_speed" \
 "$OUT/test_speed"
 result $? "speed.c: instructions a second, BENCH marks, lines as the Linux route prints them"
 
+# ==== 9 to 12. the DOS board (FIRMWARE-PLAN 5): tests/host/dosboard ====
+D="$HERE/dosboard"
+DOSCFLAGS="-O2 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare"
+
+# 9. the MS7210 driver against a fake I2C bus; its bus logs go to OUT
+echo
+$CC $DOSCFLAGS -I"$TREE/esp/main" -o "$OUT/ms7210_test" \
+    "$D/ms7210_test.c" "$TREE/esp/main/ms7210.c" || exit 1
+"$OUT/ms7210_test" "$OUT"
+result $? "ms7210.c: sequence, wire format, PLL retry, hot plug, EDID, DVI, InfoFrames"
+
+# 10. the HDMI scenario's bus log, row by row, against the table in
+# encoder.md 8.4 (outside this tree: ENCODER_MD names it)
+echo
+ENCODER_MD=${ENCODER_MD:-/mnt/d/Repos/esp32-s31-linux-release/tiny386-hdmi-board/research/encoder.md}
+if [ -f "$ENCODER_MD" ]; then
+    python3 "$D/check_ms7210_table.py" "$ENCODER_MD" "$OUT/ms7210_hdmi.log" 0
+    result $? "ms7210.c: the bus log against encoder.md 8.4, every row in order"
+else
+    echo "SKIP the MS7210 table check: no encoder.md at $ENCODER_MD (set ENCODER_MD)"
+fi
+
+# 11. the CH9350L's frames through ch9350.c, kbd_input.c and i8042.c, as
+# test 4 builds the last two
+echo
+$CC $DOSCFLAGS -Wno-unused-function -Wno-implicit-fallthrough -Wno-missing-field-initializers \
+    -DKBD_INPUT_HOST -DPS2_KBD_HOOKS -I"$TREE/esp/main" -I"$TREE" -o "$OUT/ch9350_test" \
+    "$D/ch9350_test.c" "$TREE/esp/main/ch9350.c" "$TREE/esp/main/kbd_input.c" \
+    "$OUT/i8042-hooks.o" || exit 1
+"$OUT/ch9350_test"
+result $? "ch9350.c: frames into kbd_input.c, as a DOS program reads them from ports 60h and 64h"
+
+# 12. AUDIO_RATE: the PC speaker, the AdLib and the SB16 at 44,100 and
+# 48,000 (SB16_PATCHED=path/to/sb16.c runs it against another sb16.c too)
+for R in 44100 48000; do
+    echo
+    $CC -O2 -g -w -DUSE_FMOPL -DAUDIO_RATE=$R -I"$TREE" -o "$OUT/audio_rate_test_$R" \
+        "$D/audio_rate_test.c" "$TREE/pcspk.c" "$TREE/adlib.c" "$TREE/fmopl.c" -lm || exit 1
+    "$OUT/audio_rate_test_$R"
+    result $? "AUDIO_RATE $R: PC speaker, AdLib and SB16 pitch"
+    if [ -n "${SB16_PATCHED:-}" ]; then
+        $CC -O2 -g -w -DUSE_FMOPL -DAUDIO_RATE=$R -DSB16_C="\"$SB16_PATCHED\"" -I"$TREE" \
+            -o "$OUT/audio_rate_test_patched_$R" \
+            "$D/audio_rate_test.c" "$TREE/pcspk.c" "$TREE/adlib.c" "$TREE/fmopl.c" -lm || exit 1
+        "$OUT/audio_rate_test_patched_$R"
+        result $? "AUDIO_RATE $R with $SB16_PATCHED"
+    fi
+done
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]

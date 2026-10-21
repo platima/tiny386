@@ -6,24 +6,27 @@
 //
 // Pins are DESIGN-BRIEF.md section 4 (tiny386-hdmi-board, 2026-10-21).  Every
 // shared function keeps its Korvo-1 pin, so the RGB bus stays on the IO MUX.
-// A DOS board image on a Korvo-1 halts at once (board_check in dosboard.c):
-// it looks for the MS7210's chip ID at I2C 0x59 before driving any pin that
-// is new on this board.
+// A DOS board image on a Korvo-1 halts at once (board_early_init() in
+// dosboard.c): it looks for the MS7210's chip ID at I2C 0x59 before driving
+// any pin that is new on this board.
 #define BUILD_ESP32
+#define BOARD_NAME "the DOS board"
 
 #define IRAM_ATTR_CPU_EXEC1 IRAM_ATTR
 
 #define BPP 16
-// As on the Korvo-1 in v2.  FIRMWARE-PLAN 3.1 drops it for both boards once
-// pcmalloc()'s 128 KiB window is known to have room for last_ch_attr.
-#define FULL_UPDATE
+// No FULL_UPDATE, as on the Korvo-1 (board_korvo1.h says why).
 #define USE_LCD_RGB_DOSBOARD
 #define LCD_WIDTH  800
 #define LCD_HEIGHT 600
 
-// The VGA code draws straight into the RGB driver's frame buffer, and
-// redraw() only writes the cache back (lcd_dosboard.c).
+// The VGA code and the boot console draw straight into the RGB driver's
+// frame buffer, and lcd_flush() only writes the cache back (lcd_dosboard.c,
+// lcd.h).  The drawing loop is display.c's.
 #define LCD_ZERO_COPY
+// Most pictures a second the VGA code draws: one every LCD_FRAME_MS (whole
+// ticks of 10 ms).  The HDMI output itself runs at 60 Hz.
+#define LCD_FRAME_MS 30
 
 // RGB565 bus: data, PCLK, DE and syncs on the Korvo-1's pins (IO MUX).
 // GPIO38 (the Korvo-1's LCD_CS) is USB_VBUS_EN here, so no DISP pin.
@@ -45,12 +48,12 @@
 #define LCD_VSYNC_BACK     23
 // Data launched on the falling edge of PCLK, as the Korvo-1 panel runs.  It
 // pairs with MS7210 register 0x1281 = 0x00 (plan A, encoder.md section 9);
-// both can be changed from tiny386.ini ([dosboard] pclk_neg, pclk_phase).
+// both can be changed in dosboard.ini ([dosboard] pclk_neg, pclk_phase).
 #define LCD_PCLK_ACTIVE_NEG 1
 // Bounce buffers: 0 = the LCD DMA reads the PSRAM frame buffer directly.
 // If the picture tears or shifts, set 800 * 10 (two 16,000-byte buffers in
 // internal RAM, filled by the CPU on core 0), or [dosboard] lcd_bounce_px
-// in tiny386.ini.  The frame (480,000 pixels) must be a multiple of it.
+// in dosboard.ini.  The frame (480,000 pixels) must be a multiple of it.
 #define LCD_BOUNCE_BUFFER_PX 0
 
 // microSD on SDMMC slot 0 through the IO MUX, as the Korvo-1.
@@ -61,15 +64,23 @@
 #define SD_D2 22
 #define SD_D3 23
 #define SD_PWR_EN_GPIO 39          /* card power, low = on */
-#define SD_CD_GPIO     50          /* card detect, low = card in (not used yet) */
+#define SD_CD_GPIO     50          /* card detect, low = card in (logged only) */
 
-// The emulator takes the largest PSRAM block but this much, left for the
-// 800x600 frame buffer (960,000 bytes) and ESP-IDF.
-#define PSRAM_KEEP_FREE (960000 + 256 * 1024)
+// The emulator takes the largest PSRAM block but this much, which is left
+// for ESP-IDF.  The 800x600 frame buffer (960,000 bytes) is not in it:
+// lcd_init() has taken that before the pool is sized (app_main), as on the
+// Korvo-1.
+#define PSRAM_KEEP_FREE (256 * 1024)
 
 // From the Linux route's patch, as on the Korvo-1 (board_korvo1.h says why).
 #define I386_ALIGNED_ONLY
 #define VGA_STORE_CHANGED
+// vga.c, as on the Korvo-1 (board_korvo1.h says what each does).  At
+// 800x600: 80x25 text at (40,100), 640x480 at (80,60), 320x200 doubled at
+// (80,100), 800x600 whole; anything larger scaled down to fit.
+#define VGA_RETRACE_REALTIME
+#define VGA_REDRAW_DIRTY_ROWS
+#define VGA_SHRINK_LARGE
 
 // Sound goes out over HDMI.  The MS7210 sends 44.1 kHz audio with its 48 kHz
 // settings, so the whole audio path runs at 48 kHz (FIRMWARE-PLAN 5.6).
@@ -94,7 +105,9 @@
 #define HDMI_RSTN_GPIO  2          /* MS7210 RSTN, low = reset */
 #define HDMI_INT_GPIO   6          /* MS7210 INT, not used: HPD is polled */
 
-// CH9350L in lower mode, state 2, 115200 baud, on UART1.
+// CH9350L in lower mode, state 2, 115200 baud, on UART1: the keyboard and
+// mouse, through kbd_input.c as the Korvo-1's USB host has them.  The S31's
+// own USB pins are not connected on this board.
 #define KM_UART_NUM  1
 #define KM_RX_GPIO   47            /* from CH9350L TXD */
 #define KM_TX_GPIO   55            /* to CH9350L RXD */
@@ -104,4 +117,6 @@
 
 #define USB_VBUS_EN_GPIO 38        /* high = both USB-A ports powered */
 #define LED_STATUS_GPIO  37        /* low = lit */
-#define USER_BTN_GPIO    42        /* low = pressed */
+// The USER key, low = pressed: held, the boot console comes up over the
+// picture with the speed on its title row (speed.c), as Ctrl+Alt+F12 does.
+#define USER_KEY_GPIO    42

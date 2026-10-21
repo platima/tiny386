@@ -1,8 +1,10 @@
 /*
- * Host test for esp/main/ch9350.c (frame parser and the PS/2 adapter) and
- * esp/main/ch9350_kbd.c, through tiny386's own i8042.c and usb_hid.c built
- * for the host.  What comes out is what a DOS program would read from ports
- * 0x60 and 0x64.
+ * Host test for esp/main/ch9350.c (frame parser and its adapter into
+ * kbd_input.c), through esp/main/kbd_input.c and tiny386's own i8042.c built
+ * for the host, as tests/host/test_kbd_input.c builds them (KBD_INPUT_HOST,
+ * PS2_KBD_HOOKS).  What comes out is what a DOS program would read from
+ * ports 0x60 and 0x64.  No kbd_input_poll() is called, so no typematic
+ * repeat comes out: that is test_kbd_input's business.
  *
  * Frames: the two examples in the CH9350L manual V2.6 (DS26 p. 13), state 2
  * keyboard and mouse frames as DS26 pp. 12 to 13 lay them out, state 0 data
@@ -14,7 +16,8 @@
 #include <string.h>
 #include <stdint.h>
 #include "ch9350.h"
-#include "../../i8042.h"
+#include "kbd_input.h"
+#include "i8042.h"
 
 static int failures, checks;
 #define CHECK(cond, ...) do { \
@@ -61,7 +64,7 @@ static void guest_mouse_cmd(int b)
 /* ---- parser under test ---- */
 
 static ch9350_parser_t p;
-static ch9350_ps2_t ps2;
+static ch9350_input_t input = { .dev = -1 };
 static int status_80, status_82, status_81, status_other;
 
 static void status(void *ctx, uint8_t op, uint8_t arg)
@@ -77,10 +80,13 @@ static void start(int mode, uint32_t guard_us)
 {
 	ch9350_sink_t sink = { 0 };
 
-	memset(&ps2, 0, sizeof(ps2));
-	ps2.kbd = kbd;
-	ps2.mouse = mouse;
-	ch9350_ps2_sink(&sink, &ps2);
+	/* one kbd_input.c keyboard for the chip, as ch9350_setup() opens it;
+	   a fresh one each time, with nothing held */
+	if (input.dev >= 0)
+		kbd_input_close(input.dev);
+	input.dev = kbd_input_open();
+	input.buttons = 0;
+	ch9350_input_sink(&sink, &input);
 	sink.status = status;
 	ch9350_parser_init(&p, mode, &sink, 100000, guard_us);
 	status_80 = status_82 = status_81 = status_other = 0;
@@ -141,6 +147,8 @@ static void feed_state0(uint8_t label, const uint8_t *data, int n, uint8_t seq, 
 int main(void)
 {
 	kc = i8042_init(&kbd, &mouse, 1, 12, NULL, set_irq, NULL, sys_reset);
+	kbd_input_init();
+	kbd_input_set_target(kbd, mouse);
 
 	printf("state 2, keyboard:\n");
 	start(2, 0);

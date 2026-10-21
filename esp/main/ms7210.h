@@ -7,7 +7,7 @@
  * InfoFrames in 8.5, the run-time duties in 8.6).  No vendor code was used.
  *
  * The driver itself is plain C with no ESP-IDF in it, so that it builds and
- * runs on a PC against a fake I2C bus (hosttest/ms7210_test.c).  The board
+ * runs on a PC against a fake I2C bus (tests/host/dosboard/ms7210_test.c).  The board
  * supplies the bus, the reset pin and a clock through ms7210_io_t.
  */
 #ifndef MS7210_H

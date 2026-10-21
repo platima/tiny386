@@ -331,47 +331,47 @@ int ch9350_ps2_leds_to_usb(int ps2)
 	     | ((ps2 & 1) << 2);           /* Scroll */
 }
 
-/* ---- into tiny386's PS/2 keyboard and mouse ---- */
+/* ---- into kbd_input.c, and from there tiny386's PS/2 keyboard and mouse ---- */
 
-#include "../../i8042.h"
+#include "kbd_input.h"
 
-static void ps2_kbd(void *ctx, const uint8_t r[8])
+static void in_kbd(void *ctx, const uint8_t r[8])
 {
-	ch9350_ps2_t *t = ctx;
+	ch9350_input_t *t = ctx;
 
-	bootkbd_report(&t->keys, t->kbd, r);
+	/* a report is a snapshot of the keys held, so the chip's 3 or 4
+	   copies of each frame (ch9350.md 6.6) make no events after the
+	   first; an ErrorRollOver report is ignored there */
+	kbd_input_report(t->dev, r);
 }
 
-static void ps2_mouse(void *ctx, int buttons, int dx, int dy, int wheel)
+static void in_mouse(void *ctx, int buttons, int dx, int dy, int wheel)
 {
-	ch9350_ps2_t *t = ctx;
+	ch9350_input_t *t = ctx;
 
-	if (!t->mouse)
-		return;
-	t->buttons = buttons & 7;
-	/* ps2_mouse_event() takes dy as the screen has it (down positive, as
-	   HID) and turns it round itself; its dz is negative for the wheel
-	   turned up (sdl/main.c), HID's wheel positive */
-	ps2_mouse_event(t->mouse, dx, dy, -wheel, buttons & 7);
+	t->buttons = buttons & 0x1F;
+	/* as HID has them: dy positive down, wheel positive up; kbd_input.c
+	   turns them into what ps2_mouse_event() takes */
+	kbd_input_mouse(dx, dy, wheel, buttons & 0x1F);
 }
 
-static void ps2_release(void *ctx)
+static void in_release(void *ctx)
 {
-	ch9350_ps2_t *t = ctx;
+	ch9350_input_t *t = ctx;
 
-	bootkbd_release_all(&t->keys, t->kbd);
-	if (t->buttons && t->mouse) {
+	kbd_input_release_all();
+	if (t->buttons) {
 		t->buttons = 0;
-		ps2_mouse_event(t->mouse, 0, 0, 0, 0);
+		kbd_input_mouse(0, 0, 0, 0);
 	}
 }
 
-void ch9350_ps2_sink(ch9350_sink_t *sink, ch9350_ps2_t *t)
+void ch9350_input_sink(ch9350_sink_t *sink, ch9350_input_t *t)
 {
 	sink->ctx = t;
-	sink->kbd = ps2_kbd;
-	sink->mouse = ps2_mouse;
-	sink->release_all = ps2_release;
+	sink->kbd = in_kbd;
+	sink->mouse = in_mouse;
+	sink->release_all = in_release;
 }
 
 #if defined(ESP_PLATFORM) && defined(KM_UART_NUM)
@@ -380,18 +380,19 @@ void ch9350_ps2_sink(ch9350_sink_t *sink, ch9350_ps2_t *t)
  * GPIO7 (high = reset), S0 on GPIO46 (low = state 2).  One task on core 0.
  */
 #include <stdatomic.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/event_groups.h"
 #include "driver/uart.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
 #include "esp_rom_sys.h"
 #include "common.h"
+#include "console.h"
 
 static ch9350_parser_t parser;
-static ch9350_ps2_t ps2;
+static ch9350_input_t input = { .dev = -1 };
 static int chip_mode = 2;
 static int zero_guard_ms;
 static int usb_leds;
@@ -413,9 +414,12 @@ static void sink_status(void *ctx, uint8_t op, uint8_t arg)
 		send_leds();
 }
 
-void ch9350_set_leds_ps2(int ps2_leds)
+/* kbd_input.c, from the emulator's core when the guest sets the lights
+   (PS/2 0xED), already in the CH9350L's order: only noted here, the task
+   sends the frame */
+static void leds_changed(uint8_t leds)
 {
-	atomic_store(&leds_wanted, ch9350_ps2_leds_to_usb(ps2_leds));
+	atomic_store(&leds_wanted, leds & 0x07);
 }
 
 static void chip_reset(void)
@@ -444,22 +448,26 @@ static void ch9350_task(void *arg)
 	int64_t last_led = 0, last_log = 0;
 	uint32_t last_errors = 0;
 
-	/* wait for the emulator's keyboard and mouse to exist */
-	xEventGroupWaitBits(global_event_group, BIT0, pdFALSE, pdFALSE, portMAX_DELAY);
-	ps2.kbd = globals.kbd;
-	ps2.mouse = globals.mouse;
-	ch9350_ps2_sink(&sink, &ps2);
+	ch9350_input_sink(&sink, &input);
 	sink.status = sink_status;
 
-	ESP_ERROR_CHECK(uart_driver_install(KM_UART_NUM, 1024, 0, 0, NULL, 0));
-	ESP_ERROR_CHECK(uart_param_config(KM_UART_NUM, &cfg));
-	ESP_ERROR_CHECK(uart_set_pin(KM_UART_NUM, KM_TX_GPIO, KM_RX_GPIO,
-				     UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-	/* a reset now, so that every device attaches again with the emulator there */
+	esp_err_t err = uart_driver_install(KM_UART_NUM, 1024, 0, 0, NULL, 0);
+	if (err == ESP_OK)
+		err = uart_param_config(KM_UART_NUM, &cfg);
+	if (err == ESP_OK)
+		err = uart_set_pin(KM_UART_NUM, KM_TX_GPIO, KM_RX_GPIO,
+				   UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+	if (err != ESP_OK) {
+		console_printf(CON_ERROR, "CH9350L: UART%d could not be set up (%s): no "
+			       "keyboard or mouse.", KM_UART_NUM, esp_err_to_name(err));
+		vTaskDelete(NULL);
+		return;
+	}
+	/* a reset now, so that every device attaches again and its keys
+	   start from nothing held */
 	chip_reset();
 	uart_flush_input(KM_UART_NUM);
 	ch9350_parser_init(&parser, chip_mode, &sink, 100000, zero_guard_ms * 1000u);
-	fprintf(stderr, "ch9350: state %d on UART%d, 115200 baud\n", chip_mode, KM_UART_NUM);
 
 	for (;;) {
 		int n = uart_read_bytes(KM_UART_NUM, buf, sizeof(buf), 1);
@@ -482,9 +490,9 @@ static void ch9350_task(void *arg)
 		uint32_t errors = parser.resyncs + parser.unknown_ops + parser.timeouts +
 				  parser.bad_frames + parser.bad_sums;
 		if (errors != last_errors && now - last_log > 10000000) {
-			fprintf(stderr, "ch9350: %lu frames (%lu keyboard, %lu mouse); "
+			console_uart_printf("ch9350: %lu frames (%lu keyboard, %lu mouse); "
 				"resyncs %lu, junk %lu, unknown %lu, timeouts %lu, bad %lu, "
-				"bad sums %lu, zero frames dropped %lu\n",
+				"bad sums %lu, zero frames dropped %lu",
 				(unsigned long)parser.frames, (unsigned long)parser.kbd_frames,
 				(unsigned long)parser.mouse_frames, (unsigned long)parser.resyncs,
 				(unsigned long)parser.junk_bytes, (unsigned long)parser.unknown_ops,
@@ -496,19 +504,32 @@ static void ch9350_task(void *arg)
 	}
 }
 
-void ch9350_start(int mode, int guard_ms)
+void ch9350_setup(int mode, int guard_ms)
 {
+	static bool started;
 	const gpio_config_t out = {
 		.pin_bit_mask = (1ULL << KM_RST_GPIO) | (1ULL << KM_S0_GPIO),
 		.mode = GPIO_MODE_OUTPUT,
 	};
 
+	if (started)
+		return;
+	started = true;
 	chip_mode = (mode == 0) ? 0 : 2;
 	zero_guard_ms = guard_ms;
 	/* hold the chip in reset with S0 set until the task is ready */
 	gpio_set_level(KM_RST_GPIO, 1);
 	gpio_set_level(KM_S0_GPIO, chip_mode == 2 ? 0 : 1);
 	gpio_config(&out);
+
+	/* one kbd_input.c keyboard for whatever is on the chip's two ports:
+	   it sends one report for both (DS26 p. 13) */
+	input.dev = kbd_input_open();
+	kbd_input_set_leds_fn(leds_changed);
+	kbd_input_start();              /* typematic repeat */
 	xTaskCreatePinnedToCore(ch9350_task, "ch9350", 4096, NULL, 3, NULL, 0);
+	console_printf(CON_INFO, "CH9350L started in state %d on UART%d, %d baud: the "
+		       "keyboard and mouse go in its two USB-A ports.", chip_mode,
+		       KM_UART_NUM, KM_BAUD);
 }
 #endif /* ESP_PLATFORM && KM_UART_NUM */
