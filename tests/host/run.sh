@@ -124,6 +124,16 @@ $CC $CFLAGS -I"$TREE/esp/main" -o "$OUT/test_hid_parse" "$HERE/test_hid_parse.c"
 "$OUT/test_hid_parse"
 result $? "hid_parse.c: boot keyboard, wheel mouse, receiver with report IDs, NKRO, vendor, tablet"
 
+# ==== 5b. usb_input.c against the HID driver's two-step close ====
+# usb_input.c itself, with stand-ins for FreeRTOS and usb_host_hid
+# (tests/host/usb/stubs) and the real hid_parse.c.
+echo
+$CC $CFLAGS -Wno-unused-function -DUSB_INPUT_C="\"$TREE/esp/main/usb_input.c\"" \
+    -I"$HERE/usb/stubs" -I"$TREE/esp/main" -I"$TREE" -o "$OUT/test_usb_input" \
+    "$HERE/usb/test_usb_input.c" "$TREE/esp/main/hid_parse.c" || exit 1
+"$OUT/test_usb_input"
+result $? "usb_input.c: interfaces given up, unplugged, queued behind others; lights after an unplug"
+
 # ==== 6. which ini, and the files it names (FIRMWARE-PLAN 3.4) ====
 # setup.c with tiny386's own ini.c, on a pretend card under OUT/card, with
 # the Linux route's ini files (tests/host/data/linux-route).

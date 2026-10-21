@@ -19,6 +19,13 @@
  * own task (reports arrive there), usb_task (connects, disconnects, the
  * keyboard lights), and kbd_input.c's kbd_repeat (typematic repeat).
  *
+ * Closing an interface takes two hid_host_device_close() calls: the first
+ * calls if_callback() with DISCONNECTED, in the closing task, and only the
+ * second removes it (usb_host_hid's hid_host.c, as Espressif's example
+ * uses it).  When the device is unplugged the HID driver makes the first
+ * and usb_task the second (on_gone()); an interface usb_task itself gives
+ * up gets both from usb_task (close_interface()).
+ *
  * Based on Espressif's HID host example (Unlicense OR CC0-1.0).
  */
 #include <stdio.h>
@@ -28,6 +35,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "usb/usb_host.h"
@@ -53,6 +61,9 @@ struct hid_if {
 	int kbd;                /* kbd_input slot, -1 if not a keyboard */
 	uint32_t errors;
 	struct hid_layout layout;
+	/* set by the HID driver's task when the device is unplugged: the
+	   driver frees the device straight after, so no more SET_REPORT */
+	bool gone;
 };
 
 static struct hid_if s_ifs[MAX_IFS];
@@ -70,15 +81,20 @@ struct usb_event {
 };
 
 static QueueHandle_t s_queue;
+static SemaphoreHandle_t s_installed;   /* given by usb_lib_task once it has tried */
 static volatile esp_err_t s_install_err = ESP_FAIL;
 static volatile bool s_fsls_only;
 static bool s_started;
+static uint32_t s_dropped;              /* events the full queue lost */
 
-static void post(enum usb_ev ev, hid_host_device_handle_t h, struct hid_if *hif)
+/* wait: ticks to wait for room; 0 from the emulator's core, which must
+   never wait on USB */
+static void post(enum usb_ev ev, hid_host_device_handle_t h, struct hid_if *hif,
+		 TickType_t wait)
 {
 	struct usb_event e = { .ev = ev, .handle = h, .hif = hif };
-	if (s_queue)
-		xQueueSend(s_queue, &e, 0);
+	if (s_queue && xQueueSend(s_queue, &e, wait) != pdTRUE)
+		__atomic_add_fetch(&s_dropped, 1, __ATOMIC_RELAXED);
 }
 
 /* ==== reports: the HID driver's task ==== */
@@ -124,8 +140,14 @@ static void if_callback(hid_host_device_handle_t h,
 			handle_report(hif, data, n);
 		break;
 	case HID_HOST_INTERFACE_EVENT_DISCONNECTED:
-		/* closed by usb_task, which may be sending it the lights */
-		post(EV_GONE, h, hif);
+		/* An interface usb_task is giving up itself has no handle in its
+		   slot any more (close_interface()): nothing to do.  Otherwise
+		   the device was unplugged: no more lights to it, and usb_task
+		   makes the second close (on_gone()). */
+		if (hif && hif->handle == h) {
+			__atomic_store_n(&hif->gone, true, __ATOMIC_RELEASE);
+			post(EV_GONE, h, hif, pdMS_TO_TICKS(100));
+		}
 		break;
 	case HID_HOST_INTERFACE_EVENT_TRANSFER_ERROR:
 		hif->errors++;
@@ -139,7 +161,7 @@ static void driver_callback(hid_host_device_handle_t h,
 			    const hid_host_driver_event_t event, void *arg)
 {
 	if (event == HID_HOST_DRIVER_EVENT_CONNECTED)
-		post(EV_CONNECTED, h, NULL);
+		post(EV_CONNECTED, h, NULL, pdMS_TO_TICKS(100));
 }
 
 /* ==== connects, disconnects, lights: usb_task ==== */
@@ -148,9 +170,20 @@ static void set_lights(struct hid_if *hif, uint8_t leds)
 {
 	/* a boot keyboard's output report: one byte, Num, Caps, Scroll */
 	uint8_t v = leds;
-	if (hif->kind == IF_KBD_BOOT)
+	if (hif->kind == IF_KBD_BOOT && !__atomic_load_n(&hif->gone, __ATOMIC_ACQUIRE))
 		hid_class_request_set_report(hif->handle, HID_REPORT_TYPE_OUTPUT, 0,
 					     &v, 1);
+}
+
+/* An interface usb_task gives up (not a keyboard or mouse, or it would not
+   start): its slot freed first, so that the DISCONNECTED the first close
+   raises is not taken for an unplug, then both closes. */
+static void close_interface(struct hid_if *hif, hid_host_device_handle_t h)
+{
+	kbd_input_close(hif->kbd);
+	memset(hif, 0, sizeof(*hif));
+	hid_host_device_close(h);
+	hid_host_device_close(h);
 }
 
 static void ascii_of(const wchar_t *w, char *out, int size)
@@ -230,8 +263,7 @@ static void on_connected(hid_host_device_handle_t h)
 		console_printf(CON_INFO, "USB: %04x:%04x %s, interface %d (subclass %d, "
 			       "protocol %d): not a keyboard or mouse, left alone.",
 			       vid, pid, product, p.iface_num, p.sub_class, p.proto);
-		hid_host_device_close(h);
-		hif->handle = NULL;
+		close_interface(hif, h);
 		return;
 	}
 	if (kind == IF_KBD_BOOT || (kind == IF_REPORT && hif->layout.kbd)) {
@@ -245,9 +277,7 @@ static void on_connected(hid_host_device_handle_t h)
 	if (err != ESP_OK) {
 		console_printf(CON_WARN, "USB: interface %d of %04x:%04x could not be "
 			       "started (%s).", p.iface_num, vid, pid, esp_err_to_name(err));
-		kbd_input_close(hif->kbd);
-		hid_host_device_close(h);
-		memset(hif, 0, sizeof(*hif));
+		close_interface(hif, h);
 		return;
 	}
 	if (kind == IF_KBD_BOOT)
@@ -260,9 +290,12 @@ static void on_connected(hid_host_device_handle_t h)
 		       p.sub_class, p.proto, how);
 }
 
-static void on_gone(struct hid_if *hif)
+/* The device of this interface was unplugged: the HID driver has made the
+   first close.  Only if the slot still holds that interface: a slot given
+   up and taken by another interface since is left alone. */
+static void on_gone(struct hid_if *hif, hid_host_device_handle_t h)
 {
-	if (!hif || !hif->handle)
+	if (!hif || !h || hif->handle != h)
 		return;
 	const char *what = hif->kind == IF_KBD_BOOT ? "keyboard" :
 		hif->kind == IF_MOUSE_BOOT ? "mouse" : hid_layout_what(&hif->layout);
@@ -279,15 +312,25 @@ static void on_gone(struct hid_if *hif)
 static void usb_task(void *arg)
 {
 	struct usb_event e;
+	uint32_t dropped_seen = 0;
+	(void) arg;
 	for (;;) {
 		if (!xQueueReceive(s_queue, &e, portMAX_DELAY))
 			continue;
+		uint32_t dropped = __atomic_load_n(&s_dropped, __ATOMIC_RELAXED);
+		if (dropped != dropped_seen) {
+			/* a lost unplug leaves that keyboard's keys held */
+			console_printf(CON_WARN, "USB: %u events lost, the queue was full; "
+				       "unplug and plug in again if a key stays held.",
+				       (unsigned) (dropped - dropped_seen));
+			dropped_seen = dropped;
+		}
 		switch (e.ev) {
 		case EV_CONNECTED:
 			on_connected(e.handle);
 			break;
 		case EV_GONE:
-			on_gone(e.hif);
+			on_gone(e.hif, e.handle);
 			break;
 		case EV_LEDS: {
 			uint8_t leds = kbd_input_leds();
@@ -304,13 +347,14 @@ static void usb_task(void *arg)
 static void leds_changed(uint8_t usb_leds)
 {
 	(void) usb_leds;
-	post(EV_LEDS, NULL, NULL);
+	post(EV_LEDS, NULL, NULL, 0);
 }
 
 /* ==== the host ==== */
 
 static void usb_lib_task(void *arg)
 {
+	(void) arg;
 	usb_host_config_t host_config = {
 		.skip_phy_setup = false,
 		.intr_flags = ESP_INTR_FLAG_LOWMED,
@@ -326,7 +370,9 @@ static void usb_lib_task(void *arg)
 		s_fsls_only = err == ESP_OK;
 	}
 	s_install_err = err;
-	xTaskNotifyGive(arg);
+	/* usb_input.c's own semaphore, not a notification to the caller:
+	   given late, it still reaches nothing but this file */
+	xSemaphoreGive(s_installed);
 	if (err != ESP_OK) {
 		vTaskDelete(NULL);
 		return;
@@ -346,9 +392,19 @@ void usb_setup(void)
 	s_started = true;
 
 	s_queue = xQueueCreate(16, sizeof(struct usb_event));
-	xTaskCreatePinnedToCore(usb_lib_task, "usb_events", 3072,
-				xTaskGetCurrentTaskHandle(), 2, NULL, 0);
-	ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(2000));
+	s_installed = xSemaphoreCreateBinary();
+	if (!s_queue || !s_installed)
+		console_fatal("USB: no memory for the USB host's queue.");
+	/* 4096 bytes, as Espressif's example and the component's tests give
+	   it: enumeration runs on it, and a log line there runs the console */
+	if (xTaskCreatePinnedToCore(usb_lib_task, "usb_events", 4096, NULL, 2,
+				    NULL, 0) != pdPASS)
+		console_fatal("USB: the task usb_events could not be started (no memory).");
+	if (xSemaphoreTake(s_installed, pdMS_TO_TICKS(5000)) != pdTRUE) {
+		console_printf(CON_ERROR, "USB: the host did not start within 5 s: no "
+			       "keyboard or mouse.");
+		return;
+	}
 	if (s_install_err != ESP_OK) {
 		console_printf(CON_ERROR, "USB: the host could not be started (%s): no "
 			       "keyboard or mouse.", esp_err_to_name(s_install_err));
@@ -372,7 +428,8 @@ void usb_setup(void)
 
 	kbd_input_set_leds_fn(leds_changed);
 	kbd_input_start();              /* typematic repeat */
-	xTaskCreatePinnedToCore(usb_task, "usb_task", 4096, NULL, 2, NULL, 0);
+	if (xTaskCreatePinnedToCore(usb_task, "usb_task", 4096, NULL, 2, NULL, 0) != pdPASS)
+		console_fatal("USB: the task usb_task could not be started (no memory).");
 
 	console_printf(CON_INFO, "USB host started (%s, hubs allowed): plug in a "
 		       "keyboard and a mouse, or a receiver for both.",
