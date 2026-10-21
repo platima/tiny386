@@ -105,8 +105,18 @@ def is_allowed_extra(ev):
     return False
 
 
+# Rows whose value departs from encoder.md 8.4 on purpose, with the reason.
+# B15: pull-ups (0x10) on the video input pads, not the SDK's pull-downs
+# (0x20), which would load the S31's GPIO36 (VDD_SPI) strap through an
+# S31-only reset (DOS board review, round 2, S2; dosboard SCHEMATIC-NOTES
+# section 10).
+DEPARTURES = {'B15': (0x10, 'pull-ups, not 8.4\'s pull-downs: the GPIO36 strap')}
+
+
 def expected_values(row, phase):
     """Values for 'write' style rows."""
+    if row['id'] in DEPARTURES:
+        return [DEPARTURES[row['id']][0]]
     v = row['val']
     if ' or ' in v:
         return [phase]
@@ -258,6 +268,8 @@ def main():
             note = '  + section 8.6: ' + ', '.join(kinds)
             if bad_extra:
                 note += '  UNEXPECTED: %s' % bad_extra
+        if row['id'] in DEPARTURES:
+            note += '  (departs from 8.4 on purpose: %s)' % DEPARTURES[row['id']][1]
         print('%s %-4s %s%s' % (flag, row['id'], msg, note))
         # Loongson / Meyesemi values quoted in the Source column
         for reg_s, val_s in re.findall(r'0x([0-9A-Fa-f]{4}) = 0x([0-9A-Fa-f]{2})', row['src']):

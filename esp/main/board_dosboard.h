@@ -46,9 +46,17 @@
 #define LCD_VSYNC_FRONT    1
 #define LCD_VSYNC_WIDTH    4
 #define LCD_VSYNC_BACK     23
-// Data launched on the falling edge of PCLK, as the Korvo-1 panel runs.  It
-// pairs with MS7210 register 0x1281 = 0x00 (plan A, encoder.md section 9);
-// both can be changed in dosboard.ini ([dosboard] pclk_neg, pclk_phase).
+// pclk_active_neg = 1, as the Korvo-1 panel runs.  ESP-IDF's header says the
+// data then changes on the falling edge, its register description (and
+// lcd_ll.h) that it changes on the rising edge, to be sampled on the falling
+// one.  Since the second DOS board review (S5) the default pairs it with
+// MS7210 register 0x1281 = 0x04 (PCLK inverted inside the MS7210, as both
+// reference tables have it), which puts launch and capture on opposite
+// edges by the register description; pclk_neg 0 with 0x1281 = 0x00 is the
+// other such pair and the next to try, then the two same-edge ones
+// (encoder.md section 9's plan A among them).  Both can be changed in
+// dosboard.ini ([dosboard] pclk_neg, pclk_phase; the default phase is in
+// dosboard.c).
 #define LCD_PCLK_ACTIVE_NEG 1
 // Bounce buffers: 0 = the LCD DMA reads the PSRAM frame buffer directly.
 // If the picture tears or shifts, set 800 * 10 (two 16,000-byte buffers in

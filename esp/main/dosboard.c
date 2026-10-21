@@ -40,7 +40,9 @@
 /* ==== lines from before the boot console ==== */
 
 #define NOTES_MAX 24
-#define NOTE_LEN 112
+/* as long as ms7210.c's log lines (logf_()), so that the first-light
+   summary keeps its PCLK meter figure (DOS board review, round 2, S4) */
+#define NOTE_LEN 160
 /* in PSRAM, made in board_early_init() and freed once shown; the hot plug
    task may note a line while app_main() does, hence the lock */
 static char (*s_notes)[NOTE_LEN];
@@ -98,7 +100,12 @@ void board_console_ready(void)
 }
 
 dosboard_cfg_t dosboard_cfg = {
-	.pclk_phase = 0,
+	/* PCLK inverted inside the MS7210 (0x1281 = 0x04, as both reference
+	   tables have it) against the S31's pclk_active_neg = 1: by ESP-IDF's
+	   register description the S31 then changes the data on the rising
+	   edge, and the MS7210 samples on the other one (DOS board review,
+	   round 2, S5; dosboard.ini lists the four pairs) */
+	.pclk_phase = 4,
 	.pclk_neg = LCD_PCLK_ACTIVE_NEG,
 	.hdmi_mode = MS7210_MODE_AUTO,
 	.audio = 1,
@@ -204,6 +211,28 @@ static int i2c_open(void)
 	return 0;
 }
 
+/* the MS7210's two handles (fast and slow) at another 7-bit address */
+static int i2c_readdress(uint8_t addr7)
+{
+	i2c_device_config_t dc = {
+		.dev_addr_length = I2C_ADDR_BIT_LEN_7,
+		.device_address = addr7,
+		.scl_speed_hz = HDMI_I2C_HZ,
+	};
+
+	if (dev_fast)
+		i2c_master_bus_rm_device(dev_fast);
+	if (dev_slow)
+		i2c_master_bus_rm_device(dev_slow);
+	dev_fast = dev_slow = NULL;
+	if (i2c_master_bus_add_device(i2c_bus, &dc, &dev_fast) != ESP_OK)
+		return -1;
+	dc.scl_speed_hz = HDMI_DDC_HZ;
+	if (i2c_master_bus_add_device(i2c_bus, &dc, &dev_slow) != ESP_OK)
+		return -1;
+	return 0;
+}
+
 static void i2c_close(void)
 {
 	if (dev_fast)
@@ -224,27 +253,29 @@ static void __attribute__((noreturn)) wrong_board(void)
 {
 	/* leave GPIO0 to 2 as they were found: on a Korvo-1 they are the
 	   codec's I2C and MCLK */
-	char seen[48];
+	char seen[64];
 
 	i2c_close();
 	gpio_reset_pin(HDMI_RSTN_GPIO);
 	if (hdmi.errors < 0)
 		snprintf(seen, sizeof(seen), "the I2C bus could not be set up");
 	else if (hdmi.errors)
-		snprintf(seen, sizeof(seen), "nothing answered");
+		snprintf(seen, sizeof(seen), "nothing answered at 0x%02X or 0x%02X",
+			 MS7210_I2C_ADDR, MS7210_I2C_ADDR_ALT);
 	else
-		snprintf(seen, sizeof(seen), "chip ID read %02X %02X %02X, expected A2 20 0A",
-			 hdmi.chip_id[0], hdmi.chip_id[1], hdmi.chip_id[2]);
+		snprintf(seen, sizeof(seen), "chip ID at 0x%02X read %02X %02X %02X, "
+			 "expected A2 20 0A", hdmi.cfg.i2c_addr, hdmi.chip_id[0],
+			 hdmi.chip_id[1], hdmi.chip_id[2]);
 	for (;;) {
 		fprintf(stderr,
-			"\n*** tiny386 for the DOS board: no MS7210 HDMI transmitter at I2C 0x%02X"
+			"\n*** tiny386 for the DOS board: no MS7210 HDMI transmitter on I2C"
 			" (%s).\n"
 			"*** This image is only for the DOS board. On an ESP32-S31-Korvo-1 flash the"
 			" Korvo-1 image.\n"
 			"*** On a DOS board: check the MS7210's 1.2 V and 3.3 V, RSTN (GPIO2) and"
 			" the I2C pull-ups.\n"
 			"*** Halted; nothing else was started.\n",
-			HDMI_I2C_ADDR, seen);
+			seen);
 		vTaskDelay(pdMS_TO_TICKS(10000));
 	}
 }
@@ -275,16 +306,35 @@ void board_early_init(void)
 		hdmi.errors = -1;
 		wrong_board();
 	}
-	if (ms7210_probe(&hdmi, &hdmi_io, NULL) != 0)
-		wrong_board();
+	if (ms7210_probe(&hdmi, &hdmi_io, NULL) != 0) {
+		/* Nothing answered at 0x59 (SA high, as the board has it, after
+		   the data sheet's text): its figure 3 has SA to ground, 0x2B,
+		   so that is tried before giving up.  Only the MS7210's own chip
+		   ID counts at either (DOS board review, round 2, note 8). */
+		ms7210_cfg_t alt;
+		ms7210_default_cfg(&alt);
+		alt.i2c_addr = MS7210_I2C_ADDR_ALT;
+		if (hdmi.errors <= 0)
+			wrong_board();          /* something else answered at 0x59 */
+		fprintf(stderr, "dosboard: nothing at I2C 0x%02X; trying 0x%02X\n",
+			MS7210_I2C_ADDR, MS7210_I2C_ADDR_ALT);
+		if (i2c_readdress(MS7210_I2C_ADDR_ALT) != 0) {
+			hdmi.errors = -1;
+			wrong_board();
+		}
+		if (ms7210_probe(&hdmi, &hdmi_io, &alt) != 0)
+			wrong_board();
+	}
 
 	/* the right board: the pins that are new on it */
 	gpio_set_level(LED_STATUS_GPIO, 0);      /* lit while starting */
 	gpio_set_level(USB_VBUS_EN_GPIO, 1);     /* USB-A ports on (R309 does so too) */
 	gpio_config(&outs);
 	gpio_config(&ins);
-	dosboard_note("dosboard: MS7210 found at I2C 0x%02X; card detect says the card is %s.",
-		      HDMI_I2C_ADDR, gpio_get_level(SD_CD_GPIO) ? "out" : "in");
+	dosboard_note("dosboard: MS7210 found at I2C 0x%02X%s; card detect says the card is %s.",
+		      hdmi.cfg.i2c_addr, hdmi.cfg.i2c_addr == MS7210_I2C_ADDR ? "" :
+		      " (SA low, not as the board is drawn)",
+		      gpio_get_level(SD_CD_GPIO) ? "out" : "in");
 }
 
 /* ==== [dosboard] settings ==== */
@@ -312,7 +362,12 @@ static int parse_cfg(void *user, const char *section, const char *name, const ch
 	if (strcmp(section, "dosboard") != 0)
 		return 1;
 	if (strcmp(name, "pclk_phase") == 0) {
-		c->pclk_phase = atoi(value) & 7;
+		/* one digit, 0 to 7: "8" or "yes" is no phase (DOS board review,
+		   round 2, note 7) */
+		if (value[0] >= '0' && value[0] <= '7' && value[1] == 0)
+			c->pclk_phase = value[0] - '0';
+		else
+			bad = "0 to 7";
 	} else if (strcmp(name, "pclk_neg") == 0) {
 		if (b < 0)
 			bad = "0 or 1";
@@ -344,7 +399,14 @@ static int parse_cfg(void *user, const char *section, const char *name, const ch
 	} else if (strcmp(name, "ch9350_state") == 0) {
 		c->ch9350_state = atoi(value) == 0 ? 0 : 2;
 	} else if (strcmp(name, "kbd_zero_guard_ms") == 0) {
-		c->kbd_zero_guard_ms = atoi(value);
+		/* 0 to 50: a negative guard would become some 71 minutes, and
+		   a key let go while the mouse moved would stay held */
+		char *end;
+		long g = strtol(value, &end, 10);
+		if (end != value && *end == 0 && g >= 0 && g <= 50)
+			c->kbd_zero_guard_ms = (int) g;
+		else
+			bad = "0 to 50";
 	} else if (strcmp(name, "i2s_slot_bits") == 0) {
 		if (atoi(value) == 16 || atoi(value) == 32)
 			c->i2s_slot_bits = atoi(value);

@@ -15,9 +15,16 @@
 
 #include <stdint.h>
 
-#define MS7210_I2C_ADDR   0x59   /* 7-bit, SA pin high */
+#define MS7210_I2C_ADDR   0x59   /* 7-bit, SA pin high, as the data sheet's text has it */
+/* 7-bit, SA pin low: the data sheet's figure 3 draws SA to ground, against
+   its own text; the DOS board's check tries it if nothing answers at 0x59
+   (DOS board review, round 2, note 8) */
+#define MS7210_I2C_ADDR_ALT 0x2B
 #define MS7210_EDID_ADDR  0x50   /* the monitor's EDID, through the DDC pass-through */
 #define MS7210_PLL_TRIES  8      /* passes through E7 to E40 before giving up */
+/* chip resets the hot plug poll sets up again in a row before it stops
+   looking (DOS board review, round 2, S3) */
+#define MS7210_RESET_TRIES 3
 
 typedef struct ms7210_io {
 	void *ctx;
@@ -49,11 +56,13 @@ typedef struct {
 	uint8_t rb_swap;         /* 1 = register 0x1201 bit 4 set (row B7): red and blue swapped */
 	uint32_t bus_hz;         /* register access: 100 kHz */
 	uint32_t ddc_hz;         /* while the DDC pass-through is on: 20 kHz */
+	uint8_t i2c_addr;        /* 7-bit: MS7210_I2C_ADDR, or MS7210_I2C_ADDR_ALT */
 } ms7210_cfg_t;
 
 typedef struct {
 	int valid;               /* block 0 header and checksum right */
 	int blocks;              /* blocks read and checked (1 or 2) */
+	int ext_valid;           /* block 1 read, its checksum right and its tag one there is */
 	int ext_ok;              /* block 1 is a CEA-861 extension with a good checksum */
 	int hdmi;                /* CEA-861 vendor block with IEEE OUI 00-0C-03 */
 	int basic_audio;         /* CEA-861 header byte 3 bit 6 */
@@ -81,6 +90,13 @@ typedef struct {
 	uint8_t edid[256];
 	ms7210_edid_info_t edid_info;
 	int errors;              /* I2C errors since the last ms7210_init() */
+	/* the hot plug poll's look for a chip reset under the driver (0x120C
+	   lost D1's value): on only while 0x120C reads back what D1 wrote
+	   straight after the set-up, and off for good once that fails or after
+	   MS7210_RESET_TRIES set-ups in a row (DOS board review, round 2, S3) */
+	int reset_check;
+	int reset_check_off;
+	int resets_in_row;
 } ms7210_t;
 
 void ms7210_default_cfg(ms7210_cfg_t *cfg);

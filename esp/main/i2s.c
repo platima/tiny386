@@ -176,8 +176,14 @@ void i2s_main()
 	};
 	/* 16-bit samples in 32-bit slots, if the receiver wants 64 bit clocks
 	   a frame */
-	if (i2s_slot_bits == 32)
+	if (i2s_slot_bits == 32) {
 		tx_std_cfg.slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
+		/* word select high for one whole slot of 32, not the 16 the
+		   Philips helper set for 16-bit samples: a proper I2S frame of
+		   64 bit clocks (DOS board review, round 2, S1; ESP-IDF's I2S
+		   guide: ws_width is the slot width in Philips format) */
+		tx_std_cfg.slot_cfg.ws_width = 32;
+	}
 	ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_chan, &tx_std_cfg));
 #ifdef USE_ES8311
 	ESP_ERROR_CHECK(es8311_codec_init());

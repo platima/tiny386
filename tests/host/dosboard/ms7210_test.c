@@ -45,6 +45,8 @@ typedef struct {
 	uint32_t delay_us;
 	char row[8];
 	int e1_rows, e7_rows, edid_reads;
+	uint8_t chip_addr;      /* the 7-bit address the chip answers at */
+	int reg120c_zero;       /* 0x120C reads 0x00: 1 always, 2 until it is written */
 } fake_t;
 
 static uint8_t pattern(int a)
@@ -63,6 +65,7 @@ static void fake_reset(fake_t *f)
 	f->hz = 100000;
 	f->pll_lock_after = 1;
 	f->chip_id0 = 0xA2;
+	f->chip_addr = MS7210_I2C_ADDR;
 }
 
 static void lg(fake_t *f, const char *fmt, ...)
@@ -85,6 +88,7 @@ static uint8_t reg_read(fake_t *f, uint16_t r)
 	case 0x001E: return 6068 & 0xFF;
 	case 0x001F: return 6068 >> 8;
 	case 0x0502: return (f->regs[r] & ~1) | (f->hpd & 1);
+	case 0x120C: return f->reg120c_zero ? 0x00 : f->regs[r];
 	case 0x051D: return f->regs[r] | 0x10;
 	case 0x091C: {
 		int locked = f->pll_lock_after && f->pll_triggers >= f->pll_lock_after;
@@ -103,7 +107,7 @@ static int f_write(void *ctx, uint8_t addr, const uint8_t *b, int len)
 	for (int i = 0; i < len; i++)
 		lg(f, " %02X", b[i]);
 	lg(f, " hz=%u\n", f->hz);
-	if (addr != MS7210_I2C_ADDR || f->chip_nak) {
+	if (addr != f->chip_addr || f->chip_nak) {
 		lg(f, "NAK\n");
 		return -1;
 	}
@@ -114,6 +118,8 @@ static int f_write(void *ctx, uint8_t addr, const uint8_t *b, int len)
 	uint16_t r = b[0] | (b[1] << 8);
 	f->regs[r] = b[2];
 	f->written[r] = 1;
+	if (r == 0x120C && f->reg120c_zero == 2)
+		f->reg120c_zero = 0;
 	if (r == 0x0910 && b[2] == 0x01)
 		f->pll_triggers++;
 	if (r == 0x0012)
@@ -128,7 +134,7 @@ static int f_write_read(void *ctx, uint8_t addr, const uint8_t *w, int wlen, uin
 	lg(f, "R %02X", addr);
 	for (int i = 0; i < wlen; i++)
 		lg(f, " %02X", w[i]);
-	if (addr == MS7210_I2C_ADDR && !f->chip_nak && wlen == 2 && rlen == 1) {
+	if (addr == f->chip_addr && !f->chip_nak && wlen == 2 && rlen == 1) {
 		r[0] = reg_read(f, w[0] | (w[1] << 8));
 		lg(f, " -> %02X n=1 hz=%u\n", r[0], f->hz);
 		return 0;
@@ -456,6 +462,12 @@ int main(int argc, char **argv)
 	CHECK(fake.regs[0x0531] == 0x84, "0x0531 = 0x84 (audio on, 48 kHz), is %02X", fake.regs[0x0531]);
 	CHECK((fake.regs[0x050E] & 0x60) == 0x60, "AVI and audio InfoFrames on");
 	CHECK((fake.regs[0x1281] & 7) == 0, "0x1281 phase 0 (plan A)");
+	/* B15, on purpose not encoder.md 8.4's 0x20: pull-ups, which help the
+	   S31's GPIO36 strap (DOS board review, round 2, S2) */
+	CHECK((fake.regs[0x0079] & 0x30) == 0x10 &&
+	      (fake.regs[0x0079] & ~0x30) == (pattern(0x0079) & ~0x30),
+	      "0x0079 bits 5:4 = 1 (pull-ups), the other bits left alone: %02X", fake.regs[0x0079]);
+	CHECK(m.reset_check && !m.reset_check_off, "0x120C read back: the reset watch is on");
 	CHECK(fake.regs[0x0012] == 0x0F, "DDC pass-through off at the end");
 	CHECK(fake.ddc_wrong_speed == 0, "all DDC reads at 20 kHz");
 	CHECK(fake.ddc_closed == 0, "no DDC read with the pass-through off");
@@ -553,9 +565,14 @@ int main(int argc, char **argv)
 	printf("scenario edidext:\n");
 	{
 		static uint8_t e[256];
-		const char *what[3] = { "extension does not answer", "extension checksum wrong",
-					"block map in block 1" };
-		for (int k = 0; k < 3; k++) {
+		/* round 2 (note 6): one extension that reads well but is not
+		   CEA-861 now gives DVI; with two extensions, HDMI is assumed */
+		const char *what[5] = { "extension does not answer", "extension checksum wrong",
+					"block map in block 1, one extension",
+					"DisplayID in block 1, one extension",
+					"block map in block 1, two extensions" };
+		const int want_dvi[5] = { 0, 0, 1, 1, 0 };
+		for (int k = 0; k < 5; k++) {
 			fake_reset(&fake);
 			fake.hpd = 1;
 			memcpy(e, edid_dvi, 256);
@@ -563,19 +580,32 @@ int main(int argc, char **argv)
 				fake.edid_ext_nak = 1;
 			if (k == 1)
 				e[255] ^= 1;
-			if (k == 2) {
-				e[128] = 0xF0;
+			if (k >= 2) {
+				e[128] = k == 3 ? 0x70 : 0xF0;
 				e[255] = (uint8_t)(0x100 - sum8(e + 128, 127));
+			}
+			if (k == 4) {
+				e[0x7E] = 2;
+				e[0x7F] = (uint8_t)(0x100 - sum8(e, 127));
 			}
 			fake.edid = e;
 			ms7210_default_cfg(&cfg);
 			ms7210_probe(&m, &io, &cfg);
 			ms7210_init(&m);
-			CHECK(!m.dvi && (fake.regs[0x0503] & 1) == 0 && fake.regs[0x0531] == 0x84,
-			      "%s: HDMI with sound (0x0503 %02X, 0x0531 %02X)", what[k],
-			      fake.regs[0x0503], fake.regs[0x0531]);
+			if (want_dvi[k])
+				CHECK(m.dvi && (fake.regs[0x0503] & 1) == 1 &&
+				      (fake.regs[0x0531] & 0x80) == 0,
+				      "%s: DVI, no sound (0x0503 %02X, 0x0531 %02X)", what[k],
+				      fake.regs[0x0503], fake.regs[0x0531]);
+			else
+				CHECK(!m.dvi && (fake.regs[0x0503] & 1) == 0 && fake.regs[0x0531] == 0x84,
+				      "%s: HDMI with sound (0x0503 %02X, 0x0531 %02X)", what[k],
+				      fake.regs[0x0503], fake.regs[0x0531]);
+			if (k >= 2)
+				CHECK(fake.edid_reads == 2, "%s: %d reads, 2 wanted", what[k],
+				      fake.edid_reads);
+			printf("  %s: %s\n", what[k], m.dvi ? "DVI" : "HDMI");
 		}
-		CHECK(fake.edid_reads == 2, "block map: %d reads, 2 wanted", fake.edid_reads);
 		/* a DVI monitor with no extension block at all stays DVI */
 		fake_reset(&fake);
 		fake.hpd = 1;
@@ -604,6 +634,45 @@ int main(int argc, char **argv)
 	CHECK(r == 2 && fake.e1_rows == 2 && fake.regs[0x120C] == 0x20 && fake.regs[0x120D] == 0x04 &&
 	      !m.dvi && fake.regs[0x0531] == 0x84, "reset seen: set up again from B (poll %d)", r);
 	CHECK(ms7210_poll(&m) == 0 && fake.e1_rows == 2, "after that: nothing to do");
+
+	/* 9d. 0x120C does not read back what D1 wrote (DOS board review, round
+	   2, S3): the set-up says so once, and the poll never sets the chip up
+	   again on its account */
+	printf("scenario 120c-no-readback:\n");
+	fake_reset(&fake);
+	fake.hpd = 1;
+	fake.edid = edid_hdmi;
+	fake.reg120c_zero = 1;
+	ms7210_default_cfg(&cfg);
+	ms7210_probe(&m, &io, &cfg);
+	ms7210_init(&m);
+	CHECK(!m.reset_check && m.reset_check_off, "0x120C reads 0: the reset watch is off");
+	r = 0;
+	for (int i = 0; i < 6; i++)
+		r |= ms7210_poll(&m);
+	CHECK(r == 0 && fake.e1_rows == 1, "six polls: nothing set up again (E1 rows %d)",
+	      fake.e1_rows);
+
+	/* 9e. 0x120C reads back at set-up, then never again (a register that
+	   is not what it seems): at most MS7210_RESET_TRIES set-ups in a row,
+	   then the watch stops */
+	printf("scenario 120c-lost-every-time:\n");
+	fake_reset(&fake);
+	fake.hpd = 1;
+	fake.edid = edid_hdmi;
+	ms7210_default_cfg(&cfg);
+	ms7210_probe(&m, &io, &cfg);
+	ms7210_init(&m);
+	CHECK(m.reset_check, "0x120C read back at set-up: the watch is on");
+	int setups = 0;
+	for (int i = 0; i < 10; i++) {
+		fake.reg120c_zero = 2;      /* lost again, until set-up writes it */
+		if (ms7210_poll(&m) == 2)
+			setups++;
+	}
+	CHECK(setups == MS7210_RESET_TRIES && m.reset_check_off,
+	      "ten polls: %d set-ups (want %d), then the watch off", setups, MS7210_RESET_TRIES);
+	CHECK(fake.e1_rows == 1 + MS7210_RESET_TRIES, "E1 rows %d", fake.e1_rows);
 
 	/* 10. the other clock edge (plan B), forced DVI, audio off */
 	printf("scenario options:\n");
@@ -656,6 +725,19 @@ int main(int argc, char **argv)
 	fake_reset(&fake);
 	fake.chip_id0 = 0x55;
 	CHECK(ms7210_probe(&m, &io, &cfg) != 0 && !m.found, "other chip ID: not found");
+	/* the chip at 0x2B (SA low, as the data sheet's figure 3 draws it):
+	   nothing at 0x59, found when asked at 0x2B (round 2, note 8) */
+	fake_reset(&fake);
+	fake.chip_addr = MS7210_I2C_ADDR_ALT;
+	fake.hpd = 1;
+	fake.edid = edid_hdmi;
+	ms7210_default_cfg(&cfg);
+	CHECK(ms7210_probe(&m, &io, &cfg) != 0 && !m.found && m.errors > 0,
+	      "chip at 0x2B: nothing answers at 0x59");
+	cfg.i2c_addr = MS7210_I2C_ADDR_ALT;
+	CHECK(ms7210_probe(&m, &io, &cfg) == 0 && m.found, "chip at 0x2B: found there");
+	CHECK(ms7210_init(&m) == 0 && m.errors == 0 && !m.dvi && fake.regs[0x0531] == 0x84,
+	      "chip at 0x2B: set up at that address without errors");
 	fclose(fake.log);
 	fake.log = NULL;
 

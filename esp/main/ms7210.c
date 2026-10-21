@@ -46,7 +46,15 @@ const ms7210_row_t ms7210_rows[] = {
 	R("B12", RMW,     0, 0x1265, 0x01, 0x00, 0),    /* not DE-only */
 	R("B13", RMW,     0, 0x1262, 0x01, 0x00, 0),    /* not BTA-T1004 */
 	R("B14", RMW,     0, 0x120B, 0x01, 0x00, 0),    /* use the DE pin */
-	R("B15", RMW,     0, 0x0079, 0x30, 0x20, 0),    /* pull-downs on digital input pads */
+	/* B15 departs from encoder.md 8.4 on purpose (its value there is 0x20,
+	   pull-down, as the vendor's SDK has it): 0x10 puts pull-ups on the
+	   video input pads.  GPIO36 (LCD_D15, MS7210 pins 36 and 41) is the
+	   S31's VDD_SPI strap and must read high at reset, and R603 keeps the
+	   MS7210 running through an S31-only reset, so pull-downs there would
+	   load the strap; pull-ups help it, and every pad they cover is driven
+	   by the S31 (DOS board review, round 2, S2; dosboard SCHEMATIC-NOTES
+	   section 10, review V1 and V10) */
+	R("B15", RMW,     0, 0x0079, 0x30, 0x10, 0),    /* pull-ups on digital input pads */
 	R("B16", RMW,     0, 0x0008, 0x03, 0x00, 0),    /* audio clock from pad */
 	R("B17", RMW,     0, 0x00A5, 0x18, 0x00, 0),    /* pin mux: I2S */
 	R("B18", RMW,     0, 0x0530, 0x01, 0x00, 0),    /* audio data from I2S */
@@ -191,12 +199,13 @@ void ms7210_default_cfg(ms7210_cfg_t *cfg)
 	cfg->audio = 1;
 	cfg->bus_hz = 100000;
 	cfg->ddc_hz = 20000;
+	cfg->i2c_addr = MS7210_I2C_ADDR;
 }
 
 int ms7210_write(ms7210_t *m, uint16_t reg, uint8_t val)
 {
 	uint8_t b[3] = { reg & 0xFF, reg >> 8, val };
-	int r = m->io->i2c_write(m->io->ctx, MS7210_I2C_ADDR, b, 3);
+	int r = m->io->i2c_write(m->io->ctx, m->cfg.i2c_addr, b, 3);
 
 	if (r)
 		m->errors++;
@@ -206,7 +215,7 @@ int ms7210_write(ms7210_t *m, uint16_t reg, uint8_t val)
 int ms7210_read(ms7210_t *m, uint16_t reg, uint8_t *val)
 {
 	uint8_t b[2] = { reg & 0xFF, reg >> 8 };
-	int r = m->io->i2c_write_read(m->io->ctx, MS7210_I2C_ADDR, b, 2, val, 1);
+	int r = m->io->i2c_write_read(m->io->ctx, m->cfg.i2c_addr, b, 2, val, 1);
 
 	if (r) {
 		m->errors++;
@@ -395,11 +404,13 @@ int ms7210_probe(ms7210_t *m, const ms7210_io_t *io, const ms7210_cfg_t *cfg)
 		m->cfg = *cfg;
 	else
 		ms7210_default_cfg(&m->cfg);
+	if (!m->cfg.i2c_addr)
+		m->cfg.i2c_addr = MS7210_I2C_ADDR;
 	if (io->i2c_speed)
 		io->i2c_speed(io->ctx, m->cfg.bus_hz);
 	m->found = run(m, "A1", "A4") == 0;
-	logf_(m, "ms7210: chip ID %02X %02X %02X (%s)", m->chip_id[0], m->chip_id[1],
-	      m->chip_id[2], m->found ? "found" : "not found");
+	logf_(m, "ms7210: chip ID %02X %02X %02X at I2C 0x%02X (%s)", m->chip_id[0],
+	      m->chip_id[1], m->chip_id[2], m->cfg.i2c_addr, m->found ? "found" : "not found");
 	return m->found ? 0 : -1;
 }
 
@@ -416,11 +427,21 @@ static void choose_mode(ms7210_t *m)
 	}
 	/* auto: a monitor whose EDID has no HDMI vendor block takes DVI;
 	   no EDID, or a bad one, is treated as HDMI, as the vendor's code does.
-	   That includes a good block 0 whose extension could not be read, or
-	   was not a CEA-861 block with a good checksum: DVI there would lose
-	   the sound on an HDMI set whose second block read badly. */
+	   That includes a good block 0 whose extension could not be read or
+	   had a bad checksum: DVI there would lose the sound on an HDMI set
+	   whose second block read badly.  But one extension that read well and
+	   is not CEA-861 (DisplayID, say) is a monitor with no HDMI block,
+	   since every HDMI sink has a CEA-861 one: DVI, which some DVI-only
+	   monitors need (DOS board review, round 2, note 6).  With more than
+	   one extension, the CEA-861 block may be one not read: HDMI. */
 	if (m->hpd && ms7210_read_edid(m) == 0) {
-		if (m->edid[0x7E] >= 1 && !m->edid_info.ext_ok) {
+		if (m->edid_info.ext_ok) {
+			m->dvi = !m->edid_info.hdmi;
+		} else if (m->edid[0x7E] == 1 && m->edid_info.ext_valid) {
+			logf_(m, "ms7210: EDID extension is not CEA-861 (tag %02X): DVI",
+			      m->edid[128]);
+			m->dvi = 1;
+		} else if (m->edid[0x7E] >= 1) {
 			logf_(m, "ms7210: EDID extension unreadable or not CEA-861: HDMI assumed");
 			m->dvi = 0;
 		} else {
@@ -484,6 +505,24 @@ int ms7210_init(ms7210_t *m)
 	      m->pclk_meter, meter_mhz100(m->pclk_meter) / 100,
 	      meter_mhz100(m->pclk_meter) % 100);
 	r |= run(m, "D1", "D15");
+	/* The hot plug poll looks at 0x120C for a reset chip, which works only
+	   if 0x120C reads back what D1 wrote; no source says it does, so it is
+	   tried here, straight after the write, and the poll's look stays off
+	   if it does not (DOS board review, round 2, S3) */
+	int d1 = row_index("D1");
+	if (d1 >= 0 && !m->reset_check_off) {
+		uint8_t want = ms7210_rows[d1].arg & 0xFF;
+		if (ms7210_read(m, ms7210_rows[d1].reg, &v) != 0) {
+			m->reset_check = 0;             /* tried again at the next set-up */
+		} else if (v != want) {
+			logf_(m, "ms7210: register 0x%04X reads 0x%02X just after 0x%02X was "
+			      "written: no watch for a reset chip", ms7210_rows[d1].reg, v, want);
+			m->reset_check = 0;
+			m->reset_check_off = 1;
+		} else {
+			m->reset_check = 1;
+		}
+	}
 	m->hpd = ms7210_read(m, REG_HPD, &v) == 0 ? (v & 1) : 0;
 	choose_mode(m);
 	r |= setup_output(m);
@@ -498,11 +537,22 @@ int ms7210_poll(ms7210_t *m)
 
 	/* A chip that was reset under us (ESD as a cable goes in, a dip on its
 	   1.2 V) has lost sections B to E, which only ms7210_init() writes:
-	   0x120C holds D1's low byte from set-up on. */
-	if (d1 >= 0) {
+	   0x120C holds D1's low byte from set-up on.  Only while that has been
+	   seen to read back, and never more than MS7210_RESET_TRIES set-ups in
+	   a row: a chip that "loses" it every time would otherwise be set up
+	   twice a second for ever, its picture never steady. */
+	if (d1 >= 0 && m->reset_check && !m->reset_check_off) {
 		if (ms7210_read(m, ms7210_rows[d1].reg, &v))
 			return -1;
-		if (v != (ms7210_rows[d1].arg & 0xFF)) {
+		if (v == (ms7210_rows[d1].arg & 0xFF)) {
+			m->resets_in_row = 0;
+		} else if (++m->resets_in_row > MS7210_RESET_TRIES) {
+			logf_(m, "ms7210: register 0x%04X lost its value %d times in a row: "
+			      "no more watch for a reset chip", ms7210_rows[d1].reg,
+			      MS7210_RESET_TRIES + 1);
+			m->reset_check = 0;
+			m->reset_check_off = 1;
+		} else {
 			logf_(m, "ms7210: register 0x%04X reads 0x%02X, not 0x%02X: the chip "
 			      "was reset; set up again", ms7210_rows[d1].reg, v,
 			      ms7210_rows[d1].arg & 0xFF);
@@ -569,6 +619,8 @@ int ms7210_read_edid(ms7210_t *m)
 	logf_(m, "ms7210: monitor %s %04X \"%s\": %s, %s, 800x600 at 60 Hz %s",
 	      m->edid_info.vendor, m->edid_info.product, m->edid_info.name,
 	      m->edid_info.hdmi ? "HDMI" :
+	      (m->edid[0x7E] == 1 && m->edid_info.ext_valid && !m->edid_info.ext_ok) ?
+	      "DVI (extension block not CEA-861)" :
 	      (m->edid[0x7E] >= 1 && !m->edid_info.ext_ok) ? "extension block unreadable" :
 	      "DVI (no HDMI vendor block)",
 	      m->edid_info.basic_audio ? "basic audio" : "no audio",
@@ -619,6 +671,9 @@ int ms7210_edid_parse(const uint8_t *e, int len, ms7210_edid_info_t *out)
 	if (len >= 256 && e[0x7E] >= 1) {
 		const uint8_t *x = e + 128;
 		out->blocks = 2;
+		/* a block that read well, whatever it is (all zeros is a read
+		   that went wrong, not a block) */
+		out->ext_valid = sum8(x, 128) == 0 && x[0] != 0x00 && x[0] != 0xFF;
 		if (x[0] == 0x02 && sum8(x, 128) == 0) {
 			int dtd = x[2];
 			out->ext_ok = 1;
