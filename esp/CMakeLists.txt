@@ -36,3 +36,22 @@ set(SDKCONFIG_DEFAULTS "${BOARD_SDKCONFIG}")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(tiny386)
+
+# The Korvo-1's dual-boot build lives beside Linux: its own flash_args would
+# write tiny386's bootloader (no GPIO42 key) at 0x2000, the otadata at
+# 0x17000 and tiny386 at 0x20000, over the Linux loader.  So "idf.py flash"
+# and its relatives stop here, before esptool runs; the image sets and
+# flash-dualboot.bat write the right places (FLASH.txt).
+if(CONFIG_PARTITION_TABLE_CUSTOM_FILENAME MATCHES "dualboot")
+    add_custom_target(tiny386_no_flash
+        COMMAND ${CMAKE_COMMAND} -E echo
+            "tiny386: this is the dual-boot build, whose own flash_args would overwrite the Linux loader. Use flash-dualboot.bat or the commands in FLASH.txt."
+        COMMAND ${CMAKE_COMMAND} -E false
+        VERBATIM)
+    foreach(t flash app-flash bootloader-flash partition-table-flash
+              encrypted-flash encrypted-app-flash erase_flash erase-flash)
+        if(TARGET ${t})
+            add_dependencies(${t} tiny386_no_flash)
+        endif()
+    endforeach()
+endif()
