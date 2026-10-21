@@ -40,9 +40,12 @@
 
 #define NOTES_MAX 24
 #define NOTE_LEN 112
-static char (*s_notes)[NOTE_LEN];       /* in PSRAM, freed once shown */
+/* in PSRAM, made in board_early_init() and freed once shown; the hot plug
+   task may note a line while app_main() does, hence the lock */
+static char (*s_notes)[NOTE_LEN];
 static int s_nnotes;
 static bool s_console_up;
+static portMUX_TYPE s_notes_lock = portMUX_INITIALIZER_UNLOCKED;
 
 /* a line that says something went wrong, to be shown in yellow */
 static bool sounds_bad(const char *s)
@@ -66,27 +69,31 @@ void dosboard_note(const char *fmt, ...)
 	va_start(ap, fmt);
 	vsnprintf(line, sizeof(line), fmt, ap);
 	va_end(ap);
-	if (s_console_up) {
+	portENTER_CRITICAL(&s_notes_lock);
+	bool up = s_console_up;
+	if (!up && s_notes && s_nnotes < NOTES_MAX)
+		memcpy(s_notes[s_nnotes++], line, NOTE_LEN);
+	portEXIT_CRITICAL(&s_notes_lock);
+	if (up)
 		console_puts(sounds_bad(line) ? CON_WARN : CON_INFO, line);
-		return;
-	}
-	fprintf(stderr, "%s\n", line);
-	if (!s_notes)
-		s_notes = heap_caps_calloc(NOTES_MAX, NOTE_LEN, MALLOC_CAP_SPIRAM);
-	if (s_notes && s_nnotes < NOTES_MAX)
-		snprintf(s_notes[s_nnotes++], NOTE_LEN, "%s", line);
+	else
+		fprintf(stderr, "%s\n", line);
 }
 
 void board_console_ready(void)
 {
-	/* console_puts() also writes to the UART, which had these already;
-	   a second copy there marks where the console began */
-	for (int i = 0; i < s_nnotes; i++)
-		console_puts(sounds_bad(s_notes[i]) ? CON_WARN : CON_INFO, s_notes[i]);
-	free(s_notes);
+	portENTER_CRITICAL(&s_notes_lock);
+	char (*notes)[NOTE_LEN] = s_notes;
+	int n = s_nnotes;
 	s_notes = NULL;
 	s_nnotes = 0;
 	s_console_up = true;
+	portEXIT_CRITICAL(&s_notes_lock);
+	/* console_puts() also writes to the UART, which had these already;
+	   a second copy there marks where the console began */
+	for (int i = 0; i < n; i++)
+		console_puts(sounds_bad(notes[i]) ? CON_WARN : CON_INFO, notes[i]);
+	free(notes);
 }
 
 dosboard_cfg_t dosboard_cfg = {
@@ -254,6 +261,8 @@ void board_early_init(void)
 		.pull_up_en = GPIO_PULLUP_ENABLE,
 	};
 
+	/* room for the lines noted until the boot console is up */
+	s_notes = heap_caps_calloc(NOTES_MAX, NOTE_LEN, MALLOC_CAP_SPIRAM);
 	fprintf(stderr, "dosboard: looking for the MS7210 at I2C 0x%02X\n", HDMI_I2C_ADDR);
 	/* RSTN has R603 to +3V3; start high so that the first edge is the reset */
 	gpio_set_level(HDMI_RSTN_GPIO, 1);
