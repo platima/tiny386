@@ -109,6 +109,11 @@ void kbd_input_release_all(void);
    one, or -1 if no key is repeating. */
 int32_t kbd_input_poll(void);
 
+/* On the board: starts the task that calls kbd_input_poll() (core 0), once.
+   Every keyboard source calls it: the USB host (usb_input.c) and the
+   DOS board's CH9350L. */
+void kbd_input_start(void);
+
 /* Mouse movement in the USB sense: dy positive is down, wheel positive is
    away from the user.  buttons: bit 0 left, 1 right, 2 middle, 3 and 4 the
    side buttons. */

@@ -432,6 +432,47 @@ void kbd_input_mouse(int dx, int dy, int wheel, int buttons)
 	UNLOCK();
 }
 
+/* ==== the repeat task ==== */
+
+#ifndef KBD_INPUT_HOST
+#include "freertos/task.h"
+
+static TaskHandle_t s_repeat_task;
+
+static void repeat_task(void *arg)
+{
+	(void) arg;
+	for (;;) {
+		int32_t wait = kbd_input_poll();
+		TickType_t ticks = portMAX_DELAY;
+		if (wait >= 0) {
+			/* to the tick (10 ms at 100 Hz): a repeat may come up to
+			   a tick late, the next is timed from when it was due */
+			uint32_t ms = (uint32_t) wait / 1000 + 1;
+			ticks = (ms + portTICK_PERIOD_MS - 1) / portTICK_PERIOD_MS;
+			if (ticks < 1)
+				ticks = 1;
+		}
+		ulTaskNotifyTake(pdTRUE, ticks);
+	}
+}
+
+static void wake_repeat(void)
+{
+	if (s_repeat_task)
+		xTaskNotifyGive(s_repeat_task);
+}
+
+void kbd_input_start(void)
+{
+	if (s_repeat_task)
+		return;
+	xTaskCreatePinnedToCore(repeat_task, "kbd_repeat", 2048, NULL, 4,
+				&s_repeat_task, 0);
+	kbd_input_set_wake(wake_repeat);
+}
+#endif
+
 /* ==== from i8042.c: what the guest told the keyboard ==== */
 
 void ps2_kbd_leds_changed(int ps2_leds)

@@ -17,7 +17,7 @@
  *
  * Tasks, all on core 0: usb_events (the host library), the HID driver's
  * own task (reports arrive there), usb_task (connects, disconnects, the
- * keyboard lights) and kbd_repeat (typematic repeat).
+ * keyboard lights), and kbd_input.c's kbd_repeat (typematic repeat).
  *
  * Based on Espressif's HID host example (Unlicense OR CC0-1.0).
  */
@@ -70,7 +70,6 @@ struct usb_event {
 };
 
 static QueueHandle_t s_queue;
-static TaskHandle_t s_repeat_task;
 static volatile esp_err_t s_install_err = ESP_FAIL;
 static volatile bool s_fsls_only;
 static bool s_started;
@@ -308,29 +307,6 @@ static void leds_changed(uint8_t usb_leds)
 	post(EV_LEDS, NULL, NULL);
 }
 
-/* ==== typematic repeat ==== */
-
-static void repeat_task(void *arg)
-{
-	for (;;) {
-		int32_t wait = kbd_input_poll();
-		TickType_t ticks = portMAX_DELAY;
-		if (wait >= 0) {
-			uint32_t ms = (uint32_t) wait / 1000 + 1;
-			ticks = (ms + portTICK_PERIOD_MS - 1) / portTICK_PERIOD_MS;
-			if (ticks < 1)
-				ticks = 1;
-		}
-		ulTaskNotifyTake(pdTRUE, ticks);
-	}
-}
-
-static void wake_repeat(void)
-{
-	if (s_repeat_task)
-		xTaskNotifyGive(s_repeat_task);
-}
-
 /* ==== the host ==== */
 
 static void usb_lib_task(void *arg)
@@ -395,9 +371,7 @@ void usb_setup(void)
 	}
 
 	kbd_input_set_leds_fn(leds_changed);
-	xTaskCreatePinnedToCore(repeat_task, "kbd_repeat", 2048, NULL, 4,
-				&s_repeat_task, 0);
-	kbd_input_set_wake(wake_repeat);
+	kbd_input_start();              /* typematic repeat */
 	xTaskCreatePinnedToCore(usb_task, "usb_task", 4096, NULL, 2, NULL, 0);
 
 	console_printf(CON_INFO, "USB host started (%s, hubs allowed): plug in a "
