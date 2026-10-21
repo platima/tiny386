@@ -8,51 +8,37 @@
  * USB Serial/JTAG pins, so the console must stay on UART0 with no secondary
  * console (sdkconfig.korvo1).
  *
- * The frame buffer is in PSRAM, which ESP-IDF runs write-back, and the LCD
- * DMA reads PSRAM behind the cache.  The VGA code draws straight into the
- * frame buffer, so after each refresh lcd_flush() hands the drawn lines back
- * to the RGB driver.  Because the pointer is inside the frame buffer, the
- * driver copies nothing and only writes the cache lines back.
+ * The driver runs the panel in stream mode: its DMA reads the whole frame
+ * buffer from PSRAM over and over with no CPU help, so the picture stays
+ * even when both cores have stopped (the crash screen relies on that).
+ * PSRAM is behind ESP-IDF's write-back cache, so lcd_flush() writes back
+ * the rows that were drawn.  Everything that is not about this panel (the
+ * drawing loop, the console) is elsewhere; see lcd.h.
  */
 
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_err.h"
+#include "esp_cache.h"
+#include "esp_cpu.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_rgb.h"
 
 #include "common.h"
+#include "lcd.h"
 
 static const char *TAG = "lcd";
 
 #define LCD_PCLK_HZ 18000000
 
-void pc_vga_step(void *o);
+static uint16_t *s_fb;
+static bool s_invalidate;
+static struct lcd_stats s_stats;
+static portMUX_TYPE s_stats_lock = portMUX_INITIALIZER_UNLOCKED;
 
-void lcd_draw(int x_start, int y_start, int x_end, int y_end, void *src)
+void *lcd_init(void)
 {
-	(void)x_start; (void)y_start; (void)x_end; (void)y_end; (void)src;
-}
-
-void lcd_flush(int x, int y, int w, int h)
-{
-	uint16_t *fb = globals.panel_fb;
-
-	(void)x; (void)w;
-	if (!globals.panel || h <= 0)
-		return;
-	ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(globals.panel,
-						  0, y, LCD_WIDTH, y + h,
-						  fb + y * LCD_WIDTH));
-}
-
-void vga_task(void *arg)
-{
-	int core_id = esp_cpu_get_core_id();
-	fprintf(stderr, "vga runs on core %d\n", core_id);
-
 	const esp_lcd_rgb_panel_config_t panel_cfg = {
 		.clk_src = LCD_CLK_SRC_PLL160M,
 		.timings = {
@@ -87,28 +73,66 @@ void vga_task(void *arg)
 	};
 
 	esp_lcd_panel_handle_t panel = NULL;
-	ESP_ERROR_CHECK(esp_lcd_new_rgb_panel(&panel_cfg, &panel));
-	ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
-
+	esp_err_t err = esp_lcd_new_rgb_panel(&panel_cfg, &panel);
+	if (err == ESP_OK)
+		err = esp_lcd_panel_init(panel);
 	void *fb_ptr = NULL;
-	ESP_ERROR_CHECK(esp_lcd_rgb_panel_get_frame_buffer(panel, 1, &fb_ptr));
-	ESP_LOGI(TAG, "Panel FB @ %p (%d bytes)", fb_ptr, LCD_WIDTH * LCD_HEIGHT * 2);
+	if (err == ESP_OK)
+		err = esp_lcd_rgb_panel_get_frame_buffer(panel, 1, &fb_ptr);
+	if (err != ESP_OK || !fb_ptr) {
+		/* only the UART can say so: there is no panel */
+		ESP_LOGE(TAG, "the panel did not start (%s)", esp_err_to_name(err));
+		return NULL;
+	}
 
 	globals.panel = panel;
 	globals.panel_fb = fb_ptr;
+	s_fb = fb_ptr;
+	return fb_ptr;
+}
 
-	/* Tell i386_task that the panel and its frame buffer are ready */
-	xEventGroupSetBits(global_event_group, BIT1);
-	xEventGroupWaitBits(global_event_group,
-			    BIT0,
-			    pdFALSE,
-			    pdFALSE,
-			    portMAX_DELAY);
+void lcd_set_invalidate(bool on)
+{
+	s_invalidate = on;
+}
 
-	while (1) {
-		pc_vga_step(globals.pc);
-		vTaskDelay(pdMS_TO_TICKS(10));
+void lcd_flush(int x, int y, int w, int h)
+{
+	(void) x; (void) w;
+	if (!s_fb)
+		return;
+	if (y < 0) {
+		h += y;
+		y = 0;
 	}
+	if (y + h > LCD_HEIGHT)
+		h = LCD_HEIGHT - y;
+	if (h <= 0)
+		return;
+
+	int flags = ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED;
+	if (s_invalidate)
+		flags |= ESP_CACHE_MSYNC_FLAG_INVALIDATE;
+	uint32_t t0 = esp_cpu_get_cycle_count();
+	esp_cache_msync(s_fb + y * LCD_WIDTH, (size_t) h * LCD_WIDTH * 2, flags);
+	uint32_t dt = esp_cpu_get_cycle_count() - t0;
+
+	portENTER_CRITICAL_SAFE(&s_stats_lock);
+	s_stats.flushes++;
+	s_stats.rows += h;
+	s_stats.cycles += dt;
+	if (dt > s_stats.cycles_max)
+		s_stats.cycles_max = dt;
+	portEXIT_CRITICAL_SAFE(&s_stats_lock);
+}
+
+void lcd_get_stats(struct lcd_stats *st, bool reset)
+{
+	portENTER_CRITICAL_SAFE(&s_stats_lock);
+	*st = s_stats;
+	if (reset)
+		s_stats = (struct lcd_stats) { 0 };
+	portEXIT_CRITICAL_SAFE(&s_stats_lock);
 }
 
 #endif /* USE_LCD_RGB_KORVO1 */

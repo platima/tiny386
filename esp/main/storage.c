@@ -9,6 +9,7 @@
 #include "driver/sdspi_host.h"
 #include "esp_vfs.h"
 #include "esp_vfs_fat.h"
+#include "esp_partition.h"
 #include "esp_system.h"
 #include "sdmmc_cmd.h"
 #include "common.h"
@@ -33,11 +34,12 @@ static esp_err_t sdmmc_host_deinit_dummy(void)
 }
 #endif
 
-void storage_init(void)
+#if defined(SD_CLK) && !defined(USE_RAWSD)
+/* Mounts the card at /sdcard, true if that worked.  May be called again
+   after a failure: esp_vfs_fat_sdmmc_mount() undoes what it did when it
+   fails. */
+bool storage_sd_mount(void)
 {
-	bool sd_mount_ok = false;
-#ifdef SD_CLK
-#ifndef USE_RAWSD
 	// Options for mounting the filesystem.
 	esp_vfs_fat_sdmmc_mount_config_t sdmount_config = {
 		.format_if_mount_failed = false,
@@ -79,12 +81,14 @@ void storage_init(void)
 	sd_pwr_ctrl_ldo_config_t ldo_config = {
 		.ldo_chan_id = SD_PWR_CTRL_LDO_IO_ID,
 	};
-	sd_pwr_ctrl_handle_t pwr_ctrl_handle = NULL;
+	static sd_pwr_ctrl_handle_t pwr_ctrl_handle = NULL;    /* once */
 
-	ret = sd_pwr_ctrl_new_on_chip_ldo(&ldo_config, &pwr_ctrl_handle);
-	if (ret != ESP_OK) {
-		ESP_LOGE(TAG, "Failed to create a new on-chip LDO power control driver");
-		return;
+	if (!pwr_ctrl_handle) {
+		ret = sd_pwr_ctrl_new_on_chip_ldo(&ldo_config, &pwr_ctrl_handle);
+		if (ret != ESP_OK) {
+			ESP_LOGE(TAG, "Failed to create a new on-chip LDO power control driver");
+			return false;
+		}
 	}
 	host.pwr_ctrl_handle = pwr_ctrl_handle;
 #endif
@@ -120,10 +124,28 @@ void storage_init(void)
 			ESP_LOGE(TAG, "Failed to initialize the card (%s). "
 				 "Make sure SD card lines have pull-up resistors in place.", esp_err_to_name(ret));
 		}
-	} else {
-		ESP_LOGI(TAG, "Filesystem mounted");
-		sd_mount_ok = true;
+		return false;
 	}
+	ESP_LOGI(TAG, "Filesystem mounted");
+	rawsd = card;
+	return true;
+}
+#else
+bool storage_sd_mount(void)
+{
+	return false;
+}
+#endif
+
+/* Bit 0: the card is mounted at /sdcard; bit 1: the flash's storage
+   partition at /spiflash (tried only without a card). */
+int storage_init(void)
+{
+	bool sd_mount_ok = false;
+	bool flash_ok = false;
+#ifdef SD_CLK
+#ifndef USE_RAWSD
+	sd_mount_ok = storage_sd_mount();
 #else
 	esp_err_t ret;
 	sdmmc_card_t *card = malloc(sizeof(sdmmc_card_t));
@@ -147,7 +169,7 @@ void storage_init(void)
 	ret = sd_pwr_ctrl_new_on_chip_ldo(&ldo_config, &pwr_ctrl_handle);
 	if (ret != ESP_OK) {
 		ESP_LOGE(TAG, "Failed to create a new on-chip LDO power control driver");
-		return;
+		return 0;
 	}
 	host.pwr_ctrl_handle = pwr_ctrl_handle;
 #endif
@@ -175,8 +197,8 @@ void storage_init(void)
 	ret = sdmmc_card_init(&host, card);
 	assert(ret == 0);
 	sdmmc_card_print_info(stderr, card);
-#endif
 	rawsd = card;
+#endif
 #elif defined(SD_SPI_MOSI)
 	/*
 	 * elecrow7s3: SPI-mode SD card via SPI2_HOST.
@@ -275,13 +297,18 @@ void storage_init(void)
 
 	// mount spiflash, only if sdcard is not mounted
 	// to save memory
-	if (!sd_mount_ok) {
+	// (only if the flash has one: the Korvo-1's table shared with Linux
+	// has none, and the attempt would only log an error)
+	if (!sd_mount_ok &&
+	    esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
+				     ESP_PARTITION_SUBTYPE_DATA_FAT, "storage")) {
 		const esp_vfs_fat_mount_config_t spiflash_cfg = {
 			.max_files = 4,
 			.format_if_mount_failed = false,
 			.allocation_unit_size = CONFIG_WL_SECTOR_SIZE
 		};
-		esp_vfs_fat_spiflash_mount_rw_wl("/spiflash", "storage",
-						 &spiflash_cfg, &s_wl_handle);
+		flash_ok = esp_vfs_fat_spiflash_mount_rw_wl("/spiflash", "storage",
+							    &spiflash_cfg, &s_wl_handle) == ESP_OK;
 	}
+	return (sd_mount_ok ? 1 : 0) | (flash_ok ? 2 : 0);
 }

@@ -4,7 +4,9 @@ CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
 CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+# Linux's partitions as they are, and tiny386 in a test partition at
+# 0xE20000 (FIRMWARE-PLAN.md 3.7).  The size checks use this table too.
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions-korvo1-dualboot.csv"
 CONFIG_PARTITION_TABLE_OFFSET=0x8000
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 CONFIG_SPIRAM=y
@@ -13,15 +15,32 @@ CONFIG_SPIRAM_SPEED_250M=y
 CONFIG_SPIRAM_BOOT_HW_INIT=y
 CONFIG_SPIRAM_BOOT_INIT=y
 CONFIG_SPIRAM_USE_CAPS_ALLOC=y
-CONFIG_SPIRAM_MEMTEST=y
+# No PSRAM test at boot: it writes all 16 MB before the panel is up.  Turn it
+# on for the first boot of a new board.
+# CONFIG_SPIRAM_MEMTEST is not set
 # GPIO33/34 are LCD data pins and also the USB Serial/JTAG pins: UART0 only.
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 CONFIG_ESP_MAIN_TASK_AFFINITY_CPU0=y
-CONFIG_FREERTOS_HZ=1000
+# app_main now brings up the panel and the console, mounts the card and
+# reads the ini.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+# 100 ticks a second: vga_task paces itself in whole ticks (LCD_FRAME_MS), and
+# core 1 takes ten times fewer tick interrupts.
+CONFIG_FREERTOS_HZ=100
 # i386_task never yields on core 1.
 # CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1 is not set
 CONFIG_FATFS_LFN_HEAP=y
 CONFIG_FATFS_MAX_LFN=255
+# A crash halts with the crash screen on the panel (crash.c) instead of
+# restarting at once.
+CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y
+# esp_cache_msync() writes back in pieces, so that core 0's interrupts are
+# not held off for a whole frame buffer.  Kconfig has no default piece size
+# for the ESP32-S31, so it is given here.
+CONFIG_ESP_MM_CACHE_MSYNC_C2M_CHUNKED_OPS=y
+CONFIG_ESP_MM_CACHE_MSYNC_C2M_CHUNKED_OPS_MAX_LEN=0x8000
+# A keyboard and a mouse through a hub (with fsls_only in usb_input.c).
+CONFIG_USB_HOST_HUBS_SUPPORTED=y
 # No time, date or build path in the images (see main/CMakeLists.txt).
 CONFIG_APP_REPRODUCIBLE_BUILD=y

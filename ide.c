@@ -309,7 +309,10 @@
 #define MAX_MULT_SECTORS 4 /* 512 * 4 == 2048 */
 
 #ifdef BUILD_ESP32
+#include <errno.h>
 void *pcmalloc(long size);
+/* says so on the panel and stops (esp/main/esp_main.c) */
+void tiny386_fatal(const char *fmt, ...) __attribute__((noreturn));
 #else
 #define pcmalloc malloc
 #endif
@@ -2053,8 +2056,14 @@ static BlockDevice *block_device_init(const char *filename,
     
     f = fopen(filename, mode_str);
     if (!f) {
+#ifdef BUILD_ESP32
+        tiny386_fatal("Cannot open the disk image %s (%s). Check its name "
+                      "in tiny386.ini, and that the card is not locked.",
+                      filename, strerror(errno));
+#else
         perror(filename);
         exit(1);
+#endif
     }
     char buf[8];
     int start_offset = 0;

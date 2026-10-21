@@ -41,6 +41,35 @@ if git -C "$TREE" rev-parse -q --verify pristine >/dev/null; then
     result $? "ps2 queue lock test catches the bug in pristine i8042.c"
 fi
 
+# ---- 2. the boot console and the crash screen (FIRMWARE-PLAN 3.2) ----
+# console.c as the firmware has it, built with CONSOLE_HOST: no ESP-IDF.
+# Pictures of each stage go to OUT as PPM (and PNG if ImageMagick is there).
+echo
+$CC $CFLAGS -DCONSOLE_HOST -I"$TREE/esp/main" \
+    -o "$OUT/test_console" "$HERE/test_console.c" "$TREE/esp/main/console.c" \
+    "$TREE/vgafont.c" || exit 1
+"$OUT/test_console" "$OUT"
+result $? "boot console: text, colours, scrolling, ring, hand-over, crash screen"
+if command -v convert >/dev/null; then
+    for p in "$OUT"/console-*.ppm; do
+        convert "$p" "${p%.ppm}.png"
+    done
+fi
+
+# ---- 3. the display side of vga.c (FIRMWARE-PLAN 3.1) ----
+# vga.c with the Korvo-1's board header, a fake clock and stand-ins for the
+# few ESP-IDF headers it includes.  The emulator's own warnings are not
+# this test's business (-w for vga.c), the test's are.
+echo
+$CC $CFLAGS -c -I"$HERE/shim" -I"$TREE" -include "$TREE/esp/main/board_korvo1.h" \
+    -o "$OUT/test_vga.o" "$HERE/test_vga.c" || exit 1
+$CC -O1 -g -w -c -I"$HERE/shim" -I"$TREE" -include "$TREE/esp/main/board_korvo1.h" \
+    -o "$OUT/vga.o" "$TREE/vga.c" || exit 1
+$CC -O1 -g -w -c -o "$OUT/vgafont.o" "$TREE/vgafont.c" || exit 1
+$CC -o "$OUT/test_vga" "$OUT/test_vga.o" "$OUT/vga.o" "$OUT/vgafont.o" || exit 1
+"$OUT/test_vga"
+result $? "vga.c: retrace against the clock, rows redrawn, clears from the other core"
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]
