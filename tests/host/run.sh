@@ -206,6 +206,23 @@ for R in 44100 48000; do
     fi
 done
 
+# ==== 13. the card's partitions (FIRMWARE-PLAN 3.4): tests/host/storage ====
+# storage.c's partition code with ESP-IDF's own FatFs and SD card glue, on
+# card images laid out as Plat's card and others.  Needs dosfstools, mtools
+# and ESP-IDF's source at IDF_PATH; without them it says SKIP.
+echo
+if bash "$HERE/storage/run_storage.sh" "$OUT/storage" > "$OUT/storage.log" 2>&1; then
+    st=0
+else
+    st=1
+fi
+if grep -q "^SKIP" "$OUT/storage.log"; then
+    grep "^SKIP" "$OUT/storage.log"
+else
+    grep -E "FAILED|^FAIL|^storage:" "$OUT/storage.log"
+    result $st "storage.c: the card's partitions with ESP-IDF's FatFs, on images laid out as Plat's card"
+fi
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]
