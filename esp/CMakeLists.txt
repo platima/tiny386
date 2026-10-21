@@ -48,8 +48,13 @@ if(CONFIG_PARTITION_TABLE_CUSTOM_FILENAME MATCHES "dualboot")
             "tiny386: this is the dual-boot build, whose own flash_args would overwrite the Linux loader. Use flash-dualboot.bat or the commands in FLASH.txt."
         COMMAND ${CMAKE_COMMAND} -E false
         VERBATIM)
+    # dfu-flash writes the same three through USB DFU; otadata-flash and
+    # erase-otadata only 0xFF over Linux's blank otadata, but are refused
+    # too (boot safety review, round 2, note 4)
     foreach(t flash app-flash bootloader-flash partition-table-flash
-              encrypted-flash encrypted-app-flash erase_flash erase-flash)
+              partition_table-flash encrypted-flash encrypted-app-flash
+              erase_flash erase-flash dfu-flash otadata-flash erase-otadata
+              erase_otadata)
         if(TARGET ${t})
             add_dependencies(${t} tiny386_no_flash)
         endif()
