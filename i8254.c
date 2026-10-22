@@ -265,6 +265,22 @@ static void pit_reset(void *opaque)
 	}
 }
 
+/* How many of channel 0's ticks may be owed to the guest at once.
+   i8254_update_irq() runs once a pc_step() and raises at most one IRQ 0
+   each time, so an emulator held up for several periods (a slow card, a
+   long log line) used to raise every tick it had missed afterwards, back
+   to back, one each step.  A real 8254 and 8259 hold one request; ticks
+   the processor was too busy to take are lost.  Windows 95's VMM takes
+   such a burst nested, each tick inside the one before, until its ring 0
+   stack runs off its page.  So when more periods than this have gone by
+   since the last tick raised, the extra ones are dropped and one is
+   raised, on the counter's own phase.  0 raises every one, as tiny386 did
+   before. */
+int i8254_max_owed = 1;
+/* the most periods owed at once, and the ticks dropped, since the start:
+   for a front end's diagnostics */
+uint32_t i8254_owed_max, i8254_dropped;
+
 void i8254_update_irq(PITState *pit)
 {
 	uint32_t uticks = get_uticks();
@@ -275,6 +291,17 @@ void i8254_update_irq(PITState *pit)
 	case 3:
 		if (s->last_irq_count + s->count - d >= 0x80000000) {
 			if (s->irq != -1) {
+				/* last_irq_count is a whole number of periods
+				   from the load, so owed counts the periods that
+				   have ended since the last tick raised */
+				uint32_t owed = (d - s->last_irq_count) / s->count;
+				if (owed > i8254_owed_max)
+					i8254_owed_max = owed;
+				if (i8254_max_owed > 0 && owed > (uint32_t) i8254_max_owed) {
+					uint32_t mark = d - d % s->count - s->count;
+					i8254_dropped += (mark - s->last_irq_count) / s->count;
+					s->last_irq_count = mark;
+				}
 				pit->set_irq(pit->pic, s->irq, 1);
 				pit->set_irq(pit->pic, s->irq, 0);
 				s->last_irq_count += s->count;

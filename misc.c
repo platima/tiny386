@@ -321,6 +321,13 @@ void cmos_update_irq(CMOS *s)
 	if (s->data[RTC_REG_B] & REG_B_PIE) {
 		d = cmos_get_timer(s) - s->irq_timeout;
 		if ((int32_t)d >= 0) {
+			/* Periods that ended while the emulator was held up are
+			   dropped and one interrupt is raised, as for the PIT
+			   (i8254.c, i8254_max_owed): not every one of them raised
+			   afterwards, back to back.  irq_period is a power of 2
+			   and irq_timeout a multiple of it. */
+			if (d >= s->irq_period)
+				s->irq_timeout += d & ~(s->irq_period - 1);
 			/* this is not what the real RTC does. Here we sent the IRQ
 			   immediately */
 			s->data[RTC_REG_C] |= 0xc0;
