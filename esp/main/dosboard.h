@@ -19,7 +19,8 @@ typedef struct {
 	int ch9350_state;        /* ch9350_state = 2|0 */
 	int kbd_zero_guard_ms;   /* kbd_zero_guard_ms = 0 (off) or a few ms (ch9350.h) */
 	int i2s_slot_bits;       /* i2s_slot_bits = 16|32: I2S slot width, 16-bit samples in it */
-	int audio_shift;         /* audio_shift = 0..8: samples divided by 2 to this, 4 = tiny386's own */
+	int audio_shift;         /* audio_shift = 0..8: samples divided by 2 to this; default
+	                            AUDIO_SHIFT_DEFAULT (2), 4 = tiny386's own */
 } dosboard_cfg_t;
 
 /* the largest lcd_bounce_px: 20 rows, two buffers of 32,000 bytes in

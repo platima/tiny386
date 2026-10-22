@@ -41,6 +41,7 @@ set(srcs "esp_main.c"
 "lcd_korvo1.c"
 "sdmmc_crc_wrap.c"
 "i2s.c"
+"audio_mix.c"
 "storage.c"
 "usb_hid.c")
 if(NOT BOARD IN_LIST TINY386_NO_WIFI_BOARDS)

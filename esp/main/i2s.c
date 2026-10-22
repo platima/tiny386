@@ -3,19 +3,31 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/i2s_std.h"
+#include "esp_timer.h"
 #include "common.h"
 #include "console.h"
 #include "status_led.h"
+#include "audio_mix.h"
 #include "../../audio_rate.h"
+
+/* the sound's level: the mix divided by 2 to this power (audio_mix.h).
+   tiny386's own is 4; a board may set its own (board_dosboard.h: 2), and
+   dosboard.ini's audio_shift sets it on the DOS board. */
+#ifndef AUDIO_SHIFT_DEFAULT
+#define AUDIO_SHIFT_DEFAULT 4
+#endif
 
 static i2s_chan_handle_t                tx_chan;        // I2S tx channel handler
 int i2s_slot_bits = 16;
-int i2s_audio_shift = 4;
-void mixer_callback (void *opaque, uint8_t *stream, int free);
+int i2s_audio_shift = AUDIO_SHIFT_DEFAULT;
 
 #ifndef MIXER_BUF_LEN
 #define MIXER_BUF_LEN 128
 #endif
+_Static_assert(MIXER_BUF_LEN <= AUDIO_MIX_MAX && MIXER_BUF_LEN % 2 == 0,
+	       "one block of the mix is at most AUDIO_MIX_MAX values, in pairs");
+/* how often the UART says how many samples were held at full scale */
+#define HELD_REPORT_S 10
 
 #ifdef AUDIO_MUTE_GPIO
 /*
@@ -36,7 +48,6 @@ void mixer_callback (void *opaque, uint8_t *stream, int free);
  */
 #include "driver/gpio.h"
 #include "esp_rom_sys.h"
-#include "esp_timer.h"
 #include "hal/gpio_ll.h"
 #include "hal/i2s_ll.h"
 #include "soc/i2s_struct.h"
@@ -84,6 +95,7 @@ static void i2s_task(void *arg)
 			    pdFALSE,
 			    portMAX_DELAY);
 
+	void *pc = globals.pc;
 	i2s_channel_enable(tx_chan);
 #ifdef AUDIO_MUTE_GPIO
 	s_i2s_running = true;
@@ -92,17 +104,19 @@ static void i2s_task(void *arg)
 	int64_t clocks_from = esp_timer_get_time();
 	bool muted = true;
 #endif
+	/* values held at full scale, said on the UART at most every
+	   HELD_REPORT_S seconds and only when there were some: a sign that
+	   audio_shift is set louder than the sound allows */
+	unsigned long held = 0, made = 0;
+	int64_t held_from = esp_timer_get_time();
 	for (;;) {
 		size_t bwritten;
-		memset(buf, 0, MIXER_BUF_LEN * 2);
-		mixer_callback(globals.pc, (uint8_t *) buf, MIXER_BUF_LEN * 2);
-		const int div = 1 << i2s_audio_shift;
-		for (int i = 0; i < MIXER_BUF_LEN; i++) {
-			buf[i] = buf[i] / div;
-		}
+		held += audio_mix_pc(buf, MIXER_BUF_LEN, i2s_audio_shift, pc);
+		made += MIXER_BUF_LEN;
 		i2s_channel_write(tx_chan, buf, MIXER_BUF_LEN * 2, &bwritten, portMAX_DELAY);
+		int64_t now = esp_timer_get_time();
 #ifdef AUDIO_MUTE_GPIO
-		if (muted && esp_timer_get_time() - clocks_from >= LINE_OUT_START_MS * 1000) {
+		if (muted && now - clocks_from >= LINE_OUT_START_MS * 1000) {
 			muted = false;
 			gpio_set_level(AUDIO_MUTE_GPIO, 1);
 			console_uart_printf("i2s: the line out (PCM5102A) and the speakers "
@@ -111,6 +125,15 @@ static void i2s_task(void *arg)
 					    1 << i2s_audio_shift, i2s_audio_shift);
 		}
 #endif
+		if (now - held_from >= HELD_REPORT_S * 1000000LL) {
+			if (held)
+				console_uart_printf("i2s: %lu of the last %d s's %lu sample values "
+						    "held at full scale (audio_shift %d; one more "
+						    "halves the level)", held, HELD_REPORT_S, made,
+						    i2s_audio_shift);
+			held = made = 0;
+			held_from = now;
+		}
 	}
 	i2s_channel_disable(tx_chan);
 }

@@ -119,7 +119,7 @@ dosboard_cfg_t dosboard_cfg = {
 	.kbd_zero_guard_ms = 0,
 	.rb_swap = 0,
 	.i2s_slot_bits = 16,
-	.audio_shift = 4,
+	.audio_shift = AUDIO_SHIFT_DEFAULT,
 };
 
 /* ==== MS7210 on I2C0 (GPIO0 SDA, GPIO1 SCL) ==== */

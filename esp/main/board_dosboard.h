@@ -122,6 +122,15 @@
 // soon as the board is known, i2s.c raises it once the I2S clocks run, and
 // the panic handler pulls it low again.
 #define AUDIO_MUTE_GPIO 48
+// The sound's level: every sample is divided by 2 to this power (i2s.c,
+// audio_mix.c), unless dosboard.ini's audio_shift says otherwise.  tiny386's
+// own is 4 (1/16, 24 dB down), quiet on HDMI and the line out; 2 (1/4) is the
+// loudest whole step at which the SB16, the AdLib and the PC speaker all at
+// full scale together (2.125 times full scale) cannot clip, and at which the
+// line out (at most about 1.1 V RMS) cannot drive the speaker amplifier
+// (6 dB of gain, about 3.35 V RMS at most from 5 V into 8 ohm) into
+// clipping either (LINE-OUT.md).
+#define AUDIO_SHIFT_DEFAULT 2
 
 // MS7210 on I2C: registers at 7-bit 0x59 (SA pulled up), and the monitor's
 // EDID at 0x50 through the MS7210's DDC pass-through.
