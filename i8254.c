@@ -48,6 +48,8 @@ typedef struct PITChannelState {
 	uint8_t bcd; /* not supported */
 	uint8_t gate; /* timer start */
 
+	uint8_t reload_pending; /* mode 0: first byte of a word reload stops counting */
+	uint16_t stopped_count;
 	uint32_t count_load_time;
 	uint32_t last_irq_count;
 	int irq;
@@ -60,13 +62,22 @@ struct PITState {
 };
 
 uint32_t get_uticks();
+
+/* Keep the programmed bits for status readback; aliases affect behavior only. */
+static int pit_mode(PITChannelState *s)
+{
+	return s->mode >= 6 ? s->mode - 4 : s->mode;
+}
+
 static int pit_get_count(PITChannelState *s)
 {
 	uint32_t d;
 	int counter;
 
+	if (s->reload_pending)
+		return s->stopped_count;
 	d = ((uint64_t) (get_uticks() - s->count_load_time)) * PIT_FREQ / 1000000;
-	switch(s->mode) {
+	switch(pit_mode(s)) {
 	case 0:
 	case 1:
 	case 4:
@@ -90,8 +101,10 @@ static int pit_get_out1(PITChannelState *s, uint32_t current_time)
 	uint32_t d;
 	int out;
 
+	if (s->reload_pending)
+		return 0;
 	d = ((uint64_t) (current_time - s->count_load_time)) * PIT_FREQ / 1000000;
-	switch(s->mode) {
+	switch(pit_mode(s)) {
 	default:
 	case 0:
 		out = (d >= s->count);
@@ -120,6 +133,7 @@ static inline void pit_load_count(PITState *pit, PITChannelState *s, int val)
 {
 	if (val == 0)
 		val = 0x10000;
+	s->reload_pending = 0;
 	s->count_load_time = get_uticks();
 	s->last_irq_count = 0;
 	s->count = val;
@@ -172,6 +186,7 @@ void i8254_ioport_write(PITState *pit, uint32_t addr, uint32_t val)
 				s->write_state = access;
 
 				s->mode = (val >> 1) & 7;
+				s->reload_pending = 0;
 				s->bcd = val & 1;
 				/* XXX: update irq timer ? */
 			}
@@ -187,6 +202,10 @@ void i8254_ioport_write(PITState *pit, uint32_t addr, uint32_t val)
 			pit_load_count(pit, s, val << 8);
 			break;
 		case RW_STATE_WORD0:
+			if (pit_mode(s) == 0) {
+				s->stopped_count = pit_get_count(s);
+				s->reload_pending = 1;
+			}
 			s->write_latch = val;
 			s->write_state = RW_STATE_WORD1;
 			break;
@@ -288,7 +307,7 @@ void i8254_update_irq(PITState *pit)
 	uint32_t uticks = get_uticks();
 	PITChannelState *s = pit->channels;
 	uint32_t d = ((uint64_t) (uticks - s->count_load_time)) * PIT_FREQ / 1000000;
-	switch(s->mode) {
+	switch(pit_mode(s)) {
 	case 2:
 	case 3:
 		if (s->last_irq_count + s->count - d >= 0x80000000) {
@@ -314,8 +333,24 @@ void i8254_update_irq(PITState *pit)
 			}
 		}
 		break;
+	case 0:
+	case 4:
+		if (s->reload_pending)
+			break;
+		/* one-shot: one interrupt when the count runs out after it
+		   was loaded (last_irq_count marks it as sent) */
+		if (s->last_irq_count == 0 && d - s->count < 0x80000000) {
+			if (s->irq != -1) {
+				pit->set_irq(pit->pic, s->irq, 1);
+				pit->set_irq(pit->pic, s->irq, 0);
+			}
+			s->last_irq_count = s->count;
+		}
+		break;
 	default:
-		abort();
+		/* 1 and 5 start on a rising edge of the gate, which channel 0's
+		   (always high) never has: no interrupt */
+		break;
 	}
 }
 
@@ -349,7 +384,7 @@ void pit_set_gate(PITState *pit, int channel, int val)
 {
 	PITChannelState *s = &pit->channels[channel];
 
-	switch(s->mode) {
+	switch(pit_mode(s)) {
 	default:
 	case 0:
 	case 4:
@@ -383,5 +418,5 @@ int pit_get_initial_count(PITState *pit, int channel)
 int pit_get_mode(PITState *pit, int channel)
 {
 	PITChannelState *s = &pit->channels[channel];
-	return s->mode;
+	return pit_mode(s);
 }

@@ -522,11 +522,14 @@ static void scale_2_1(uint8_t *dst, int dst_stride, uint8_t *src, int w)
 #error "bad bpp"
 #endif
 
-/* every line of a cell lit: the glyph functions take a line from every
-   fourth byte, as fonts are kept in plane 2, so 32 lines are 128 bytes */
+/* The glyph functions take a line from every fourth byte (fonts are kept
+   in plane 2), so 32 lines of cursor are 128 bytes. */
+#define FF8 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
 static const uint8_t cursor_glyph[32 * 4] = {
-    [0 ... 32 * 4 - 1] = 0xff
+    FF8, FF8, FF8, FF8, FF8, FF8, FF8, FF8,
+    FF8, FF8, FF8, FF8, FF8, FF8, FF8, FF8,
 };
+#undef FF8
 
 /* A text cell at half the dot clock (40 columns): every dot twice. */
 static void vga_draw_glyph_wide(uint8_t *d, int linesize,
@@ -1450,8 +1453,8 @@ static void vga_graphic_refresh(VGAState *s,
         update_palette16(s, palette);
         if (s->sr[0x01] & 8) {
             /* half the dot clock: each pixel two dots wide, the picture
-               as wide as at the full clock.  Mode 0Dh as well as the CGA
-               modes. */
+               as wide as at the full clock, in mode 0Dh as in the CGA
+               modes */
             xdiv = 2;
             w *= 2;
         }
@@ -1679,15 +1682,18 @@ static void vga_graphic_refresh(VGAState *s,
             addr = (addr & ~0x8000) | ((y1 & 2) << 14);
         }
         /* A VGA's display address wraps at 256 KB.  A line that runs on
-           past the end reads the few bytes of slack that pc.c puts behind
-           video memory; in a VBE mode a line that begins past the end is
-           not drawn. */
+           past the end reads the zeros of the slack that pc.c puts behind
+           video memory (VGA_MEM_SLACK, more than any line here reads); a
+           line that begins past the end (only in a VBE mode, or with less
+           than 256 KB) reads them from their start, so it is drawn as
+           zeros, black, where it used to be left as it was (upstream draws
+           such a line black too, since 4348cfa). */
         if (!vbe)
             addr &= 0x3ffff;
+        if (addr >= (uint32_t) s->vga_ram_size)
+            addr = s->vga_ram_size;
 
         int x0 = 0;     /* where the loop further down starts */
-        if (addr >= (uint32_t) s->vga_ram_size)
-            x0 = w;
 #ifdef VGA_PLANAR_FAST
         if (fast && !(addr & 3) &&
             (uint64_t) addr + 4 * (uint32_t) cols <= (uint32_t) s->vga_ram_size) {
@@ -2374,7 +2380,10 @@ void vga_ioport_write(VGAState *s, uint32_t addr, uint32_t val)
                would be.  On a screen that is slow to write and is the
                glass itself, each clear is a black flash and a whole
                picture stored again.  So it waits for the next picture,
-               which can tell whether it would make a difference. */
+               which can tell whether it would make a difference.  On one
+               core without that (no VGA_PLANAR_FAST, or vga_planar_fast 0)
+               nothing is cleared here: a clear at once on every write is
+               the flicker upstream took out in 43b4b85. */
 #ifdef VGA_TWO_CORES
             /* this runs on the emulator's core: the drawing clears */
 #ifdef VGA_PLANAR_FAST
@@ -2383,13 +2392,9 @@ void vga_ioport_write(VGAState *s, uint32_t addr, uint32_t val)
             else
 #endif
             vga_ask(&s->force_clear_req);
-#else
-#ifdef VGA_PLANAR_FAST
+#elif defined(VGA_PLANAR_FAST)
             if (vga_planar_fast)
                 s->clear_wanted = true;
-            else
-#endif
-            vga_clear_screen(s);
 #endif
         }
         if (s->vga_text_ops && s->graphic_mode == 1) {
@@ -2449,9 +2454,8 @@ void vbe_write(VGAState *s, uint32_t offset, uint32_t val)
                 s->vbe_regs[VBE_DISPI_INDEX_Y_OFFSET] = 0;
                 s->vbe_regs[s->vbe_index] = val;
                 vbe_fixup_regs(s);
-                /* video memory cleared when VBE is turned on, and only
-                   then, as in QEMU, where this comes from: not when the
-                   DAC's width (4F08h) or anything else is changed */
+                /* clear video memory when VBE is turned on, and only then,
+                   as QEMU does */
                 if (!(val & VBE_DISPI_NOCLEARMEM)) {
                     uint32_t n = s->vbe_regs[VBE_DISPI_INDEX_YRES] * s->vbe_line_offset;
                     memset(s->vga_ram, 0, n < (uint32_t) s->vga_ram_size ?

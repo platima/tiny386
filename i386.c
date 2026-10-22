@@ -264,7 +264,12 @@ static inline void pstore8(CPUI386 *cpu, uword addr, u8 val)
 }
 
 #ifdef I386_OPT1
-/* only works on hosts that are little-endian and support unaligned access */
+/* only works on hosts that are little-endian.  Upstream (b7980ab) has
+   -DI386_ALIGNED_ONLY take the packed accesses below; this tree has
+   unaligned.h for it, which the boards were measured with: the same
+   bytes loaded (the board's compiler makes the same code of both loads),
+   and a store to an aligned word made in one where the packed store is
+   always four.  So the packed accesses stay MIPS's. */
 #ifdef __mips__
 static inline u16 pload16(CPUI386 *cpu, uword addr)
 {
@@ -1620,7 +1625,7 @@ static inline void clear_segs(CPUI386 *cpu)
 	}
 
 #define Jv(rwm, INST) \
-	if (adsz16) { \
+	if (opsz16) { \
 		u16 imm16; \
 		TRY(fetch16(cpu, &imm16)); \
 		INST ## w(imm16, limm, 0); \
@@ -4410,6 +4415,7 @@ static bool task_switch(CPUI386 *cpu, int tss, int sw_type)
 	cpu->flags = load32(cpu, &meml);
 	cpu->flags &= EFLAGS_MASK;
 	cpu->flags |= 0x2;
+	cpu->cc.mask = 0;	/* the new task's flags, not the old one's last operation's */
 	if (sw_type == TS_CALL) {
 		TRY1(translate(cpu, &meml, 2, SEG_TR, 0, 4, 0));
 		store32(cpu, &meml, oldtss);
@@ -4765,8 +4771,10 @@ static bool IRAM_ATTR call_isr1(CPUI386 *cpu, int no, bool pusherr, int ext)
 
 	/* task gate: the new task's own stack gets the error code, as on a
 	   386 (a double fault's handler in a task of its own finds its 0
-	   there).  task_switch() never comes back false, so nothing below
-	   this undoes it. */
+	   there), written at the new task's CPL.  task_switch() never comes
+	   back false, so nothing below this undoes it, and a fault on this
+	   push stops the emulator (TRY1): returning false would have
+	   call_isr() put the old task's stack back under the new task. */
 	if (gt == 5) {
 		uword err = cpu->excerr;
 		if (!task_switch(cpu, w1 >> 16, TS_CALL))
@@ -4775,7 +4783,7 @@ static bool IRAM_ATTR call_isr1(CPUI386 *cpu, int no, bool pusherr, int ext)
 			OptAddr meml1;
 			uword sp = lreg32(4);
 			uword sp_mask = cpu->seg[SEG_SS].flags & SEG_B_BIT ? 0xffffffff : 0xffff;
-			TRY1(translate(cpu, &meml1, 2, SEG_SS, (sp - 4) & sp_mask, 4, 0));
+			TRY1(translate(cpu, &meml1, 2, SEG_SS, (sp - 4) & sp_mask, 4, cpu->cpl));
 			saddr32(&meml1, err);
 			set_sp(sp - 4, sp_mask);
 		}
