@@ -404,10 +404,24 @@ void console_host_set_uart(FILE *f)
 }
 #endif
 
+/* Lines to the UART as well: yes until console_uart_quiet(true), which the
+   firmware calls as the PC starts unless the ini says [esp] uart_log = 1.
+   A line at 115200 baud holds the core that logs it for about 87 us a
+   byte; the emulator's own lines are logged on its core.  The crash report
+   ESP-IDF prints goes to the UART whatever this says. */
+static volatile bool s_uart_quiet;
+
+void console_uart_quiet(bool quiet)
+{
+	s_uart_quiet = quiet;
+}
+
 static void emit(int level, const char *s, int n, int to)
 {
 	if (level == CON_WARN || level == CON_ERROR)
 		s_problems++;
+	if (s_uart_quiet)
+		to &= ~TO_UART;
 	if ((to & TO_UART) && s_uart) {
 		fwrite(s, 1, n, s_uart);
 		fputc('\n', s_uart);
@@ -635,6 +649,8 @@ bool console_held(void)
 void console_fatal(const char *fmt, ...)
 {
 	va_list ap;
+	/* the end of the run: on the UART too */
+	s_uart_quiet = false;
 	va_start(ap, fmt);
 	console_vprintf(CON_ERROR, fmt, ap);
 	va_end(ap);
@@ -731,7 +747,7 @@ static int con_log_vprintf(const char *fmt, va_list ap)
 	int n;
 	if (s_in_log) {
 		/* a line logged while one is on its way out: UART only */
-		n = vfprintf(s_uart, fmt, ap);
+		n = s_uart_quiet ? 0 : vfprintf(s_uart, fmt, ap);
 	} else {
 		s_in_log = true;
 		n = vsnprintf(s_log_buf, sizeof(s_log_buf), fmt, ap);

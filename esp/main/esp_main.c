@@ -31,8 +31,10 @@
 #include "../../ini.h"
 #include "../../pc.h"
 #include "../../vga.h"
+#include "../../i8254.h"
 #include "common.h"
 #include "console.h"
+#include "disk_image.h"
 #include "kbd_input.h"
 #include "setup.h"
 #include "storage.h"
@@ -292,6 +294,9 @@ struct esp_ini_config {
 	int console_s;          /* seconds the boot console stays up */
 	int lcd_invalidate;
 	int crash_test;         /* only read in a TINY386_CRASH_TEST build */
+	int uart_log;           /* the log to the UART too while the PC runs */
+	int fast_seek;          /* the disk images' clusters mapped (disk_image.c) */
+	int timer_catchup;      /* i8254_max_owed: timer ticks owed at once */
 };
 
 #ifdef TINY386_CRASH_TEST
@@ -341,6 +346,9 @@ static void crash_test(int what)
 static struct esp_ini_config config = {
 	.console_s = 2,
 	.enable_usb = 1,        /* a keyboard unless the ini says no */
+	.uart_log = 0,          /* the log is on the panel (Ctrl+Alt+F12) */
+	.fast_seek = 1,
+	.timer_catchup = 1,     /* as a real 8254 and 8259 (i8254.c) */
 };
 static PCConfig conf;
 
@@ -380,6 +388,25 @@ static void disk_flush(PC *pc)
 {
 	ide_flush();
 	emulink_flush(pc->emulink);
+}
+
+/* disk_image.c's lines: the images' pieces at the start, a card error got
+   over (or not) while the PC runs */
+static void disk_image_line(bool warn, const char *line)
+{
+	console_puts(warn ? CON_WARN : CON_INFO, line);
+}
+
+/* first thing when the emulator aborts (i386.c's cpu_abort()): the UART
+   on again for the dump, which version this is, and what held the
+   emulator up, so that the crash screen's last lines show them */
+static void abort_note(void)
+{
+	char disk[160], timer[120];
+	console_uart_quiet(false);
+	speed_health(disk, sizeof(disk), timer, sizeof(timer));
+	fprintf(stderr, "tiny386 %s stopped the PC. %s\n%s\n",
+		esp_app_get_description()->version, disk, timer);
 }
 
 /* The card refusing a read or a write (pulled out, or failing): said once,
@@ -475,9 +502,20 @@ static void i386_task(void *arg)
 		console_printf(CON_INFO, "The PC starts in %d seconds.", hold_ms / 1000);
 		vTaskDelay(pdMS_TO_TICKS(hold_ms));
 	}
-	console_puts(CON_GOOD, "The PC is starting: its picture takes the panel. "
-		     "This log goes on on the UART. Ctrl+Alt+F12 shows it again, "
-		     "with the speed.");
+	if (config.uart_log) {
+		console_puts(CON_GOOD, "The PC is starting: its picture takes the panel. "
+			     "This log goes on on the UART. Ctrl+Alt+F12 shows it again, "
+			     "with the speed.");
+	} else {
+		console_puts(CON_GOOD, "The PC is starting: its picture takes the panel. "
+			     "Ctrl+Alt+F12 shows this log again, with the speed. While "
+			     "the PC runs the log stays off the UART ([esp] uart_log = 1 "
+			     "puts it there); a crash report goes there still.");
+		/* a line at 115200 baud would hold the emulator's core about
+		   87 us a byte, and every such wait comes back to the guest as
+		   timer ticks owed */
+		console_uart_quiet(true);
+	}
 	console_release_display();
 	/* a Ctrl+Alt+F12 from the boot console's time is not for the PC's
 	   screen: forgotten before vga_task can see it */
@@ -511,6 +549,7 @@ static void i386_task(void *arg)
 static const char *const known_keys[] = {
 	"esp:ssid", "esp:pass", "esp:enable_usb", "esp:console",
 	"esp:lcd_invalidate", "esp:led_brightness",
+	"esp:uart_log", "esp:fast_seek", "esp:timer_catchup",
 #ifdef TINY386_CRASH_TEST
 	"esp:crash_test",
 #endif
@@ -567,6 +606,22 @@ static void set_led_brightness(const char *value)
 #endif
 }
 
+/* a whole number from lo to hi for [esp] name; anything else keeps *out
+   and says so in yellow */
+static void ini_whole(const char *name, const char *value, long lo, long hi, int *out)
+{
+	char *end;
+	long v = strtol(value, &end, 10);
+	while (*end == ' ' || *end == '\t')
+		end++;
+	if (end == value || *end || v < lo || v > hi) {
+		console_printf(CON_WARN, "%s: %s = %s is not a whole number from %ld to "
+			       "%ld; %d is used.", s_ini_name, name, value, lo, hi, *out);
+		return;
+	}
+	*out = (int) v;
+}
+
 static int parse_esp_ini(struct esp_ini_config *conf,
 			 const char *name, const char *value)
 {
@@ -593,6 +648,12 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		conf->lcd_invalidate = atoi(value);
 	} else if (NAME("led_brightness")) {
 		set_led_brightness(value);
+	} else if (NAME("uart_log")) {
+		ini_whole(name, value, 0, 1, &conf->uart_log);
+	} else if (NAME("fast_seek")) {
+		ini_whole(name, value, 0, 1, &conf->fast_seek);
+	} else if (NAME("timer_catchup")) {
+		ini_whole(name, value, 0, 1000, &conf->timer_catchup);
 	} else if (NAME("crash_test")) {
 		conf->crash_test = atoi(value);
 	}
@@ -1123,6 +1184,19 @@ void app_main(void)
 #ifdef LCD_ZERO_COPY
 	lcd_set_invalidate(config.lcd_invalidate);
 #endif
+
+	/* the disk images and the guest's timer as the ini has them, and the
+	   lines an emulator abort adds to the log (v3.8) */
+	disk_image_fast_seek = config.fast_seek;
+	disk_image_say = disk_image_line;
+	i8254_max_owed = config.timer_catchup;
+	cpu_abort_note = abort_note;
+	if (config.timer_catchup != 1)
+		console_printf(CON_INFO, "timer_catchup = %d: %s", config.timer_catchup,
+			       config.timer_catchup ? "up to that many timer ticks missed "
+			       "while the emulator waits are made up afterwards." :
+			       "every timer tick missed while the emulator waits is made "
+			       "up afterwards, as before v3.8 (Windows 95 can crash on that).");
 
 	if (config.enable_usb) {
 		input_setup();          /* once: it may be running for the menu */

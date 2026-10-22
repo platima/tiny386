@@ -52,6 +52,10 @@ void console_vprintf(int level, const char *fmt, va_list ap);
    push the useful lines out of the ring. */
 void console_uart_printf(const char *fmt, ...)
 	__attribute__((format(printf, 1, 2)));
+/* true: lines go to the ring and the panel but not to the UART (the PC
+   running without [esp] uart_log = 1); false: to the UART too.  A fatal
+   message turns the UART back on. */
+void console_uart_quiet(bool quiet);
 
 /* Warnings and errors shown since boot. */
 int console_problems(void);

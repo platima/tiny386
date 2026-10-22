@@ -160,6 +160,7 @@ void speed_total_line(uint64_t insns, uint64_t us, const char *what,
 #include "../../pc.h"
 #include "common.h"
 #include "console.h"
+#include "disk_image.h"
 #ifdef LCD_ZERO_COPY
 #include "lcd.h"
 #endif
@@ -252,6 +253,25 @@ void speed_set_title(const char *normal)
 	s_normal_title = normal;
 }
 
+/* What held the emulator up, and what the guest's timer made of it
+   (v3.8): the longest wait for the card, the card's errors and how many
+   were got over by opening the image again (disk_image.c), and the timer
+   ticks that piled up while the emulator waited and were dropped
+   (i8254.c).  From core 0 or core 1; each figure is one 32-bit word. */
+void speed_health(char *disk, size_t dsize, char *timer, size_t tsize)
+{
+	struct disk_image_stats d;
+	disk_image_get_stats(&d, false);
+	snprintf(disk, dsize, "Disk: %u reads, %u writes, longest %u ms, %u over 55 ms; "
+		 "card errors %u (%u got over), %u refused",
+		 (unsigned) d.reads, (unsigned) d.writes, (unsigned) (d.longest_us / 1000),
+		 (unsigned) d.over_tick, (unsigned) d.errors, (unsigned) d.recovered,
+		 ide_error_count() + emulink_error_count());
+	snprintf(timer, tsize, "Timer: at most %u ticks owed at once, %u dropped "
+		 "(timer_catchup = %d)", (unsigned) i8254_owed_max,
+		 (unsigned) i8254_dropped, i8254_max_owed);
+}
+
 static void figures(char *buf, size_t size, uint32_t pps)
 {
 	uint32_t k = s_kips;
@@ -326,6 +346,10 @@ void speed_screen_poll(void *opaque, uint32_t pps)
 		console_printf(CON_INFO, "Speed: %s; %u million instructions in %u s of "
 			       "running.", f, (unsigned) (s_total_kinsns / 1000),
 			       (unsigned) (s_total_run_ms / 1000));
+		char disk[160], timer[120];
+		speed_health(disk, sizeof(disk), timer, sizeof(timer));
+		console_puts(CON_INFO, disk);
+		console_puts(CON_INFO, timer);
 		show_title(pps);
 		s_last_title_s = secs;
 	} else if (!want && s_shown) {
@@ -342,6 +366,10 @@ void speed_screen_poll(void *opaque, uint32_t pps)
 				    "running; %u disk flushes", f,
 				    (unsigned) (s_total_kinsns / 1000),
 				    (unsigned) (s_total_run_ms / 1000), (unsigned) s_flushes);
+		char disk[160], timer[120];
+		speed_health(disk, sizeof(disk), timer, sizeof(timer));
+		console_uart_printf("%s", disk);
+		console_uart_printf("%s", timer);
 		s_last_log_s = secs;
 	}
 }

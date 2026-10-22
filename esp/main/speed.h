@@ -81,6 +81,9 @@ void speed_hotkey(void);                /* Ctrl+Alt+F12, from the USB task */
 void speed_forget_requests(void);       /* before vga_task starts drawing */
 void speed_set_title(const char *normal);       /* the console's usual title */
 void speed_screen_poll(void *pc, uint32_t pictures_per_s);     /* vga_task */
+/* two lines: the card's waits and errors, and the timer's dropped ticks
+   (shown with the speed, every 10 s on the UART, and at an abort) */
+void speed_health(char *disk, size_t dsize, char *timer, size_t tsize);
 #endif
 
 #endif /* SPEED_H */
