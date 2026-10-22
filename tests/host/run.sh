@@ -291,6 +291,36 @@ $CC $CFLAGS -DSTATUS_HOST -I"$TREE/esp/main" -o "$OUT/test_status" \
 "$OUT/test_status"
 result $? "status LED: RMT and bit-banged timing for both LEDs, patterns, state machine, replay, beat watch, record"
 
+# ==== 16. the sound mix (v3.5): tests/host/dosboard/audio_mix_test.c ====
+# esp/main/audio_mix.c with the emulator's own pcspk.c, adlib.c, fmopl.c
+# and sb16.c at the DOS board's 48 kHz, and the DOS board's default level
+# taken from board_dosboard.h: the 32-bit mix against a model, against
+# v3.4's path, nothing held at the default level, held and not wrapped
+# beyond it, and the devices at their loudest.
+echo
+SHIFT=$(sed -n 's/^#define AUDIO_SHIFT_DEFAULT  *\([0-9][0-9]*\).*/\1/p' "$TREE/esp/main/board_dosboard.h")
+[ -n "$SHIFT" ] || { echo "no AUDIO_SHIFT_DEFAULT in board_dosboard.h"; exit 1; }
+$CC $DOSCFLAGS -DAUDIO_MIX_HOST -I"$TREE/esp/main" -c -o "$OUT/audio_mix.o" \
+    "$TREE/esp/main/audio_mix.c" || exit 1
+$CC -O2 -g -w -DUSE_FMOPL -DAUDIO_RATE=48000 -DAUDIO_MIX_HOST -DAUDIO_SHIFT_DEFAULT_TEST=$SHIFT \
+    -I"$TREE" -I"$TREE/esp/main" -o "$OUT/audio_mix_test" "$D/audio_mix_test.c" \
+    "$OUT/audio_mix.o" "$TREE/pcspk.c" "$TREE/adlib.c" "$TREE/fmopl.c" -lm || exit 1
+"$OUT/audio_mix_test"
+result $? "audio_mix.c: 32-bit mix, held at full scale and never wrapped, default level $SHIFT, the devices at their loudest"
+
+# ==== 17. the DOS board's pins against its netlist (v3.5) ====
+# board_dosboard.h against the board's KiCad netlist, outside this tree
+# (DOSBOARD_NET names it): each pin on its net, and the GPIOs the board
+# gives the J202 header (GPIO2 to GPIO7, GPIO57, GPIO60) named nowhere.
+echo
+DOSBOARD_NET=${DOSBOARD_NET:-/mnt/d/Repos/esp32-s31-linux-release/tiny386-hdmi-board/dosboard/out/dosboard.net}
+if [ -f "$DOSBOARD_NET" ]; then
+    python3 "$D/check_pins.py" "$TREE/esp/main/board_dosboard.h" "$DOSBOARD_NET"
+    result $? "board_dosboard.h against the DOS board's netlist: every pin on its net, the header's GPIOs left free"
+else
+    echo "SKIP the DOS board's pins: no netlist at $DOSBOARD_NET (set DOSBOARD_NET)"
+fi
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]
