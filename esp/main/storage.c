@@ -217,6 +217,7 @@ int storage_sd_mount_others(void)
 		struct storage_volume *v = &s_vols[s_nvols++];
 		memset(v, 0, sizeof(*v));
 		strcpy(v->path, "/sdcard");
+		strcpy(v->drv, drv0);
 		snprintf(v->label, sizeof(v->label), "%s", label0);
 		v->fat = v->mounted = true;
 		v->mib = (uint32_t) ((uint64_t) card->csd.capacity * card->csd.sector_size >> 20);
@@ -244,6 +245,7 @@ int storage_sd_mount_others(void)
 		if (!first_seen && (vbr_serial(vbr) == serial0 || !serial0)) {
 			first_seen = true;
 			strcpy(v->path, "/sdcard");
+			strcpy(v->drv, drv0);
 			snprintf(v->label, sizeof(v->label), "%s", label0);
 			v->mounted = true;
 			continue;
@@ -277,6 +279,7 @@ int storage_sd_mount_others(void)
 			f_getlabel(drv, label, NULL);
 			trim_label(label);
 			snprintf(v->label, sizeof(v->label), "%s", label);
+			strcpy(v->drv, drv);
 			v->mounted = true;
 			continue;
 		}
@@ -322,6 +325,24 @@ const char *storage_win_path(void)
 		if (v[i].mounted && strcmp(v[i].path, "/sdcard"))
 			return v[i].path;
 	return NULL;
+}
+
+/* /sdcard3/win95.img as 1:/win95.img: for disk_image.c, which opens the
+   disk images with FatFs itself, as ESP-IDF's VFS would have (its
+   prepend_drive_to_path()) */
+bool storage_fatfs_path(const char *path, char *out, size_t size)
+{
+	int n;
+	const struct storage_volume *v = storage_volumes(&n);
+	for (int i = 0; i < n; i++) {
+		size_t l = strlen(v[i].path);
+		if (!v[i].mounted || !l || !v[i].drv[0] || strncmp(path, v[i].path, l) ||
+		    path[l] != '/')
+			continue;
+		int w = snprintf(out, size, "%s%s", v[i].drv, path + l);
+		return w > 0 && (size_t) w < size;
+	}
+	return false;
 }
 
 /* Bit 0: the card is mounted at /sdcard; bit 1: the flash's storage

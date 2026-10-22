@@ -5,6 +5,7 @@
 #define STORAGE_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* Bit 0: the card is mounted at /sdcard; bit 1: the flash's storage
@@ -21,6 +22,7 @@ struct storage_volume {
 	bool fat;               /* a FAT boot sector is there */
 	bool mounted;
 	char path[12];          /* "/sdcard", "/sdcard3"; "" if not mounted */
+	char drv[4];            /* FatFs's drive for it, "1:"; "" if not mounted */
 	char label[16];         /* the volume label, "WIN9X" */
 	const char *why;        /* why a FAT one is not mounted */
 };
@@ -32,5 +34,9 @@ const struct storage_volume *storage_volumes(int *n);
 /* The partition the Linux route mounts at /mnt/win: labelled WIN9X, else
    the first FAT partition other than /sdcard.  NULL if there is none. */
 const char *storage_win_path(void);
+/* A path on a mounted card volume as FatFs's own: /sdcard3/win95.img as
+   1:/win95.img in out.  False if it is on none of them (or out is too
+   small). */
+bool storage_fatfs_path(const char *path, char *out, size_t size);
 
 #endif /* STORAGE_H */

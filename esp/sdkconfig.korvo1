@@ -36,6 +36,10 @@ CONFIG_FATFS_MAX_LFN=255
 # /sdcardN (storage.c), and their labels (to find the one called WIN9X).
 CONFIG_FATFS_VOLUME_COUNT=4
 CONFIG_FATFS_USE_LABEL=y
+# FatFs's fast seek: disk_image.c maps each disk image's clusters once,
+# so that a seek reads no FAT (ESP-IDF's VFS also maps files opened read
+# only, with CONFIG_FATFS_FAST_SEEK_BUFFER_SIZE words).
+CONFIG_FATFS_USE_FASTSEEK=y
 # A crash halts with the crash screen on the panel (crash.c) instead of
 # restarting at once.
 CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y

@@ -312,6 +312,7 @@
 
 #ifdef BUILD_ESP32
 #include <errno.h>
+#include "esp/main/disk_image.h"
 void *pcmalloc(long size);
 /* says so on the panel and stops (esp/main/esp_main.c) */
 void tiny386_fatal(const char *fmt, ...) __attribute__((noreturn));
@@ -1933,6 +1934,14 @@ typedef enum {
 
 typedef struct BlockDeviceFile {
     FILE *f;
+#ifdef BUILD_ESP32
+    /* an image on one of the card's volumes, read and written through
+       FatFs itself (esp/main/disk_image.c); f is NULL then */
+    struct disk_image *img;
+#define BF_IMG(bf) ((bf)->img)
+#else
+#define BF_IMG(bf) NULL
+#endif
     int start_offset;
     int cylinders, heads, sectors;
     int64_t nb_sectors;
@@ -1961,7 +1970,7 @@ static int bf_get_chs(BlockDevice *bs, int *cylinders, int *heads, int *sectors)
    first; ide_flush() waits until it is.  A front end that wants that calls
    it when ide_write_count() has stood still for a while. */
 #define BF_MAX_RW 4
-static FILE *bf_rw_files[BF_MAX_RW];
+static BlockDeviceFile *bf_rw[BF_MAX_RW];
 static int bf_rw_count;
 static unsigned bf_writes;
 #ifdef BUILD_ESP32
@@ -1984,17 +1993,27 @@ void ide_flush(void)
 {
     int i;
     for (i = 0; i < bf_rw_count; i++) {
+        FILE *f = bf_rw[i]->f;
 #ifdef BUILD_ESP32
         /* FatFs's f_sync(): the file's own buffer and its directory
            entry onto the card */
-        if (fflush(bf_rw_files[i]) != 0 || fsync(fileno(bf_rw_files[i])) != 0) {
+        if (bf_rw[i]->img) {
+            if (disk_image_sync(bf_rw[i]->img) != 0)
+                bf_errors++;
+            continue;
+        }
+        if (!f)
+            continue;
+        if (fflush(f) != 0 || fsync(fileno(f)) != 0) {
             bf_errors++;
-            clearerr(bf_rw_files[i]);
+            clearerr(f);
         }
 #else
-        fflush(bf_rw_files[i]);
+        if (!f)
+            continue;
+        fflush(f);
 #if defined(__linux__) && !defined(ANDROID)
-        fdatasync(fileno(bf_rw_files[i]));
+        fdatasync(fileno(f));
 #endif
 #endif
     }
@@ -2016,7 +2035,7 @@ static int bf_read_async(BlockDevice *bs,
         fprintf(f, "%" PRId64 " %d\n", sector_num, n);
     }
 #endif
-    if (!bf->f)
+    if (!bf->f && !BF_IMG(bf))
         return -1;
 #ifdef BUILD_ESP32
     /* Nothing past the image's end.  On the card, FatFs's f_lseek() on a
@@ -2027,6 +2046,17 @@ static int bf_read_async(BlockDevice *bs,
        not counted as the card's. */
     if (n < 0 || sector_num + (uint64_t) n > (uint64_t) bf->nb_sectors)
         return -1;
+    if (bf->img) {
+        /* disk_image.c has already opened the image again and tried once
+           more if the card refused it the first time */
+        if (disk_image_read(bf->img, (uint64_t) bf->start_offset +
+                            sector_num * SECTOR_SIZE, buf,
+                            (size_t) n * SECTOR_SIZE) != 0) {
+            bf_errors++;
+            return -1;
+        }
+        return 0;
+    }
 #endif
     if (bf->mode == BF_MODE_SNAPSHOT) {
         int i;
@@ -2082,6 +2112,20 @@ static int bf_write_async(BlockDevice *bs,
            the card (as in bf_read_async()) */
         if (n < 0 || sector_num + (uint64_t) n > (uint64_t) bf->nb_sectors) {
             ret = -1;
+            break;
+        }
+        if (bf->img) {
+            /* on the card when this returns: whole sectors go straight
+               from f_write() to the card */
+            if (disk_image_write(bf->img, (uint64_t) bf->start_offset +
+                                 sector_num * SECTOR_SIZE, buf,
+                                 (size_t) n * SECTOR_SIZE) != 0) {
+                bf_errors++;
+                ret = -1;
+                break;
+            }
+            bf_writes++;
+            ret = 0;
             break;
         }
 #endif
@@ -2142,27 +2186,62 @@ static BlockDevice *block_device_init(const char *filename,
     } else {
         mode_str = "rb";
     }
-    
-    f = fopen(filename, mode_str);
-    if (!f) {
+
 #ifdef BUILD_ESP32
-        tiny386_fatal("Cannot open the disk image %s (%s). Check its name "
-                      "in tiny386.ini, and that the card is not locked.",
-                      filename, strerror(errno));
-#else
-        perror(filename);
-        exit(1);
+    /* On one of the card's volumes: through FatFs itself, with the image's
+       clusters mapped (esp/main/disk_image.c).  Elsewhere (/spiflash), or
+       as a snapshot: C stdio, as before. */
+    struct disk_image *img = NULL;
+    uint64_t img_size = 0;
+    if (mode != BF_MODE_SNAPSHOT) {
+        switch (disk_image_open(filename, mode == BF_MODE_RW, &img, &img_size)) {
+        case DISK_IMAGE_OPENED:
+            break;
+        case DISK_IMAGE_FAILED:
+            tiny386_fatal("Cannot open the disk image %s (%s). Check its name "
+                          "in tiny386.ini, and that the card is not locked.",
+                          filename, disk_image_error());
+        default:
+            img = NULL;
+            break;
+        }
+    }
+    if (img) {
+        f = NULL;
+    } else
 #endif
+    {
+        f = fopen(filename, mode_str);
+        if (!f) {
+#ifdef BUILD_ESP32
+            tiny386_fatal("Cannot open the disk image %s (%s). Check its name "
+                          "in tiny386.ini, and that the card is not locked.",
+                          filename, strerror(errno));
+#else
+            perror(filename);
+            exit(1);
+#endif
+        }
     }
     char buf[8];
     int start_offset = 0;
-    if (mode == BF_MODE_RO || mode == BF_MODE_RW) {
-        fread(buf, 1, 8, f);
-        if (memcmp(buf, ide_magic, 8) == 0)
+#ifdef BUILD_ESP32
+    if (img) {
+        if (img_size >= 8 && disk_image_read(img, 0, buf, 8) == 0 &&
+            memcmp(buf, ide_magic, 8) == 0)
             start_offset = 1024;
+        file_size = (int64_t) img_size - start_offset;
+    } else
+#endif
+    {
+        if (mode == BF_MODE_RO || mode == BF_MODE_RW) {
+            fread(buf, 1, 8, f);
+            if (memcmp(buf, ide_magic, 8) == 0)
+                start_offset = 1024;
+        }
+        fseeko(f, 0, SEEK_END);
+        file_size = ftello(f) - start_offset;
     }
-    fseeko(f, 0, SEEK_END);
-    file_size = ftello(f) - start_offset;
 
     bs = pcmalloc(sizeof(*bs));
     bf = pcmalloc(sizeof(*bf));
@@ -2172,9 +2251,12 @@ static BlockDevice *block_device_init(const char *filename,
     bf->mode = mode;
     bf->nb_sectors = file_size / 512;
     bf->f = f;
+#ifdef BUILD_ESP32
+    bf->img = img;
+#endif
     bf->start_offset = start_offset;
     if (mode == BF_MODE_RW && bf_rw_count < BF_MAX_RW)
-        bf_rw_files[bf_rw_count++] = f;
+        bf_rw[bf_rw_count++] = bf;
 
     if (mode == BF_MODE_SNAPSHOT) {
         bf->sector_table = pcmalloc(sizeof(bf->sector_table[0]) *
@@ -2187,14 +2269,22 @@ static BlockDevice *block_device_init(const char *filename,
     bs->get_sector_count = bf_get_sector_count;
     bs->get_chs = NULL;
     if (start_offset) {
-        fseeko(f, 512, SEEK_SET);
         unsigned char buf[7 * 2];
-        fread(buf, 1, 7 * 2, f);
+#ifdef BUILD_ESP32
+        if (img) {
+            if (disk_image_read(img, 512, buf, sizeof(buf)) != 0)
+                memset(buf, 0, sizeof(buf));
+        } else
+#endif
+        {
+            fseeko(f, 512, SEEK_SET);
+            fread(buf, 1, 7 * 2, f);
+            fseeko(f, 0, SEEK_END);
+        }
         bf->cylinders = buf[2] | (buf[3] << 8);
         bf->heads = buf[6] | (buf[7] << 8);
         bf->sectors = buf[12] | (buf[13] << 8);
         bs->get_chs = bf_get_chs;
-        fseeko(f, 0, SEEK_END);
     }
     bs->read_async = bf_read_async;
     bs->write_async = bf_write_async;
@@ -2512,6 +2602,14 @@ static void block_device_reinit(BlockDevice *bs, const char *filename)
     bf->nb_sectors = file_size / 512;
     if (bf->f)
         fclose(bf->f);
+#ifdef BUILD_ESP32
+    /* the CD changed: the new one through stdio (read only, so ESP-IDF's
+       VFS maps it for fast seek itself) */
+    if (bf->img) {
+        disk_image_close(bf->img);
+        bf->img = NULL;
+    }
+#endif
     bf->f = f;
     bf->start_offset = 0;
 }
