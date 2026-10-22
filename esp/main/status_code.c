@@ -11,15 +11,23 @@
 
 #include "status_code.h"
 
-/* ==== colours: 0x00RRGGBB, at about a quarter of full brightness ==== */
+/* ==== colours: 0x00RRGGBB, at full scale ====
+ * v3.3 to v3.6 had them at about a quarter of full brightness (white
+ * 0x282828, blue 0x00003c, cyan 0x002d2d, magenta 0x320032, green
+ * 0x003200, red 0x460000, yellow 0x3c2300), far too bright on the
+ * Korvo-1.  Here the same colours are all multiplied by 255/70, so that
+ * red, the brightest, is at full scale and each colour keeps its hue and
+ * its share of light against the others; the brightness level brings them
+ * down where they become a frame (status_frame_grb()).  Level 70 gives
+ * v3.6's values back exactly (tests/host/test_status.c). */
 #define BLACK   0x000000u
-#define WHITE   0x282828u
-#define BLUE    0x00003cu
-#define CYAN    0x002d2du
-#define MAGENTA 0x320032u
-#define GREEN   0x003200u
-#define RED     0x460000u
-#define YELLOW  0x3c2300u
+#define WHITE   0x929292u
+#define BLUE    0x0000dbu
+#define CYAN    0x00a4a4u
+#define MAGENTA 0xb600b6u
+#define GREEN   0x00b600u
+#define RED     0xff0000u
+#define YELLOW  0xdb8000u
 
 static const STATUS_DRAM uint32_t stage_rgb[STATUS_STAGE_COUNT] = {
 	[STATUS_STAGE_NONE] = BLACK,
@@ -135,6 +143,52 @@ STATUS_IRAM uint32_t status_error_pattern(int err, uint32_t ms)
 STATUS_IRAM uint32_t status_panic_pattern(bool early, uint32_t ms)
 {
 	return status_error_pattern(early ? STATUS_ERR_PSRAM : STATUS_ERR_PANIC, ms);
+}
+
+/* ==== brightness ==== */
+
+/* The level every frame is sent at: STATUS_BRIGHTNESS_DEFAULT from the
+   image's own data (so also for a panic before app_main() and for the
+   replay after a reset) until the ini sets it.  In internal RAM, as the
+   panic path reads it; one aligned word, written by the ini's reader and
+   read by the LED task and the panic path. */
+static STATUS_DRAM volatile uint32_t s_level = STATUS_BRIGHTNESS_DEFAULT;
+
+STATUS_IRAM uint32_t status_scale(uint32_t rgb, uint32_t level)
+{
+	uint32_t out = 0;
+
+	if (level > STATUS_BRIGHTNESS_MAX)
+		level = STATUS_BRIGHTNESS_MAX;
+	for (int shift = 0; shift <= 16; shift += 8) {
+		uint32_t c = (rgb >> shift) & 0xff;
+		/* c * level / 255 to the nearest step, in 32 bits (at most
+		   255 * 255 + 127): no 64-bit division, which the panic path
+		   would have to reach in flash */
+		uint32_t v = (c * level + 127) / 255;
+		/* a lit channel stays lit, so that no colour turns into
+		   another at a low level (yellow into red) */
+		if (!v && c && level)
+			v = 1;
+		out |= v << shift;
+	}
+	return out;
+}
+
+void status_brightness_set(int level)
+{
+	s_level = level < 0 ? 0 : level > STATUS_BRIGHTNESS_MAX ? STATUS_BRIGHTNESS_MAX :
+		  (uint32_t) level;
+}
+
+uint32_t status_brightness(void)
+{
+	return s_level;
+}
+
+STATUS_IRAM uint32_t status_frame_grb(uint32_t rgb)
+{
+	return status_grb(status_scale(rgb, s_level));
 }
 
 /* ==== the state ==== */

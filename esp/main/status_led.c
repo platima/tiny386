@@ -15,6 +15,10 @@
  * place of ESP-IDF's halt loop, so the crash pattern keeps going for as
  * long as the board is halted.
  *
+ * Both make every frame with status_frame_grb(), so both send the colour
+ * at the brightness set: STATUS_BRIGHTNESS_DEFAULT until the ini's [esp]
+ * led_brightness (status_led_brightness()).
+ *
  * No LP-core monitor: GPIO37 is not one of the LP core's pins (GPIO0 to 7),
  * and what it would add is covered by the watchdogs and the beat watch
  * here.  tiny386-idf/research/status-led-lp-core.md has the reasons.
@@ -73,6 +77,7 @@ static rmt_encoder_handle_t s_copy;
 static uint32_t s_syms[STATUS_RMT_SYMBOLS];
 static esp_err_t s_rmt_err = ESP_ERR_INVALID_STATE;
 static uint32_t s_sent_rgb = 0xffffffffu;
+static uint32_t s_sent_level = 0xffffffffu;     /* the brightness it was sent at */
 
 /* ==== the state ==== */
 
@@ -106,6 +111,13 @@ void status_led_fatal(int err)
 	portENTER_CRITICAL(&s_lock);
 	note_locked(status_state_fatal(&s_state, err));
 	portEXIT_CRITICAL(&s_lock);
+}
+
+/* the LED task sends the new level within one look (STATUS_TICK_MS); the
+   panic path reads it from internal RAM */
+void status_led_brightness(int level)
+{
+	status_brightness_set(level);
 }
 
 /* ==== RMT ==== */
@@ -152,10 +164,15 @@ static void send_rgb(uint32_t rgb)
 	/* the copy encoder reads s_syms while the frame goes out */
 	if (rmt_tx_wait_all_done(s_chan, 20) != ESP_OK)
 		return;
-	status_rmt_frame(status_grb(rgb), s_syms);
+	/* the level is read first: if the ini changes it while the frame is
+	   made, the next look sends again */
+	uint32_t level = status_brightness();
+	status_rmt_frame(status_frame_grb(rgb), s_syms);
 	const rmt_transmit_config_t tc = { .loop_count = 0, .flags.eot_level = 0 };
-	if (rmt_transmit(s_chan, s_copy, s_syms, sizeof(s_syms), &tc) == ESP_OK)
+	if (rmt_transmit(s_chan, s_copy, s_syms, sizeof(s_syms), &tc) == ESP_OK) {
 		s_sent_rgb = rgb;
+		s_sent_level = level;
+	}
 }
 
 static void led_task(void *arg)
@@ -188,9 +205,10 @@ static void led_task(void *arg)
 			portEXIT_CRITICAL(&s_lock);
 		}
 		uint32_t rgb = status_pattern(&st, now);
-		/* a changed colour at once; the same one again every second, in
-		   case a frame was lost */
-		if (rgb != s_sent_rgb || now - sent_at >= 1000) {
+		/* a changed colour or brightness at once; the same one again
+		   every second, in case a frame was lost */
+		if (rgb != s_sent_rgb || status_brightness() != s_sent_level ||
+		    now - sent_at >= 1000) {
 			send_rgb(rgb);
 			sent_at = now;
 		}
@@ -265,7 +283,8 @@ void status_led_report(void)
 		return;
 	}
 	console_printf(CON_INFO, "Status LED on GPIO%d: colours and blinks as in "
-		       "STATUS-LED.md.", STATUS_LED_GPIO);
+		       "STATUS-LED.md, brightness %u of 255 ([esp] led_brightness).",
+		       STATUS_LED_GPIO, (unsigned) status_brightness());
 	if (s_prev_valid && s_state.replay_end_ms)
 		console_printf(CON_INFO, "Status LED: first %d white flash%s (the last run "
 			       "ended with %s), then that run's code: it had reached \"%s\"%s%s.",
@@ -336,7 +355,9 @@ void IRAM_ATTR status_led_panic(void)
 		s_cpu_us = 40;
 	status_bb_timing(&s_bb, s_cpu_us);
 	bb_take_pin();
-	status_bb_frame(status_grb(status_panic_pattern(early, 0)), &s_bb);
+	/* at the brightness the RMT path has (status_frame_grb() and its
+	   level are in internal RAM) */
+	status_bb_frame(status_frame_grb(status_panic_pattern(early, 0)), &s_bb);
 	s_panic_cycles = (uint32_t) esp_cpu_get_cycle_count();
 	audio_panic_quiet();
 }
@@ -358,7 +379,7 @@ void IRAM_ATTR status_led_halt(void)
 		}
 		uint32_t rgb = status_panic_pattern(early, ms);
 		if (rgb != shown || ms - shown_ms >= 1000) {
-			status_bb_frame(status_grb(rgb), &s_bb);
+			status_bb_frame(status_frame_grb(rgb), &s_bb);
 			shown = rgb;
 			shown_ms = ms;
 		}

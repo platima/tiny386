@@ -103,7 +103,8 @@ int status_state_fatal(struct status_state *s, int err);
    first active one in enum order; 0 for none. */
 int status_shown_error(const struct status_state *s);
 
-/* The LED's colour at now_ms (ms since status_led_init()), 0x00RRGGBB. */
+/* The LED's colour at now_ms (ms since status_led_init()), 0x00RRGGBB, at
+   full scale (the brightness is applied by status_frame_grb()). */
 uint32_t status_pattern(const struct status_state *s, uint32_t now_ms);
 
 /* The colour of the panic loop at ms since the panic: red and white by
@@ -125,6 +126,27 @@ static inline uint32_t status_grb(uint32_t rgb)
 {
 	return ((rgb >> 8) & 0xff) << 16 | ((rgb >> 16) & 0xff) << 8 | (rgb & 0xff);
 }
+
+/* ==== brightness ====
+ * The colours above (status_pattern() and the rest) are at full scale:
+ * red, the brightest, at 255.  One level, 0 to 255, scales every colour
+ * where it becomes a frame, for the RMT and for the panic bit-bang alike:
+ * status_frame_grb().  Each channel comes out as channel * level / 255 to
+ * the nearest step, except that a channel lit in the colour stays at 1 or
+ * more at any level above 0, so no colour turns into another; 0 is dark,
+ * a crash included, and 255 the colours as they are.  The level is the
+ * default from power-on until the ini's [esp] led_brightness is read
+ * (esp_main.c). */
+#define STATUS_BRIGHTNESS_DEFAULT 9     /* red 9 of 255; v3.6 had 70: about an eighth */
+#define STATUS_BRIGHTNESS_MAX     255
+
+/* rgb with each channel scaled to level (above 255 taken as 255) */
+uint32_t status_scale(uint32_t rgb, uint32_t level);
+/* the level for every frame from now on; below 0 is 0, above 255 is 255 */
+void status_brightness_set(int level);
+uint32_t status_brightness(void);
+/* rgb at the level set, in wire order: what every frame is made from */
+uint32_t status_frame_grb(uint32_t rgb);
 
 /* ==== no progress: the emulator's beat ==== */
 struct status_watch {

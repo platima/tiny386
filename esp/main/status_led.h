@@ -30,6 +30,9 @@ void status_led_stage(int stage);
 void status_led_error(int err, bool on);
 /* tiny386 has stopped: the first such error stays for good. */
 void status_led_fatal(int err);
+/* [esp] led_brightness, as the ini is read: 0 (dark, a crash included) to
+   255 (full); STATUS_BRIGHTNESS_DEFAULT until then.  Sent within 50 ms. */
+void status_led_brightness(int level);
 
 /* the emulator's beat: run_pc() once a step; the LED's task notices when it
    stops (STATUS_ERR_STALLED) */
@@ -57,6 +60,7 @@ static inline void status_led_report(void) { }
 static inline void status_led_stage(int stage) { (void) stage; }
 static inline void status_led_error(int err, bool on) { (void) err; (void) on; }
 static inline void status_led_fatal(int err) { (void) err; }
+static inline void status_led_brightness(int level) { (void) level; }
 static inline void status_led_heartbeat(void) { }
 static inline void status_led_panic(void) { }
 static inline bool status_led_panicking(void) { return false; }
