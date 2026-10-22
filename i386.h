@@ -85,6 +85,9 @@ void cpu_setexc(CPUI386 *cpu, int excno, uword excerr);
 void cpu_setflags(CPUI386 *cpu, uword set_mask, uword clear_mask);
 uword cpu_getflags(CPUI386 *cpu);
 void cpu_abort(CPUI386 *cpu, int code);
+/* called first thing in cpu_abort(), if set: a front end's own lines for
+   the log */
+extern void (*cpu_abort_note)(void);
 #else
 #undef CPU_CB
 #undef uword

@@ -206,8 +206,15 @@ enum {
 
 static void cpu_debug(CPUI386 *cpu);
 
+/* a front end's own lines for the log, first thing in cpu_abort() (the
+   ESP-IDF port's disk and timer figures, and its UART back on for the
+   dump); NULL for none */
+void (*cpu_abort_note)(void);
+
 void cpu_abort(CPUI386 *cpu, int code)
 {
+	if (cpu_abort_note)
+		cpu_abort_note();
 	dolog("abort: %d %x cycle %ld\n", code, code, cpu->cycle);
 	cpu_debug(cpu);
 	abort();
@@ -569,6 +576,19 @@ static int pte_lookup[2][4][2][2] = { //[wp != 0][(pte >> 1) & 3][cpl > 0][rwm >
 	}
 };
 
+/* a page directory or page table entry's physical address that tlb_refill()
+   may load and store */
+static inline bool pt_addr_ok(CPUI386 *cpu, uword addr)
+{
+	if (addr > (uword) (cpu->phys_mem_size - 4))
+		return false;
+#ifdef BUILD_ESP32
+	if (addr >= 0xa0000 && addr < 0xc0000)
+		return false;
+#endif
+	return true;
+}
+
 static bool IRAM_ATTR tlb_refill(CPUI386 *cpu, struct tlb_entry *ent, uword lpgno)
 {
 	if (unlikely(GET_LM_EFER(cpu))) {
@@ -584,13 +604,23 @@ static bool IRAM_ATTR tlb_refill(CPUI386 *cpu, struct tlb_entry *ent, uword lpgn
 	uword i = lpgno >> 10;
 	uword j = lpgno & 1023;
 
+	/* A page directory or page table outside the guest's memory (a
+	   corrupt CR3 or directory entry) is taken as not present: a page
+	   fault for the guest, not a load from, or accessed and dirty bits
+	   stored into, the host's memory beyond phys_mem.  On the ESP-IDF
+	   port the devices' state lives in phys_mem at 0xA0000 to 0xBFFFF,
+	   which a guest reaches only through the VGA, so not there either. */
 	u8 *mem = (u8 *) cpu->phys_mem;
+	if (unlikely(!pt_addr_ok(cpu, base_addr + i * 4)))
+		return false;
 	uword pde = pload32(cpu, base_addr + i * 4);
 	if (!(pde & 1))
 		return false;
 	mem[base_addr + i * 4] |= 1 << 5; // accessed
 
 	uword base_addr2 = pde & ~0xfff;
+	if (unlikely(!pt_addr_ok(cpu, base_addr2 + j * 4)))
+		return false;
 	uword pte = pload32(cpu, base_addr2 + j * 4);
 	if (!(pte & 1))
 		return false;
@@ -1091,7 +1121,16 @@ static bool read_desc(CPUI386 *cpu, int sel, uword *w1, uword *w2)
 	}
 
 	if (off + 7 > limit) {
-		dolog("read_desc: sel %04x base %x limit %x off %x\n", sel, base, limit, off);
+		/* where, and how often: the first 16, then every 1024th, so
+		   that a guest retrying in a loop (and LAR, LSL, VERR and VERW,
+		   which come here too) cannot hold the emulator up with its
+		   log; on a board each line costs milliseconds of UART */
+		static unsigned n;
+		if (n < 16 || !(n & 1023))
+			dolog("read_desc: sel %04x base %x limit %x off %x at %04x:%08x (%u)\n",
+			      sel, base, limit, off, (unsigned) SEGi(SEG_CS),
+			      (unsigned) cpu->ip, n + 1);
+		n++;
 		THROW(EX_GP, sel & ~0x3);
 	}
 	if (w1) {
@@ -3292,9 +3331,30 @@ static bool enter_helper(CPUI386 *cpu, bool opsz16, uword sp_mask,
 	cpu->idt.base = base; \
 	cpu->idt.limit = limit;
 
+/* LLDT takes the null selector (no LDT) or a present LDT descriptor in the
+   GDT; anything else is #GP(selector), as on a 386, so that a bad LDT shows
+   where it is loaded, not at its first use */
+static bool lldt_check(CPUI386 *cpu, int sel)
+{
+	sel &= 0xffff;
+	if ((sel & ~0x3) == 0)
+		return true;
+	if (sel & 0x4)
+		THROW(EX_GP, sel & ~0x3);
+	uword w1, w2;
+	TRY(read_desc(cpu, sel, &w1, &w2));
+	if (((w2 >> 8) & 0x1f) != 0x02)
+		THROW(EX_GP, sel & ~0x3);
+	return true;
+}
+
 #define LLDT(a, la, sa) \
 	if (cpu->cpl != 0) THROW(EX_GP, 0); \
-	TRY(set_seg(cpu, SEG_LDT, la(a)));
+	{ \
+		int ldt_sel_ = la(a); \
+		TRY(lldt_check(cpu, ldt_sel_)); \
+		TRY(set_seg(cpu, SEG_LDT, ldt_sel_)); \
+	}
 
 #define SLDT(a, la, sa) \
 	sa(a, cpu->seg[SEG_LDT].sel);
@@ -4621,7 +4681,7 @@ static int __call_isr_check_cs(CPUI386 *cpu, int sel, int ext, int *csdpl)
 	}
 }
 
-static bool IRAM_ATTR call_isr(CPUI386 *cpu, int no, bool pusherr, int ext)
+static bool IRAM_ATTR call_isr1(CPUI386 *cpu, int no, bool pusherr, int ext)
 {
 	if (!(cpu->cr0 & 1)) {
 		/* REAL-ADDRESS-MODE */
@@ -4662,9 +4722,10 @@ static bool IRAM_ATTR call_isr(CPUI386 *cpu, int no, bool pusherr, int ext)
 		THROW(EX_GP, off | 2 | ext);
 	}
 
-	TRY1(translate_laddr(cpu, &meml, 1, base + off, 4, 0));
+	/* a page fault reading the IDT is the guest's, as on a 386 */
+	TRY(translate_laddr(cpu, &meml, 1, base + off, 4, 0));
 	uword w1 = load32(cpu, &meml);
-	TRY1(translate_laddr(cpu, &meml, 1, base + off + 4, 4, 0));
+	TRY(translate_laddr(cpu, &meml, 1, base + off + 4, 4, 0));
 	uword w2 = load32(cpu, &meml);
 
 	int gt = (w2 >> 8) & 0xf;
@@ -4682,9 +4743,24 @@ static bool IRAM_ATTR call_isr(CPUI386 *cpu, int no, bool pusherr, int ext)
 		THROW(EX_NP, off | 2 | ext);
 	}
 
-	/* task gate */
-	if (gt == 5)
-		return task_switch(cpu, w1 >> 16, TS_CALL);
+	/* task gate: the new task's own stack gets the error code, as on a
+	   386 (Windows 95's VMM handles the double fault, error code 0, in a
+	   task of its own).  task_switch() never comes back false, so nothing
+	   below this undoes it. */
+	if (gt == 5) {
+		uword err = cpu->excerr;
+		if (!task_switch(cpu, w1 >> 16, TS_CALL))
+			return false;
+		if (pusherr) {
+			OptAddr meml1;
+			uword sp = lreg32(4);
+			uword sp_mask = cpu->seg[SEG_SS].flags & SEG_B_BIT ? 0xffffffff : 0xffff;
+			TRY1(translate(cpu, &meml1, 2, SEG_SS, (sp - 4) & sp_mask, 4, 0));
+			saddr32(&meml1, err);
+			set_sp(sp - 4, sp_mask);
+		}
+		return true;
+	}
 
 	/* TRAP-OR-INTERRUPT-GATE */
 	int newcs = w1 >> 16;
@@ -4849,15 +4925,15 @@ static bool IRAM_ATTR call_isr(CPUI386 *cpu, int no, bool pusherr, int ext)
 		OptAddr memlg, memlf, memld, memle;
 		OptAddr meml1, meml2, meml3, meml4, meml5, meml6;
 		uword sp = lreg32(4);
-		TRY1(translate(cpu, &memlg, 2, SEG_SS, (sp - 4 * 1) & sp_mask, 4, 0));
-		TRY1(translate(cpu, &memlf, 2, SEG_SS, (sp - 4 * 2) & sp_mask, 4, 0));
-		TRY1(translate(cpu, &memld, 2, SEG_SS, (sp - 4 * 3) & sp_mask, 4, 0));
-		TRY1(translate(cpu, &memle, 2, SEG_SS, (sp - 4 * 4) & sp_mask, 4, 0));
-		TRY1(translate(cpu, &meml1, 2, SEG_SS, (sp - 4 * 5) & sp_mask, 4, 0));
-		TRY1(translate(cpu, &meml2, 2, SEG_SS, (sp - 4 * 6) & sp_mask, 4, 0));
-		TRY1(translate(cpu, &meml3, 2, SEG_SS, (sp - 4 * 7) & sp_mask, 4, 0));
-		TRY1(translate(cpu, &meml4, 2, SEG_SS, (sp - 4 * 8) & sp_mask, 4, 0));
-		TRY1(translate(cpu, &meml5, 2, SEG_SS, (sp - 4 * 9) & sp_mask, 4, 0));
+		TRY(translate(cpu, &memlg, 2, SEG_SS, (sp - 4 * 1) & sp_mask, 4, 0));
+		TRY(translate(cpu, &memlf, 2, SEG_SS, (sp - 4 * 2) & sp_mask, 4, 0));
+		TRY(translate(cpu, &memld, 2, SEG_SS, (sp - 4 * 3) & sp_mask, 4, 0));
+		TRY(translate(cpu, &memle, 2, SEG_SS, (sp - 4 * 4) & sp_mask, 4, 0));
+		TRY(translate(cpu, &meml1, 2, SEG_SS, (sp - 4 * 5) & sp_mask, 4, 0));
+		TRY(translate(cpu, &meml2, 2, SEG_SS, (sp - 4 * 6) & sp_mask, 4, 0));
+		TRY(translate(cpu, &meml3, 2, SEG_SS, (sp - 4 * 7) & sp_mask, 4, 0));
+		TRY(translate(cpu, &meml4, 2, SEG_SS, (sp - 4 * 8) & sp_mask, 4, 0));
+		TRY(translate(cpu, &meml5, 2, SEG_SS, (sp - 4 * 9) & sp_mask, 4, 0));
 		if (pusherr) {
 			TRY(translate(cpu, &meml6, 2, SEG_SS, (sp - 4 * 10) & sp_mask, 4, 0));
 		}
@@ -4903,6 +4979,140 @@ static bool IRAM_ATTR call_isr(CPUI386 *cpu, int no, bool pusherr, int ext)
 	if (gt == 0x6 || gt == 0xe)
 		cpu->flags &= ~IF;
 	return true;
+}
+
+/* call_isr1(), and if a push or a load in it faults, the processor as it
+   was before: an interrupt from an outer ring or from V86 mode has by
+   then switched to the TSS's stack (and cleared VM), and the fault must be
+   taken, or the interrupt delivered again, from where the guest was, as a
+   386 does.  The fault itself stays in excno, excerr and CR2. */
+static bool IRAM_ATTR call_isr(CPUI386 *cpu, int no, bool pusherr, int ext)
+{
+	__typeof__(cpu->seg[SEG_SS]) ss = cpu->seg[SEG_SS];
+	uword esp = REGi(4), flags = cpu->flags, sp_mask = cpu->sp_mask;
+	if (likely(call_isr1(cpu, no, pusherr, ext)))
+		return true;
+	cpu->seg[SEG_SS] = ss;
+	REGi(4) = esp;
+	cpu->flags = flags;
+	cpu->sp_mask = sp_mask;
+	return false;
+}
+
+/* The 386's classes for a fault while an interrupt or exception is
+   delivered (Intel 80386 Programmer's Reference, table 9-3). */
+enum { EXC_BENIGN, EXC_CONTRIB, EXC_PAGE, EXC_DOUBLE };
+
+static int exc_class(int no)
+{
+	switch (no) {
+	case EX_DE: case EX_TS: case EX_NP: case EX_SS: case EX_GP:
+		return EXC_CONTRIB;
+	case EX_PF:
+		return EXC_PAGE;
+	case EX_DF:
+		return EXC_DOUBLE;
+	default:
+		return EXC_BENIGN;      /* and -1, an external interrupt */
+	}
+}
+
+static bool exc_pusherr(int no)
+{
+	switch (no) {
+	case EX_DF: case EX_TS: case EX_NP: case EX_SS: case EX_GP: case EX_PF:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static const char *exc_name(int no)
+{
+	static const char *const names[] = {
+		"#DE", "#DB", "NMI", "#BP", "#OF", "#BR", "#UD", "#NM",
+		"#DF", "vector 9", "#TS", "#NP", "#SS", "#GP", "#PF",
+	};
+	if (no < 0)
+		return "an interrupt";
+	return no < (int) (sizeof(names) / sizeof(names[0])) ? names[no] : "an exception";
+}
+
+/* what the guest's IDT has for the double fault, for the shutdown line */
+static const char *df_gate_words(CPUI386 *cpu)
+{
+	if (!(cpu->cr0 & 1))
+		return "real mode's";
+	if (8 * 8 + 7 > cpu->idt.limit)
+		return "past the IDT's limit";
+	OptAddr meml;
+	int excno = cpu->excno;
+	uword excerr = cpu->excerr, cr2 = cpu->cr2;
+	const char *w = "not readable";
+	if (translate_laddr(cpu, &meml, 1, cpu->idt.base + 8 * 8 + 4, 4, 0)) {
+		uword w2 = load32(cpu, &meml);
+		if (!((w2 >> 15) & 1))
+			w = "not present";
+		else switch ((w2 >> 8) & 0xf) {
+			case 5: w = "a task gate"; break;
+			case 6: case 0xe: w = "an interrupt gate"; break;
+			case 7: case 0xf: w = "a trap gate"; break;
+			default: w = "no gate"; break;
+		}
+	}
+	cpu->excno = excno;
+	cpu->excerr = excerr;
+	cpu->cr2 = cr2;
+	return w;
+}
+
+/* Delivers vector no: an external interrupt (what = -1) or the exception
+   what.  A fault while delivering it is handled as a 386 handles one: a
+   contributory fault (#DE #TS #NP #SS #GP) on a contributory one, or a
+   contributory or page fault on a page fault, becomes a double fault
+   (vector 8, error code 0); any other is delivered after it; a
+   contributory or page fault while delivering the double fault shuts the
+   processor down, which here stops the emulator, as every fault in
+   delivery did before.  Windows 95's VMM handles a double fault in a task
+   of its own (a task gate on vector 8), which is how it gets over its ring
+   0 stack running off its page. */
+static void IRAM_ATTR deliver(CPUI386 *cpu, int no, bool pusherr, int what)
+{
+	static unsigned doubles;
+	for (int tries = 0; ; tries++) {
+		if (likely(call_isr(cpu, no, pusherr, 1)))
+			return;
+		int second = cpu->excno;
+		int c1 = exc_class(what), c2 = exc_class(second);
+		if (second < 0 || second > EX_PF || tries >= 3 ||
+		    (c1 == EXC_DOUBLE && (c2 == EXC_CONTRIB || c2 == EXC_PAGE))) {
+			dolog("shutdown: %s (error %x) while delivering %s at %04x:%08x, "
+			      "ESP %08x, CR2 %08x; vector 8 is %s\n", exc_name(second),
+			      (unsigned) cpu->excerr, exc_name(what),
+			      (unsigned) SEGi(SEG_CS), (unsigned) cpu->ip,
+			      (unsigned) REGi(4), (unsigned) cpu->cr2, df_gate_words(cpu));
+			cpu_abort(cpu, -2);
+		}
+		if ((c1 == EXC_CONTRIB && c2 == EXC_CONTRIB) ||
+		    (c1 == EXC_PAGE && (c2 == EXC_CONTRIB || c2 == EXC_PAGE))) {
+			/* the first few, then every 256th */
+			if (doubles < 8 || !(doubles & 255))
+				dolog("double fault: %s (error %x) while delivering %s at "
+				      "%04x:%08x, ESP %08x, CR2 %08x (%u)\n", exc_name(second),
+				      (unsigned) cpu->excerr, exc_name(what),
+				      (unsigned) SEGi(SEG_CS), (unsigned) cpu->ip,
+				      (unsigned) REGi(4), (unsigned) cpu->cr2, doubles + 1);
+			doubles++;
+			no = EX_DF;
+			cpu->excno = EX_DF;
+			cpu->excerr = 0;
+			pusherr = true;
+		} else {
+			no = second;
+			pusherr = exc_pusherr(second);
+		}
+		what = no;
+	}
 }
 
 static bool __pmiret_check_cs_same(CPUI386 *cpu, int sel)
@@ -5116,7 +5326,7 @@ void cpui386_step(CPUI386 *cpu, int stepcount)
 		cpu->halt = false;
 		int no = cpu->cb.pic_read_irq(cpu->cb.pic);
 		cpu->ip = cpu->next_ip;
-		TRY1(call_isr(cpu, no, false, 1));
+		deliver(cpu, no, false, -1);
 	}
 
 	if (cpu->halt) {
@@ -5131,15 +5341,8 @@ void cpui386_step(CPUI386 *cpu, int stepcount)
 		if (cpu->excno == 0x8664)
 			return;
 #endif
-		bool pusherr = false;
-		switch (cpu->excno) {
-		case EX_DF: case EX_TS: case EX_NP: case EX_SS: case EX_GP:
-		case EX_PF:
-			pusherr = true;
-		}
 		cpu->next_ip = cpu->ip;
-
-		TRY1(call_isr(cpu, cpu->excno, pusherr, 1));
+		deliver(cpu, cpu->excno, exc_pusherr(cpu->excno), cpu->excno);
 	}
 }
 
