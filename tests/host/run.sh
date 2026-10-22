@@ -44,12 +44,14 @@ fi
 # ==== 2. the boot console and the crash screen (FIRMWARE-PLAN 3.2) ====
 # console.c as the firmware has it, built with CONSOLE_HOST: no ESP-IDF.
 # Pictures of each stage go to OUT as PPM (and PNG if ImageMagick is there).
+# Since v3.8 also the UART quiet, the limit on repeated lines and the
+# UART's queue.
 echo
 $CC $CFLAGS -DCONSOLE_HOST -I"$TREE/esp/main" \
     -o "$OUT/test_console" "$HERE/test_console.c" "$TREE/esp/main/console.c" \
     "$TREE/vgafont.c" || exit 1
 "$OUT/test_console" "$OUT"
-result $? "boot console: text, colours, scrolling, ring, hand-over, crash screen"
+result $? "boot console: text, colours, scrolling, ring, hand-over, crash screen, repeated lines, UART queue"
 if command -v convert >/dev/null; then
     for p in "$OUT"/console-*.ppm; do
         convert "$p" "${p%.ppm}.png"
@@ -280,19 +282,21 @@ $CC $CFLAGS -DEMULINK_CHECKED -I"$TREE" -o "$OUT/test_floppy" "$HERE/test_floppy
 "$OUT/test_floppy" "$OUT"
 result $? "misc.c: floppy drives 0 and 1 only, nothing past the image's end, refused writes counted"
 
-# ==== 15. the status LED (v3.3; the brightness v3.7) ====
+# ==== 15. the status LED (v3.3; the brightness v3.7; the disk light v3.8) ====
 # status_code.c as the firmware has it, and status_bb.h (the panic handler's
 # bit-bang) with a pretend cycle counter: the RMT frame and every bit-banged
 # edge against both LEDs' timing, the colours and blinks, the error-code
-# state machine, the replay after a reset, the beat watch, the record, and
-# the brightness: the scale at every level, the default, both paths' frames
+# state machine, the replay after a reset, the beat watch, the record, the
+# brightness: the scale at every level, the default, both paths' frames
 # at the same level (esp/main given, so that status_led.c and status_code.c
-# are read for how their frames are made).
+# are read for how their frames are made); and the disk light: the LED
+# task's looks against pretend disk accesses, and where ide.c, misc.c and
+# esp_main.c count them and hand them over.
 echo
 $CC $CFLAGS -DSTATUS_HOST -I"$TREE/esp/main" -o "$OUT/test_status" \
     "$HERE/test_status.c" "$TREE/esp/main/status_code.c" || exit 1
 "$OUT/test_status" "$TREE/esp/main"
-result $? "status LED: RMT and bit-banged timing for both LEDs, patterns, state machine, replay, beat watch, record, brightness"
+result $? "status LED: RMT and bit-banged timing for both LEDs, patterns, state machine, replay, beat watch, record, brightness, disk light"
 
 # ==== 16. the sound mix (v3.5): tests/host/dosboard/audio_mix_test.c ====
 # esp/main/audio_mix.c with the emulator's own pcspk.c, adlib.c, fmopl.c

@@ -14,7 +14,9 @@
 # with a card that refuses a read or a write (the image opened again, the
 # access done); and again through C stdio, ide.c's other path, where one
 # refused read makes FatFs refuse the image from then on (the test seeing
-# the fault that disk_image.c removes).
+# the fault that disk_image.c removes).  v3.8 also counts every guest read
+# and write for the status LED's disk light (ide_activity), one past the
+# image's end included.
 #
 #   bash tests/host/disk/run_disk.sh [OUT]
 #

@@ -22,7 +22,8 @@
  *      ten instructions before a rise) with v3.3's times, which this test
  *      must find short at 80 MHz: the fault the v3.3 review found.
  *   3. The patterns: each stage's colour, each error's colour and number of
- *      blinks, the crash, the heartbeat, the PC switched off.
+ *      blinks, the crash, the PC running (a steady green), the PC switched
+ *      off.
  *   4. The error-code state machine: which error shows over which, the
  *      first fatal one staying, errors clearing themselves.
  *   5. The replay after a reset: the lead-in's flashes, the old code, then
@@ -41,6 +42,13 @@
  *      also reads status_led.c and status_code.c: every frame made there
  *      goes through status_frame_grb(), which with its level is in
  *      internal RAM.
+ *   9. The disk light (v3.8): the PC running is a steady green; a look of
+ *      the LED task in which the guest's disk count moved is blue; one
+ *      access lights one look, a burst lights it all through, accesses
+ *      further apart than a look flicker; an error, the replay and other
+ *      stages go over it; a stopped emulator still gives yellow 5 with no
+ *      blink.  Given the path of esp/main, it also reads status_led.c,
+ *      ide.c, misc.c and esp_main.c for where the count is kept and read.
  */
 #include <limits.h>
 #include <stdint.h>
@@ -421,15 +429,24 @@ static void test_patterns(void)
 			CHECK(status_stage_rgb(steady[j]) != c, "stages %s and %s look the same",
 			      status_stage_name(steady[j]), status_stage_name(steady[i]));
 	}
-	/* running: green, dark for 100 ms every 2 s */
+	/* running: a steady green, the BIOS stage's (v3.8; v3.3 to v3.7 went
+	   dark for 100 ms every 2 s), and blue, the screen stage's colour,
+	   for a look with the disk light on */
 	struct status_state s = { 0 };
 	status_state_stage(&s, STATUS_STAGE_RUNNING);
-	int dark = 0;
-	for (uint32_t t = 0; t < 2000; t++)
-		dark += status_pattern(&s, 4000 + t) == 0;
-	CHECK(dark == 100, "running: dark %d ms of 2000", dark);
-	CHECK(status_pattern(&s, 4500) == status_stage_rgb(STATUS_STAGE_BIOS),
-	      "running is not the BIOS stage's green");
+	int dark = 0, other = 0;
+	for (uint32_t t = 0; t < 10000; t++) {
+		uint32_t c = status_pattern(&s, t);
+		dark += c == 0;
+		other += c != status_stage_rgb(STATUS_STAGE_BIOS);
+	}
+	CHECK(dark == 0 && other == 0, "running: not a steady green (%d ms dark, %d ms another "
+	      "colour, of 10,000)", dark, other);
+	s.disk = 1;
+	CHECK(status_pattern(&s, 4500) == status_stage_rgb(STATUS_STAGE_SCREEN) &&
+	      status_pattern(&s, 4500) != status_stage_rgb(STATUS_STAGE_RUNNING),
+	      "running with the disk light: not the screen stage's blue");
+	s.disk = 0;
 	/* the PC switched off: white a second, dark a second */
 	status_state_stage(&s, STATUS_STAGE_PC_OFF);
 	CHECK(status_pattern(&s, 500) == status_stage_rgb(STATUS_STAGE_STARTED) &&
@@ -1012,6 +1029,198 @@ static void test_brightness(const char *src_dir)
 	free(code);
 }
 
+/* ==== 9. the disk light (v3.8) ==== */
+
+/* one look of the LED task as status_led.c makes it: the beat watch (and
+   yellow 5 on or off), then the disk count against the last look, then the
+   colour */
+static uint32_t look(struct status_state *base, struct status_watch *w, struct status_disk *d,
+		     uint32_t beats, uint32_t count, uint32_t now)
+{
+	bool running = base->stage == STATUS_STAGE_RUNNING;
+	bool was = base->active & (1u << STATUS_ERR_STALLED);
+	bool stalled = status_watch_step(w, beats, now, running);
+	if (stalled != was)
+		status_state_error(base, STATUS_ERR_STALLED, stalled);
+	struct status_state st = *base;
+	st.disk = running && status_disk_step(d, count);
+	return status_pattern(&st, now);
+}
+
+/* the guest's accesses as times in ms (sorted): how many came before t */
+static uint32_t accesses_before(const uint32_t *at, int n, uint32_t t)
+{
+	uint32_t k = 0;
+	while ((int) k < n && at[k] < t)
+		k++;
+	return k;
+}
+
+/* a running PC from 0 to end ms, the emulator beating until beat_end,
+   looked at every STATUS_TICK_MS: how many looks were blue, green, yellow
+   (any blink of it) and other; the longest run of blue looks; the first
+   yellow look's time */
+struct sim_out {
+	int blue, green, yellow, other, longest_blue;
+	uint32_t first_yellow, first_blue;
+};
+
+static struct sim_out sim_run(const uint32_t *at, int n, uint32_t end, uint32_t beat_end)
+{
+	struct status_state s = { 0 };
+	struct status_watch w = { 0 };
+	struct status_disk d = { 0 };
+	struct sim_out o = { 0 };
+	const uint32_t blue = status_stage_rgb(STATUS_STAGE_SCREEN);
+	const uint32_t green = status_stage_rgb(STATUS_STAGE_RUNNING);
+	int run = 0;
+	o.first_yellow = o.first_blue = 0xffffffffu;
+	status_state_stage(&s, STATUS_STAGE_RUNNING);
+	for (uint32_t t = STATUS_TICK_MS; t <= end; t += STATUS_TICK_MS) {
+		uint32_t beats = (t < beat_end ? t : beat_end) / 10;
+		uint32_t c = look(&s, &w, &d, beats, accesses_before(at, n, t), t);
+		if (c == blue) {
+			o.blue++;
+			if (++run > o.longest_blue)
+				o.longest_blue = run;
+			if (o.first_blue == 0xffffffffu)
+				o.first_blue = t;
+			continue;
+		}
+		run = 0;
+		if (c == green)
+			o.green++;
+		else if (c == YELLOW_FULL || (c == 0 && (s.active & (1u << STATUS_ERR_STALLED))))
+			o.yellow++, o.first_yellow = o.first_yellow == 0xffffffffu ? t : o.first_yellow;
+		else
+			o.other++;
+	}
+	return o;
+}
+
+static void test_disk_light(const char *src_dir)
+{
+	CHECK(STATUS_TICK_MS >= 20 && STATUS_TICK_MS <= 30 && STATUS_TICK_MS % 10 == 0,
+	      "a look every %d ms: not 20 to 30 ms in whole 10 ms ticks", STATUS_TICK_MS);
+
+	/* the count against the last look */
+	struct status_disk d = { 0 };
+	CHECK(!status_disk_step(&d, 0), "no access yet: lit");
+	CHECK(status_disk_step(&d, 1) && !status_disk_step(&d, 1), "one access: not one look lit");
+	CHECK(status_disk_step(&d, 5000) && !status_disk_step(&d, 5000), "many: not one look lit");
+	d.last = 0xffffffffu;
+	CHECK(status_disk_step(&d, 0) && !status_disk_step(&d, 0), "the count wrapping round");
+
+	/* no access: green all along, never dark */
+	struct sim_out o = sim_run(NULL, 0, 20000, 20000);
+	CHECK(o.green == 20000 / STATUS_TICK_MS && !o.blue && !o.yellow && !o.other,
+	      "no access: %d green, %d blue, %d yellow, %d other looks", o.green, o.blue, o.yellow,
+	      o.other);
+	/* one access: one look blue, the next one after it */
+	static const uint32_t one[] = { 1003 };
+	o = sim_run(one, 1, 5000, 5000);
+	CHECK(o.blue == 1 && o.first_blue == (1003 / STATUS_TICK_MS + 1) * STATUS_TICK_MS &&
+	      !o.other && !o.yellow, "one access at 1003 ms: %d blue looks, the first at %u ms",
+	      o.blue, o.first_blue);
+	/* a burst, an access every 5 ms for 300 ms: lit all through it */
+	uint32_t burst[61];
+	for (int i = 0; i < 61; i++)
+		burst[i] = 2000 + 5 * i;
+	o = sim_run(burst, 61, 5000, 5000);
+	CHECK(o.blue == o.longest_blue && o.blue >= 300 / STATUS_TICK_MS &&
+	      o.blue <= 300 / STATUS_TICK_MS + 1, "a 300 ms burst: %d blue looks, %d in a row",
+	      o.blue, o.longest_blue);
+	/* accesses 50 ms apart for a second: a flash each, green between */
+	uint32_t apart[20];
+	for (int i = 0; i < 20; i++)
+		apart[i] = 3001 + 50 * i;
+	o = sim_run(apart, 20, 5000, 5000);
+	CHECK(o.blue == 20 && o.longest_blue == 1 && !o.other,
+	      "20 accesses 50 ms apart: %d blue looks, at most %d in a row (a flicker wanted)",
+	      o.blue, o.longest_blue);
+	/* the emulator stopped at 4 s with the light green: yellow 5 at 14 s,
+	   with no blink of the old kind to show it */
+	o = sim_run(one, 1, 20000, 4000);
+	CHECK(o.first_yellow >= 4000 + STATUS_STALL_MS - STATUS_TICK_MS &&
+	      o.first_yellow <= 4000 + STATUS_STALL_MS + STATUS_TICK_MS && !o.other,
+	      "stopped at 4000 ms: yellow 5 from %u ms (14,000 wanted)", o.first_yellow);
+	/* accesses while yellow 5 shows (they cannot come, but the order is
+	   the point): the error goes over the light */
+	uint32_t late[100];
+	for (int i = 0; i < 100; i++)
+		late[i] = 15000 + 30 * i;
+	o = sim_run(late, 100, 18000, 4000);
+	CHECK(!o.blue, "yellow 5 and the disk light: %d blue looks (the error goes over it)", o.blue);
+	/* the light in another stage, or under an error: not shown */
+	struct status_state s = { 0 };
+	status_state_stage(&s, STATUS_STAGE_BIOS);
+	s.disk = 1;
+	CHECK(status_pattern(&s, 0) == status_stage_rgb(STATUS_STAGE_BIOS),
+	      "the BIOS stage with the light: not its green");
+	status_state_stage(&s, STATUS_STAGE_RUNNING);
+	status_state_error(&s, STATUS_ERR_NO_MONITOR, true);
+	CHECK(status_pattern(&s, 0) == YELLOW_FULL && status_pattern(&s, 400) == 0,
+	      "no monitor with the light: not yellow 3");
+	status_replay_setup(&s, STATUS_CAUSE_CRASH, STATUS_STAGE_RUNNING, 0);
+	status_state_error(&s, STATUS_ERR_NO_MONITOR, false);
+	CHECK(status_pattern(&s, 50) == WHITE_FULL && status_pattern(&s, 1000) == status_stage_rgb(
+	      STATUS_STAGE_RUNNING), "the replay with the light: not the replay");
+	printf("disk light: a look every %d ms; one access lights one look, a burst lights it all "
+	       "through, accesses %d ms apart flicker, a stopped emulator still gives yellow 5 after "
+	       "%d s\n", STATUS_TICK_MS, 50, STATUS_STALL_MS / 1000);
+
+	/* the code: the LED task looks at the count, ide.c and misc.c count
+	   every access with one store, esp_main.c gives the LED the count
+	   before the PC runs */
+	if (!src_dir) {
+		printf("disk light: no esp/main path given, so the sources not read\n");
+		return;
+	}
+	char *led = read_code(src_dir, "status_led.c"), *ide = read_code(src_dir, "../../ide.c");
+	char *misc = read_code(src_dir, "../../misc.c"), *esp = read_code(src_dir, "esp_main.c");
+	CHECK(led && ide && misc && esp, "status_led.c, ide.c, misc.c or esp_main.c not found from %s",
+	      src_dir);
+	if (led && ide && misc && esp) {
+		static char body[8192];
+		int good;
+		body_of(led, "static void led_task(", body, sizeof(body));
+		const char *watch = strstr(body, "status_watch_step("), *step = strstr(body, "status_disk_step(");
+		const char *set = strstr(body, "st.disk ="), *pat = strstr(body, "status_pattern(&st");
+		CHECK(watch && step && set && pat && watch < step && step < pat && set < pat &&
+		      !strstr(body, "BEAT"), "led_task(): the beat watch, the disk step and st.disk "
+		      "before the colour");
+		body_of(ide, "static int bf_read_async(", body, sizeof(body));
+		CHECK(calls_of(body, "BF_ACTIVITY", NULL, &good) == 1, "bf_read_async(): not one "
+		      "BF_ACTIVITY()");
+		body_of(ide, "static int bf_write_async(", body, sizeof(body));
+		CHECK(calls_of(body, "BF_ACTIVITY", NULL, &good) == 1, "bf_write_async(): not one "
+		      "BF_ACTIVITY()");
+		CHECK(strstr(ide, "#define BF_ACTIVITY() (ide_activity++)") != NULL,
+		      "ide.c: BF_ACTIVITY() is not one store to ide_activity");
+		body_of(misc, "int emulink_data_write_string(", body, sizeof(body));
+		int fw = calls_of(body, "FDD_ACTIVITY", NULL, &good);
+		body_of(misc, "int emulink_data_read_string(", body, sizeof(body));
+		int fr = calls_of(body, "FDD_ACTIVITY", NULL, &good);
+		CHECK(fw == 1 && fr == 1 &&
+		      strstr(misc, "#define FDD_ACTIVITY() (emulink_activity++)") != NULL,
+		      "misc.c: not one FDD_ACTIVITY() in the floppy's write (%d) and read (%d), each a "
+		      "store", fw, fr);
+		body_of(esp, "static uint32_t disk_activity(", body, sizeof(body));
+		CHECK(strstr(body, "ide_activity + emulink_activity") != NULL,
+		      "esp_main.c: disk_activity() does not add the two counts");
+		const char *give = strstr(esp, "status_led_disk_counter(disk_activity)");
+		const char *run = strstr(esp, "status_led_stage(STATUS_STAGE_RUNNING)");
+		CHECK(give && run && give < run, "esp_main.c: the count not given before the PC runs");
+		printf("disk light: led_task() looks at the count; bf_read_async(), bf_write_async() and "
+		       "the floppy's read and write count each access with one store; esp_main.c gives "
+		       "the LED the count before the PC runs\n");
+	}
+	free(led);
+	free(ide);
+	free(misc);
+	free(esp);
+}
+
 int main(int argc, char **argv)
 {
 	test_rmt();
@@ -1022,6 +1231,7 @@ int main(int argc, char **argv)
 	test_watch();
 	test_record();
 	test_brightness(argc > 1 ? argv[1] : NULL);
+	test_disk_light(argc > 1 ? argv[1] : NULL);
 	printf("status LED: %d checks, %d failed\n", checks, fails);
 	return fails ? 1 : 0;
 }

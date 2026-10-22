@@ -9,7 +9,10 @@
  *     and the image file does not grow;
  *   reads and writes inside the image work as before;
  *   a write the medium refuses is an error for the guest, and counted
- *     (emulink_error_count(), which the console's card-error line adds in).
+ *     (emulink_error_count(), which the console's card-error line adds in);
+ *   each read and write that reaches the image moves the status LED's
+ *     disk light count (emulink_activity, v3.8), and one refused before
+ *     it does not.
  *
  *   test_floppy DIR      makes DIR/floppy.img (1.44 MB) and works on it
  */
@@ -105,6 +108,17 @@ int main(int argc, char **argv)
 	CHECK(got == 1024 && buf[0] == 0xA5 && buf[1023] == 0xA5, "on the medium");
 	CHECK(file_size(path) == FLOPPY_BYTES, "the image is still %d bytes (%ld)", FLOPPY_BYTES,
 	      file_size(path));
+
+	/* the status LED's disk light (v3.8): one more on the count for each
+	   read and each write that reaches the image, none for one refused */
+	unsigned a0 = emulink_activity;
+	CHECK(start(e, 0x101, 0, 0, 0, 3, 1) == 0 && emulink_data_read_string(e, buf, 2, 256) == 256 &&
+	      start(e, 0x102, 0, 0, 0, 3, 1) == 0 && emulink_data_write_string(e, buf, 2, 256) == 256 &&
+	      emulink_activity == a0 + 2, "a read and a write: the disk light's count %u more (2 wanted)",
+	      emulink_activity - a0);
+	a0 = emulink_activity;
+	CHECK(start(e, 0x101, 0, 80, 0, 1, 1) == (uint32_t) -EIO && emulink_activity == a0,
+	      "a read refused before the image: the count unchanged (%u more)", emulink_activity - a0);
 
 	/* A medium that refuses the write: /dev/full, which takes nothing.
 	   emulink_attach_floppy() leaves a file whose size it does not know

@@ -11,6 +11,14 @@
  *  - checks the ring: the lines of a "previous run", the tail, the crash
  *    flag;
  *  - draws the crash screen and reads it back;
+ *  - the UART quiet while the PC runs (v3.8, [esp] uart_log = 0);
+ *  - lines that repeat (v3.8, [esp] verbose_log): of a kind, the first 5
+ *    in 5 s out and the rest counted in one line, kinds apart, more kinds
+ *    than places, console_printf() never held back, the limit turned off;
+ *  - the UART's queue (v3.8, [esp] uart_log = 1): a line written out as the
+ *    FIFO takes it, "\r\n" at its end, lines that do not fit dropped from
+ *    the UART only and counted, the queue written out when it is turned
+ *    off;
  *  - writes PPM pictures of each stage to OUT for a person to look at.
  *
  *   test_console OUT
@@ -28,6 +36,10 @@
 extern const uint8_t vgafont16[256 * 16];
 void console_host_ring_preset(const char *text, bool crashed);
 void console_host_set_uart(FILE *f);
+void console_host_tee_line(const char *s);
+void console_host_log_line(const char *s);
+void console_host_set_ms(uint32_t ms);
+uint32_t console_host_uart_drain(uint32_t room);
 
 #define W 800
 #define H 480
@@ -159,6 +171,43 @@ static void expect_colour(const uint16_t *p, int col, int row, uint16_t want, co
 		failures++;
 		printf("  FAIL: %s: colour %04x, expected %04x\n", what, fg, want);
 	}
+}
+
+/* ==== the ring after a mark line (part 7) ==== */
+
+static char ring_text[8192];
+
+/* the ring's text after the last line that is mark, or NULL */
+static const char *after(const char *mark)
+{
+	console_ring_tail(ring_text, sizeof(ring_text), 400);
+	const char *p = NULL;
+	for (const char *q = ring_text; (q = strstr(q, mark)); q++)
+		p = q;
+	return p ? strchr(p, '\n') : NULL;
+}
+
+/* lines after the mark that begin with prefix; -1 if no mark */
+static int lines_after(const char *mark, const char *prefix)
+{
+	const char *p = after(mark);
+	if (!p)
+		return -1;
+	int n = 0;
+	for (; p && p[1]; p = strchr(p + 1, '\n'))
+		n += !strncmp(p + 1, prefix, strlen(prefix));
+	return n;
+}
+
+/* a whole line after the mark */
+static bool line_after(const char *mark, const char *want)
+{
+	const char *p = after(mark);
+	size_t l = strlen(want);
+	for (; p && p[1]; p = strchr(p + 1, '\n'))
+		if (!strncmp(p + 1, want, l) && (p[1 + l] == '\n' || !p[1 + l]))
+			return true;
+	return false;
 }
 
 int main(int argc, char **argv)
@@ -356,6 +405,120 @@ int main(int argc, char **argv)
 	console_uart_quiet(false);
 	console_puts(CON_INFO, "loud again: to the UART");
 
+	/* ==== 7. lines that repeat (v3.8: console_log_limit, [esp] verbose_log) ==== */
+	printf("lines that repeat\n");
+	console_host_set_ms(1000);
+	/* off, as before the PC starts or with verbose_log = 1: every line */
+	console_puts(CON_INFO, "-- mark 1");
+	for (int i = 0; i < 20; i++) {
+		snprintf(line, sizeof(line), "outw 0x%x => 0xe22", i);
+		console_host_tee_line(line);
+	}
+	check(lines_after("-- mark 1", "outw 0x") == 20, "limit off: all 20 lines out");
+	/* on: of one kind (the numbers left out) the first 5 in 5 s */
+	console_log_limit(true);
+	console_puts(CON_INFO, "-- mark 2");
+	for (int i = 0; i < 50; i++) {
+		snprintf(line, sizeof(line), "inw 0x%x <= 0xffff", i);
+		console_host_tee_line(line);
+	}
+	check(lines_after("-- mark 2", "inw 0x") == 5, "limit on: 5 of 50 lines of a kind out");
+	check(line_after("-- mark 2", "inw 0x4 <= 0xffff") && !line_after("-- mark 2", "inw 0x5 <= 0xffff"),
+	      "limit on: the first five out, not the sixth");
+	check(lines_after("-- mark 2", "(not shown") == 0, "no count before the 5 s are over");
+	console_host_set_ms(5999);
+	console_log_tick();
+	check(lines_after("-- mark 2", "(not shown") == 0, "no count at 4.999 s");
+	console_host_set_ms(6000);
+	console_log_tick();
+	check(line_after("-- mark 2", "(not shown: 45 more lines like \"inw 0x31 <= 0xffff\" in 5 s)"),
+	      "at 5 s: one line with the count and the last line held back");
+	console_log_tick();
+	check(lines_after("-- mark 2", "(not shown") == 1, "the count said once");
+	/* a new period, kinds apart, console_printf() never held back, ESP_LOGx
+	   lines held back as the rest */
+	console_puts(CON_INFO, "-- mark 3");
+	for (int i = 0; i < 7; i++) {
+		snprintf(line, sizeof(line), "inw 0x%x <= 0xffff", 100 + i);
+		console_host_tee_line(line);
+		snprintf(line, sizeof(line), "read_desc: sel 77bc base 0 limit 0 off 77b8 at "
+			 "0028:c0039dc8 (%d)", i + 1);
+		console_host_tee_line(line);
+		console_host_tee_line("atapi_cmd_check_status");
+		console_printf(CON_INFO, "console_printf %d", i);
+		snprintf(line, sizeof(line), "E (%d) sdmmc_cmd: sdmmc_read_sectors_dma: "
+			 "sdmmc_send_cmd returned 0x107\n", 1234 + i);
+		console_host_log_line(line);
+	}
+	check(lines_after("-- mark 3", "inw 0x") == 5, "a new period: 5 more of the kind out");
+	check(lines_after("-- mark 3", "read_desc: ") == 5, "another kind: its own 5");
+	check(lines_after("-- mark 3", "atapi_cmd_check_status") == 5, "a line with no number: 5 of 7");
+	check(lines_after("-- mark 3", "console_printf ") == 7, "console_printf(): never held back");
+	check(lines_after("-- mark 3", "E (") == 5, "ESP_LOGx lines: 5 of 7");
+	console_host_set_ms(11000);
+	console_log_tick();
+	check(lines_after("-- mark 3", "(not shown: 2 more lines like ") == 4 &&
+	      line_after("-- mark 3", "(not shown: 2 more lines like \"atapi_cmd_check_status\" in 5 s)") &&
+	      line_after("-- mark 3", "(not shown: 2 more lines like \"E (1240) sdmmc_cmd: "
+			 "sdmmc_read_sectors_dma: sdmmc_send_cmd returned 0x107\" in 5 s)"),
+	      "at 5 s: a count for each of the four kinds");
+	/* more kinds than places for them: the one least lately seen makes way
+	   and says its count first; no line is lost from the counts */
+	console_puts(CON_INFO, "-- mark 4");
+	for (int k = 0; k < 20; k++) {
+		console_host_set_ms(12000 + 10 * k);
+		for (int i = 0; i < 7; i++) {
+			snprintf(line, sizeof(line), "kind %c: a line", 'A' + k);
+			console_host_tee_line(line);
+		}
+	}
+	int early = lines_after("-- mark 4", "(not shown: 2 more lines like \"kind ");
+	console_host_set_ms(18000);
+	console_log_tick();
+	int all = lines_after("-- mark 4", "(not shown: 2 more lines like \"kind ");
+	check(lines_after("-- mark 4", "kind ") == 100 && early == 4 && all == 20,
+	      "20 kinds of 7 lines in 16 places: 5 of each out, 4 counts said as their places "
+	      "went, all 20 by the end");
+	/* off again: what is held is said at once, then every line */
+	console_puts(CON_INFO, "-- mark 5");
+	for (int i = 0; i < 8; i++)
+		console_host_tee_line("set VGA mode 12");
+	console_log_limit(false);
+	check(line_after("-- mark 5", "(not shown: 3 more lines like \"set VGA mode 12\" in 1 s)"),
+	      "limit off: the count held so far said at once");
+	for (int i = 0; i < 8; i++)
+		console_host_tee_line("set VGA mode 3");
+	check(lines_after("-- mark 5", "set VGA mode 3") == 8, "limit off: every line again");
+	unsigned held, dropped;
+	console_log_stats(&held, &dropped);
+	check(held == 45 + 8 + 40 + 3, "the lines held back since boot, counted");
+
+	/* ==== 8. the UART's queue (v3.8: [esp] uart_log = 1 while the PC runs) ==== */
+	printf("the UART's queue\n");
+	console_uart_async(true);
+	console_puts(CON_INFO, "queued 1");
+	check(console_host_uart_drain(0) == 9, "a line waits in the queue, 9 bytes");
+	check(console_host_uart_drain(4) == 5, "the FIFO takes 4: 5 left");
+	check(console_host_uart_drain(5) == 1, "room for 5: 4 more, the line's end needs 2");
+	check(console_host_uart_drain(2) == 0, "and then its \\r\\n");
+	/* more than the queue holds and no room in the FIFO: dropped from the
+	   UART, kept in the ring, counted, and said once the queue is out */
+	console_puts(CON_INFO, "-- mark 6");
+	for (int i = 0; i < 100; i++) {
+		snprintf(line, sizeof(line), "line %03d: %049d", i, i);
+		console_puts(CON_INFO, line);
+	}
+	console_log_stats(&held, &dropped);
+	check(dropped == 32, "60 bytes a line, 4096 in the queue: 68 kept, 32 dropped");
+	check(lines_after("-- mark 6", "line ") == 100, "the ring has every line");
+	int rounds = 0;
+	while (console_host_uart_drain(128) && rounds < 1000)
+		rounds++;
+	check(rounds >= 4096 / 128 && rounds < 1000, "the queue written out 128 bytes at a time");
+	console_puts(CON_INFO, "queued last");
+	console_uart_async(false);
+	console_puts(CON_INFO, "straight again");
+
 	/* the UART got every line, also those printed while the picture had
 	   the panel */
 	if (uart) {
@@ -375,6 +538,15 @@ int main(int argc, char **argv)
 		check(strstr(log, "quiet:") == NULL, "nothing reached the UART while it was quiet");
 		check(strstr(log, "\nloud again: to the UART\n") != NULL,
 		      "the UART has the line after it was loud again");
+		check(strstr(log, "\nqueued 1\r\n") != NULL, "the queue: a line with \\r\\n");
+		check(strstr(log, "line 067: ") && !strstr(log, "line 068: ") &&
+		      strstr(log, "\n(32 lines dropped here: the UART could not keep up; the ring "
+			     "and the panel have them)\r\n"),
+		      "the queue: 68 lines, then the count of those dropped");
+		check(strstr(log, "\nqueued last\r\nstraight again\n") != NULL,
+		      "the queue written out when it is turned off, then lines straight again");
+		const char *d1 = strstr(log, "(32 lines dropped"), *q1 = strstr(log, "queued last");
+		check(d1 && q1 && d1 < q1, "the lines on the UART in order");
 	} else {
 		check(0, "could not open the UART log");
 	}

@@ -476,6 +476,21 @@ int main(int argc, char **argv)
 	memset(buf, 0x5A, 512);
 	CHECK(bs->write_async(bs, nb - 1, buf, 1, NULL, NULL) == 0, "the last sector is written");
 	CHECK(bs->write_async(bs, 0, buf, 2, NULL, NULL) == 0, "the first two sectors are written");
+#ifdef BF_ACTIVITY
+	/* the status LED's disk light (v3.8): one more on the count for every
+	   read and every write the guest asks for, one refused for being past
+	   the end included */
+	{
+		unsigned a0 = ide_activity;
+		bool r1 = bs->read_async(bs, 1, buf, 1, NULL, NULL) == 0;
+		bool w1 = bs->write_async(bs, 1, buf, 1, NULL, NULL) == 0;
+		bool r2 = bs->read_async(bs, 0, buf, 2, NULL, NULL) == 0;
+		bool past = bs->read_async(bs, (uint64_t) nb, buf, 1, NULL, NULL) != 0;
+		CHECK(r1 && w1 && r2 && past && ide_activity == a0 + 4,
+		      "the disk light's count: %u more for four accesses (a read, a write, a "
+		      "read of two sectors, a read past the end)", ide_activity - a0);
+	}
+#endif
 
 	/* past its end: refused, and nothing on the card changes */
 	struct { uint64_t sector; int n; const char *what; } past[] = {
