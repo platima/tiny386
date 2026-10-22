@@ -280,6 +280,17 @@ $CC $CFLAGS -DEMULINK_CHECKED -I"$TREE" -o "$OUT/test_floppy" "$HERE/test_floppy
 "$OUT/test_floppy" "$OUT"
 result $? "misc.c: floppy drives 0 and 1 only, nothing past the image's end, refused writes counted"
 
+# ==== 15. the status LED (v3.3) ====
+# status_code.c as the firmware has it, and status_bb.h (the panic handler's
+# bit-bang) with a pretend cycle counter: the RMT frame and every bit-banged
+# edge against both LEDs' timing, the colours and blinks, the error-code
+# state machine, the replay after a reset, the beat watch, the record.
+echo
+$CC $CFLAGS -DSTATUS_HOST -I"$TREE/esp/main" -o "$OUT/test_status" \
+    "$HERE/test_status.c" "$TREE/esp/main/status_code.c" || exit 1
+"$OUT/test_status"
+result $? "status LED: RMT and bit-banged timing for both LEDs, patterns, state machine, replay, beat watch, record"
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]
