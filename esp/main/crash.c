@@ -23,6 +23,14 @@
  * CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT it then halts without resetting the
  * LCD or its DMA (components/esp_system/port/soc/esp32s31/system_internal.c,
  * esp_system_reset_modules_on_exit()), so the screen stays until RESET.
+ *
+ * The status LED (status_led.c): its first crash frame goes out on the way
+ * in, before the screen is drawn (a panic before app_main() has no screen,
+ * and the LED is all there is); then, with -Wl,--wrap of
+ * esp_system_reset_modules_on_exit() too, the halt loop runs the LED's
+ * crash pattern where ESP-IDF's halt stub would loop doing nothing.  The
+ * stub calls it from panic.c, another object, so the wrap reaches that call;
+ * the restart paths call it inside system_internal.c, where it does not.
  */
 #include <stdint.h>
 #include <string.h>
@@ -35,8 +43,10 @@
 #include "soc/soc.h"
 
 #include "console.h"
+#include "status_led.h"
 
 void __real_esp_panic_handler(panic_info_t *info);
+void __real_esp_system_reset_modules_on_exit(void);
 
 /* linker symbols: the code in internal RAM, and in flash */
 extern int _iram_text_start, _iram_text_end, _text_start, _text_end;
@@ -104,7 +114,21 @@ static void crash_screen(panic_info_t *info)
 void IRAM_ATTR __wrap_esp_panic_handler(panic_info_t *info)
 {
 	static int entered;
-	if (!entered++)
+	if (!entered++) {
+		status_led_panic();
 		crash_screen(info);
+	}
 	__real_esp_panic_handler(info);
+}
+
+/* ESP-IDF's halt stub (CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT): the modules'
+   reset on exit as before, then, after a panic, the status LED's loop for
+   ever instead of the stub's own empty one. */
+void IRAM_ATTR __wrap_esp_system_reset_modules_on_exit(void)
+{
+	__real_esp_system_reset_modules_on_exit();
+#ifdef STATUS_LED_GPIO
+	if (status_led_panicking())
+		status_led_halt();
+#endif
 }

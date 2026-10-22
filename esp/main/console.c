@@ -30,6 +30,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
+#include "status_led.h"
 
 static portMUX_TYPE s_ring_mux = portMUX_INITIALIZER_UNLOCKED;
 #define ring_lock() portENTER_CRITICAL_SAFE(&s_ring_mux)
@@ -642,6 +643,9 @@ void console_fatal(const char *fmt, ...)
 #ifdef CONSOLE_HOST
 	exit(3);
 #else
+	/* red 5 on the status LED, unless the caller named the error first
+	   (no ini, a BIOS missing, the ini's problems: the first one stays) */
+	status_led_fatal(STATUS_ERR_STOPPED);
 	for (;;)
 		vTaskDelay(portMAX_DELAY);
 #endif

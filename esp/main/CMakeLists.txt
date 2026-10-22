@@ -49,6 +49,12 @@ endif()
 if(BOARD IN_LIST TINY386_CONSOLE_BOARDS)
     list(APPEND srcs "crash.c")
 endif()
+# The status LED (STATUS_LED_GPIO in the board header): both boards have a
+# WS2812-protocol LED on GPIO37.
+set(TINY386_STATUS_LED_BOARDS korvo1 dosboard)
+if(BOARD IN_LIST TINY386_STATUS_LED_BOARDS)
+    list(APPEND srcs "status_code.c" "status_led.c")
+endif()
 # The DOS board: its panel file, the board check and HDMI start-up, the
 # MS7210 and CH9350L drivers.  Its keyboard and mouse come through the
 # CH9350L, so the S31's own USB host (usb_input.c) is not built for it.
@@ -78,10 +84,15 @@ if(BOARD IN_LIST TINY386_NO_WIFI_BOARDS)
 endif()
 
 # Every panic, abort and watchdog goes through the crash screen first
-# (crash.c), which then calls ESP-IDF's own handler.
+# (crash.c), which then calls ESP-IDF's own handler.  With the status LED,
+# the halt at the end of it runs the LED's crash pattern (crash.c).
 if(BOARD IN_LIST TINY386_CONSOLE_BOARDS)
     target_link_options(${COMPONENT_LIB} INTERFACE
         -Wl,--wrap=esp_panic_handler)
+endif()
+if(BOARD IN_LIST TINY386_STATUS_LED_BOARDS)
+    target_link_options(${COMPONENT_LIB} INTERFACE
+        -Wl,--wrap=esp_system_reset_modules_on_exit)
 endif()
 
 # idf.py -DCRASH_TEST=1: a test build that reads [esp] crash_test from the

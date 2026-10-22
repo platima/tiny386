@@ -1,0 +1,186 @@
+/*
+ * The status LED's codes, patterns and wire format: plain C, no ESP-IDF, so
+ * that tests/host/test_status.c runs the same code on a PC.  status_led.c
+ * drives the LED with it (RMT in normal running, a bit-banged loop in the
+ * panic handler).  STATUS-LED.md beside the images is the table for people.
+ *
+ * Both boards have one WS2812-protocol RGB LED on GPIO37 behind a BSS138
+ * level shifter to 5 V: the Korvo-1 a WS2812B (U3, Q2 LBSS138LT1G, Korvo-1
+ * schematic v1.1 page 3), the DOS board from rev A2 an Inolux IN-PI554FCH
+ * (D201, Q201 BSS138, CHANGES-A2.md section 4).  The shifter does not
+ * invert: GPIO37 high is 5 V at the LED.
+ */
+#ifndef STATUS_CODE_H
+#define STATUS_CODE_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#if defined(STATUS_HOST) || !defined(ESP_PLATFORM)
+#define STATUS_IRAM
+#define STATUS_DRAM
+#else
+#include "esp_attr.h"
+/* everything the panic handler's loop calls: in internal RAM */
+#define STATUS_IRAM IRAM_ATTR
+#define STATUS_DRAM DRAM_ATTR
+#endif
+
+/* ==== how far the boot has come: a steady colour each ==== */
+enum status_stage {
+	STATUS_STAGE_NONE = 0,  /* app_main() not reached: the LED is dark */
+	STATUS_STAGE_STARTED,   /* white: app_main() runs, so PSRAM passed start-up */
+	STATUS_STAGE_SCREEN,    /* blue: the panel or the HDMI picture is up */
+	STATUS_STAGE_CARD,      /* cyan: the card is mounted */
+	STATUS_STAGE_INI,       /* magenta: an ini was found (the menu may wait) */
+	STATUS_STAGE_BIOS,      /* green: BIOS loaded, the console's hold */
+	STATUS_STAGE_RUNNING,   /* green, dark for 0.1 s every 2 s: the PC runs */
+	STATUS_STAGE_PC_OFF,    /* white, 1 s on and 1 s off: the guest switched off */
+	STATUS_STAGE_COUNT
+};
+
+/* ==== what went wrong: a colour and a number of blinks ==== */
+enum status_error {
+	STATUS_OK = 0,
+	/* red: the card and the files on it */
+	STATUS_ERR_NO_CARD,     /* red 1: no card can be read (tried again every 2 s) */
+	STATUS_ERR_NO_INI,      /* red 2: no ini file on the card */
+	STATUS_ERR_BIOS,        /* red 3: bios.bin or vgabios.bin missing or unreadable */
+	STATUS_ERR_INI,         /* red 4: other problems in the ini (a disk image missing...) */
+	STATUS_ERR_STOPPED,     /* red 5: tiny386 stopped for another reason (see the screen) */
+	/* yellow: the board */
+	STATUS_ERR_PSRAM,       /* yellow 1: stopped before tiny386 started: PSRAM, most likely */
+	STATUS_ERR_HDMI_CHIP,   /* yellow 2: the MS7210 not found, or not answering */
+	STATUS_ERR_NO_MONITOR,  /* yellow 3: no monitor (HDMI hot plug low) */
+	STATUS_ERR_KEYBOARD,    /* yellow 4: the USB host or the CH9350L not working */
+	STATUS_ERR_STALLED,     /* yellow 5: the emulator has made no progress for 10 s */
+	/* red and white by turns: the crash screen (a panic) */
+	STATUS_ERR_PANIC,
+	STATUS_ERR_COUNT
+};
+
+/* why the last run ended, from the reset reason: the replay's lead-in */
+enum status_cause {
+	STATUS_CAUSE_NONE = 0,  /* power-on, the reset pin, a restart */
+	STATUS_CAUSE_CRASH,     /* 1 white flash: a panic (the crash screen) */
+	STATUS_CAUSE_WATCHDOG,  /* 2: a watchdog or a CPU lock-up */
+	STATUS_CAUSE_POWER,     /* 3: a brownout or a power glitch */
+};
+
+const char *status_stage_name(int stage);
+const char *status_error_name(int err);
+
+/* ==== the state the pattern is made from ==== */
+#define STATUS_STALL_MS   10000 /* no progress for this long: STATUS_ERR_STALLED */
+#define STATUS_TICK_MS    50    /* how often the LED task looks */
+
+struct status_state {
+	uint8_t stage;          /* enum status_stage */
+	uint8_t fatal;          /* the first error tiny386 stopped on, or 0 */
+	uint16_t active;        /* bit e set: error e is on now (it may clear) */
+	/* the run before this reset, shown first, from 0 ms to replay_end_ms */
+	uint8_t prev_cause;     /* enum status_cause */
+	uint8_t prev_stage;
+	uint8_t prev_error;
+	uint32_t replay_end_ms; /* 0: no replay */
+};
+
+/* Sets up the replay of the last run (cause, stage, error), or none. */
+void status_replay_setup(struct status_state *s, int cause, int stage, int error);
+
+/* The changes status_led.c makes, under its lock: the stage; an error that
+   may clear itself, on or off; an error tiny386 stopped on (the first one
+   stays).  Each returns the error the LED now shows. */
+int status_state_stage(struct status_state *s, int stage);
+int status_state_error(struct status_state *s, int err, bool on);
+int status_state_fatal(struct status_state *s, int err);
+
+/* The error the LED shows now, ahead of the stage: the fatal one, else the
+   first active one in enum order; 0 for none. */
+int status_shown_error(const struct status_state *s);
+
+/* The LED's colour at now_ms (ms since status_led_init()), 0x00RRGGBB. */
+uint32_t status_pattern(const struct status_state *s, uint32_t now_ms);
+
+/* The colour of the panic loop at ms since the panic: red and white by
+   turns, or yellow 1 for a panic before app_main(). */
+uint32_t status_panic_pattern(bool early, uint32_t ms);
+
+/* One error's pattern on its own (the table's colour, blinks), for tests
+   and for the replay. */
+uint32_t status_error_pattern(int err, uint32_t ms);
+/* the length of one cycle of it: the blinks and the pause after them */
+uint32_t status_error_cycle_ms(int err);
+/* its colour and its number of blinks */
+uint32_t status_error_rgb(int err);
+int status_error_blinks(int err);
+uint32_t status_stage_rgb(int stage);
+
+/* WS2812 order on the wire: green, red, blue, most significant bit first. */
+static inline uint32_t status_grb(uint32_t rgb)
+{
+	return ((rgb >> 8) & 0xff) << 16 | ((rgb >> 16) & 0xff) << 8 | (rgb & 0xff);
+}
+
+/* ==== no progress: the emulator's beat ==== */
+struct status_watch {
+	uint32_t last_beats;
+	uint32_t last_change_ms;
+	bool stalled;
+};
+
+/* Called every STATUS_TICK_MS with the beat count; returns true while the
+   count has not moved for STATUS_STALL_MS with the PC running. */
+bool status_watch_step(struct status_watch *w, uint32_t beats, uint32_t now_ms,
+		       bool running);
+
+/* ==== the last run, kept in memory a reset does not clear ==== */
+#define STATUS_RECORD_MAGIC 0x4c454453u /* "SDEL" */
+
+struct status_record {
+	uint32_t magic;
+	uint8_t stage;
+	uint8_t error;          /* what the LED showed (status_shown_error()) */
+	uint8_t spare[2];
+	uint32_t check;         /* the two words above, mixed: not just noise */
+};
+
+void status_record_put(struct status_record *r, int stage, int error);
+bool status_record_valid(const struct status_record *r);
+
+/* ==== the bits on the wire ====
+ * One timing for both LEDs.  Inolux IN-PI554FCH datasheet v2.2 p. 10: T0H
+ * 0.3, T1H 0.6, T0L 0.9, T1L 0.6 us, each +-0.15 us, a bit 1.25 +-0.6 us,
+ * reset 80 us or more.  Worldsemi WS2812B-2020-V6 (the nearest Worldsemi
+ * datasheet to hand; which WS2812B revision the Korvo-1 carries is not
+ * known): T0H 0.22 to 0.38, T1H 0.58 to 1, T0L and T1L 0.58 to 1 us, a bit
+ * 1.25 us or more, reset 280 us or more.  Together: T0H 220 to 380 ns, T0L
+ * 750 to 1000, T1H 580 to 750, T1L 580 to 750, a bit 1250 to 1850.  The
+ * times below sit inside those with room for the bit-bang's jitter of one
+ * pass round its waiting loop (3 instructions; 37.5 ns at the 80 MHz the
+ * second-stage bootloader runs the CPU at, 9.4 ns at 320 MHz), in steps of
+ * 12.5 ns, the RMT's tick.  In picoseconds: */
+#define STATUS_T0H_PS   337500
+#define STATUS_T0_PS    1300000 /* so T0L 962.5 ns */
+#define STATUS_T1H_PS   662500
+#define STATUS_T1_PS    1300000 /* so T1L 637.5 ns */
+#define STATUS_RESET_US 300
+
+/* RMT: 80 MHz (REF_F80M undivided), 12.5 ns a tick.  A frame is one reset
+   symbol (the line low for STATUS_RESET_US, so that the LED starts a new
+   frame whatever the line did before) and 24 bit symbols, in the packed
+   form of ESP-IDF's rmt_symbol_word_t: duration0 bits 0 to 14, level0 bit
+   15, duration1 bits 16 to 30, level1 bit 31.  The line stays low after it
+   (the end-of-transmission level), and the LED shows the colour once it
+   has been low for its reset time. */
+#define STATUS_RMT_HZ      80000000
+#define STATUS_RMT_SYMBOLS 25
+void status_rmt_frame(uint32_t grb, uint32_t out[STATUS_RMT_SYMBOLS]);
+
+/* The panic handler's bit-bang, in CPU cycles (status_bb.h). */
+struct status_bb {
+	uint32_t t0h, t0, t1h, t1, reset;
+};
+void status_bb_timing(struct status_bb *t, uint32_t cycles_per_us);
+
+#endif /* STATUS_CODE_H */

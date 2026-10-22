@@ -35,6 +35,7 @@
 #include "console.h"
 #include "dosboard.h"
 #include "ms7210.h"
+#include "status_led.h"
 #include "storage.h"
 
 /* ==== lines from before the boot console ==== */
@@ -257,6 +258,10 @@ static void __attribute__((noreturn)) wrong_board(void)
 
 	i2c_close();
 	gpio_reset_pin(HDMI_RSTN_GPIO);
+	/* yellow 2 on the status LED: on a DOS board with no picture (a dead
+	   MS7210) the LED is all there is.  GPIO37 drives the same LED circuit
+	   on a Korvo-1, so this is safe there too. */
+	status_led_fatal(STATUS_ERR_HDMI_CHIP);
 	if (hdmi.errors < 0)
 		snprintf(seen, sizeof(seen), "the I2C bus could not be set up");
 	else if (hdmi.errors)
@@ -286,8 +291,9 @@ void board_early_init(void)
 		.pin_bit_mask = 1ULL << HDMI_RSTN_GPIO,
 		.mode = GPIO_MODE_OUTPUT,
 	};
+	/* GPIO37, the status LED, is status_led.c's (RMT), from app_main() on */
 	const gpio_config_t outs = {
-		.pin_bit_mask = (1ULL << LED_STATUS_GPIO) | (1ULL << USB_VBUS_EN_GPIO),
+		.pin_bit_mask = 1ULL << USB_VBUS_EN_GPIO,
 		.mode = GPIO_MODE_OUTPUT,
 	};
 	const gpio_config_t ins = {
@@ -327,7 +333,6 @@ void board_early_init(void)
 	}
 
 	/* the right board: the pins that are new on it */
-	gpio_set_level(LED_STATUS_GPIO, 0);      /* lit while starting */
 	gpio_set_level(USB_VBUS_EN_GPIO, 1);     /* USB-A ports on (R309 does so too) */
 	gpio_config(&outs);
 	gpio_config(&ins);
@@ -485,16 +490,15 @@ void dosboard_load_config(void)
 
 static void hdmi_task(void *arg)
 {
-	int led = 0;
-
 	for (;;) {
 		vTaskDelay(pdMS_TO_TICKS(500));
-		/* the status LED blinks once a second while the MS7210 answers;
-		   it stays lit while it does not */
-		if (ms7210_poll(&hdmi) >= 0)
-			gpio_set_level(LED_STATUS_GPIO, led ^= 1);
-		else
-			gpio_set_level(LED_STATUS_GPIO, led = 0);
+		/* on the status LED: yellow 2 while the MS7210 does not answer,
+		   yellow 3 while no monitor's hot plug line is high; both clear
+		   themselves */
+		int r = ms7210_poll(&hdmi);
+		status_led_error(STATUS_ERR_HDMI_CHIP, r < 0);
+		if (r >= 0)
+			status_led_error(STATUS_ERR_NO_MONITOR, !hdmi.hpd);
 	}
 }
 

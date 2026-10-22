@@ -41,6 +41,12 @@
 
 // No I2S: the Korvo-1 audio wiring is not described in the Linux sources.
 
+// The status LED (status_led.c, STATUS-LED.md): U3, a WS2812B, its data from
+// GPIO37 (WS2812_CTRL, through R21 0R) by Q2, an LBSS138LT1G, to 5 V levels
+// with R93 10k to 3V3 and R91 1k to 5V, not inverted (Korvo-1 schematic
+// v1.1 page 3).  The DOS board has the same circuit on the same pin.
+#define STATUS_LED_GPIO 37
+
 // From the Linux route's patch (tiny386-korvo.patch), shared with it.
 // No load or store of 16 or 32 bits at an address that is not aligned: one
 // that is not is made of smaller ones that are (unaligned.h).  Nothing in

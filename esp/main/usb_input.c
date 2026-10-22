@@ -44,6 +44,7 @@
 #include "kbd_input.h"
 #include "hid_parse.h"
 #include "console.h"
+#include "status_led.h"
 
 #define MAX_IFS 8
 
@@ -435,11 +436,13 @@ void usb_setup(void)
 	if (xSemaphoreTake(s_installed, pdMS_TO_TICKS(5000)) != pdTRUE) {
 		console_printf(CON_ERROR, "USB: the host did not start within 5 s: no "
 			       "keyboard or mouse.");
+		status_led_error(STATUS_ERR_KEYBOARD, true);
 		return;
 	}
 	if (s_install_err != ESP_OK) {
 		console_printf(CON_ERROR, "USB: the host could not be started (%s): no "
 			       "keyboard or mouse.", esp_err_to_name(s_install_err));
+		status_led_error(STATUS_ERR_KEYBOARD, true);
 		return;
 	}
 
@@ -455,6 +458,7 @@ void usb_setup(void)
 	if (err != ESP_OK) {
 		console_printf(CON_ERROR, "USB: the HID driver could not be started (%s): "
 			       "no keyboard or mouse.", esp_err_to_name(err));
+		status_led_error(STATUS_ERR_KEYBOARD, true);
 		return;
 	}
 

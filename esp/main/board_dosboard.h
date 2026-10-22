@@ -93,14 +93,21 @@
 // Sound goes out over HDMI.  The MS7210 sends 44.1 kHz audio with its 48 kHz
 // settings, so the whole audio path runs at 48 kHz (FIRMWARE-PLAN 5.6).
 #define AUDIO_RATE 48000
-// I2S0 to the MS7210 (and to the PCM5102A footprint, not fitted): bit clock,
-// word select and data only.  In I2S mode the MS7210's SCK_MCLK pin is the
-// bit clock, so there is no MCLK.
+// I2S0 to the MS7210 and, from rev A2, to the PCM5102A line out (U701,
+// fitted, on the same three lines; CHANGES-A2.md section 3): bit clock, word
+// select and data only.  In I2S mode the MS7210's SCK_MCLK pin is the bit
+// clock, so there is no MCLK; the PCM5102A has SCK tied low and runs its PLL
+// from the bit clock, which 48 kHz at 16 or 32 bit slots (32 or 64 bit
+// clocks a frame) suits (TI SLAS859C 9.3.5.3).
 #define I2S_NUM  0
 #define I2S_MCLK I2S_GPIO_UNUSED
 #define I2S_BCLK 3
 #define I2S_WS   4
 #define I2S_DOUT 5
+// The PCM5102A's XSMT (pin 17), rev A2: low = soft mute, high = play; R703
+// 10k pulls it up (so with no firmware the line out plays).  i2s.c holds it
+// low until the I2S clocks run, and the panic handler pulls it low.
+#define AUDIO_MUTE_GPIO 48
 
 // MS7210 on I2C: registers at 7-bit 0x59 (SA pulled up), and the monitor's
 // EDID at 0x50 through the MS7210's DDC pass-through.
@@ -124,7 +131,11 @@
 #define KM_BAUD      115200
 
 #define USB_VBUS_EN_GPIO 38        /* high = both USB-A ports powered */
-#define LED_STATUS_GPIO  37        /* low = lit */
+// The status LED, rev A2: D201, an Inolux IN-PI554FCH (WS2812 protocol) at
+// 5 V, its data from GPIO37 through Q201 (BSS138) with R205 10k to 3V3 and
+// R204 1k to 5V, not inverted: the Korvo-1's circuit (CHANGES-A2.md section
+// 4).  Rev A's plain LED (low = lit) is gone; status_led.c drives this one.
+#define STATUS_LED_GPIO  37
 // The USER key, low = pressed: held, the boot console comes up over the
 // picture with the speed on its title row (speed.c), as Ctrl+Alt+F12 does.
 #define USER_KEY_GPIO    42

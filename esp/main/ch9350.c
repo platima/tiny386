@@ -398,6 +398,15 @@ void ch9350_input_sink(ch9350_sink_t *sink, ch9350_input_t *t)
 #include "esp_rom_sys.h"
 #include "common.h"
 #include "console.h"
+#include "status_led.h"
+
+/* Nothing at all from the chip this long after its reset: yellow 4 on the
+   status LED until a byte comes.  In state 0 the chip asks for status every
+   second (DS26 7.2.4.2); in state 2 it echoes the LED frame sent each second
+   (ch9350.md 6.5, seen by others, not checked here), so a working chip with
+   nothing plugged in may also be quiet: the LED then says yellow 4 until a
+   keyboard or mouse goes in. */
+#define CH9350_SILENT_US 3000000
 
 static ch9350_parser_t parser;
 static ch9350_input_t input = { .dev = -1 };
@@ -487,6 +496,8 @@ static void ch9350_task(void *arg)
 	chip_reset();
 	uart_flush_input(KM_UART_NUM);
 	ch9350_parser_init(&parser, chip_mode, &sink, 100000, zero_guard_ms * 1000u);
+	int64_t reset_at = esp_timer_get_time();
+	bool heard = false, said = false;
 
 	for (;;) {
 		int n = uart_read_bytes(KM_UART_NUM, buf, sizeof(buf), 1);
@@ -494,6 +505,22 @@ static void ch9350_task(void *arg)
 
 		if (n > 0)
 			ch9350_parser_feed(&parser, buf, n, (uint32_t)now);
+		if (!heard && n > 0) {
+			heard = true;
+			if (said) {
+				status_led_error(STATUS_ERR_KEYBOARD, false);
+				console_uart_printf("ch9350: the chip is sending now");
+			}
+		} else if (!heard && !said && now - reset_at > CH9350_SILENT_US) {
+			said = true;
+			status_led_error(STATUS_ERR_KEYBOARD, true);
+			console_uart_printf("ch9350: nothing from the chip %d s after its reset "
+					    "(status LED yellow 4). With a keyboard or mouse plugged "
+					    "in, check U301's 3.3 V, its RST (GPIO7, high = reset) "
+					    "and the UART lines (GPIO47 from its TXD, GPIO55 to its "
+					    "RXD).",
+					    CH9350_SILENT_US / 1000000);
+		}
 
 		int want = atomic_exchange(&leds_wanted, -1);
 		if (want >= 0 && want != usb_leds) {

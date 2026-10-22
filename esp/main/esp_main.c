@@ -37,6 +37,7 @@
 #include "storage.h"
 #include "bootmenu.h"
 #include "speed.h"
+#include "status_led.h"
 #ifdef LCD_ZERO_COPY
 #include "lcd.h"
 #endif
@@ -154,10 +155,12 @@ int load_rom(void *phys_mem, const char *file, uword addr, int backward)
 {
 	if (file && file[0] == '/') {
 		FILE *fp = fopen(file, "rb");
-		if (!fp)
+		if (!fp) {
+			status_led_fatal(STATUS_ERR_BIOS);
 			console_fatal("Cannot open %s (%s). Put it on the card, or "
 				      "correct its line in %s.", file,
 				      strerror(errno), s_ini_name);
+		}
 		fseek(fp, 0, SEEK_END);
 		int len = ftell(fp);
 		fprintf(stderr, "%s len %d\n", file, len);
@@ -168,20 +171,24 @@ int load_rom(void *phys_mem, const char *file, uword addr, int backward)
 		else
 			got = fread(phys_mem + addr, 1, len, fp);
 		fclose(fp);
-		if (got != len)
+		if (got != len) {
+			status_led_fatal(STATUS_ERR_BIOS);
 			console_fatal("Could read only %d of the %d bytes of %s. "
 				      "The card may be faulty.", got, len, file);
+		}
 		return len;
 	}
 	const esp_partition_t *part =
 		esp_partition_find_first(ESP_PARTITION_TYPE_ANY,
 					 ESP_PARTITION_SUBTYPE_ANY,
 					 file);
-	if (!part)
+	if (!part) {
+		status_led_fatal(STATUS_ERR_BIOS);
 		console_fatal("There is no flash partition called \"%s\", and no "
 			      "such file beside %s. Put the file there, or give its "
 			      "whole path, for example bios = /sdcard/bios.bin",
 			      file ? file : "", s_ini_name);
+	}
 	int len = part->size;
 	fprintf(stderr, "%s len %d\n", file, len);
 	if (backward)
@@ -385,6 +392,7 @@ static void run_pc(PC *pc)
 	speed_run_init(pc);
 	while (pc->shutdown_state != 8) {
 		pc_step(pc);
+		status_led_heartbeat();
 		uint32_t now = get_uticks();
 		speed_run_step(pc, now);
 		unsigned w = disk_writes();
@@ -436,6 +444,7 @@ static void i386_task(void *arg)
 		       (unsigned) (heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) / 1024));
 
 	load_bios_and_reset(pc);
+	status_led_stage(STATUS_STAGE_BIOS);
 
 	/* Time to read the console, or to photograph it; longer if it has
 	   warnings on it. */
@@ -454,6 +463,7 @@ static void i386_task(void *arg)
 	   screen: forgotten before vga_task can see it */
 	speed_forget_requests();
 	xEventGroupSetBits(global_event_group, BIT0);
+	status_led_stage(STATUS_STAGE_RUNNING);
 	/* the keyboard and mouse reach the PC from now: keys pressed while
 	   the console was up would wait in the PS/2 queue ahead of the BIOS's
 	   keyboard reset */
@@ -469,6 +479,7 @@ static void i386_task(void *arg)
 	}
 #endif
 	run_pc(pc);
+	status_led_stage(STATUS_STAGE_PC_OFF);
 	kbd_input_set_target(NULL, NULL);
 	console_puts(CON_INFO, "The PC was switched off. Press RESET to start again.");
 	console_hold();
@@ -640,6 +651,8 @@ static void default_roms(void)
 
 /* Everything the ini names, before the PC is built: anything wrong is
    said here in plain words, rather than an abort later. */
+static int s_bios_bad;           /* how many of check_config()'s were a BIOS */
+
 static int check_config(void)
 {
 	int bad = s_ini_bad;
@@ -657,12 +670,14 @@ static int check_config(void)
 			       "from the tiny386 release beside %s, or name it "
 			       "with bios = under [pc].", why, s_ini_name);
 		bad++;
+		s_bios_bad++;
 	}
 	if (!rom_exists(vga_bios, why, sizeof(why))) {
 		console_printf(CON_ERROR, "The VGA BIOS cannot be loaded: %s. Put "
 			       "vgabios.bin beside %s, or name it with vga_bios = "
 			       "under [pc].", why, s_ini_name);
 		bad++;
+		s_bios_bad++;
 	}
 	static const char *const disk_names[4][2] = {
 		{ "hda", "cda" }, { "hdb", "cdb" }, { "hdc", "cdc" }, { "hdd", "cdd" },
@@ -844,6 +859,7 @@ static void mount_storage(void)
 	int got = storage_init();
 	if (got & 1) {
 		console_puts(CON_GOOD, "Card mounted at /sdcard.");
+		status_led_stage(STATUS_STAGE_CARD);
 		card_volumes();
 		return;
 	}
@@ -851,8 +867,10 @@ static void mount_storage(void)
 	if (got & 2) {
 		console_puts(CON_INFO, "No card; using the flash's storage "
 			     "partition (/spiflash).");
+		status_led_stage(STATUS_STAGE_CARD);
 		return;
 	}
+	status_led_error(STATUS_ERR_NO_CARD, true);
 	console_puts(CON_ERROR, "No microSD card could be read. Put in a FAT32 "
 		     "card with a tiny386 folder (the ini files, bios.bin, "
 		     "vgabios.bin and the disk images) in its top folder. Trying "
@@ -865,6 +883,8 @@ static void mount_storage(void)
 		esp_log_level_set("*", ESP_LOG_INFO);
 		if (ok) {
 			console_puts(CON_GOOD, "Card mounted at /sdcard.");
+			status_led_error(STATUS_ERR_NO_CARD, false);
+			status_led_stage(STATUS_STAGE_CARD);
 			card_volumes();
 			return;
 		}
@@ -876,6 +896,7 @@ static void mount_storage(void)
 	if (got & 2)
 		console_puts(CON_INFO, "Using the flash's storage partition "
 			     "(/spiflash).");
+	status_led_stage(STATUS_STAGE_CARD);
 #endif
 }
 
@@ -896,12 +917,15 @@ static bool choose_ini(void)
 	struct setup_list *inis = heap_caps_malloc(sizeof(*inis), MALLOC_CAP_SPIRAM);
 	if (!inis)
 		inis = malloc(sizeof(*inis));
-	if (!inis || !setup_find(s_places, inis))
+	if (!inis || !setup_find(s_places, inis)) {
+		status_led_fatal(inis ? STATUS_ERR_NO_INI : STATUS_ERR_STOPPED);
 		console_fatal("There is no ini file on the card. Put a folder called "
 			      "tiny386 in its top folder, with the ini files "
 			      "(freedos.ini, ...), bios.bin, vgabios.bin and the "
 			      "disk images, as the Linux route has it; or a "
 			      "tiny386.ini in the top folder. Then press RESET.");
+	}
+	status_led_stage(STATUS_STAGE_INI);
 	char last[SETUP_NAME_MAX];
 	bool have_last = setup_last_read(inis->dir, last, sizeof(last));
 	int pick = setup_default(inis, have_last ? last : NULL);
@@ -922,6 +946,11 @@ static bool choose_ini(void)
 
 void app_main(void)
 {
+	/* the status LED before anything else: white, or the last run's code
+	   after a crash, a watchdog or a power dip.  GPIO37 drives the same
+	   WS2812-protocol LED circuit on the Korvo-1 and on the DOS board, so
+	   it may come before the DOS board's check. */
+	status_led_init();
 	global_event_group = xEventGroupCreate();
 	/* the DOS board's check: on another board it stops here, before any
 	   pin that is new on the DOS board has been driven */
@@ -938,6 +967,8 @@ void app_main(void)
 	console_hooks_install();
 	kbd_input_init();
 	banner();
+	status_led_report();
+	status_led_stage(STATUS_STAGE_SCREEN);
 	board_console_ready();
 	/* the speed screen (speed.c), over the picture and back */
 	speed_set_title(s_title);
@@ -1000,8 +1031,10 @@ void app_main(void)
 	conf.fpu = 0;
 	console_printf(CON_INFO, "Settings from %s:", config.filename);
 	int err = ini_parse(config.filename, parse_ini, NULL);
-	if (err == -1)
+	if (err == -1) {
+		status_led_fatal(STATUS_ERR_NO_INI);
 		console_fatal("%s could not be opened.", config.filename);
+	}
 	if (err == -2)
 		console_fatal("Out of memory while reading %s.", config.filename);
 	if (err > 0)
@@ -1026,9 +1059,12 @@ void app_main(void)
 #endif
 
 	int bad = check_config();
-	if (bad)
+	if (bad) {
+		/* red 3 if a BIOS is among them, red 4 for the rest */
+		status_led_fatal(s_bios_bad ? STATUS_ERR_BIOS : STATUS_ERR_INI);
 		console_fatal("%d problem%s in %s, shown above in red.", bad,
 			      bad == 1 ? "" : "s", s_ini_name);
+	}
 
 #ifdef LCD_ZERO_COPY
 	lcd_set_invalidate(config.lcd_invalidate);
