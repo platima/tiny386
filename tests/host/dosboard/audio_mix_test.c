@@ -93,11 +93,13 @@ static long model(int sb, int opl, int spk, int shift)
 	return (long) q;
 }
 
-/* pc.c's mixer_callback() for one value, as v3.4 built it (pc.c lines
-   909 to 925 at v3.4: the SB16 and the AdLib added and held to 16 bits,
-   then the PC speaker's (x - 0x80) << 5 added and held again), then i2s.c
-   v3.4's buf[i] = buf[i] / div with div = 1 << i2s_audio_shift.  *held
-   counts the holds that acted. */
+/* pc.c's mixer_callback() for one value, as v3.4 built it (pc.c from line
+   901 at v3.4: the SB16 and the AdLib added and held to 16 bits, then the
+   PC speaker's (x - 0x80) << 5 added and held again), then i2s.c v3.4's
+   buf[i] = buf[i] / div with div = 1 << i2s_audio_shift.  *held counts
+   the holds that acted.  pc.c's << 5 of a negative value is undefined in
+   C (UBSan says so); gcc gives what * 32 gives, written so here, and
+   audio_mix.c multiplies too. */
 static long v34(int sb, int opl, int spk, int shift, int *held)
 {
 	int res = sb + opl;
@@ -106,7 +108,7 @@ static long v34(int sb, int opl, int spk, int shift, int *held)
 	int16_t d2 = res;
 	if (spk >= 0) {
 		res = d2;
-		res += ((int) spk - 0x80) << 5;
+		res += ((int) spk - 0x80) * 32;
 		if (res > 32767) { res = 32767; (*held)++; }
 		if (res < -32768) { res = -32768; (*held)++; }
 		d2 = res;
@@ -259,6 +261,10 @@ static void loudest(const char *name, int use_sb, int use_opl, int use_spk)
 			check(nheld == 0, "devices: nothing held at the default level", nheld, 0);
 		adlib_free(a.adlib);
 		adlib_free(b.adlib);
+		free(a.sb16);
+		free(b.sb16);
+		free(a.pcspk);
+		free(b.pcspk);
 	}
 	if (use_opl)
 		printf("    (the AdLib's own largest value, as fmopl.c gives it, already held to 16 "
