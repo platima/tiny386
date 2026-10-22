@@ -39,9 +39,10 @@ static void stacks_line(void)
 {
 	static const char *const names[] = {
 		"i386_main", "vga_task", "usb_events", "USB HID Host", "usb_task",
-		"kbd_repeat", "ch9350", "hdmi", "i2s_task", "IDLE0", "IDLE1", NULL
+		"kbd_repeat", "ch9350", "hdmi", "i2s_task", "status_led", "uart_log",
+		"IDLE0", "IDLE1", NULL
 	};
-	char line[240];
+	char line[288];
 	int o = snprintf(line, sizeof(line), "stacks, least free since start (bytes):");
 
 	display_lock();

@@ -640,7 +640,8 @@ static int level_of(const char *s, int n)
  * ("inw 0xa20 <= 0xffff" and "inw 0x3f <= 0xffff" are one kind).  Of each
  * kind the first LIM_FIRST lines in LIM_PERIOD_MS go out as before; the
  * rest are counted, and when the period is over one line says how many,
- * with the last of them.  So a guest that hits an unknown port thousands
+ * with the last of them, at the level of the most serious of them (since
+ * v3.9: held error lines give a red count).  So a guest that hits an unknown port thousands
  * of times a second costs a few lines every few seconds, on the UART, in
  * the ring (the crash screen's last lines) and on the panel, where every
  * line drawn while Ctrl+Alt+F12 is up costs a redraw.
@@ -656,6 +657,8 @@ struct lim_kind {
 	uint32_t seen_ms;       /* its last line: the slot least used goes first */
 	uint32_t shown;         /* lines out in this period */
 	uint32_t held;          /* lines held back in this period */
+	uint8_t level;          /* the most serious of them (CON_INFO, CON_WARN,
+				   CON_ERROR): the count line's level */
 	char last[LIM_LAST];    /* the last line held back */
 };
 static struct lim_kind *s_lim;
@@ -701,15 +704,17 @@ static void lim_say(struct lim_kind *k, uint32_t now)
 		unsigned s = (now - k->start_ms + 999) / 1000;
 		int n = snprintf(line, sizeof(line), "(not shown: %u more line%s like \"%s\" in %u s)",
 				 (unsigned) k->held, k->held == 1 ? "" : "s", k->last, s ? s : 1);
-		emit(CON_INFO, line, n < (int) sizeof(line) ? n : (int) sizeof(line) - 1, TO_ALL);
+		emit(k->level, line, n < (int) sizeof(line) ? n : (int) sizeof(line) - 1, TO_ALL);
 	}
 	k->start_ms = now;
 	k->shown = 0;
 	k->held = 0;
+	k->level = CON_INFO;
 }
 
-/* true if the line goes out; with the console's lock held */
-static bool lim_pass(const char *s, int n)
+/* true if the line (of the given level) goes out; with the console's lock
+   held */
+static bool lim_pass(int level, const char *s, int n)
 {
 	if (!s_lim_on)
 		return true;
@@ -738,6 +743,8 @@ static bool lim_pass(const char *s, int n)
 		return true;
 	}
 	k->held++;
+	if (level > k->level)
+		k->level = level;
 	s_lim_total++;
 	s_lim_holding = true;
 	int m = n < LIM_LAST - 1 ? n : LIM_LAST - 1;
@@ -802,7 +809,7 @@ static void emit_text(int level, const char *s, int to, bool limited)
 		if (!e && !n && p != s)
 			break;          /* nothing after the last '\n' */
 		int lvl = level == CON_AUTO ? level_of(p, n) : level;
-		if (!limited || lim_pass(p, n))
+		if (!limited || lim_pass(lvl, p, n))
 			emit(lvl, p, n, to);
 		if (!e)
 			break;
@@ -1079,7 +1086,7 @@ uint16_t *console_fb(int *width, int *height)
    repeated lines; with the console's lock held */
 static void tee_line(int level, const char *s, int n)
 {
-	if (lim_pass(s, n))
+	if (lim_pass(level, s, n))
 		emit(level, s, n, TO_ALL);
 }
 
@@ -1276,6 +1283,46 @@ static void ring_note(const char *s)
 	ring_putc_locked('\n');
 }
 
+static char *put_dec(char *p, uint32_t v)
+{
+	char d[10];
+	int n = 0;
+	do {
+		d[n++] = '0' + v % 10;
+		v /= 10;
+	} while (v);
+	while (n)
+		*p++ = d[--n];
+	*p = 0;
+	return p;
+}
+
+/* The lines the limit on repeated lines still holds back, said into the
+   ring as lim_say() would say them, so that the crash screen's last lines
+   have the newest of them and their count.  An emulator abort says them
+   itself, first (console_log_limit(false)); any other crash (a device
+   model's load fault, a watchdog, an assert) comes here with up to 5 s of
+   each kind still held.  In the panic handler: no locks, no stdio. */
+static void crash_say_held(void)
+{
+	if (!s_lim_on || !s_lim)
+		return;
+	for (int i = 0; i < LIM_KINDS; i++) {
+		struct lim_kind *k = &s_lim[i];
+		if (!k->kind || !k->held)
+			continue;
+		char line[LIM_LAST + 64], *p;
+		p = put_str(line, "(not shown: ");
+		p = put_dec(p, k->held);
+		p = put_str(p, k->held == 1 ? " more line like \"" : " more lines like \"");
+		for (int j = 0; j < LIM_LAST - 1 && k->last[j]; j++)
+			*p++ = printable(k->last[j]) ? k->last[j] : '?';
+		put_str(p, "\" before the crash)");
+		ring_note(line);
+		k->held = 0;    /* said */
+	}
+}
+
 void console_draw_crash(uint16_t *base, int width, int height,
 			const struct crash_report *r)
 {
@@ -1285,7 +1332,9 @@ void console_draw_crash(uint16_t *base, int width, int height,
 	const uint16_t red = RGB565(170, 0, 0);
 	char line[160], *p;
 
-	/* the log's last lines, before this report goes in */
+	/* the log's last lines, before this report goes in, with what the limit
+	   on repeated lines still held */
+	crash_say_held();
 	int tail = console_ring_tail(s_crash_tail, sizeof(s_crash_tail), 40);
 
 	if (base) {

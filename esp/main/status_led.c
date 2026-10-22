@@ -204,11 +204,14 @@ static void led_task(void *arg)
 		bool stalled = status_watch_step(&watch, status_led_beats, now, running);
 		if (stalled != was) {
 			status_led_error(STATUS_ERR_STALLED, stalled);
+			/* to the ring and the panel (Ctrl+Alt+F12), and the UART
+			   when it is on: with [esp] uart_log = 0 a UART-only line
+			   would go nowhere */
 			if (stalled)
-				console_uart_printf("status LED: the emulator has made no progress "
-						    "for %d s (yellow 5)", STATUS_STALL_MS / 1000);
+				console_printf(CON_WARN, "status LED: the emulator has made no "
+					       "progress for %d s (yellow 5)", STATUS_STALL_MS / 1000);
 			else
-				console_uart_printf("status LED: the emulator goes on again");
+				console_printf(CON_INFO, "status LED: the emulator goes on again");
 			portENTER_CRITICAL(&s_lock);
 			st = s_state;
 			portEXIT_CRITICAL(&s_lock);
