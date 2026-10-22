@@ -321,6 +321,39 @@ else
     echo "SKIP the DOS board's pins: no netlist at $DOSBOARD_NET (set DOSBOARD_NET)"
 fi
 
+# ==== 18. the DOS board image's board check (v3.6) ====
+# dosboard.c's board_early_init() as the DOS board build has it
+# (board_dosboard.h first), with the real ms7210.c, against a pretend I2C
+# bus and pretend pins (tests/host/dosboard/shim): Korvo-1s and DOS boards,
+# which pins are touched and when, and what it decides.  If the tree has the
+# v3.5 tag, the same cases against v3.5's dosboard.c, which has to fail
+# (it pulsed GPIO49 on a Korvo-1 with nothing on its bus, and stopped a DOS
+# board with a device on J202 at one of a Korvo-1's addresses).
+echo
+BCFLAGS="$DOSCFLAGS -I$D/shim -I$TREE/esp/main -I$TREE"
+$CC $BCFLAGS -include "$TREE/esp/main/board_dosboard.h" -c -o "$OUT/bc_dosboard.o" \
+    "$TREE/esp/main/dosboard.c" || exit 1
+$CC $BCFLAGS -c -o "$OUT/bc_ms7210.o" "$TREE/esp/main/ms7210.c" || exit 1
+$CC -O2 -g -w -c -o "$OUT/bc_ini.o" "$TREE/ini.c" || exit 1
+$CC $BCFLAGS -include "$TREE/esp/main/board_dosboard.h" -o "$OUT/board_check_test" \
+    "$D/board_check_test.c" "$OUT/bc_dosboard.o" "$OUT/bc_ms7210.o" "$OUT/bc_ini.o" || exit 1
+"$OUT/board_check_test"
+result $? "dosboard.c board check: pins touched and when, Korvo-1s and DOS boards, J202 devices, GPIO46"
+if git -C "$TREE" rev-parse -q --verify v3.5 >/dev/null; then
+    git -C "$TREE" show v3.5:esp/main/dosboard.c > "$OUT/dosboard-v3.5.c"
+    $CC $BCFLAGS -w -include "$TREE/esp/main/board_dosboard.h" -c -o "$OUT/bc_dosboard_v35.o" \
+        "$OUT/dosboard-v3.5.c" || exit 1
+    $CC $BCFLAGS -DBOARD_CHECK_V35 -include "$TREE/esp/main/board_dosboard.h" \
+        -o "$OUT/board_check_test_v35" "$D/board_check_test.c" "$OUT/bc_dosboard_v35.o" \
+        "$OUT/bc_ms7210.o" "$OUT/bc_ini.o" || exit 1
+    echo "(the same cases against dosboard.c at the v3.5 tag, where it has to fail)"
+    "$OUT/board_check_test_v35" > "$OUT/board-check-v3.5.log" 2>&1
+    st=$?
+    grep -E "^    (K|D)[0-9]+: |cases as expected" "$OUT/board-check-v3.5.log" | sed 's/^ */    | /'
+    [ $st != 0 ]
+    result $? "board check test catches v3.5's GPIO49 pulse on a bare Korvo-1 and its stop on a J202 device"
+fi
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]

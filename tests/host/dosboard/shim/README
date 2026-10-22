@@ -1,0 +1,4 @@
+Host stand-ins for the ESP-IDF headers dosboard.c includes, for
+board_check_test.c (host test 18) only.  Each declares no more than
+dosboard.c uses; board_check_test.c defines the functions, with a pretend
+I2C bus and pretend pins behind them.

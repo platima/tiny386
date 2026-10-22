@@ -27,7 +27,10 @@
  *      alike, one through audio_mix_devices() and one through the same calls
  *      made here and v3.4's path: the same values where v3.4 did not hold,
  *      and how loud each level gets.
+ *   6. (v3.6) audio_mix_devices() asked for no block at all (n of 1, 0 or
+ *      less): it returns 0, leaves out alone and asks no device.
  */
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -407,6 +410,39 @@ int main(void)
 	loudest("SB16 alone: full-scale 16-bit stereo square", 1, 0, 0);
 	loudest("AdLib alone: nine channels in step, full volume", 0, 1, 0);
 	loudest("SB16, AdLib and PC speaker together", 1, 1, 1);
+
+	/* 6: no block at all (v3.6, the v3.5 review's N2).  Last, since
+	   v3.5's audio_mix.c passed a negative n on to memset() as a huge
+	   size and so stops the program here. */
+	{
+		static const int nothing[] = { 1, 0, -1, -2, -128, -129, INT_MIN };
+		struct devs d;
+		int16_t out[AUDIO_MIX_MAX + 8];
+		devs_new(&d, 1, 1, 1);
+		for (unsigned k = 0; k < sizeof(nothing) / sizeof(nothing[0]); k++) {
+			for (int i = 0; i < AUDIO_MIX_MAX + 8; i++)
+				out[i] = 0x5A5A;
+			int p = d.sb16->audio_p, q = d.sb16->audio_q;
+			int r = audio_mix_devices(out, nothing[k], LEVEL, d.adlib, d.sb16, d.pcspk);
+			int touched = 0;
+			for (int i = 0; i < AUDIO_MIX_MAX + 8; i++)
+				touched += out[i] != 0x5A5A;
+			check(r == 0, "no block: returns 0", r, nothing[k]);
+			check(touched == 0, "no block: out untouched", touched, nothing[k]);
+			check(d.sb16->audio_p == p && d.sb16->audio_q == q,
+			      "no block: the SB16 not asked", d.sb16->audio_p, p);
+		}
+		/* and the smallest real block still works: 2 values, one frame */
+		devs_refill(&d);
+		int p = d.sb16->audio_p;
+		audio_mix_devices(out, 2, LEVEL, d.adlib, d.sb16, d.pcspk);
+		check(d.sb16->audio_p != p, "a block of 2: the SB16 asked", d.sb16->audio_p, p);
+		printf("  6. n of 1, 0, -1, -2, -128, -129 and INT_MIN: nothing made, nothing asked, 0 "
+		       "returned; n of 2 still asks the devices\n");
+		adlib_free(d.adlib);
+		free(d.sb16);
+		free(d.pcspk);
+	}
 
 	printf("audio_mix_test: %ld checks, %ld failed: %s\n", checks, failures, failures ? "FAIL" : "PASS");
 	return failures ? 1 : 0;
