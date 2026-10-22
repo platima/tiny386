@@ -5,13 +5,22 @@
  *
  *   1. The RMT frame: a reset of 300 us or more, then 24 bits whose high and
  *      low times fall inside both LEDs' windows (Inolux IN-PI554FCH and
- *      Worldsemi WS2812B-2020-V6), decoding back to the colour, green first.
+ *      Worldsemi WS2812B-2020-V6), decoding back to the colour, green first;
+ *      the high times also as the LED sees them, about 38 ns shorter after
+ *      the level shifter, against both windows and against an older
+ *      WS2812B datasheet's (reported).
  *   2. The bit-bang, cycle by cycle: at 80 MHz (the second-stage
  *      bootloader's clock, which a panic before app_main() runs at), 160
  *      and 320 MHz, with each pass round the waiting loop costing 1 to 6
- *      cycles and each store to the GPIO register 1 to 24, and with the
- *      counter wrapping round in the middle of a frame: every edge inside
- *      both windows, the bits back.
+ *      cycles, each store to the GPIO register 1 to 24, and the
+ *      instructions between a wait's last counter read and its store
+ *      charged as the built code has them (two before a rise and two before
+ *      a fall, sub and bltu; build.sh checks that layout in the ELF files)
+ *      at one or two cycles each, and with the counter wrapping round in
+ *      the middle of a frame: every edge inside both windows, sent and (the
+ *      high times) at the LED, the bits back.  Then v3.3's layout (nine or
+ *      ten instructions before a rise) with v3.3's times, which this test
+ *      must find short at 80 MHz: the fault the v3.3 review found.
  *   3. The patterns: each stage's colour, each error's colour and number of
  *      blinks, the crash, the heartbeat, the PC switched off.
  *   4. The error-code state machine: which error shows over which, the
@@ -47,31 +56,58 @@ struct window {
 	int t0h_lo, t0h_hi, t0l_lo, t0l_hi, t1h_lo, t1h_hi, t1l_lo, t1l_hi;
 	int bit_lo, bit_hi, reset_lo;
 };
-/* Inolux IN-PI554FCH v2.2 p. 10: 0.3, 0.9, 0.6, 0.6 us each +-0.15 us, a
+/* Inolux IN-PI554FCH v2.2 p. 11: 0.3, 0.9, 0.6, 0.6 us each +-0.15 us, a
    bit 1.25 +-0.6 us, reset 80 us or more */
 static const struct window inolux = {
 	"Inolux IN-PI554FCH", 150, 450, 750, 1050, 450, 750, 450, 750, 650, 1850, 80000,
 };
-/* Worldsemi WS2812B-2020-V6: T0H 220-380, T1H 580-1000, T0L and T1L 580-1000
-   ns, a bit 1250 ns or more, reset 280 us or more */
+/* Worldsemi WS2812B-2020-V6 p. 5: T0H 220-380, T1H 580-1000, T0L and T1L
+   580-1000 ns, a bit 1250 ns or more, reset 280 us or more */
 static const struct window worldsemi = {
 	"Worldsemi WS2812B", 220, 380, 580, 1000, 580, 1000, 580, 1000, 1250, 1000000, 280000,
 };
 static const struct window *const windows[] = { &inolux, &worldsemi };
 
+/* The level shifter (BSS138, 1k pull-up to 5 V) slows each rise at the LED
+   by about this much: CHANGES-A2.md section 4, an estimate (R204 and about
+   33 pF to the Inolux part's 3.4 V).  The LED sees each high time this much
+   shorter; it tells a 0 from a 1 by the high time. */
+#define SHIFT_NS 38
+/* An older Worldsemi WS2812B datasheet's high times, 0.4 and 0.8 us +-0.15
+   us (reported in the v3.3 review from a summary, not read at Worldsemi):
+   the Korvo-1's WS2812B is of a revision not known.  Checked for the RMT
+   frame at the LED only. */
+#define OLD_T0H_LO 250
+#define OLD_T0H_HI 550
+#define OLD_T1H_LO 650
+#define OLD_T1H_HI 950
+
 /* the least margin seen to any window edge, ns */
 static double margin_min = 1e9;
 
-/* lo < 0: the frame's last bit, whose low runs on into the reset: its
-   high time only */
-static void bit_in_windows(const char *where, int one, double hi, double lo)
+static void margin(double m)
 {
+	if (m < margin_min)
+		margin_min = m;
+}
+
+/* One bit's high and low times, sent, against both windows, and the high
+   time at the LED too (lo < 0: the high time only).  older: the high time
+   at the LED against the older WS2812B's as well. */
+static void bit_in_windows(const char *where, int one, double hi, double lo, int older)
+{
+	double led = hi - SHIFT_NS;
+
 	for (int k = 0; k < 2; k++) {
 		const struct window *w = windows[k];
 		int hl = one ? w->t1h_lo : w->t0h_lo, hh = one ? w->t1h_hi : w->t0h_hi;
 		int ll = one ? w->t1l_lo : w->t0l_lo, lh = one ? w->t1l_hi : w->t0l_hi;
 		CHECK(hi >= hl && hi <= hh, "%s: %s high %.1f ns, %s wants %d to %d",
 		      where, one ? "1" : "0", hi, w->who, hl, hh);
+		CHECK(led >= hl && led <= hh, "%s: %s high %.1f ns at the LED, %s wants %d to %d",
+		      where, one ? "1" : "0", led, w->who, hl, hh);
+		margin(led - hl);
+		margin(hh - led);
 		double m[] = { hi - hl, hh - hi, 1e9, 1e9, 1e9, 1e9 };
 		if (lo >= 0) {
 			CHECK(lo >= ll && lo <= lh, "%s: %s low %.1f ns, %s wants %d to %d",
@@ -85,8 +121,14 @@ static void bit_in_windows(const char *where, int one, double hi, double lo)
 			m[5] = w->bit_hi - hi - lo;
 		}
 		for (int i = 0; i < 6; i++)
-			if (m[i] < margin_min)
-				margin_min = m[i];
+			margin(m[i]);
+	}
+	if (older) {
+		int hl = one ? OLD_T1H_LO : OLD_T0H_LO, hh = one ? OLD_T1H_HI : OLD_T0H_HI;
+		CHECK(led >= hl && led <= hh, "%s: %s high %.1f ns at the LED, the older "
+		      "WS2812B wants %d to %d", where, one ? "1" : "0", led, hl, hh);
+		margin(led - hl);
+		margin(hh - led);
 	}
 }
 
@@ -118,7 +160,7 @@ static void test_rmt(void)
 			snprintf(where, sizeof(where), "RMT colour %06x bit %d", grb, i);
 			double before = margin_min;
 			margin_min = 1e9;
-			bit_in_windows(where, one, hi, lo);
+			bit_in_windows(where, one, hi, lo, 1);
 			if (margin_min < rmt_margin)
 				rmt_margin = margin_min;
 			if (before < margin_min)
@@ -135,12 +177,29 @@ static void test_rmt(void)
 /* ==== 2. the bit-bang with a pretend clock ==== */
 
 static uint64_t sim_cycles;      /* the true time, in cycles */
-static int sim_cost_read, sim_cost_store;
+static int sim_cost_read, sim_cost_store, sim_cost_insn;
+/* the instructions between a wait's last counter read and the store after
+   it, before a rise (for a 0 bit and for a 1) and before a fall */
+static int sim_rise0, sim_rise1, sim_fall;
+static uint32_t sim_grb;        /* the frame's bits, for which rise is which */
+static int sim_rises;
 static int sim_level;
 static uint64_t sim_edge[64];
 static int sim_edge_level[64];
 static int sim_nedges;
 static uint64_t sim_reads;
+
+/* The layout of the built code (riscv32-esp-elf-objdump of
+   status_led_panic() and status_led_halt() in all three images): each
+   store straight after its wait's bltu, so sub and bltu before a rise and
+   before a fall.  build.sh stops if the built code is not so. */
+#define BB_RISE_INSNS 2
+#define BB_FALL_INSNS 2
+/* v3.3's layout, which the v3.3 review found: nine instructions before a
+   rise of a 0 bit, ten of a 1 bit, two before a fall */
+#define V33_RISE0_INSNS 9
+#define V33_RISE1_INSNS 10
+#define V33_FALL_INSNS 2
 
 static uint32_t sim_now(void)
 {
@@ -151,6 +210,15 @@ static uint32_t sim_now(void)
 
 static void sim_store(int level)
 {
+	if (level) {
+		/* the frame's first store is the low before the reset; each
+		   rise after it is the next bit's, from bit 23 down */
+		int bit = sim_rises < 24 ? (sim_grb >> (23 - sim_rises)) & 1 : 0;
+		sim_rises++;
+		sim_cycles += (uint64_t) (bit ? sim_rise1 : sim_rise0) * sim_cost_insn;
+	} else {
+		sim_cycles += (uint64_t) sim_fall * sim_cost_insn;
+	}
 	sim_cycles += sim_cost_store;   /* the pin changes as the store lands */
 	if (level != sim_level && sim_nedges < 64) {
 		sim_edge[sim_nedges] = sim_cycles;
@@ -164,6 +232,21 @@ static void sim_store(int level)
 #define STATUS_BB_LOW() sim_store(0)
 #include "status_bb.h"
 
+/* One frame with the pretend clock; the edges in sim_edge.  Returns the
+   number of edges. */
+static int sim_frame(uint32_t grb, const struct status_bb *t, uint32_t mhz)
+{
+	sim_grb = grb;
+	sim_rises = 0;
+	/* the counter wraps 20 us into the frame */
+	sim_cycles = 0x100000000ull - (STATUS_RESET_US + 20) * mhz;
+	sim_level = 1;          /* the line high before: R205 */
+	sim_nedges = 0;
+	sim_reads = 0;
+	status_bb_frame(grb, t);
+	return sim_nedges;
+}
+
 static void test_bitbang(void)
 {
 	static const uint32_t mhz[] = { 80, 160, 320 };
@@ -176,6 +259,8 @@ static void test_bitbang(void)
 	int runs = 0;
 	double worst = 1e9;
 
+	sim_rise0 = sim_rise1 = BB_RISE_INSNS;
+	sim_fall = BB_FALL_INSNS;
 	for (unsigned f = 0; f < 3; f++) {
 		struct status_bb t;
 		status_bb_timing(&t, mhz[f]);
@@ -184,24 +269,21 @@ static void test_bitbang(void)
 			   80 MHz would be 300 ns, which no bus takes */
 			if (mhz[f] < 160 && (costs[k][0] > 3 || costs[k][1] > 8))
 				continue;
+			for (int ci = 1; ci <= 2; ci++)
 			for (unsigned c = 0; c < 4; c++) {
 				uint32_t grb = colours[c];
 				sim_cost_read = costs[k][0];
 				sim_cost_store = costs[k][1];
-				/* the counter wraps 20 us into the frame */
-				sim_cycles = 0x100000000ull - (STATUS_RESET_US + 20) * mhz[f];
-				sim_level = 1;          /* the line high before: R205 */
-				sim_nedges = 0;
-				sim_reads = 0;
-				uint64_t start = sim_cycles;
-				status_bb_frame(grb, &t);
+				sim_cost_insn = ci;
+				uint64_t start = 0x100000000ull - (STATUS_RESET_US + 20) * mhz[f];
+				int n = sim_frame(grb, &t, mhz[f]);
 				uint64_t end = sim_cycles;
 				runs++;
-				char where[96];
-				snprintf(where, sizeof(where), "bit-bang %u MHz, read %d, store %d, %06x",
-					 mhz[f], costs[k][0], costs[k][1], grb);
-				CHECK(sim_nedges == 1 + 48, "%s: %d edges", where, sim_nedges);
-				if (sim_nedges != 49)
+				char where[112];
+				snprintf(where, sizeof(where), "bit-bang %u MHz, read %d, store %d, "
+					 "instruction %d, %06x", mhz[f], costs[k][0], costs[k][1], ci, grb);
+				CHECK(n == 1 + 48, "%s: %d edges", where, n);
+				if (n != 49)
 					continue;
 				CHECK(sim_edge_level[0] == 0, "%s: does not start low", where);
 				double ns = 1000.0 / mhz[f];
@@ -213,11 +295,16 @@ static void test_bitbang(void)
 				margin_min = 1e9;
 				for (int i = 0; i < 24; i++) {
 					double hi = (sim_edge[2 + 2 * i] - sim_edge[1 + 2 * i]) * ns;
-					/* the last bit's low runs on into the
-					   line's rest, or the next frame's reset */
-					double lo = i < 23 ? (sim_edge[3 + 2 * i] - sim_edge[2 + 2 * i]) * ns : -1;
+					/* the last bit's low: the frame waits it
+					   out before it returns, so up to where a
+					   rise straight after the return would
+					   land (the line in fact rests low, or
+					   the next frame's reset follows) */
+					uint64_t next = i < 23 ? sim_edge[3 + 2 * i] :
+						end + (uint64_t) sim_rise0 * sim_cost_insn + sim_cost_store;
+					double lo = (next - sim_edge[2 + 2 * i]) * ns;
 					int one = hi > 500;
-					bit_in_windows(where, one, hi, lo);
+					bit_in_windows(where, one, hi, lo, 0);
 					back = back << 1 | one;
 				}
 				if (margin_min < worst)
@@ -225,7 +312,7 @@ static void test_bitbang(void)
 				if (before < margin_min)
 					margin_min = before;
 				CHECK(back == grb, "%s: decodes to %06x", where, back);
-				if (c == 1 && k == 0)
+				if (c == 1 && k == 0 && ci == 1)
 					printf("bit-bang: %3u MHz: %llu cycles a frame (%.1f us), %llu reads "
 					       "of the counter\n", mhz[f],
 					       (unsigned long long) (end - start),
@@ -233,15 +320,43 @@ static void test_bitbang(void)
 			}
 		}
 	}
-	printf("bit-bang: %d frames, every edge checked; least margin to a window edge %.1f ns\n",
-	       runs, worst);
+	printf("bit-bang: %d frames, %d instructions charged before a rise and %d before a fall, "
+	       "every edge checked; least margin to a window edge %.1f ns\n",
+	       runs, BB_RISE_INSNS, BB_FALL_INSNS, worst);
+
+	/* The test sees the v3.3 fault: v3.3's layout and times (T1H 53
+	   cycles at 80 MHz), one cycle an instruction, give a 1 bit's high
+	   time under the WS2812B-2020's 580 ns as sent. */
+	{
+		const struct status_bb v33 = { 27, 104, 53, 104, 24000 };
+		sim_rise0 = V33_RISE0_INSNS;
+		sim_rise1 = V33_RISE1_INSNS;
+		sim_fall = V33_FALL_INSNS;
+		sim_cost_read = 1;
+		sim_cost_store = 1;
+		sim_cost_insn = 1;
+		int n = sim_frame(0x00a5c3, &v33, 80);
+		double t1h_min = 1e9;
+		for (int i = 0; n == 49 && i < 24; i++) {
+			double hi = (sim_edge[2 + 2 * i] - sim_edge[1 + 2 * i]) * 12.5;
+			if (((0x00a5c3u >> (23 - i)) & 1) && hi < t1h_min)
+				t1h_min = hi;
+		}
+		CHECK(n == 49 && t1h_min < 580, "v3.3's layout at 80 MHz: T1H %.1f ns, which this "
+		      "test should find under 580", t1h_min);
+		printf("bit-bang: v3.3's layout and times at 80 MHz: T1H %.1f ns as sent, under the "
+		       "WS2812B-2020's 580 (the v3.3 review's finding, seen)\n", t1h_min);
+		sim_rise0 = sim_rise1 = BB_RISE_INSNS;
+		sim_fall = BB_FALL_INSNS;
+	}
+
 	/* the cycle counts themselves */
 	struct status_bb t;
 	status_bb_timing(&t, 320);
-	CHECK(t.t0h == 108 && t.t0 == 416 && t.t1h == 212 && t.t1 == 416 && t.reset == 96000,
+	CHECK(t.t0h == 108 && t.t0 == 416 && t.t1h == 224 && t.t1 == 424 && t.reset == 96000,
 	      "320 MHz: t0h %u t0 %u t1h %u t1 %u reset %u", t.t0h, t.t0, t.t1h, t.t1, t.reset);
 	status_bb_timing(&t, 80);
-	CHECK(t.t0h == 27 && t.t0 == 104 && t.t1h == 53 && t.t1 == 104 && t.reset == 24000,
+	CHECK(t.t0h == 27 && t.t0 == 104 && t.t1h == 56 && t.t1 == 106 && t.reset == 24000,
 	      "80 MHz: t0h %u t0 %u t1h %u t1 %u reset %u", t.t0h, t.t0, t.t1h, t.t1, t.reset);
 	printf("bit-bang: cycles at 80 MHz: T0H %u, T0 %u, T1H %u, T1 %u, reset %u; at 320 MHz "
 	       "four times as many\n", t.t0h, t.t0, t.t1h, t.t1, t.reset);
