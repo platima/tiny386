@@ -46,6 +46,9 @@ static inline void status_led_heartbeat(void)
 void status_led_panic(void);
 bool status_led_panicking(void);
 void status_led_halt(void) __attribute__((noreturn));
+/* crash_test = 5, in a -DCRASH_TEST=1 build only (esp_main.c): the next
+   panic is shown as one before app_main() (yellow 1) */
+void status_led_test_early(void);
 
 #else
 
@@ -57,6 +60,7 @@ static inline void status_led_fatal(int err) { (void) err; }
 static inline void status_led_heartbeat(void) { }
 static inline void status_led_panic(void) { }
 static inline bool status_led_panicking(void) { return false; }
+static inline void status_led_test_early(void) { }
 
 #endif
 

@@ -224,7 +224,10 @@ void status_led_init(void)
 
 	/* the last run: replayed first after a crash, a watchdog or a power
 	   dip; also after RESET pressed on a crash that halted (as the boot
-	   console shows that run's lines) */
+	   console shows that run's lines).  ESP-IDF calls that reset a
+	   power-on, so only the record says it followed a crash; whether the
+	   LP SRAM keeps the record through the RESET button (CHIP_PU) is not
+	   known until it is tried on a board. */
 	s_prev = s_rec;
 	s_prev_valid = status_record_valid(&s_prev);
 	s_reset = esp_reset_reason();
@@ -243,8 +246,14 @@ void status_led_init(void)
 	if (s_rmt_err != ESP_OK)
 		return;         /* said on the console by status_led_report() */
 	send_rgb(status_pattern(&s_state, 0));
-	if (xTaskCreatePinnedToCore(led_task, "status_led", 3072, NULL, 1, NULL, 0) != pdPASS)
+	/* 4096 bytes, as the project's other tasks: this one calls
+	   console_uart_printf() (newlib's vsnprintf) and the RMT driver */
+	if (xTaskCreatePinnedToCore(led_task, "status_led", 4096, NULL, 1, NULL, 0) != pdPASS) {
+		/* no task to change it: dark, as status_led_report() says, not
+		   the first colour for good */
+		send_rgb(0);
 		s_rmt_err = ESP_ERR_NO_MEM;
+	}
 }
 
 void status_led_report(void)
@@ -302,6 +311,15 @@ static IRAM_ATTR void bb_take_pin(void)
 	gpio_ll_set_output_enable_ctrl(&GPIO, STATUS_LED_GPIO, false, false);
 	gpio_ll_output_enable(&GPIO, STATUS_LED_GPIO);
 }
+
+#ifdef TINY386_CRASH_TEST
+/* crash_test = 5 (esp_main.c): the panic path taken as for a panic before
+   app_main(), yellow 1, at the clock the caller sets */
+void status_led_test_early(void)
+{
+	s_started = false;
+}
+#endif
 
 void IRAM_ATTR status_led_panic(void)
 {

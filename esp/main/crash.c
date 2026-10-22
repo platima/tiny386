@@ -46,7 +46,9 @@
 #include "status_led.h"
 
 void __real_esp_panic_handler(panic_info_t *info);
+#ifdef STATUS_LED_GPIO
 void __real_esp_system_reset_modules_on_exit(void);
+#endif
 
 /* linker symbols: the code in internal RAM, and in flash */
 extern int _iram_text_start, _iram_text_end, _text_start, _text_end;
@@ -121,14 +123,18 @@ void IRAM_ATTR __wrap_esp_panic_handler(panic_info_t *info)
 	__real_esp_panic_handler(info);
 }
 
+#ifdef STATUS_LED_GPIO
 /* ESP-IDF's halt stub (CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT): the modules'
    reset on exit as before, then, after a panic, the status LED's loop for
-   ever instead of the stub's own empty one. */
+   ever instead of the stub's own empty one.  Only on a board with the
+   LED: main/CMakeLists.txt gives the link's --wrap for those boards alone
+   (TINY386_STATUS_LED_BOARDS), and a board with the console but no LED
+   would otherwise be left with __real_esp_system_reset_modules_on_exit
+   undefined. */
 void IRAM_ATTR __wrap_esp_system_reset_modules_on_exit(void)
 {
 	__real_esp_system_reset_modules_on_exit();
-#ifdef STATUS_LED_GPIO
 	if (status_led_panicking())
 		status_led_halt();
-#endif
 }
+#endif

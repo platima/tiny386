@@ -294,10 +294,17 @@ struct esp_ini_config {
 };
 
 #ifdef TINY386_CRASH_TEST
+#include "soc/rtc.h"
+
 /* [esp] crash_test, in a test build only (idf.py -DCRASH_TEST=1): makes
    the crash screen appear on purpose.  1 abort(), 2 a store to address 0,
    3 a failed assert, all on core 0 before the PC starts; 4 abort() on
-   core 1 three seconds after the PC has started, over its picture. */
+   core 1 three seconds after the PC has started, over its picture; 5
+   abort() on core 0 before the PC starts, with the CPU first set to 80 MHz
+   and the status LED told that app_main() has not run, so that its panic
+   path sends yellow 1 at the clock a panic before app_main() has (the
+   second-stage bootloader's 80 MHz): for a scope on the LED's data line
+   (TEST-PLAN 10, STATUS-LED.md 5). */
 static void crash_test(int what)
 {
 	if (what >= 1 && what <= 3)
@@ -314,6 +321,18 @@ static void crash_test(int what)
 	case 3:
 		assert(what != 3);
 		break;
+	case 5: {
+		rtc_cpu_freq_config_t cfg;
+		if (!rtc_clk_cpu_freq_mhz_to_config(80, &cfg)) {
+			console_puts(CON_WARN, "crash_test = 5: no 80 MHz setting here; not crashing.");
+			break;
+		}
+		console_puts(CON_WARN, "crash_test = 5: the CPU to 80 MHz, then crashing on purpose "
+			     "as if before tiny386 started (yellow 1).");
+		status_led_test_early();
+		rtc_clk_cpu_freq_set_config(&cfg);
+		abort();
+	}
 	}
 }
 #endif
