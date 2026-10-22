@@ -15,9 +15,13 @@
 // (not driven).  tests/host/dosboard/check_pins.py checks this file against
 // the board's netlist.
 // A DOS board image on a Korvo-1 halts at once (board_early_init() in
-// dosboard.c): it looks for the MS7210's chip ID at I2C 0x59 before driving
-// any pin that is new on this board.  GPIO49 to GPIO57 are the Korvo-1's
-// camera inputs, so none of them is driven before that.
+// dosboard.c).  GPIO46 to GPIO57 are the Korvo-1's camera pins, all inputs
+// to the S31 there but GPIO55, its XCLK, so the image drives no pin but the
+// I2C bus until the MS7210 has answered (at I2C 0x59, then 0x2B).  If
+// nothing answers at all, it reads GPIO46 with the weak pull-up on for
+// about 0.1 ms (R302 holds it low on this board; camera D0 on a Korvo-1),
+// leaves it an input with no pull, and pulses RSTN (GPIO49) and looks again
+// only if GPIO46 read low.
 #define BUILD_ESP32
 #define BOARD_NAME "the DOS board"
 
