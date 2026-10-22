@@ -57,6 +57,7 @@ enum strap {
 	FLOATS,         /* nothing outside: a Korvo-1 with its camera idle, or R302 left off */
 	CAM_LOW,        /* driven low: a Korvo-1 camera that holds D0 low */
 	CAM_HIGH,       /* driven high */
+	CAM_TOGGLES,    /* driven, high on the second read only: any high read must count */
 };
 
 struct board {
@@ -92,6 +93,9 @@ static const struct board boards[] = {
 	  0, 0, NULL, "before or after its reset; a device at 0x10", 1, 1 },
 	{ "K5", "Korvo-1: nothing on its bus, a camera holding D0 high",
 	  0, 0, 0, 0, 0, { 0 }, CAM_HIGH,
+	  0, 0, NULL, "GPIO46 high: no R302, so not a DOS board", 1, 0 },
+	{ "K6", "Korvo-1: nothing on its bus, a camera D0 that changes while it is read",
+	  0, 0, 0, 0, 0, { 0 }, CAM_TOGGLES,
 	  0, 0, NULL, "GPIO46 high: no R302, so not a DOS board", 1, 0 },
 	{ "D1", "DOS board: the MS7210 at 0x59 before and after its reset",
 	  0, 0x59, 1, 1, 0, { 0 }, R302,
@@ -148,7 +152,7 @@ struct pin {
 };
 static struct pin pins[64];
 
-static int rst_low, reset_seen, answered;
+static int rst_low, reset_seen, answered, s0_reads;
 static int64_t now_us;
 static int halted, led_err;
 static jmp_buf halt_jmp;
@@ -223,6 +227,8 @@ int gpio_get_level(gpio_num_t p)
 			v = 0;
 		else if (B->strap == CAM_HIGH)
 			v = 1;
+		else if (B->strap == CAM_TOGGLES)
+			v = ++s0_reads == 2;
 		else
 			v = q->pu && !q->pd;    /* floating: only the pull-up makes it high */
 		ev(EV_GET, p, v, pins[p].pu, pins[p].pd, 0);
