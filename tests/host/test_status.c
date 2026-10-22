@@ -1189,6 +1189,12 @@ static void test_disk_light(const char *src_dir)
 		CHECK(watch && step && set && pat && watch < step && step < pat && set < pat &&
 		      !strstr(body, "BEAT"), "led_task(): the beat watch, the disk step and st.disk "
 		      "before the colour");
+		/* v3.9: with [esp] uart_log = 0 a UART-only stall line went nowhere */
+		CHECK(strstr(body, "console_printf(CON_WARN, \"status LED: the emulator has made no ") &&
+		      strstr(body, "console_printf(CON_INFO, \"status LED: the emulator goes on again") &&
+		      !strstr(body, "console_uart_printf"),
+		      "led_task(): the stall line and its end to the ring and the panel, not the "
+		      "UART alone");
 		body_of(ide, "static int bf_read_async(", body, sizeof(body));
 		CHECK(calls_of(body, "BF_ACTIVITY", NULL, &good) == 1, "bf_read_async(): not one "
 		      "BF_ACTIVITY()");

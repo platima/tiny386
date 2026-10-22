@@ -13,6 +13,8 @@
  * A small guest (guest_df.S, linked at 0x10000) runs on i386.c with 1 MiB
  * of memory; the tables are laid out here.  Each scenario runs in a child
  * process, so that one that stops the emulator (abort()) is seen as such.
+ * Since v3.9 two shutdowns run again with a front end's note
+ * (cpu_abort_note): it must come once, before the "shutdown:" line.
  *
  *   test_double_fault GUEST.BIN SYMBOLS [before]
  *
@@ -50,6 +52,16 @@ static int checks, fails;
 void *pcmalloc(long size)
 {
 	return calloc(1, (size_t) size);
+}
+
+/* The front end's note (v3.8; called before the line that names the cause
+   since v3.9).  Weak, so that the test still links with v3.7's i386.c,
+   which has none. */
+extern void (*cpu_abort_note)(void) __attribute__((weak));
+static char errlog[512];        /* a child's stderr, for the order of its lines */
+static void test_note(void)
+{
+	fprintf(stderr, "NOTE: the front end's lines\n");
 }
 
 #define MEM (1024 * 1024)
@@ -165,13 +177,21 @@ static u32 mm_r32(void *o, uword a) { (void) o; (void) a; return 0xffffffff; }
 static void mm_w32(void *o, uword a, u32 v) { (void) o; (void) a; (void) v; }
 
 /* runs a scenario in a child: 0 if it ran to its end (the results in the
-   shared memory), else the signal that stopped it */
-static int run(int scenario, bool df_task_gate, bool irq_after_start)
+   shared memory), else the signal that stopped it.  With a note, the child
+   has test_note() as cpu_abort_note and its stderr in errlog. */
+static int run_noted(int scenario, bool df_task_gate, bool irq_after_start, bool note)
 {
 	lay_out(scenario, df_task_gate);
 	fflush(stdout);
+	fflush(stderr);
 	pid_t pid = fork();
 	if (pid == 0) {
+		if (note) {
+			if (!freopen(errlog, "w", stderr))
+				_exit(3);
+			setvbuf(stderr, NULL, _IONBF, 0);
+			cpu_abort_note = test_note;
+		}
 		CPU_CB *cb;
 		CPUI386 *cpu = cpui386_new(3, (char *) mem, MEM, &cb);
 		cb->pic = NULL;
@@ -205,6 +225,28 @@ static int run(int scenario, bool df_task_gate, bool irq_after_start)
 	return WEXITSTATUS(st) ? 1000 + WEXITSTATUS(st) : 0;
 }
 
+static int run(int scenario, bool df_task_gate, bool irq_after_start)
+{
+	return run_noted(scenario, df_task_gate, irq_after_start, false);
+}
+
+/* After a noted run that stopped: the note once, before the line that
+   names the cause (cause, "shutdown:" or "@ "), and the abort line after
+   it, as a front end that turns its UART on in the note needs them. */
+static void note_order(const char *what, const char *cause)
+{
+	static char text[16384];
+	FILE *f = fopen(errlog, "r");
+	size_t n = f ? fread(text, 1, sizeof(text) - 1, f) : 0;
+	text[n] = 0;
+	if (f)
+		fclose(f);
+	const char *note = strstr(text, "NOTE: "), *c = strstr(text, cause);
+	const char *ab = strstr(text, "abort: ");
+	CHECK(note && c && ab && note < c && c < ab && !strstr(note + 1, "NOTE: "),
+	      "%s: the front end's note once, before \"%s\", the abort line after it", what, cause);
+}
+
 static void df_results(const char *what, uint32_t at_ip, uint32_t want_cs,
 		       uint32_t want_ss, uint32_t want_esp)
 {
@@ -235,6 +277,7 @@ int main(int argc, char **argv)
 	}
 	bool before = argc > 3 && !strcmp(argv[3], "before");
 	setvbuf(stdout, NULL, _IONBF, 0);
+	snprintf(errlog, sizeof(errlog), "%s.stderr", argv[1]);
 	FILE *g = fopen(argv[1], "rb");
 	if (!g) {
 		perror(argv[1]);
@@ -301,6 +344,18 @@ int main(int argc, char **argv)
 	r = run(0, false, false);
 	CHECK(r == SIGABRT, "a fault while delivering the double fault shuts down: abort() "
 	      "(signal %d)", r);
+
+	printf("== 6 and 0 again with a front end's note (v3.9: the note before the cause)\n");
+	if (&cpu_abort_note) {
+		r = run_noted(6, true, false, true);
+		CHECK(r == SIGABRT, "CR3 past memory, noted: abort() (signal %d)", r);
+		note_order("CR3 past memory", "shutdown: ");
+		r = run_noted(0, false, false, true);
+		CHECK(r == SIGABRT, "vector 8 an interrupt gate, noted: abort() (signal %d)", r);
+		note_order("vector 8 an interrupt gate", "shutdown: ");
+	} else {
+		CHECK(0, "this i386.c has no cpu_abort_note");
+	}
 done:
 	printf("test_double_fault%s: %d checks, %d failed\n", before ? " (before)" : "",
 	       checks, fails);

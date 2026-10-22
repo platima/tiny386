@@ -19,6 +19,9 @@
  *    FIFO takes it, "\r\n" at its end, lines that do not fit dropped from
  *    the UART only and counted, the queue written out when it is turned
  *    off;
+ *  - (v3.9) held error lines counted at their own level, and the lines
+ *    still held when a crash comes said into the ring before the crash
+ *    screen reads its last lines;
  *  - writes PPM pictures of each stage to OUT for a person to look at.
  *
  *   test_console OUT
@@ -518,6 +521,60 @@ int main(int argc, char **argv)
 	console_puts(CON_INFO, "queued last");
 	console_uart_async(false);
 	console_puts(CON_INFO, "straight again");
+
+	/* ==== 9. held error lines, and what is held when a crash comes (v3.9) ==== */
+	printf("held error lines, held lines at a crash\n");
+	console_log_limit(true);
+	console_host_set_ms(30000);
+	console_puts(CON_INFO, "-- mark 7");
+	int problems = console_problems();
+	for (int i = 0; i < 7; i++) {
+		snprintf(line, sizeof(line), "E (%d) diskio_sdmmc: sdmmc_write_blocks failed (0x107)\n",
+			 30000 + i);
+		console_host_log_line(line);
+	}
+	check(lines_after("-- mark 7", "E (") == 5 && console_problems() == problems + 5,
+	      "held errors: 5 of 7 shown, each a problem");
+	console_host_set_ms(35000);
+	console_log_tick();
+	check(line_after("-- mark 7", "(not shown: 2 more lines like \"E (30006) diskio_sdmmc: "
+			 "sdmmc_write_blocks failed (0x107)\" in 5 s)"), "held errors: their count said");
+	check(console_problems() == problems + 6,
+	      "held errors: the count line at the errors' level (red), not grey");
+	/* 40 lines of a kind over 2 s, then a crash that is not the emulator's
+	   own abort (which says the counts itself): the crash screen's last
+	   lines have the count and the newest line held */
+	console_puts(CON_INFO, "-- mark 8");
+	for (int i = 0; i < 40; i++) {
+		console_host_set_ms(40000 + 50 * i);
+		snprintf(line, sizeof(line), "read_desc: sel %x base 0 limit 0 off 77b8 at "
+			 "0028:c0039dc8 (%d)", 0x77bc + i, i + 1);
+		console_host_tee_line(line);
+	}
+	check(lines_after("-- mark 8", "read_desc: ") == 5, "40 of a kind in 2 s: 5 out");
+	struct crash_report r2 = {
+		.core = 0, .what = "Load access fault",
+		.mepc = 0x40012345, .ra = 0x40012300, .sp = 0x2f07d000, .mcause = 5, .mtval = 0x10,
+	};
+	console_draw_crash(fb, W, H, &r2);
+	write_ppm("console-5-crash-held.ppm", fb);
+	const char *held_line = "(not shown: 35 more lines like \"read_desc: sel 77e3 base 0 "
+		"limit 0 off 77b8 at 0028:c0039dc8 (40)\" before the crash)";
+	check(line_after("-- mark 8", held_line),
+	      "at the crash: the count and the newest line held, into the ring");
+	const char *cnt = after("-- mark 8");
+	cnt = cnt ? strstr(cnt, "(not shown: 35 ") : NULL;
+	check(cnt && strstr(cnt, "\nCRASH (the crash screen was shown):\n"),
+	      "the count before the crash report's own lines");
+	bool on_screen = false;
+	for (int row = 2; row < 29 && !on_screen; row++) {
+		char text[COLS + 1];
+		row_text(fb, row, 0, text);
+		on_screen = !strncmp(text, held_line, COLS);
+	}
+	check(on_screen, "the count on the crash screen, among the log's last lines");
+	console_log_limit(false);
+	check(lines_after("-- mark 8", "(not shown: 35 ") == 1, "said once");
 
 	/* the UART got every line, also those printed while the picture had
 	   the panel */

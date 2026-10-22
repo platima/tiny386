@@ -3,7 +3,8 @@
 # guest in guest_df.S, against i386.c built as the Korvo-1 builds it (its
 # board header) and as the Linux route and tiny386's own Makefile build it
 # (no board header); then against v3.7's i386.c, where the double fault
-# must stop the emulator (the test sees the fault).
+# must stop the emulator (the test sees the fault), and (v3.9) against
+# v3.8's, where the front end's note comes after the line naming the cause.
 #
 #   bash tests/host/cpu/run_cpu.sh [OUT]
 #
@@ -46,6 +47,15 @@ st=$?
 grep -v "^\(IP\|code\|stack\|stkf\|abort\|@\)" "$OUT/korvo1.log" | sed 's/^/    | /'
 result $st "i386.c as the Korvo-1 builds it: double faults delivered, the shutdown clean"
 
+# TRY1's way out, which no guest here reaches: read in i386.c, the note
+# (cpu_abort_begin()) before its "@ file function line"
+body=$(sed -n '/^static void noinline cpu_abort_at(/,/^}/p' "$TREE/i386.c")
+nb=$(echo "$body" | grep -n "cpu_abort_begin();" | head -1 | cut -d: -f1)
+nd=$(echo "$body" | grep -n 'dolog("@ ' | head -1 | cut -d: -f1)
+grep -q '^#define TRY1(f) .*{ cpu_abort_at(cpu, __FILE__, __FUNCTION__, __LINE__); }' "$TREE/i386.c" &&
+    [ -n "$nb" ] && [ -n "$nd" ] && [ "$nb" -lt "$nd" ]
+result $? "TRY1's way out: the front end's note before its \"@ file function line\" (read in i386.c)"
+
 build plain "$TREE/i386.c" -DI386_ALIGNED_ONLY
 "$OUT/test_double_fault-plain" "$OUT/guest_df.bin" "$OUT/guest_df.sym" > "$OUT/plain.log" 2>&1
 st=$?
@@ -60,6 +70,19 @@ if git -C "$TREE" rev-parse -q --verify v3.7 >/dev/null; then
     st=$?
     grep -v "^\(IP\|code\|stack\|stkf\)" "$OUT/v3.7.log" | sed 's/^/    | /'
     result $st "v3.7's i386.c: the double fault stops the emulator (the test sees the fault)"
+fi
+
+if git -C "$TREE" rev-parse -q --verify v3.8 >/dev/null; then
+    # v3.9 calls the front end's note before the line that names the cause;
+    # v3.8's i386.c, after it: the note's two checks must fail, and only they
+    git -C "$TREE" show v3.8:i386.c > "$OUT/i386-v3.8.c"
+    build v3.8 "$OUT/i386-v3.8.c" $BOARD
+    "$OUT/test_double_fault-v3.8" "$OUT/guest_df.bin" "$OUT/guest_df.sym" > "$OUT/v3.8.log" 2>&1
+    nf=$(grep -c "FAIL line" "$OUT/v3.8.log")
+    nn=$(grep "FAIL line" "$OUT/v3.8.log" | grep -c "the front end's note once")
+    grep "FAIL line" "$OUT/v3.8.log" | sed 's/^/    | /'
+    [ "$nf" = 2 ] && [ "$nn" = 2 ]
+    result $? "v3.8's i386.c: the note after the cause, and nothing else wrong (the test sees it)"
 fi
 
 echo "cpu: $pass passed, $fail failed"
