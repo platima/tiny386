@@ -30,13 +30,30 @@
  *   6. The beat watch: no progress for 10 s is a stall, only while running.
  *   7. The record kept over a reset: written, read back, refused when any
  *      byte of it is wrong.
+ *   8. The brightness (v3.7): the colour table at full scale with v3.6's
+ *      hues; the scale against an exact model at every level for every
+ *      channel value; 0 dark, 255 the table, 70 v3.6's colours; at the
+ *      default, the brightest channel 8 to 10 of 255, every colour about an
+ *      eighth of v3.6's light, no lit channel put out and no colour turned
+ *      into another (at any level above 0); the level held to 0 to 255; and
+ *      the panic path's bit-banged frames and the RMT frames carrying the
+ *      same scaled bits.  Given the path of esp/main (run.sh gives it), it
+ *      also reads status_led.c and status_code.c: every frame made there
+ *      goes through status_frame_grb(), which with its level is in
+ *      internal RAM.
  */
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "status_code.h"
+
+/* The colour table at full scale (status_code.c), as this test expects it */
+#define WHITE_FULL  0x929292u
+#define RED_FULL    0xff0000u
+#define YELLOW_FULL 0xdb8000u
 
 static int fails, checks;
 
@@ -421,11 +438,11 @@ static void test_patterns(void)
 	/* errors: red for the card and its files, yellow for the board, the
 	   number of blinks their place in each */
 	static const struct { int err, blinks; uint32_t rgb; } table[] = {
-		{ STATUS_ERR_NO_CARD, 1, 0x460000 }, { STATUS_ERR_NO_INI, 2, 0x460000 },
-		{ STATUS_ERR_BIOS, 3, 0x460000 }, { STATUS_ERR_INI, 4, 0x460000 },
-		{ STATUS_ERR_STOPPED, 5, 0x460000 }, { STATUS_ERR_PSRAM, 1, 0x3c2300 },
-		{ STATUS_ERR_HDMI_CHIP, 2, 0x3c2300 }, { STATUS_ERR_NO_MONITOR, 3, 0x3c2300 },
-		{ STATUS_ERR_KEYBOARD, 4, 0x3c2300 }, { STATUS_ERR_STALLED, 5, 0x3c2300 },
+		{ STATUS_ERR_NO_CARD, 1, RED_FULL }, { STATUS_ERR_NO_INI, 2, RED_FULL },
+		{ STATUS_ERR_BIOS, 3, RED_FULL }, { STATUS_ERR_INI, 4, RED_FULL },
+		{ STATUS_ERR_STOPPED, 5, RED_FULL }, { STATUS_ERR_PSRAM, 1, YELLOW_FULL },
+		{ STATUS_ERR_HDMI_CHIP, 2, YELLOW_FULL }, { STATUS_ERR_NO_MONITOR, 3, YELLOW_FULL },
+		{ STATUS_ERR_KEYBOARD, 4, YELLOW_FULL }, { STATUS_ERR_STALLED, 5, YELLOW_FULL },
 	};
 	for (unsigned i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
 		uint32_t rgb, longest;
@@ -442,7 +459,7 @@ static void test_patterns(void)
 	/* the crash: red and white by turns, a quarter second each */
 	for (uint32_t t = 0; t < 4000; t += 50) {
 		uint32_t c = status_panic_pattern(false, t);
-		CHECK(c == ((t / 250) & 1 ? 0x282828u : 0x460000u), "crash at %u ms: %06x", t, c);
+		CHECK(c == ((t / 250) & 1 ? WHITE_FULL : RED_FULL), "crash at %u ms: %06x", t, c);
 	}
 	/* the crash before app_main(): yellow 1 */
 	uint32_t rgb, longest;
@@ -461,7 +478,7 @@ static void test_state(void)
 	CHECK(status_state_stage(&s, STATUS_STAGE_STARTED) == 0, "started: an error shows");
 	/* no card yet: red 1, over the stage */
 	CHECK(status_state_error(&s, STATUS_ERR_NO_CARD, true) == STATUS_ERR_NO_CARD, "no card");
-	CHECK(status_pattern(&s, 0) == 0x460000, "no card: not red at 0 ms");
+	CHECK(status_pattern(&s, 0) == RED_FULL, "no card: not red at 0 ms");
 	/* the card goes in */
 	CHECK(status_state_error(&s, STATUS_ERR_NO_CARD, false) == 0, "card in: still an error");
 	status_state_stage(&s, STATUS_STAGE_CARD);
@@ -488,7 +505,7 @@ static void test_state(void)
 	struct status_state r = { 0 };
 	status_state_stage(&r, STATUS_STAGE_RUNNING);
 	CHECK(status_state_error(&r, STATUS_ERR_STALLED, true) == STATUS_ERR_STALLED, "stall");
-	CHECK(status_pattern(&r, 0) == 0x3c2300, "stall: not yellow");
+	CHECK(status_pattern(&r, 0) == YELLOW_FULL, "stall: not yellow");
 	CHECK(status_state_error(&r, STATUS_ERR_STALLED, false) == 0, "stall cleared");
 	CHECK(status_pattern(&r, 500) == status_stage_rgb(STATUS_STAGE_RUNNING), "running again");
 }
@@ -507,7 +524,7 @@ static void test_replay(void)
 	uint32_t prev = 0;
 	for (uint32_t t = 0; t < 1200; t++) {
 		uint32_t c = status_pattern(&s, t);
-		CHECK(c == 0 || c == 0x282828, "lead-in at %u ms: %06x", t, c);
+		CHECK(c == 0 || c == WHITE_FULL, "lead-in at %u ms: %06x", t, c);
 		if (c && !prev)
 			flashes++;
 		prev = c;
@@ -519,7 +536,7 @@ static void test_replay(void)
 		uint32_t c = status_pattern(&s, t);
 		if (c && !prev)
 			blinks++;
-		CHECK(c == 0 || c == 0x3c2300, "old code at %u ms: %06x", t, c);
+		CHECK(c == 0 || c == YELLOW_FULL, "old code at %u ms: %06x", t, c);
 		prev = c;
 	}
 	CHECK(blinks == 3, "old code: %d blinks", blinks);
@@ -527,15 +544,15 @@ static void test_replay(void)
 	      "after the replay: not the present stage");
 	/* a present error during the replay waits for it */
 	status_state_fatal(&s, STATUS_ERR_NO_INI);
-	CHECK(status_pattern(&s, 100) == 0x282828, "a present error cut the lead-in short");
-	CHECK(status_pattern(&s, s.replay_end_ms) == 0x460000, "after the replay: not red 2");
+	CHECK(status_pattern(&s, 100) == WHITE_FULL, "a present error cut the lead-in short");
+	CHECK(status_pattern(&s, s.replay_end_ms) == RED_FULL, "after the replay: not red 2");
 
 	/* a crash (1 flash), the last run showing nothing: its stage, 2 s */
 	struct status_state c = { 0 };
 	status_replay_setup(&c, STATUS_CAUSE_CRASH, STATUS_STAGE_CARD, 0);
 	status_state_stage(&c, STATUS_STAGE_STARTED);
 	CHECK(c.replay_end_ms == 300 + 600 + 2000, "crash replay ends at %u", c.replay_end_ms);
-	CHECK(status_pattern(&c, 50) == 0x282828 && status_pattern(&c, 200) == 0 &&
+	CHECK(status_pattern(&c, 50) == WHITE_FULL && status_pattern(&c, 200) == 0 &&
 	      status_pattern(&c, 400) == 0, "crash lead-in");
 	CHECK(status_pattern(&c, 1000) == status_stage_rgb(STATUS_STAGE_CARD), "old stage");
 	/* a brownout: 3 flashes */
@@ -555,7 +572,7 @@ static void test_replay(void)
 	struct status_state n = { 0 };
 	status_replay_setup(&n, STATUS_CAUSE_NONE, STATUS_STAGE_RUNNING, STATUS_ERR_NO_INI);
 	status_state_stage(&n, STATUS_STAGE_STARTED);
-	CHECK(n.replay_end_ms == 0 && status_pattern(&n, 0) == 0x282828, "no cause: a replay");
+	CHECK(n.replay_end_ms == 0 && status_pattern(&n, 0) == WHITE_FULL, "no cause: a replay");
 }
 
 /* ==== 6. the beat watch ==== */
@@ -621,7 +638,381 @@ static void test_record(void)
 	CHECK(sizeof(struct status_record) == 12, "the record is %zu bytes", sizeof(struct status_record));
 }
 
-int main(void)
+/* ==== 8. the brightness ==== */
+
+/* v3.3 to v3.6's colours (about a quarter of full), the full-scale table
+   v3.7 has, and what the default level gives */
+static const struct hue {
+	const char *name;
+	uint32_t v36, full, at_default;
+} hues[] = {
+	{ "white", 0x282828, WHITE_FULL, 0x050505 },
+	{ "blue", 0x00003c, 0x0000db, 0x000008 },
+	{ "cyan", 0x002d2d, 0x00a4a4, 0x000606 },
+	{ "magenta", 0x320032, 0xb600b6, 0x060006 },
+	{ "green", 0x003200, 0x00b600, 0x000600 },
+	{ "red", 0x460000, RED_FULL, 0x090000 },
+	{ "yellow", 0x3c2300, YELLOW_FULL, 0x080500 },
+};
+#define NHUES ((int) (sizeof(hues) / sizeof(hues[0])))
+
+/* channel k of a colour: 0 red, 1 green, 2 blue */
+static uint32_t chan(uint32_t rgb, int k)
+{
+	return (rgb >> (16 - 8 * k)) & 0xff;
+}
+
+/* The scale worked out another way: the whole step nearest c * level / 255
+   (never a tie, 255 being odd), in 64 bits, then 1 for a channel that is
+   lit but would come to 0 at a level above 0. */
+static uint32_t model(uint32_t c, uint32_t level)
+{
+	if (level > 255)
+		level = 255;
+	uint32_t v = (uint32_t) ((2ull * c * level + 255) / 510);
+	if (!v && c && level)
+		v = 1;
+	return v;
+}
+
+static uint32_t model_rgb(uint32_t rgb, uint32_t level)
+{
+	return model(chan(rgb, 0), level) << 16 | model(chan(rgb, 1), level) << 8 |
+	       model(chan(rgb, 2), level);
+}
+
+/* the 24 bits an RMT frame of grb carries, read back by their high times */
+static uint32_t rmt_bits(uint32_t grb)
+{
+	uint32_t out[STATUS_RMT_SYMBOLS], back = 0;
+	status_rmt_frame(grb, out);
+	for (int i = 0; i < 24; i++)
+		back = back << 1 | ((out[1 + i] & 0x7fff) * (1e9 / STATUS_RMT_HZ) > 500);
+	return back;
+}
+
+/* the same for the panic path's bit-bang (status_bb.h) at 80 MHz, the
+   built code's layout, one cycle a step; ~0 if the frame is not whole */
+static uint32_t bb_bits(uint32_t grb)
+{
+	struct status_bb t;
+	status_bb_timing(&t, 80);
+	sim_cost_read = sim_cost_store = sim_cost_insn = 1;
+	sim_rise0 = sim_rise1 = BB_RISE_INSNS;
+	sim_fall = BB_FALL_INSNS;
+	if (sim_frame(grb, &t, 80) != 49)
+		return 0xffffffffu;
+	uint32_t back = 0;
+	for (int i = 0; i < 24; i++)
+		back = back << 1 | ((sim_edge[2 + 2 * i] - sim_edge[1 + 2 * i]) * 12.5 > 500);
+	return back;
+}
+
+/* a source file with its comments taken out (strings kept), or NULL */
+static char *read_code(const char *dir, const char *name)
+{
+	char path[512];
+	snprintf(path, sizeof(path), "%s/%s", dir, name);
+	FILE *f = fopen(path, "rb");
+	if (!f)
+		return NULL;
+	fseek(f, 0, SEEK_END);
+	long n = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	char *buf = malloc(n + 1);
+	if (!buf || fread(buf, 1, n, f) != (size_t) n) {
+		fclose(f);
+		free(buf);
+		return NULL;
+	}
+	fclose(f);
+	buf[n] = 0;
+	char *o = buf;
+	for (char *p = buf; *p;) {
+		if (p[0] == '/' && p[1] == '*') {
+			char *e = strstr(p + 2, "*/");
+			p = e ? e + 2 : p + strlen(p);
+			*o++ = ' ';
+		} else if (p[0] == '/' && p[1] == '/') {
+			while (*p && *p != '\n')
+				p++;
+		} else {
+			*o++ = *p++;
+		}
+	}
+	*o = 0;
+	return buf;
+}
+
+static int ident_char(char c)
+{
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+}
+
+/* the calls of fn in src (the name on its own, then a bracket), and in
+   *first how many have an argument list that starts with arg */
+static int calls_of(const char *src, const char *fn, const char *arg, int *first)
+{
+	size_t fl = strlen(fn);
+	int n = 0;
+	*first = 0;
+	for (const char *p = src; (p = strstr(p, fn)); p += fl) {
+		if ((p > src && ident_char(p[-1])) || ident_char(p[fl]))
+			continue;
+		const char *q = p + fl;
+		while (*q == ' ' || *q == '\t' || *q == '\n')
+			q++;
+		if (*q != '(')
+			continue;
+		q++;
+		while (*q == ' ' || *q == '\t' || *q == '\n')
+			q++;
+		n++;
+		if (arg && !strncmp(q, arg, strlen(arg)))
+			(*first)++;
+	}
+	return n;
+}
+
+/* the body of the function whose definition starts with head, up to the
+   first line that is only a closing brace; "" if not found */
+static const char *body_of(const char *src, const char *head, char *out, size_t len)
+{
+	const char *p = strstr(src, head), *e = p ? strstr(p, "\n}") : NULL;
+	out[0] = 0;
+	if (p && e && (size_t) (e - p) < len) {
+		memcpy(out, p, e - p);
+		out[e - p] = 0;
+	}
+	return out;
+}
+
+static void test_brightness(const char *src_dir)
+{
+	const uint32_t d = STATUS_BRIGHTNESS_DEFAULT;
+
+	/* nothing has set it yet: the default, as from power-on */
+	CHECK(status_brightness() == d, "the level at start is %u, not %u", status_brightness(), d);
+
+	/* the table at full scale: v3.6's colours times 255/70, red at 255 */
+	static const struct { int stage, hue; } stages[] = {
+		{ STATUS_STAGE_STARTED, 0 }, { STATUS_STAGE_SCREEN, 1 }, { STATUS_STAGE_CARD, 2 },
+		{ STATUS_STAGE_INI, 3 }, { STATUS_STAGE_BIOS, 4 }, { STATUS_STAGE_RUNNING, 4 },
+		{ STATUS_STAGE_PC_OFF, 0 },
+	};
+	for (unsigned i = 0; i < sizeof(stages) / sizeof(stages[0]); i++)
+		CHECK(status_stage_rgb(stages[i].stage) == hues[stages[i].hue].full,
+		      "stage %s: %06x, not %s at full scale %06x", status_stage_name(stages[i].stage),
+		      status_stage_rgb(stages[i].stage), hues[stages[i].hue].name,
+		      hues[stages[i].hue].full);
+	for (int e = STATUS_ERR_NO_CARD; e <= STATUS_ERR_STOPPED; e++)
+		CHECK(status_error_rgb(e) == RED_FULL, "%s: %06x", status_error_name(e), status_error_rgb(e));
+	for (int e = STATUS_ERR_PSRAM; e <= STATUS_ERR_STALLED; e++)
+		CHECK(status_error_rgb(e) == YELLOW_FULL, "%s: %06x", status_error_name(e),
+		      status_error_rgb(e));
+	CHECK(status_panic_pattern(false, 0) == RED_FULL && status_panic_pattern(false, 250) == WHITE_FULL &&
+	      status_panic_pattern(true, 0) == YELLOW_FULL, "the crash's colours are not the table's");
+	uint32_t top = 0;
+	for (int h = 0; h < NHUES; h++)
+		for (int k = 0; k < 3; k++) {
+			uint32_t a = chan(hues[h].v36, k), b = chan(hues[h].full, k);
+			CHECK(b == (a * 255 + 35) / 70, "%s channel %d: %u at full scale, not v3.6's %u "
+			      "times 255/70", hues[h].name, k, b, a);
+			if (b > top)
+				top = b;
+		}
+	CHECK(top == 255, "the table's brightest channel is %u, not 255", top);
+
+	/* the scale against the model: every value of every channel at every
+	   level, the other two channels set at the same time */
+	int bad_levels = 0;
+	for (uint32_t level = 0; level <= 255; level++) {
+		int bad = 0;
+		uint32_t first_rgb = 0, first_got = 0;
+		for (uint32_t c = 0; c <= 255; c++) {
+			/* red takes every value, green every value (7c is a
+			   permutation of 0 to 255), blue every value */
+			uint32_t rgb = c << 16 | ((c * 7 + level) & 0xff) << 8 | (255 - c);
+			uint32_t got = status_scale(rgb, level);
+			if (got != model_rgb(rgb, level) && !bad++) {
+				first_rgb = rgb;
+				first_got = got;
+			}
+			if (level < 255 && status_scale(c, level + 1) < status_scale(c, level) && !bad++) {
+				first_rgb = c;
+				first_got = status_scale(c, level + 1);
+			}
+		}
+		CHECK(!bad, "level %u: %d channel values scaled wrongly, the first %06x to %06x, the "
+		      "model says %06x", level, bad, first_rgb, first_got, model_rgb(first_rgb, level));
+		bad_levels += bad != 0;
+	}
+	printf("brightness: every channel value at every level 0 to 255 as the model has it "
+	       "(%d levels wrong), and never darker one level up\n", bad_levels);
+	static const uint32_t over[] = { 256, 1000, 0x7fffffffu, 0xffffffffu };
+	for (unsigned i = 0; i < 4; i++)
+		for (int h = 0; h < NHUES; h++)
+			CHECK(status_scale(hues[h].full, over[i]) == hues[h].full,
+			      "level %u: %s is %06x", over[i], hues[h].name, status_scale(hues[h].full, over[i]));
+
+	/* 0 dark, 255 the table, 70 v3.6's colours exactly */
+	for (int h = 0; h < NHUES; h++) {
+		CHECK(status_scale(hues[h].full, 0) == 0, "level 0: %s lit", hues[h].name);
+		CHECK(status_scale(hues[h].full, 255) == hues[h].full, "level 255: %s is %06x",
+		      hues[h].name, status_scale(hues[h].full, 255));
+		CHECK(status_scale(hues[h].full, 70) == hues[h].v36, "level 70: %s is %06x, not v3.6's %06x",
+		      hues[h].name, status_scale(hues[h].full, 70), hues[h].v36);
+	}
+
+	/* the default: the brightest channel 8 to 10 of 255 (v3.6: 70), each
+	   colour about an eighth of v3.6's light (its channels' sum, which is
+	   what the LED's three PWM duties add up to), as STATUS-LED.md lists */
+	uint32_t top_d = 0;
+	printf("brightness: the default, %u of 255:", d);
+	for (int h = 0; h < NHUES; h++) {
+		uint32_t s = status_scale(hues[h].full, d), sum = 0, sum36 = 0;
+		for (int k = 0; k < 3; k++) {
+			sum += chan(s, k);
+			sum36 += chan(hues[h].v36, k);
+			if (chan(s, k) > top_d)
+				top_d = chan(s, k);
+		}
+		double share = (double) sum / sum36;
+		printf(" %s %06x (%.3f of v3.6's)", hues[h].name, s, share);
+		CHECK(s == hues[h].at_default, "the default: %s is %06x, not %06x", hues[h].name, s,
+		      hues[h].at_default);
+		CHECK(share >= 0.10 && share <= 0.16, "the default: %s gives %.3f of v3.6's light, "
+		      "not about an eighth", hues[h].name, share);
+	}
+	printf("\n");
+	CHECK(top_d >= 8 && top_d <= 10, "the default's brightest channel is %u, not 8 to 10", top_d);
+
+	/* at every level above 0: no lit channel put out, no dark one lit, so
+	   every colour stays itself and unlike the others (yellow never red,
+	   white never magenta); from the default up, every two lit channels of
+	   a colour within a quarter of the table's ratio (yellow stays yellow) */
+	double worst = 0;
+	const char *worst_name = "";
+	uint32_t worst_level = 0;
+	for (uint32_t level = 1; level <= 255; level++) {
+		for (int h = 0; h < NHUES; h++) {
+			uint32_t s = status_scale(hues[h].full, level);
+			for (int k = 0; k < 3; k++)
+				CHECK(!chan(s, k) == !chan(hues[h].full, k), "level %u: %s channel %d is %u",
+				      level, hues[h].name, k, chan(s, k));
+			for (int j = 0; j < h; j++)
+				CHECK(s != status_scale(hues[j].full, level), "level %u: %s and %s the same",
+				      level, hues[h].name, hues[j].name);
+			if (level < d)
+				continue;
+			for (int a = 0; a < 3; a++)
+				for (int b = a + 1; b < 3; b++) {
+					if (!chan(hues[h].full, a) || !chan(hues[h].full, b))
+						continue;
+					double want = (double) chan(hues[h].full, a) / chan(hues[h].full, b);
+					double got = (double) chan(s, a) / chan(s, b);
+					double off = got > want ? got / want - 1 : want / got - 1;
+					if (off > worst) {
+						worst = off;
+						worst_name = hues[h].name;
+						worst_level = level;
+					}
+					CHECK(off <= 0.25, "level %u: %s's channels %d and %d %.3f, the table's %.3f",
+					      level, hues[h].name, a, b, got, want);
+				}
+		}
+	}
+	printf("brightness: at every level 1 to 255 each colour keeps its lit channels and differs "
+	       "from the others; from %u up its channels' ratios are within %.1f%% of the table's "
+	       "(the most off: %s at %u; yellow at the default %u:%u, the table's %u:%u)\n", d,
+	       worst * 100, worst_name, worst_level, chan(status_scale(YELLOW_FULL, d), 0),
+	       chan(status_scale(YELLOW_FULL, d), 1), chan(YELLOW_FULL, 0), chan(YELLOW_FULL, 1));
+
+	/* the level as set: held to 0 to 255 */
+	static const struct { int in; uint32_t out; } sets[] = {
+		{ INT_MIN, 0 }, { -1, 0 }, { 0, 0 }, { 1, 1 }, { 70, 70 }, { 255, 255 }, { 256, 255 },
+		{ INT_MAX, 255 }, { 9, 9 },
+	};
+	for (unsigned i = 0; i < sizeof(sets) / sizeof(sets[0]); i++) {
+		status_brightness_set(sets[i].in);
+		CHECK(status_brightness() == sets[i].out, "set to %d: the level is %u, not %u", sets[i].in,
+		      status_brightness(), sets[i].out);
+	}
+
+	/* every frame at the level set, and the panic path's frames with the
+	   same bits as the RMT's: the crash's red and white, the early crash's
+	   yellow and its dark, at the default, 0, 1, 70 and 255 */
+	static const uint32_t levels[] = { STATUS_BRIGHTNESS_DEFAULT, 0, 1, 70, 255 };
+	int frames = 0;
+	for (unsigned l = 0; l < sizeof(levels) / sizeof(levels[0]); l++) {
+		status_brightness_set((int) levels[l]);
+		for (int h = 0; h < NHUES; h++)
+			CHECK(status_frame_grb(hues[h].full) == status_grb(model_rgb(hues[h].full, levels[l])),
+			      "level %u: %s's frame %06x", levels[l], hues[h].name,
+			      status_frame_grb(hues[h].full));
+		static const struct { bool early; uint32_t ms; } shown[] = {
+			{ false, 0 }, { false, 250 }, { true, 0 }, { true, 400 },
+		};
+		for (unsigned i = 0; i < 4; i++) {
+			uint32_t rgb = status_panic_pattern(shown[i].early, shown[i].ms);
+			uint32_t want = status_grb(model_rgb(rgb, levels[l]));
+			uint32_t grb = status_frame_grb(rgb), bb = bb_bits(grb), rmt = rmt_bits(grb);
+			frames += 2;
+			CHECK(bb == want && rmt == want, "level %u, %s crash at %u ms (%06x): the bit-bang "
+			      "sends %06x, the RMT %06x, not %06x", levels[l], shown[i].early ? "an early" :
+			      "a", shown[i].ms, rgb, bb, rmt, want);
+		}
+	}
+	status_brightness_set(STATUS_BRIGHTNESS_DEFAULT);
+	CHECK(bb_bits(status_frame_grb(status_panic_pattern(false, 0))) == status_grb(0x090000) &&
+	      bb_bits(status_frame_grb(status_panic_pattern(true, 0))) == status_grb(0x080500),
+	      "the default: the crash's red or the early crash's yellow is not as STATUS-LED.md says");
+	printf("brightness: %d frames of the crash patterns, bit-banged and RMT, at 5 levels: the same "
+	       "scaled bits\n", frames);
+
+	/* the code itself: every frame in status_led.c made through
+	   status_frame_grb(), and status_code.c keeping it, the scale and the
+	   level in internal RAM, with no 64-bit arithmetic in the scale */
+	if (!src_dir) {
+		printf("brightness: no esp/main path given, so status_led.c and status_code.c not read\n");
+		return;
+	}
+	char *led = read_code(src_dir, "status_led.c"), *code = read_code(src_dir, "status_code.c");
+	CHECK(led && code, "status_led.c or status_code.c not found in %s", src_dir);
+	if (!led || !code) {
+		free(led);
+		free(code);
+		return;
+	}
+	int good, n;
+	n = calls_of(led, "status_rmt_frame", "status_frame_grb(", &good);
+	CHECK(n >= 1 && good == n, "status_led.c: %d of its %d status_rmt_frame() calls take "
+	      "status_frame_grb()", good, n);
+	int bbn, bbgood;
+	bbn = calls_of(led, "status_bb_frame", "status_frame_grb(", &bbgood);
+	CHECK(bbn >= 2 && bbgood == bbn, "status_led.c: %d of its %d status_bb_frame() calls take "
+	      "status_frame_grb()", bbgood, bbn);
+	int raw = calls_of(led, "status_grb", NULL, &good);
+	CHECK(raw == 0, "status_led.c calls status_grb() %d times, a colour without the brightness", raw);
+	CHECK(strstr(code, "STATUS_IRAM uint32_t status_scale(") &&
+	      strstr(code, "STATUS_IRAM uint32_t status_frame_grb(") &&
+	      strstr(code, "static STATUS_DRAM volatile uint32_t s_level"),
+	      "status_code.c: the scale, status_frame_grb() or the level not marked for internal RAM");
+	char body[2048];
+	body_of(code, "STATUS_IRAM uint32_t status_frame_grb(", body, sizeof(body));
+	CHECK(strstr(body, "s_level") && calls_of(body, "status_scale", NULL, &good) == 1,
+	      "status_frame_grb() does not scale by the level");
+	body_of(code, "STATUS_IRAM uint32_t status_scale(", body, sizeof(body));
+	CHECK(body[0] && !strstr(body, "uint64_t") && !strstr(body, "long") && !strstr(body, "double") &&
+	      !strstr(body, "float"), "status_scale(): 64-bit or floating-point arithmetic, or not found");
+	printf("brightness: status_led.c makes its %d RMT and %d bit-banged frames through "
+	       "status_frame_grb() and calls status_grb() nowhere; status_code.c has the scale, "
+	       "status_frame_grb() and the level in internal RAM, the scale in 32 bits\n", n, bbn);
+	free(led);
+	free(code);
+}
+
+int main(int argc, char **argv)
 {
 	test_rmt();
 	test_bitbang();
@@ -630,6 +1021,7 @@ int main(void)
 	test_replay();
 	test_watch();
 	test_record();
+	test_brightness(argc > 1 ? argv[1] : NULL);
 	printf("status LED: %d checks, %d failed\n", checks, fails);
 	return fails ? 1 : 0;
 }

@@ -280,16 +280,19 @@ $CC $CFLAGS -DEMULINK_CHECKED -I"$TREE" -o "$OUT/test_floppy" "$HERE/test_floppy
 "$OUT/test_floppy" "$OUT"
 result $? "misc.c: floppy drives 0 and 1 only, nothing past the image's end, refused writes counted"
 
-# ==== 15. the status LED (v3.3) ====
+# ==== 15. the status LED (v3.3; the brightness v3.7) ====
 # status_code.c as the firmware has it, and status_bb.h (the panic handler's
 # bit-bang) with a pretend cycle counter: the RMT frame and every bit-banged
 # edge against both LEDs' timing, the colours and blinks, the error-code
-# state machine, the replay after a reset, the beat watch, the record.
+# state machine, the replay after a reset, the beat watch, the record, and
+# the brightness: the scale at every level, the default, both paths' frames
+# at the same level (esp/main given, so that status_led.c and status_code.c
+# are read for how their frames are made).
 echo
 $CC $CFLAGS -DSTATUS_HOST -I"$TREE/esp/main" -o "$OUT/test_status" \
     "$HERE/test_status.c" "$TREE/esp/main/status_code.c" || exit 1
-"$OUT/test_status"
-result $? "status LED: RMT and bit-banged timing for both LEDs, patterns, state machine, replay, beat watch, record"
+"$OUT/test_status" "$TREE/esp/main"
+result $? "status LED: RMT and bit-banged timing for both LEDs, patterns, state machine, replay, beat watch, record, brightness"
 
 # ==== 16. the sound mix (v3.5): tests/host/dosboard/audio_mix_test.c ====
 # esp/main/audio_mix.c with the emulator's own pcspk.c, adlib.c, fmopl.c
