@@ -134,7 +134,7 @@ struct CPUI386 {
 #define wordmask ((uword) ((sword) -1))
 #define TRY(f) if(!(f)) { return false; }
 #define TRYL(f) if(unlikely(!(f))) { return false; }
-#define TRY1(f) if(unlikely(!(f))) { dolog("@ %s %s %d\n", __FILE__, __FUNCTION__, __LINE__); cpu_abort(cpu, -1); }
+#define TRY1(f) if(unlikely(!(f))) { cpu_abort_at(cpu, __FILE__, __FUNCTION__, __LINE__); }
 #define THROW(ex, err) do { cpu->excno = (ex); cpu->excerr = (err); return false; } while(0)
 #define THROW0(ex) do { cpu->excno = (ex); return false; } while(0)
 
@@ -206,18 +206,36 @@ enum {
 
 static void cpu_debug(CPUI386 *cpu);
 
-/* a front end's own lines for the log, first thing in cpu_abort() (the
-   ESP-IDF port's disk and timer figures, and its UART back on for the
-   dump); NULL for none */
+/* a front end's own lines for the log (the ESP-IDF port's disk and timer
+   figures, and its UART back on for the dump); NULL for none.  Called
+   once, first thing when the emulator stops: before the line that names
+   the cause, where there is one (TRY1's "@ file function line", deliver()'s
+   "shutdown:"), so that the front end's lines come before it and the cause
+   goes wherever the front end sends the dump. */
 void (*cpu_abort_note)(void);
+
+static void cpu_abort_begin(void)
+{
+	void (*note)(void) = cpu_abort_note;
+	cpu_abort_note = NULL;
+	if (note)
+		note();
+}
 
 void cpu_abort(CPUI386 *cpu, int code)
 {
-	if (cpu_abort_note)
-		cpu_abort_note();
+	cpu_abort_begin();
 	dolog("abort: %d %x cycle %ld\n", code, code, cpu->cycle);
 	cpu_debug(cpu);
 	abort();
+}
+
+/* TRY1's way out: where it failed, then the abort */
+static void noinline cpu_abort_at(CPUI386 *cpu, const char *file, const char *fn, int line)
+{
+	cpu_abort_begin();
+	dolog("@ %s %s %d\n", file, fn, line);
+	cpu_abort(cpu, -1);
 }
 
 static uword sext8(u8 a)
@@ -3331,9 +3349,11 @@ static bool enter_helper(CPUI386 *cpu, bool opsz16, uword sp_mask,
 	cpu->idt.base = base; \
 	cpu->idt.limit = limit;
 
-/* LLDT takes the null selector (no LDT) or a present LDT descriptor in the
-   GDT; anything else is #GP(selector), as on a 386, so that a bad LDT shows
-   where it is loaded, not at its first use */
+/* LLDT takes the null selector (no LDT) or an LDT descriptor in the GDT.
+   A selector in the LDT, or a descriptor of another type, is #GP(selector)
+   here; a not-present LDT descriptor is #NP(selector), from set_seg().  As
+   on a 386, so that a bad LDT shows where it is loaded, not at its first
+   use. */
 static bool lldt_check(CPUI386 *cpu, int sel)
 {
 	sel &= 0xffff;
@@ -5089,6 +5109,7 @@ static void IRAM_ATTR deliver(CPUI386 *cpu, int no, bool pusherr, int what)
 		int c1 = exc_class(what), c2 = exc_class(second);
 		if (second < 0 || second > EX_PF || tries >= 3 ||
 		    (c1 == EXC_DOUBLE && (c2 == EXC_CONTRIB || c2 == EXC_PAGE))) {
+			cpu_abort_begin();
 			dolog("shutdown: %s (error %x) while delivering %s at %04x:%08x, "
 			      "ESP %08x, CR2 %08x; vector 8 is %s\n", exc_name(second),
 			      (unsigned) cpu->excerr, exc_name(what),

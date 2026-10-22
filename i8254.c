@@ -275,7 +275,9 @@ static void pit_reset(void *opaque)
    stack runs off its page.  So when more periods than this have gone by
    since the last tick raised, the extra ones are dropped and one is
    raised, on the counter's own phase.  0 raises every one, as tiny386 did
-   before. */
+   before.  N above 1 is not a cap at N: up to N owed are all raised, one
+   a step as before, and more than N are dropped down to one (40 owed with
+   N = 4 give one tick, tests/host/test_pit.c). */
 int i8254_max_owed = 1;
 /* the most periods owed at once, and the ticks dropped, since the start:
    for a front end's diagnostics */
