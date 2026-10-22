@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -509,7 +510,7 @@ static void i386_task(void *arg)
 
 static const char *const known_keys[] = {
 	"esp:ssid", "esp:pass", "esp:enable_usb", "esp:console",
-	"esp:lcd_invalidate",
+	"esp:lcd_invalidate", "esp:led_brightness",
 #ifdef TINY386_CRASH_TEST
 	"esp:crash_test",
 #endif
@@ -532,6 +533,38 @@ static bool known_key(const char *section, const char *name)
 			return true;
 	}
 	return false;
+}
+
+/* [esp] led_brightness: the status LED's level, 0 (dark, a crash included)
+   to 255, taken at once, so that the LED is at it from the ini on; until
+   then it is at STATUS_BRIGHTNESS_DEFAULT (status_code.h). */
+static void set_led_brightness(const char *value)
+{
+#ifdef STATUS_LED_GPIO
+	char *end;
+	long v = strtol(value, &end, 10);
+	while (*end == ' ' || *end == '\t')
+		end++;
+	if (end == value || *end) {
+		console_printf(CON_WARN, "%s: led_brightness = %s is not a number "
+			       "from 0 to 255; it was ignored.", s_ini_name, value);
+		return;
+	}
+	if (v < 0 || v > STATUS_BRIGHTNESS_MAX) {
+		long held = v < 0 ? 0 : STATUS_BRIGHTNESS_MAX;
+		console_printf(CON_WARN, "%s: led_brightness = %s is outside 0 to "
+			       "255; %ld is used.", s_ini_name, value, held);
+		v = held;
+	}
+	status_led_brightness((int) v);
+	if (v == 0)
+		console_puts(CON_INFO, "Status LED: dark (led_brightness = 0), a "
+			     "crash included.");
+#else
+	(void) value;
+	console_printf(CON_INFO, "%s: led_brightness is ignored: this board "
+		       "has no status LED.", s_ini_name);
+#endif
 }
 
 static int parse_esp_ini(struct esp_ini_config *conf,
@@ -558,6 +591,8 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		conf->console_s = atoi(value);
 	} else if (NAME("lcd_invalidate")) {
 		conf->lcd_invalidate = atoi(value);
+	} else if (NAME("led_brightness")) {
+		set_led_brightness(value);
 	} else if (NAME("crash_test")) {
 		conf->crash_test = atoi(value);
 	}
