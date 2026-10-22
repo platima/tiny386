@@ -32,7 +32,9 @@ int audio_mix_block(int16_t *out, const int16_t *sb, const int16_t *opl,
 
 /* One block from the three devices themselves (AdlibState, SB16State,
    PCSpkState), asked as pc.c's mixer_callback() asks them, mixed by
-   audio_mix_block().  Returns what that returns. */
+   audio_mix_block().  Returns what that returns.  n is held to
+   AUDIO_MIX_MAX and made even; an n that comes to 0 or less makes nothing
+   (no device asked, out untouched) and returns 0. */
 int audio_mix_devices(int16_t *out, int n, int shift, void *adlib, void *sb16,
 		      void *pcspk);
 

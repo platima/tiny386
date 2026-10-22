@@ -58,6 +58,12 @@ int audio_mix_devices(int16_t *out, int n, int shift, void *adlib, void *sb16,
 	if (n > AUDIO_MIX_MAX)
 		n = AUDIO_MIX_MAX;
 	n &= ~1;
+	/* nothing to make: no device is asked and out is left as it was.
+	   i2s.c always asks for MIXER_BUF_LEN; this keeps the function safe on
+	   its own, since memset() would take a negative n as a huge size (v3.5
+	   review, N2) */
+	if (n <= 0)
+		return 0;
 	/* pc.c's mixer_callback() with its free = 2 n bytes: the AdLib's mono
 	   into n bytes, the SB16's stereo into 2 n, the PC speaker's 8 bits
 	   into n / 2, each device leaving what it does not fill as it was */
