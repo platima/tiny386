@@ -402,10 +402,10 @@ void ch9350_input_sink(ch9350_sink_t *sink, ch9350_input_t *t)
 
 /* Nothing at all from the chip this long after its reset: yellow 4 on the
    status LED until a byte comes.  In state 0 the chip asks for status every
-   second (DS26 7.2.4.2); in state 2 it echoes the LED frame sent each second
-   (ch9350.md 6.5, seen by others, not checked here), so a working chip with
-   nothing plugged in may also be quiet: the LED then says yellow 4 until a
-   keyboard or mouse goes in. */
+   second (DS26 7.2.4.2); in state 2 it is said to echo the LED frame this
+   task sends each second (ch9350.md 6.5, seen by others, not checked here).
+   If a working chip with nothing plugged in says nothing at all, the LED
+   shows yellow 4 until a keyboard or mouse goes in. */
 #define CH9350_SILENT_US 3000000
 
 static ch9350_parser_t parser;
