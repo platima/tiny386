@@ -461,7 +461,8 @@ static void test_watch(void)
 	for (; t < stop + 20000; t += STATUS_TICK_MS)
 		if (status_watch_step(&w, beats, t, true) && !seen)
 			seen = t;
-	CHECK(seen == stop + STATUS_STALL_MS - STATUS_TICK_MS || seen == stop + STATUS_STALL_MS,
+	/* 10 s, as STATUS-LED.md says, give or take one look of the LED task */
+	CHECK(seen == stop + 10000 - STATUS_TICK_MS || seen == stop + 10000,
 	      "stall seen %u ms after the last beat", seen - stop);
 	/* beating again: cleared at once */
 	CHECK(!status_watch_step(&w, ++beats, t, true), "not cleared by a beat");
