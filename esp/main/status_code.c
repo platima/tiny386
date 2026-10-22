@@ -65,9 +65,9 @@ static const STATUS_DRAM struct {
 /* the crash: red and white by turns */
 #define PANIC_HALF_MS   250
 #define PANIC_CYCLE_MS  2000
-/* the PC running: dark for a moment every 2 s */
-#define BEAT_PERIOD_MS  2000
-#define BEAT_DARK_MS    100
+/* the PC running: a steady green (v3.3 to v3.7 were dark for 0.1 s every
+   2 s), and the disk light's blue, the screen stage's colour */
+#define DISK_LIGHT      BLUE
 /* the PC switched off: slow white */
 #define OFF_HALF_MS     1000
 /* the replay's lead-in: one quick white flash per cause, then a gap */
@@ -268,7 +268,7 @@ uint32_t status_pattern(const struct status_state *s, uint32_t now_ms)
 		return status_error_pattern(e, now_ms);
 	switch (s->stage) {
 	case STATUS_STAGE_RUNNING:
-		return now_ms % BEAT_PERIOD_MS < BEAT_DARK_MS ? BLACK : GREEN;
+		return s->disk ? DISK_LIGHT : GREEN;
 	case STATUS_STAGE_PC_OFF:
 		return (now_ms / OFF_HALF_MS) & 1 ? BLACK : WHITE;
 	default:
@@ -289,6 +289,15 @@ bool status_watch_step(struct status_watch *w, uint32_t beats, uint32_t now_ms,
 		w->stalled = true;
 	}
 	return w->stalled;
+}
+
+/* ==== the disk light ==== */
+
+bool status_disk_step(struct status_disk *d, uint32_t count)
+{
+	bool moved = count != d->last;
+	d->last = count;
+	return moved;
 }
 
 /* ==== the record ==== */

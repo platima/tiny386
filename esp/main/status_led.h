@@ -31,7 +31,8 @@ void status_led_error(int err, bool on);
 /* tiny386 has stopped: the first such error stays for good. */
 void status_led_fatal(int err);
 /* [esp] led_brightness, as the ini is read: 0 (dark, a crash included) to
-   255 (full); STATUS_BRIGHTNESS_DEFAULT until then.  Sent within 50 ms. */
+   255 (full); STATUS_BRIGHTNESS_DEFAULT until then.  Sent within one look
+   (STATUS_TICK_MS, 20 ms). */
 void status_led_brightness(int level);
 
 /* the emulator's beat: run_pc() once a step; the LED's task notices when it
@@ -41,6 +42,11 @@ static inline void status_led_heartbeat(void)
 {
 	__atomic_store_n(&status_led_beats, status_led_beats + 1, __ATOMIC_RELAXED);
 }
+/* The disk light (v3.8): count gives the guest's reads and writes of its
+   disk, CD and floppy images so far; the LED's task calls it at each look
+   while the PC runs, on core 0, and shows blue for a look in which it has
+   moved.  Set once, before the PC starts; until then, no disk light. */
+void status_led_disk_counter(uint32_t (*count)(void));
 
 /* The panic handler (crash.c): status_led_panic() on its way in, with
    interrupts off, bit-bangs the first frame of the crash pattern and notes
@@ -62,6 +68,7 @@ static inline void status_led_error(int err, bool on) { (void) err; (void) on; }
 static inline void status_led_fatal(int err) { (void) err; }
 static inline void status_led_brightness(int level) { (void) level; }
 static inline void status_led_heartbeat(void) { }
+static inline void status_led_disk_counter(uint32_t (*count)(void)) { (void) count; }
 static inline void status_led_panic(void) { }
 static inline bool status_led_panicking(void) { return false; }
 static inline void status_led_test_early(void) { }

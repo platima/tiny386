@@ -385,6 +385,14 @@ static unsigned disk_writes(void)
 	return ide_write_count() + emulink_write_count();
 }
 
+/* the status LED's disk light (v3.8): every read and write the guest asks
+   of its disks, CDs and floppies, each counted by one store in ide.c and
+   misc.c; read by the LED's task on core 0 */
+static uint32_t disk_activity(void)
+{
+	return ide_activity + emulink_activity;
+}
+
 static void disk_flush(PC *pc)
 {
 	ide_flush();
@@ -522,6 +530,9 @@ static void i386_task(void *arg)
 	   screen: forgotten before vga_task can see it */
 	speed_forget_requests();
 	xEventGroupSetBits(global_event_group, BIT0);
+	/* the LED: a steady green, and blue for each 20 ms in which the guest
+	   reads or writes a disk */
+	status_led_disk_counter(disk_activity);
 	status_led_stage(STATUS_STAGE_RUNNING);
 	/* the keyboard and mouse reach the PC from now: keys pressed while
 	   the console was up would wait in the PS/2 queue ahead of the BIOS's

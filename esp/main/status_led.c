@@ -5,7 +5,8 @@
  * Normal running: ESP-IDF's RMT driver sends each frame (one reset symbol
  * and 24 bit symbols, status_rmt_frame()), from a task on core 0 that looks
  * at the state every STATUS_TICK_MS and sends a frame when the colour
- * changes, and once a second anyway.
+ * changes, and once a second anyway.  While the PC runs it also looks at
+ * the guest's disk count (status_led_disk_counter()): the disk light.
  *
  * The panic handler: no RMT (its interrupt cannot run, and its driver takes
  * locks).  GPIO37 is taken back from the RMT through the GPIO matrix and
@@ -78,6 +79,8 @@ static uint32_t s_syms[STATUS_RMT_SYMBOLS];
 static esp_err_t s_rmt_err = ESP_ERR_INVALID_STATE;
 static uint32_t s_sent_rgb = 0xffffffffu;
 static uint32_t s_sent_level = 0xffffffffu;     /* the brightness it was sent at */
+/* the disk light's count, from esp_main.c: set once, read by the LED task */
+static uint32_t (*volatile s_disk_count)(void);
 
 /* ==== the state ==== */
 
@@ -118,6 +121,11 @@ void status_led_fatal(int err)
 void status_led_brightness(int level)
 {
 	status_brightness_set(level);
+}
+
+void status_led_disk_counter(uint32_t (*count)(void))
+{
+	s_disk_count = count;
 }
 
 /* ==== RMT ==== */
@@ -179,6 +187,7 @@ static void led_task(void *arg)
 {
 	(void) arg;
 	struct status_watch watch = { 0 };
+	struct status_disk disk = { 0 };
 	TickType_t wake = xTaskGetTickCount();
 	uint32_t sent_at = 0;
 
@@ -190,9 +199,9 @@ static void led_task(void *arg)
 		portENTER_CRITICAL(&s_lock);
 		st = s_state;
 		portEXIT_CRITICAL(&s_lock);
+		bool running = st.stage == STATUS_STAGE_RUNNING;
 		bool was = st.active & (1u << STATUS_ERR_STALLED);
-		bool stalled = status_watch_step(&watch, status_led_beats, now,
-						 st.stage == STATUS_STAGE_RUNNING);
+		bool stalled = status_watch_step(&watch, status_led_beats, now, running);
 		if (stalled != was) {
 			status_led_error(STATUS_ERR_STALLED, stalled);
 			if (stalled)
@@ -204,6 +213,11 @@ static void led_task(void *arg)
 			st = s_state;
 			portEXIT_CRITICAL(&s_lock);
 		}
+		/* the disk light: blue for this look if the guest read or wrote
+		   since the last one (status_pattern() shows it only while the
+		   PC runs with no error to show) */
+		uint32_t (*count)(void) = s_disk_count;
+		st.disk = count && running && status_disk_step(&disk, count());
 		uint32_t rgb = status_pattern(&st, now);
 		/* a changed colour or brightness at once; the same one again
 		   every second, in case a frame was lost */

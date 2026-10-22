@@ -35,7 +35,8 @@ enum status_stage {
 	STATUS_STAGE_CARD,      /* cyan: the card is mounted */
 	STATUS_STAGE_INI,       /* magenta: an ini was found (the menu may wait) */
 	STATUS_STAGE_BIOS,      /* green: BIOS loaded, the console's hold */
-	STATUS_STAGE_RUNNING,   /* green, dark for 0.1 s every 2 s: the PC runs */
+	STATUS_STAGE_RUNNING,   /* green, the PC runs; blue for a moment each time the
+				   guest reads or writes a disk (v3.8: the disk light) */
 	STATUS_STAGE_PC_OFF,    /* white, 1 s on and 1 s off: the guest switched off */
 	STATUS_STAGE_COUNT
 };
@@ -76,7 +77,10 @@ const char *status_error_name(int err);
 
 /* ==== the state the pattern is made from ==== */
 #define STATUS_STALL_MS   10000 /* no progress for this long: STATUS_ERR_STALLED */
-#define STATUS_TICK_MS    50    /* how often the LED task looks */
+/* How often the LED task looks (v3.8: 20 ms, was 50): each look is one
+   step of the disk light, short enough to flicker as a PC's hard disk
+   light does.  A whole number of FreeRTOS ticks (10 ms on both boards). */
+#define STATUS_TICK_MS    20
 
 struct status_state {
 	uint8_t stage;          /* enum status_stage */
@@ -86,6 +90,11 @@ struct status_state {
 	uint8_t prev_cause;     /* enum status_cause */
 	uint8_t prev_stage;
 	uint8_t prev_error;
+	/* the disk light: 1 for a look in which the guest read or wrote a disk
+	   (status_disk_step()); the LED task sets it on its own copy, so it
+	   lasts one look.  Blue in place of the running green; nothing in any
+	   other stage, and an error or the replay goes over it. */
+	uint8_t disk;
 	uint32_t replay_end_ms; /* 0: no replay */
 };
 
@@ -104,7 +113,8 @@ int status_state_fatal(struct status_state *s, int err);
 int status_shown_error(const struct status_state *s);
 
 /* The LED's colour at now_ms (ms since status_led_init()), 0x00RRGGBB, at
-   full scale (the brightness is applied by status_frame_grb()). */
+   full scale (the brightness is applied by status_frame_grb()).  The PC
+   running is a steady green, blue while s->disk is set. */
 uint32_t status_pattern(const struct status_state *s, uint32_t now_ms);
 
 /* The colour of the panic loop at ms since the panic: red and white by
@@ -156,9 +166,26 @@ struct status_watch {
 };
 
 /* Called every STATUS_TICK_MS with the beat count; returns true while the
-   count has not moved for STATUS_STALL_MS with the PC running. */
+   count has not moved for STATUS_STALL_MS with the PC running.  The beat
+   is the emulator's own (run_pc() once a step), so this needs no blink on
+   the LED: a running green that stays green while the emulator has stopped
+   turns to yellow 5. */
 bool status_watch_step(struct status_watch *w, uint32_t beats, uint32_t now_ms,
 		       bool running);
+
+/* ==== the disk light (v3.8) ====
+ * The emulator counts the guest's reads and writes of its disk, CD and
+ * floppy images (ide.c, misc.c: one store each, nothing more), and the LED
+ * task, at each look, asks whether the count has moved since the last look:
+ * if so, that look is blue (status_state.disk).  So one access lights it
+ * for one look, 20 ms; accesses a look or less apart keep it lit, and the
+ * gaps between bursts show green, as a PC's hard disk light flickers. */
+struct status_disk {
+	uint32_t last;          /* the count at the last look */
+};
+
+/* true if count differs from the last look's (a wrap counts as a move) */
+bool status_disk_step(struct status_disk *d, uint32_t count);
 
 /* ==== the last run, kept in memory a reset does not clear ==== */
 #define STATUS_RECORD_MAGIC 0x4c454453u /* "SDEL" */
