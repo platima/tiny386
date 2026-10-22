@@ -76,7 +76,8 @@ static const char *const stage_names[STATUS_STAGE_COUNT] = {
 
 static const char *const error_names[STATUS_ERR_COUNT] = {
 	"none", "no card", "no ini file", "a BIOS file missing",
-	"problems in the ini", "tiny386 stopped", "stopped before tiny386 started (PSRAM?)",
+	"problems in the ini", "tiny386 stopped",
+	"stopped before tiny386 started (PSRAM not found, or failing its test?)",
 	"the MS7210 not found or not answering", "no monitor", "keyboard path not working",
 	"the emulator stalled", "a crash",
 };

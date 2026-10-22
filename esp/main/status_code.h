@@ -29,7 +29,8 @@
 /* ==== how far the boot has come: a steady colour each ==== */
 enum status_stage {
 	STATUS_STAGE_NONE = 0,  /* app_main() not reached: the LED is dark */
-	STATUS_STAGE_STARTED,   /* white: app_main() runs, so PSRAM passed start-up */
+	STATUS_STAGE_STARTED,   /* white: app_main() runs, so the PSRAM chip was found
+				   (and on the DOS board passed its memory test) */
 	STATUS_STAGE_SCREEN,    /* blue: the panel or the HDMI picture is up */
 	STATUS_STAGE_CARD,      /* cyan: the card is mounted */
 	STATUS_STAGE_INI,       /* magenta: an ini was found (the menu may wait) */
@@ -49,7 +50,10 @@ enum status_error {
 	STATUS_ERR_INI,         /* red 4: other problems in the ini (a disk image missing...) */
 	STATUS_ERR_STOPPED,     /* red 5: tiny386 stopped for another reason (see the screen) */
 	/* yellow: the board */
-	STATUS_ERR_PSRAM,       /* yellow 1: stopped before tiny386 started: PSRAM, most likely */
+	STATUS_ERR_PSRAM,       /* yellow 1: stopped before tiny386 started: most likely the
+				   PSRAM not found, or (DOS board) failing its memory test;
+				   a PSRAM found but failing its set-up does not stop the
+				   start-up, and ends later as red 5 */
 	STATUS_ERR_HDMI_CHIP,   /* yellow 2: the MS7210 not found, or not answering */
 	STATUS_ERR_NO_MONITOR,  /* yellow 3: no monitor (HDMI hot plug low) */
 	STATUS_ERR_KEYBOARD,    /* yellow 4: the USB host or the CH9350L not working */
@@ -149,21 +153,34 @@ void status_record_put(struct status_record *r, int stage, int error);
 bool status_record_valid(const struct status_record *r);
 
 /* ==== the bits on the wire ====
- * One timing for both LEDs.  Inolux IN-PI554FCH datasheet v2.2 p. 10: T0H
+ * One timing for both LEDs.  Inolux IN-PI554FCH datasheet v2.2 p. 11: T0H
  * 0.3, T1H 0.6, T0L 0.9, T1L 0.6 us, each +-0.15 us, a bit 1.25 +-0.6 us,
- * reset 80 us or more.  Worldsemi WS2812B-2020-V6 (the nearest Worldsemi
- * datasheet to hand; which WS2812B revision the Korvo-1 carries is not
- * known): T0H 0.22 to 0.38, T1H 0.58 to 1, T0L and T1L 0.58 to 1 us, a bit
- * 1.25 us or more, reset 280 us or more.  Together: T0H 220 to 380 ns, T0L
- * 750 to 1000, T1H 580 to 750, T1L 580 to 750, a bit 1250 to 1850.  The
- * times below sit inside those with room for the bit-bang's jitter of one
- * pass round its waiting loop (3 instructions; 37.5 ns at the 80 MHz the
- * second-stage bootloader runs the CPU at, 9.4 ns at 320 MHz), in steps of
+ * reset 80 us or more.  Worldsemi WS2812B-2020-V6 p. 5 (the nearest
+ * Worldsemi datasheet to hand; which WS2812B revision the Korvo-1 carries
+ * is not known): T0H 0.22 to 0.38, T1H 0.58 to 1, T0L and T1L 0.58 to 1 us,
+ * a bit 1.25 us or more, reset 280 us or more.  Together: T0H 220 to 380
+ * ns, T0L 750 to 1000, T1H 580 to 750, T1L 580 to 750, a bit 1250 to 1850.
+ *
+ * The level shifter (a BSS138 and a 1k pull-up to 5 V on both boards)
+ * slows each rise at the LED by about 38 ns (CHANGES-A2.md section 4, an
+ * estimate), so the LED sees each high time that much shorter and each low
+ * time that much longer.  The LED tells a 0 from a 1 by the high time, so
+ * the high times are set to be inside both windows as sent and as the LED
+ * sees them, and the T1H is also inside an older WS2812B datasheet's 0.8
+ * +-0.15 us as the LED sees it (reported, not read at Worldsemi): 700 ns
+ * sent, about 662 ns at the LED.  The low times are inside both windows as
+ * sent; T0L at the LED comes to about the WS2812B-2020's 1 us maximum.
+ *
+ * The bit-bang's edges land up to one pass round its waiting loop late (3
+ * instructions; 37.5 ns at the 80 MHz the second-stage bootloader runs the
+ * CPU at, 9.4 ns at 320 MHz), the same for a rise as for a fall
+ * (status_bb.h), so a time can come out that much shorter or longer; T1's
+ * period is 1325 ns so that T1L stays above 580 ns with that.  In steps of
  * 12.5 ns, the RMT's tick.  In picoseconds: */
 #define STATUS_T0H_PS   337500
 #define STATUS_T0_PS    1300000 /* so T0L 962.5 ns */
-#define STATUS_T1H_PS   662500
-#define STATUS_T1_PS    1300000 /* so T1L 637.5 ns */
+#define STATUS_T1H_PS   700000
+#define STATUS_T1_PS    1325000 /* so T1L 625 ns */
 #define STATUS_RESET_US 300
 
 /* RMT: 80 MHz (REF_F80M undivided), 12.5 ns a tick.  A frame is one reset
