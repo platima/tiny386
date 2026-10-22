@@ -40,6 +40,9 @@ void ide_flush(void);
 #ifdef BUILD_ESP32
 /* reads, writes and flushes of the disk images that failed */
 unsigned ide_error_count(void);
+/* every read and write the guest asks of a disk or CD image, counted with
+   one store and nothing more: the status LED's disk light reads it */
+extern volatile unsigned ide_activity;
 #endif
 
 void ide_data_writew(void *opaque, uint32_t val);

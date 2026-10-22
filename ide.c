@@ -1982,6 +1982,13 @@ unsigned ide_error_count(void)
 {
     return bf_errors;
 }
+
+/* the guest's reads and writes of its disk and CD images, for the status
+   LED's disk light (esp/main/status_led.c reads it from the other core) */
+volatile unsigned ide_activity;
+#define BF_ACTIVITY() (ide_activity++)
+#else
+#define BF_ACTIVITY() do { } while (0)
 #endif
 
 unsigned ide_write_count(void)
@@ -2037,6 +2044,7 @@ static int bf_read_async(BlockDevice *bs,
 #endif
     if (!bf->f && !BF_IMG(bf))
         return -1;
+    BF_ACTIVITY();
 #ifdef BUILD_ESP32
     /* Nothing past the image's end.  On the card, FatFs's f_lseek() on a
        file open for writing stretches the file to where it is sent, so a
@@ -2102,6 +2110,7 @@ static int bf_write_async(BlockDevice *bs,
     BlockDeviceFile *bf = bs->opaque;
     int ret;
 
+    BF_ACTIVITY();
     switch(bf->mode) {
     case BF_MODE_RO:
         ret = -1; /* error */

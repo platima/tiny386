@@ -28,6 +28,9 @@ void emulink_flush(EMULINK *e);
 #if defined(BUILD_ESP32) || defined(EMULINK_CHECKED)
 /* reads, writes and flushes of the floppy images that failed */
 unsigned emulink_error_count(void);
+/* every floppy read and write, counted with one store: the status LED's
+   disk light, as ide_activity for the disks */
+extern volatile unsigned emulink_activity;
 #endif
 uint32_t emulink_status_read(void *s);
 void emulink_cmd_write(void *s, uint32_t val);

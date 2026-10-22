@@ -492,6 +492,12 @@ static int emulink_range_ok(EMULINK *e)
 	int64_t lba = (c * f->heads + h) * f->sectors + (s - 1);
 	return s >= 1 && lba >= 0 && lba + (int64_t) e->args[2] <= total;
 }
+
+/* the floppy reads and writes, for the status LED's disk light (v3.8) */
+volatile unsigned emulink_activity;
+#define FDD_ACTIVITY() (emulink_activity++)
+#else
+#define FDD_ACTIVITY() do { } while (0)
 #endif
 
 void emulink_flush(EMULINK *e)
@@ -634,6 +640,7 @@ int emulink_data_write_string(void *s, uint8_t *buf, int size, int count)
 			int len = size * count;
 			if (len > e->dataleft)
 				break;
+			FDD_ACTIVITY();
 			int ret = fwrite(buf, 1, len, e->fdd[e->args[0]]);
 #ifdef EMULINK_CHECKED
 			/* taken by the C library but refused by the card, now or
@@ -679,6 +686,7 @@ int emulink_data_read_string(void *s, uint8_t *buf, int size, int count)
 			int len = size * count;
 			if (len > e->dataleft)
 				break;
+			FDD_ACTIVITY();
 			int ret = fread(buf, 1, len, e->fdd[e->args[0]]);
 #ifdef EMULINK_CHECKED
 			if (ret != len) {
