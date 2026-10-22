@@ -1,12 +1,15 @@
 /*
  * The DOS board's own start-up: the board check, the pins that are new on
  * this board, the MS7210 on its I2C bus, the [dosboard] settings, and the
- * hot plug task.  Pins: board_dosboard.h (DESIGN-BRIEF.md section 4).
+ * hot plug task.  Pins: board_dosboard.h (rev A2c, CHANGES-A2.md section 19).
  *
  * Start-up order:
  *   app_main     board_early_init(): probe the MS7210 (chip ID A2 20 0A at
- *                I2C 0x59); on any other board stop here, before a single
- *                pin that is new on the DOS board has been driven.
+ *                I2C 0x59, GPIO0 and GPIO1, the Korvo-1's I2C bus too); on
+ *                any other board stop here, before a single pin that is new
+ *                on the DOS board has been driven.  Then RSTN (GPIO49), the
+ *                USB-A power and the sound's mute (GPIO48: the line out and
+ *                the speakers off until the I2S clocks run, i2s.c).
  *   lcd_init     dosboard_load_config() (the card, dosboard.ini), the RGB
  *                output (PCLK starts), the test card, dosboard_video_start()
  *                (MS7210 sections B to E, which need PCLK).
@@ -153,9 +156,20 @@ static void io_speed(void *ctx, uint32_t hz)
 	bus_hz = hz;
 }
 
+/* RSTN is GPIO49 from rev A2c, a camera input on a Korvo-1, so it is driven
+   only once board_early_init() has made it an output: until then the
+   probe's reset pulse (ms7210.c row A1) is left out, and R603 holds RSTN
+   high. */
+static bool s_rstn_ours;
+/* what board_early_init() saw, for the messages: the Korvo-1 device found
+   on the bus, and whether the MS7210 answered before its reset */
+static int s_korvo1_addr = -1;
+static bool s_found_unreset;
+
 static void io_rstn(void *ctx, int level)
 {
-	gpio_set_level(HDMI_RSTN_GPIO, level);
+	if (s_rstn_ours)
+		gpio_set_level(HDMI_RSTN_GPIO, level);
 }
 
 static void io_delay(void *ctx, uint32_t us)
@@ -252,18 +266,28 @@ static void i2c_close(void)
 
 static void __attribute__((noreturn)) wrong_board(void)
 {
-	/* leave GPIO0 to 2 as they were found: on a Korvo-1 they are the
-	   codec's I2C and MCLK */
-	char seen[64];
+	/* leave GPIO0 and GPIO1 as they were found: on a Korvo-1 they are the
+	   codec's, the touch panel's and the camera's I2C.  No other pin has
+	   been touched (RSTN only once the board is known, since rev A2c puts
+	   it on GPIO49, a camera input on the Korvo-1). */
+	char seen[96];
 
 	i2c_close();
-	gpio_reset_pin(HDMI_RSTN_GPIO);
+	if (s_rstn_ours)
+		gpio_reset_pin(HDMI_RSTN_GPIO);
 	/* yellow 2 on the status LED: on a DOS board with no picture (a dead
 	   MS7210) the LED is all there is.  GPIO37 drives the same LED circuit
 	   on a Korvo-1, so this is safe there too. */
 	status_led_fatal(STATUS_ERR_HDMI_CHIP);
 	if (hdmi.errors < 0)
 		snprintf(seen, sizeof(seen), "the I2C bus could not be set up");
+	else if (s_found_unreset)
+		snprintf(seen, sizeof(seen), "found before its reset, not after it: "
+			 "look at RSTN, GPIO49");
+	else if (s_korvo1_addr >= 0)
+		snprintf(seen, sizeof(seen), "nothing at 0x%02X or 0x%02X, and a Korvo-1's "
+			 "codec or touch panel at 0x%02X", MS7210_I2C_ADDR,
+			 MS7210_I2C_ADDR_ALT, s_korvo1_addr);
 	else if (hdmi.errors)
 		snprintf(seen, sizeof(seen), "nothing answered at 0x%02X or 0x%02X",
 			 MS7210_I2C_ADDR, MS7210_I2C_ADDR_ALT);
@@ -277,12 +301,58 @@ static void __attribute__((noreturn)) wrong_board(void)
 			" (%s).\n"
 			"*** This image is only for the DOS board. On an ESP32-S31-Korvo-1 flash the"
 			" Korvo-1 image.\n"
-			"*** On a DOS board: check the MS7210's 1.2 V and 3.3 V, RSTN (GPIO2) and"
-			" the I2C pull-ups.\n"
+			"*** On a DOS board: check the MS7210's 1.2 V and 3.3 V, RSTN (GPIO49,"
+			" R603 holds it high) and the I2C pull-ups.\n"
 			"*** Halted; nothing else was started.\n",
 			seen);
 		vTaskDelay(pdMS_TO_TICKS(10000));
 	}
+}
+
+/* The MS7210's chip ID at 0x59, else at 0x2B: 0 when found, else -1, with
+   hdmi.errors saying what was seen (below 0: no bus; 0: something else
+   answered at 0x59; above 0: nothing answered at either). */
+static int probe_ms7210(void)
+{
+	ms7210_cfg_t alt;
+
+	if (i2c_readdress(MS7210_I2C_ADDR) != 0) {
+		hdmi.errors = -1;
+		return -1;
+	}
+	if (ms7210_probe(&hdmi, &hdmi_io, NULL) == 0)
+		return 0;
+	/* Nothing answered at 0x59 (SA high, as the board has it, after the
+	   data sheet's text): its figure 3 has SA to ground, 0x2B, so that is
+	   tried before giving up.  Only the MS7210's own chip ID counts at
+	   either (DOS board review, round 2, note 8). */
+	if (hdmi.errors <= 0)
+		return -1;              /* something else answered at 0x59 */
+	fprintf(stderr, "dosboard: nothing at I2C 0x%02X; trying 0x%02X\n",
+		MS7210_I2C_ADDR, MS7210_I2C_ADDR_ALT);
+	if (i2c_readdress(MS7210_I2C_ADDR_ALT) != 0) {
+		hdmi.errors = -1;
+		return -1;
+	}
+	ms7210_default_cfg(&alt);
+	alt.i2c_addr = MS7210_I2C_ADDR_ALT;
+	return ms7210_probe(&hdmi, &hdmi_io, &alt);
+}
+
+/* A Korvo-1's own devices on GPIO0 and GPIO1: its ES8389 codec at 0x10 (or
+   0x11 with its address pin high; the schematic's "0x20" is the 8-bit form,
+   as its "OV3660 0x78" is) and the touch controller of the panel kit at
+   0x14 (or 0x5D) [Korvo-1 schematic v1.1, sheet 3; research s31-module.md
+   7.6].  The DOS board's bus has the MS7210 alone, and whatever is put on
+   J202.  An address probe only: nothing is written. */
+static int korvo1_device(void)
+{
+	static const uint8_t addrs[] = { 0x10, 0x11, 0x14, 0x5D };
+
+	for (unsigned i = 0; i < sizeof(addrs); i++)
+		if (i2c_master_probe(i2c_bus, addrs[i], 50) == ESP_OK)
+			return addrs[i];
+	return -1;
 }
 
 void board_early_init(void)
@@ -291,9 +361,11 @@ void board_early_init(void)
 		.pin_bit_mask = 1ULL << HDMI_RSTN_GPIO,
 		.mode = GPIO_MODE_OUTPUT,
 	};
-	/* GPIO37, the status LED, is status_led.c's (RMT), from app_main() on */
+	/* GPIO37, the status LED, is status_led.c's (RMT), from app_main() on.
+	   GPIO48 (AUD_XSMT) is low before it is an output: the line out and the
+	   speakers stay off from here until i2s.c has the I2S clocks running. */
 	const gpio_config_t outs = {
-		.pin_bit_mask = 1ULL << USB_VBUS_EN_GPIO,
+		.pin_bit_mask = (1ULL << USB_VBUS_EN_GPIO) | (1ULL << AUDIO_MUTE_GPIO),
 		.mode = GPIO_MODE_OUTPUT,
 	};
 	const gpio_config_t ins = {
@@ -305,40 +377,48 @@ void board_early_init(void)
 	/* room for the lines noted until the boot console is up */
 	s_notes = heap_caps_calloc(NOTES_MAX, NOTE_LEN, MALLOC_CAP_SPIRAM);
 	fprintf(stderr, "dosboard: looking for the MS7210 at I2C 0x%02X\n", HDMI_I2C_ADDR);
-	/* RSTN has R603 to +3V3; start high so that the first edge is the reset */
-	gpio_set_level(HDMI_RSTN_GPIO, 1);
-	gpio_config(&rstn);
 	if (i2c_open() != 0) {
 		hdmi.errors = -1;
 		wrong_board();
 	}
-	if (ms7210_probe(&hdmi, &hdmi_io, NULL) != 0) {
-		/* Nothing answered at 0x59 (SA high, as the board has it, after
-		   the data sheet's text): its figure 3 has SA to ground, 0x2B,
-		   so that is tried before giving up.  Only the MS7210's own chip
-		   ID counts at either (DOS board review, round 2, note 8). */
-		ms7210_cfg_t alt;
-		ms7210_default_cfg(&alt);
-		alt.i2c_addr = MS7210_I2C_ADDR_ALT;
+	/* First without the reset pulse (io_rstn() leaves RSTN alone): R603 has
+	   held RSTN high since power-on, so a DOS board's MS7210 should answer,
+	   and on a Korvo-1 GPIO49 is a camera input, not to be driven. */
+	s_found_unreset = probe_ms7210() == 0;
+	if (!s_found_unreset) {
 		if (hdmi.errors <= 0)
-			wrong_board();          /* something else answered at 0x59 */
-		fprintf(stderr, "dosboard: nothing at I2C 0x%02X; trying 0x%02X\n",
-			MS7210_I2C_ADDR, MS7210_I2C_ADDR_ALT);
-		if (i2c_readdress(MS7210_I2C_ADDR_ALT) != 0) {
-			hdmi.errors = -1;
+			wrong_board();          /* no bus, or something else at 0x59 */
+		/* Nothing answered.  A Korvo-1's devices on the bus: stop, with
+		   RSTN never driven.  None: perhaps a DOS board whose MS7210
+		   wants the reset the data sheet asks for (RSTN high 10 ms or more
+		   after its supplies settle, which R603 alone does not give at
+		   power-on), so on to the probe with the reset, as before v3.5. */
+		s_korvo1_addr = korvo1_device();
+		if (s_korvo1_addr >= 0)
 			wrong_board();
-		}
-		if (ms7210_probe(&hdmi, &hdmi_io, &alt) != 0)
-			wrong_board();
+		fprintf(stderr, "dosboard: no MS7210 without a reset, and no Korvo-1 device on "
+			"the bus: trying again with the reset\n");
 	}
+	/* RSTN is ours from here: high first, so that the first edge is the
+	   reset; then the probe again, now with its reset pulse, so that the
+	   MS7210 is set up from a clean reset as the data sheet wants */
+	gpio_set_level(HDMI_RSTN_GPIO, 1);
+	gpio_config(&rstn);
+	s_rstn_ours = true;
+	if (probe_ms7210() != 0)
+		wrong_board();
 
 	/* the right board: the pins that are new on it */
 	gpio_set_level(USB_VBUS_EN_GPIO, 1);     /* USB-A ports on (R309 does so too) */
+	gpio_set_level(AUDIO_MUTE_GPIO, 0);      /* line out and speakers off */
 	gpio_config(&outs);
+	gpio_set_level(AUDIO_MUTE_GPIO, 0);
 	gpio_config(&ins);
-	dosboard_note("dosboard: MS7210 found at I2C 0x%02X%s; card detect says the card is %s.",
+	dosboard_note("dosboard: MS7210 found at I2C 0x%02X%s, %s its reset (RSTN, GPIO49); "
+		      "card detect says the card is %s.",
 		      hdmi.cfg.i2c_addr, hdmi.cfg.i2c_addr == MS7210_I2C_ADDR ? "" :
 		      " (SA low, not as the board is drawn)",
+		      s_found_unreset ? "before and after" : "only after",
 		      gpio_get_level(SD_CD_GPIO) ? "out" : "in");
 }
 

@@ -385,7 +385,8 @@ void ch9350_input_sink(ch9350_sink_t *sink, ch9350_input_t *t)
 #if defined(ESP_PLATFORM) && defined(KM_UART_NUM)
 /*
  * The DOS board: UART1 at 115200 8N1 on GPIO47 (RX) and GPIO55 (TX), RST on
- * GPIO7 (high = reset), S0 on GPIO46 (low = state 2).  One task on core 0.
+ * GPIO56 (high = reset; GPIO7 before rev A2c), S0 on GPIO46 (low = state 2).
+ * One task on core 0.
  */
 #include <stdatomic.h>
 #include <stdbool.h>
@@ -516,7 +517,7 @@ static void ch9350_task(void *arg)
 			status_led_error(STATUS_ERR_KEYBOARD, true);
 			console_uart_printf("ch9350: nothing from the chip %d s after its reset "
 					    "(status LED yellow 4). With a keyboard or mouse plugged "
-					    "in, check U301's 3.3 V, its RST (GPIO7, high = reset) "
+					    "in, check U301's 3.3 V, its RST (GPIO56, high = reset) "
 					    "and the UART lines (GPIO47 from its TXD, GPIO55 to its "
 					    "RXD).",
 					    CH9350_SILENT_US / 1000000);

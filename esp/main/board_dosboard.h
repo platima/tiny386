@@ -4,11 +4,20 @@
 // UART0 for the console and for flashing.  Built against ESP-IDF
 // v6.1-dev-8142-g188e3e55bb.
 //
-// Pins are DESIGN-BRIEF.md section 4 (tiny386-hdmi-board, 2026-10-21).  Every
-// shared function keeps its Korvo-1 pin, so the RGB bus stays on the IO MUX.
+// Pins are rev A2c's (tiny386-hdmi-board dosboard/out/CHANGES-A2.md section
+// 19, 2026-10-22; DESIGN-BRIEF.md section 4 for the rest).  Every shared
+// function keeps its Korvo-1 pin, so the RGB bus stays on the IO MUX.  Rev
+// A2c moved I2S, the MS7210's reset and interrupt and the CH9350L's reset
+// off GPIO2 to GPIO7 to GPIO49 to GPIO56, so that GPIO2 to GPIO7 (the LP
+// core's pins), GPIO57 and GPIO60 are free on the 2 x 8 header J202 with
+// the I2C bus (GPIO0, GPIO1).  This firmware never configures a header pin
+// but GPIO0 and GPIO1: the others stay as the chip leaves them at reset
+// (not driven).  tests/host/dosboard/check_pins.py checks this file against
+// the board's netlist.
 // A DOS board image on a Korvo-1 halts at once (board_early_init() in
 // dosboard.c): it looks for the MS7210's chip ID at I2C 0x59 before driving
-// any pin that is new on this board.
+// any pin that is new on this board.  GPIO49 to GPIO57 are the Korvo-1's
+// camera inputs, so none of them is driven before that.
 #define BUILD_ESP32
 #define BOARD_NAME "the DOS board"
 
@@ -98,15 +107,20 @@
 // select and data only.  In I2S mode the MS7210's SCK_MCLK pin is the bit
 // clock, so there is no MCLK; the PCM5102A has SCK tied low and runs its PLL
 // from the bit clock, which 48 kHz at 16 or 32 bit slots (32 or 64 bit
-// clocks a frame) suits (TI SLAS859C 9.3.5.3).
+// clocks a frame) suits (TI SLAS859C 9.3.5.3).  Rev A2c: GPIO51 to GPIO53
+// (were GPIO3 to GPIO5), through the GPIO matrix.
 #define I2S_NUM  0
 #define I2S_MCLK I2S_GPIO_UNUSED
-#define I2S_BCLK 3
-#define I2S_WS   4
-#define I2S_DOUT 5
-// The PCM5102A's XSMT (pin 17), rev A2: low = soft mute, high = play; R703
-// 10k pulls it up (so with no firmware the line out plays).  i2s.c holds it
-// low until the I2S clocks run, and the panic handler pulls it low.
+#define I2S_BCLK 51
+#define I2S_WS   52
+#define I2S_DOUT 53
+// AUD_XSMT: the PCM5102A's XSMT (pin 17), rev A2, and from rev A2c also the
+// speaker amplifier's SDL and SDR (U702, a TI TPA2012D2, fed from the line
+// out through the jack's switch contacts; CHANGES-A2.md section 20).  Low =
+// the DAC soft-muted and both speakers off, high = both playing; R703 10k
+// pulls it up (so with no firmware both play).  dosboard.c drives it low as
+// soon as the board is known, i2s.c raises it once the I2S clocks run, and
+// the panic handler pulls it low again.
 #define AUDIO_MUTE_GPIO 48
 
 // MS7210 on I2C: registers at 7-bit 0x59 (SA pulled up), and the monitor's
@@ -117,8 +131,11 @@
 #define HDMI_I2C_ADDR   0x59
 #define HDMI_I2C_HZ     100000     /* registers */
 #define HDMI_DDC_HZ     20000      /* while the DDC pass-through is on */
-#define HDMI_RSTN_GPIO  2          /* MS7210 RSTN, low = reset */
-#define HDMI_INT_GPIO   6          /* MS7210 INT, not used: HPD is polled */
+// Rev A2c: RSTN on GPIO49 (was GPIO2), R603 27k to +3V3, so the MS7210 runs
+// before the firmware drives it (the board check reads it then); INT on
+// GPIO54 (was GPIO6), R604 27k to +3V3, never configured.
+#define HDMI_RSTN_GPIO  49         /* MS7210 RSTN, low = reset */
+#define HDMI_INT_GPIO   54         /* MS7210 INT, not used: HPD is polled */
 
 // CH9350L in lower mode, state 2, 115200 baud, on UART1: the keyboard and
 // mouse, through kbd_input.c as the Korvo-1's USB host has them.  The S31's
@@ -126,7 +143,7 @@
 #define KM_UART_NUM  1
 #define KM_RX_GPIO   47            /* from CH9350L TXD */
 #define KM_TX_GPIO   55            /* to CH9350L RXD */
-#define KM_RST_GPIO  7             /* CH9350L RST, high = reset */
+#define KM_RST_GPIO  56            /* CH9350L RST, high = reset (rev A2c; was GPIO7) */
 #define KM_S0_GPIO   46            /* CH9350L S0: low = state 2, high = state 0 */
 #define KM_BAUD      115200
 

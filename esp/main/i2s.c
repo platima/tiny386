@@ -20,14 +20,19 @@ void mixer_callback (void *opaque, uint8_t *stream, int free);
 #ifdef AUDIO_MUTE_GPIO
 /*
  * The DOS board's line out (rev A2): a PCM5102A on the same three I2S lines
- * as the MS7210, its XSMT on AUDIO_MUTE_GPIO.  TI SLAS859C: XSMT low ramps
+ * as the MS7210, its XSMT on AUDIO_MUTE_GPIO, which from rev A2c also shuts
+ * the speaker amplifier down (U702, TPA2012D2: SDL and SDR on the same net,
+ * low = off; it is fed from the line out, so it follows the DAC: off until
+ * the clocks run, off again in a crash).  TI SLAS859C: XSMT low ramps
  * the output down to mute in 104 samples, high ramps it up again (9.3.3),
  * with edges under 20 ns (8.7), so the pin is always driven, never left to
  * R703; with SCK low the DAC starts once BCK and LRCK have run for 16 LRCK
  * periods (11.5.2), and before its clocks stop XSMT should go low 150
- * sample times + 0.2 ms ahead (11.2.1).  So: muted from i2s_main() until the
- * I2S clocks have run for LINE_OUT_START_MS, and muted again, with the
- * output stopped after the ramp, by the panic handler (audio_panic_quiet()).
+ * sample times + 0.2 ms ahead (11.2.1).  So: muted from board_early_init()
+ * (dosboard.c) and again here in i2s_main() until the I2S clocks have run
+ * for LINE_OUT_START_MS, and muted again, with the output stopped after the
+ * ramp, by the panic handler (audio_panic_quiet()).  The TPA2012D2 starts
+ * 3.5 ms after SDL and SDR go high (TI SLOS438F), inside the 20 ms.
  */
 #include "driver/gpio.h"
 #include "esp_rom_sys.h"
@@ -51,10 +56,11 @@ static void line_out_init(void)
 }
 
 /* the panic handler: interrupts off, the other core stopped.  The I2S DMA
-   would go on playing its last buffers round and round, on HDMI and the line
-   out alike: XSMT low first, so the DAC ramps down while its clocks still
-   run, then the I2S output stopped.  Only if it was started: the peripheral
-   is not touched otherwise. */
+   would go on playing its last buffers round and round, on HDMI, the line
+   out and the speakers alike: XSMT low first, so the DAC ramps down while
+   its clocks still run (the speaker amplifier, on the same pin, stops at
+   once), then the I2S output stopped.  Only if it was started: the
+   peripheral is not touched otherwise. */
 void IRAM_ATTR audio_panic_quiet(void)
 {
 	gpio_ll_set_level(&GPIO, AUDIO_MUTE_GPIO, 0);
@@ -99,8 +105,10 @@ static void i2s_task(void *arg)
 		if (muted && esp_timer_get_time() - clocks_from >= LINE_OUT_START_MS * 1000) {
 			muted = false;
 			gpio_set_level(AUDIO_MUTE_GPIO, 1);
-			console_uart_printf("i2s: the line out (PCM5102A) unmuted, %d ms of "
-					    "clocks after the start", LINE_OUT_START_MS);
+			console_uart_printf("i2s: the line out (PCM5102A) and the speakers "
+					    "unmuted, %d ms of clocks after the start; level "
+					    "1/%d (audio_shift %d)", LINE_OUT_START_MS,
+					    1 << i2s_audio_shift, i2s_audio_shift);
 		}
 #endif
 	}
@@ -219,6 +227,11 @@ void i2s_main()
 	 * The tx and rx channels here are registered on different I2S controller,
 	 * Except ESP32 and ESP32-S2, others allow to register two separate tx & rx channels on a same controller */
 	i2s_chan_config_t tx_chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM, I2S_ROLE_MASTER);
+	/* a DMA buffer is cleared once it has been sent, so if the sound task
+	   falls behind the I2S lines carry silence, not the last buffers again
+	   (a buzz, loudest on the speakers): ESP-IDF's "I2S will always send
+	   zero automatically if no data to send" (i2s_common.h) */
+	tx_chan_cfg.auto_clear_after_cb = true;
 #ifdef USE_ES8311
 	ESP_ERROR_CHECK(i2s_new_channel(&tx_chan_cfg, &tx_chan, &rx_chan));
 #else
