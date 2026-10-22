@@ -297,6 +297,7 @@ struct esp_ini_config {
 	int uart_log;           /* the log to the UART too while the PC runs */
 	int fast_seek;          /* the disk images' clusters mapped (disk_image.c) */
 	int timer_catchup;      /* i8254_max_owed: timer ticks owed at once */
+	int memtest;            /* passes of the PSRAM test before the PC is built */
 };
 
 #ifdef TINY386_CRASH_TEST
@@ -549,7 +550,7 @@ static void i386_task(void *arg)
 static const char *const known_keys[] = {
 	"esp:ssid", "esp:pass", "esp:enable_usb", "esp:console",
 	"esp:lcd_invalidate", "esp:led_brightness",
-	"esp:uart_log", "esp:fast_seek", "esp:timer_catchup",
+	"esp:uart_log", "esp:fast_seek", "esp:timer_catchup", "esp:memtest",
 #ifdef TINY386_CRASH_TEST
 	"esp:crash_test",
 #endif
@@ -654,6 +655,8 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		ini_whole(name, value, 0, 1, &conf->fast_seek);
 	} else if (NAME("timer_catchup")) {
 		ini_whole(name, value, 0, 1000, &conf->timer_catchup);
+	} else if (NAME("memtest")) {
+		ini_whole(name, value, 0, 10, &conf->memtest);
 	} else if (NAME("crash_test")) {
 		conf->crash_test = atoi(value);
 	}
@@ -719,6 +722,67 @@ static int parse_ini(void *user, const char *section,
 static long round4k(long n)
 {
 	return (n + 4095) / 4096 * 4096;
+}
+
+/* [esp] memtest = N (v3.8): N passes over the emulator's PSRAM pool before
+   the PC is built, with the panel's DMA reading the frame buffer as it does
+   while the PC runs.  Each word gets a pattern made from its index and the
+   pass (every other pass the inverse), and is read back once the whole
+   pool is written, so that it has long left the 64 KiB cache.  A wrong word
+   means the PSRAM did not keep what it was given: guest memory, and so the
+   guest, would be wrong without any fault in the emulator.  The pool is
+   zeroed after.  Off by default; about a second a pass. */
+static inline uint32_t memtest_word(uint32_t i, uint32_t pass)
+{
+	uint32_t x = i * 2654435761u ^ (pass + 1) * 0x9e3779b9u;
+	x ^= x >> 15;
+	return pass & 1 ? ~x : x;
+}
+
+static void psram_test(int passes)
+{
+	if (passes <= 0 || !psram)
+		return;
+	volatile uint32_t *w = (volatile uint32_t *) psram;
+	uint32_t n = (uint32_t) (psram_len / 4);
+	uint32_t bad = 0, at = 0, want0 = 0, got0 = 0, bits = 0;
+	uint32_t t0 = get_uticks();
+	console_printf(CON_INFO, "PSRAM test ([esp] memtest = %d): %ld KiB, the emulator's "
+		       "pool...", passes, psram_len / 1024);
+	for (uint32_t p = 0; p < (uint32_t) passes; p++) {
+		for (uint32_t i = 0; i < n; i++) {
+			w[i] = memtest_word(i, p);
+			if (!(i & 0x3ffff))
+				vTaskDelay(1);          /* every MiB: core 0's other tasks */
+		}
+		for (uint32_t i = 0; i < n; i++) {
+			uint32_t want = memtest_word(i, p), got = w[i];
+			if (got != want) {
+				if (!bad++) {
+					at = (uint32_t) (uintptr_t) &w[i];
+					want0 = want;
+					got0 = got;
+				}
+				bits |= got ^ want;
+			}
+			if (!(i & 0x3ffff))
+				vTaskDelay(1);
+		}
+	}
+	memset(psram, 0, psram_len);
+	unsigned ms = (unsigned) ((get_uticks() - t0) / 1000);
+	if (!bad)
+		console_printf(CON_GOOD, "PSRAM test: %d pass%s over %ld KiB, every word "
+			       "right (%u ms).", passes, passes == 1 ? "" : "es",
+			       psram_len / 1024, ms);
+	else
+		console_printf(CON_ERROR, "PSRAM test: %u word%s wrong in %d pass%s; the "
+			       "first at %08x, %08x written, %08x read; bits wrong "
+			       "anywhere %08x. The board's PSRAM does not keep what it "
+			       "is given.", (unsigned) bad, bad == 1 ? "" : "s", passes,
+			       passes == 1 ? "" : "es",
+			       (unsigned) at, (unsigned) want0, (unsigned) got0,
+			       (unsigned) bits);
 }
 
 /* The guest's memory: what the ini asks for if it fits; "mem_size = max",
@@ -1197,6 +1261,7 @@ void app_main(void)
 			       "while the emulator waits are made up afterwards." :
 			       "every timer tick missed while the emulator waits is made "
 			       "up afterwards, as before v3.8 (Windows 95 can crash on that).");
+	psram_test(config.memtest);
 
 	if (config.enable_usb) {
 		input_setup();          /* once: it may be running for the menu */
