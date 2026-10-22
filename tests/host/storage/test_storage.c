@@ -234,6 +234,47 @@ static const ff_diskio_impl_t dummy = {
 #define P1 { 1, 0x0C, true, true, "/sdcard", "KORVO_SD", 64, 8192 }
 #define P2_LINUX { 2, 0x83, false, false, "", "", 192, 0 }
 
+/* storage_fatfs_path() (v3.8, for disk_image.c): a path on a mounted
+   volume as FatFs's own, which FatFs then finds (or not, as there says);
+   base NULL: a path on no volume, refused */
+static void fatfs_path(const char *path, const char *base, bool there)
+{
+	char out[64];
+	bool got = storage_fatfs_path(path, out, sizeof(out));
+	if (!base) {
+		CHECK(!got, "storage_fatfs_path(%s) gave %s, where it is on no volume", path,
+		      got ? out : "");
+		return;
+	}
+	const char *drv = host_vfs_drive(base);
+	char want[64];
+	snprintf(want, sizeof(want), "%s%s", drv ? drv : "?", path + strlen(base));
+	CHECK(got && !strcmp(out, want), "storage_fatfs_path(%s): %s, %s wanted", path,
+	      got ? out : "(refused)", want);
+	FILINFO fi;
+	if (got)
+		CHECK((f_stat(out, &fi) == FR_OK) == there, "FatFs %s %s", there ?
+		      "does not find" : "finds", out);
+}
+
+static void fatfs_paths_plat(void)
+{
+	fatfs_path("/sdcard3/win95.img", "/sdcard3", true);
+	fatfs_path("/sdcard3/P3.TXT", "/sdcard3", true);
+	fatfs_path("/sdcard/tiny386/freedos.ini", "/sdcard", true);
+	fatfs_path("/sdcard/win95.img", "/sdcard", false);
+	fatfs_path("/sdcard30/win95.img", NULL, false);
+	fatfs_path("/sdcard3", NULL, false);
+	fatfs_path("/sdcardwin95.img", NULL, false);
+	fatfs_path("/spiflash/tiny386.ini", NULL, false);
+	fatfs_path("sdcard3/win95.img", NULL, false);
+	char small[8];
+	CHECK(!storage_fatfs_path("/sdcard3/win95.img", small, sizeof(small)),
+	      "storage_fatfs_path() into 8 bytes should refuse");
+	printf("  storage_fatfs_path(): /sdcard3/win95.img is %s/win95.img\n",
+	       host_vfs_drive("/sdcard3"));
+}
+
 int main(int argc, char **argv)
 {
 	if (argc < 3) {
@@ -281,6 +322,7 @@ int main(int argc, char **argv)
 		sees("/sdcard3", "tiny386/freedos.ini", "", false);
 		sees("/sdcard3", "P3.TXT", "p3 marker\n", true);
 		sees("/sdcard", "P3.TXT", "", false);
+		fatfs_paths_plat();
 		/* every sector written must be inside p1 or p3 */
 		host_card.allowed[0][0] = 8192;
 		host_card.allowed[0][1] = 131072;
@@ -311,6 +353,8 @@ int main(int argc, char **argv)
 		};
 		expect(w, 1, NULL);
 		sees("/sdcard", "tiny386/freedos.ini", "; p1 freedos.ini\n", true);
+		fatfs_path("/sdcard/tiny386/freedos.ini", "/sdcard", true);
+		fatfs_path("/sdcard3/win95.img", NULL, false);
 	} else if (!strcmp(sc, "four")) {
 		/* four FAT partitions: every logical drive of
 		   CONFIG_FATFS_VOLUME_COUNT 4 used; WIN9X is p3, not the first
@@ -327,6 +371,10 @@ int main(int argc, char **argv)
 		sees("/sdcard4", "P4.TXT", "p4 marker\n", true);
 		sees("/sdcard4", "P3.TXT", "", false);
 		sees("/sdcard", "P2.TXT", "", false);
+		fatfs_path("/sdcard2/P2.TXT", "/sdcard2", true);
+		fatfs_path("/sdcard3/P3.TXT", "/sdcard3", true);
+		fatfs_path("/sdcard4/P4.TXT", "/sdcard4", true);
+		fatfs_path("/sdcard4/P3.TXT", "/sdcard4", false);
 	} else if (!strcmp(sc, "nodrive")) {
 		/* Plat's card with every other logical drive already taken: p3
 		   is named, not mounted, and /mnt/win is not there */

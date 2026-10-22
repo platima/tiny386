@@ -345,6 +345,17 @@ int main(int argc, char **argv)
 	check(console_previous_crashed(), "the next boot knows the last run crashed");
 	check(console_previous_lines() > 5, "and has its last lines");
 
+	/* ==== 6. the UART quiet while the PC runs (v3.8: [esp] uart_log = 0) ==== */
+	printf("the UART quiet\n");
+	console_uart_quiet(true);
+	console_puts(CON_INFO, "quiet: to the ring, not the UART");
+	console_uart_printf("quiet: a UART-only line, dropped");
+	n = console_ring_tail(tail, sizeof(tail), 1);
+	check(n == 1 && !strcmp(tail, "quiet: to the ring, not the UART\n"),
+	      "while quiet a line still goes to the ring");
+	console_uart_quiet(false);
+	console_puts(CON_INFO, "loud again: to the UART");
+
 	/* the UART got every line, also those printed while the picture had
 	   the panel */
 	if (uart) {
@@ -361,6 +372,9 @@ int main(int argc, char **argv)
 		      "the UART has the line printed while the picture had the panel");
 		check(strstr(log, "\nI (100) storage: Filesystem mounted\n") != NULL,
 		      "the UART has the last run's lines");
+		check(strstr(log, "quiet:") == NULL, "nothing reached the UART while it was quiet");
+		check(strstr(log, "\nloud again: to the UART\n") != NULL,
+		      "the UART has the line after it was loud again");
 	} else {
 		check(0, "could not open the UART log");
 	}

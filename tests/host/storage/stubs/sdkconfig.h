@@ -1,7 +1,7 @@
 /* The FatFs and wear levelling lines of the Korvo-1 build's generated
-   sdkconfig.h (build-korvo1/config/sdkconfig.h at v3.1), for ESP-IDF's own
-   ffconf.h on the host.  run_storage.sh compares them with a build's file
-   when one is given. */
+   sdkconfig.h (build-korvo1/config/sdkconfig.h at v3.1; FatFs's fast seek
+   from v3.8), for ESP-IDF's own ffconf.h on the host.  run_storage.sh
+   compares them with a build's file when one is given. */
 #define CONFIG_FATFS_VOLUME_COUNT 4
 #define CONFIG_FATFS_LFN_HEAP 1
 #define CONFIG_FATFS_SECTOR_4096 1
@@ -14,7 +14,9 @@
 #define CONFIG_FATFS_PER_FILE_CACHE 1
 #define CONFIG_FATFS_ALLOC_PREFER_EXTRAM 1
 #define CONFIG_FATFS_ALLOC_PREFER_ALIGNED_WORK_BUFFERS 1
+#define CONFIG_FATFS_USE_FASTSEEK 1
 #define CONFIG_FATFS_USE_STRFUNC_NONE 1
+#define CONFIG_FATFS_FAST_SEEK_BUFFER_SIZE 64
 #define CONFIG_FATFS_VFS_FSTAT_BLKSIZE 0
 #define CONFIG_FATFS_USE_LABEL 1
 #define CONFIG_FATFS_LINK_LOCK 1

@@ -357,6 +357,49 @@ if git -C "$TREE" rev-parse -q --verify v3.5 >/dev/null; then
     result $? "board check test catches v3.5's GPIO49 pulse on a bare Korvo-1 and its stop on a J202 device"
 fi
 
+# ==== 19. the timer after the emulator is held up (v3.8) ====
+# i8254.c and misc.c's CMOS periodic interrupt with a pretend clock: after a
+# hold of many periods one tick is raised and the rest dropped, on the
+# counter's phase (i8254_max_owed); 0 gives every one back to back, as
+# before.  Then i8254.c as tiny386 released it, where the burst has to be
+# seen.
+echo
+$CC $CFLAGS -I"$TREE" -c -o "$OUT/pit_i8254.o" "$TREE/i8254.c" || exit 1
+$CC -O1 -g -w -DEMULINK_CHECKED -I"$TREE" -c -o "$OUT/pit_misc.o" "$TREE/misc.c" || exit 1
+$CC $CFLAGS -I"$TREE" -o "$OUT/test_pit" "$HERE/test_pit.c" "$OUT/pit_i8254.o" \
+    "$OUT/pit_misc.o" || exit 1
+"$OUT/test_pit"
+result $? "i8254.c and the CMOS: missed timer ticks dropped after a hold, one raised, on the counter's phase"
+if git -C "$TREE" rev-parse -q --verify pristine >/dev/null; then
+    git -C "$TREE" show pristine:i8254.c > "$OUT/i8254-pristine.c"
+    $CC -O1 -g -w -I"$TREE" -c -o "$OUT/pit_i8254_pristine.o" "$OUT/i8254-pristine.c" || exit 1
+    $CC $CFLAGS -DPIT_PRISTINE -I"$TREE" -o "$OUT/test_pit_pristine" "$HERE/test_pit.c" \
+        "$OUT/pit_i8254_pristine.o" || exit 1
+    echo "(the same hold against i8254.c at the pristine tag, where the burst has to be there)"
+    "$OUT/test_pit_pristine" pristine | sed 's/^/    | /'
+    result ${PIPESTATUS[0]} "the PIT test sees the burst in pristine i8254.c"
+fi
+
+# ==== 20. faults while an exception or interrupt is delivered (v3.8) ====
+# i386.c with a small protected-mode guest (tests/host/cpu): the double
+# fault through a task gate, as Windows 95's VMM has it, with its error
+# code; the ring 3 stack put back before the fault; a shutdown (and a CR3
+# outside the guest's memory) stopping the emulator with abort(), not a
+# crash; LLDT's checks.  v3.7's i386.c has to stop at the first double
+# fault, as the board did.
+echo
+if bash "$HERE/cpu/run_cpu.sh" "$OUT/cpu" > "$OUT/cpu.log" 2>&1; then
+    st=0
+else
+    st=1
+fi
+if grep -q "^SKIP" "$OUT/cpu.log"; then
+    grep "^SKIP" "$OUT/cpu.log"
+else
+    grep -E "FAILED|^cpu:|^  ok:" "$OUT/cpu.log"
+    result $st "i386.c: double faults delivered through the task gate, the ring 3 stack put back, shutdown and a bad CR3 stop cleanly, LLDT checked"
+fi
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]

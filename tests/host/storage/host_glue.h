@@ -11,6 +11,15 @@ struct host_card_stats {
 	int nallowed;
 	unsigned outside;               /* sectors written outside them */
 	size_t first_outside;
+	/* a card that refuses (disk_image.c's test): read number fail_read_at
+	   (write number fail_write_at) and the fail_n - 1 after it fail; 0:
+	   none */
+	unsigned fail_read_at, fail_write_at, fail_n;
+	unsigned failed;                /* refused so far */
+	/* reads that touch sectors watch_start to watch_start + watch_n - 1
+	   (a volume's FAT) */
+	size_t watch_start, watch_n;
+	unsigned watch_reads;
 };
 extern struct host_card_stats host_card;
 

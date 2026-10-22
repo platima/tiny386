@@ -158,6 +158,30 @@ int hf_fsync(int fd)
 	return f_sync(&s_hf[i].fil) == FR_OK ? 0 : -1;
 }
 
+/* ==== what disk_image.c (v3.8) wants from the firmware ==== */
+
+#include "disk_image.h"
+
+/* a clock that moves on 10 us a look */
+uint32_t get_uticks(void)
+{
+	static uint32_t t;
+	return t += 10;
+}
+
+/* storage.c's map of VFS paths to FatFs's: the test names images by
+   FatFs's own paths ("0:/FREEDOS.IMG").  "stdio": none is on a volume, so
+   ide.c takes its C stdio path (through hf_fopen() here), as before
+   v3.8. */
+static bool s_stdio;
+bool storage_fatfs_path(const char *path, char *out, size_t size)
+{
+	if (s_stdio || strncmp(path, "0:/", 3))
+		return false;
+	snprintf(out, size, "%s", path);
+	return true;
+}
+
 /* ==== ide.c, as the board builds it ==== */
 
 #include "pci.h"
@@ -228,12 +252,197 @@ static FSIZE_t image_size(void)
 	return fi.fsize;
 }
 
+/* a block device the test made, closed whichever way ide.c opened it */
+static void close_bs(BlockDevice *bs)
+{
+	BlockDeviceFile *bf = bs->opaque;
+#ifdef BF_IMG
+	if (bf->img)
+		disk_image_close(bf->img);
+#endif
+	if (bf->f)
+		fclose(bf->f);
+	free(bf);
+	free(bs);
+}
+
+#ifdef BF_IMG
+/* the byte at offset o of FRAG.IMG */
+static uint8_t frag_byte(uint32_t o)
+{
+	return (uint8_t) (o * 7 + (o >> 9));
+}
+
+/* FRAG.IMG in pieces one cluster long: a cluster of it and one of PAD.BIN
+   in turn, as FatFs allocates them */
+static bool make_frag(int pieces, UINT csize)
+{
+	FIL a, b;
+	memset(&a, 0, sizeof(a));
+	memset(&b, 0, sizeof(b));
+	if (f_open(&a, "0:/FRAG.IMG", FA_WRITE | FA_CREATE_ALWAYS) != FR_OK ||
+	    f_open(&b, "0:/PAD.BIN", FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
+		return false;
+	uint8_t *buf = malloc(csize);
+	UINT done;
+	bool ok = true;
+	for (int i = 0; i < pieces && ok; i++) {
+		for (UINT k = 0; k < csize; k++)
+			buf[k] = frag_byte((uint32_t) i * csize + k);
+		ok = f_write(&a, buf, csize, &done) == FR_OK && done == csize;
+		memset(buf, 0xEE, csize);
+		ok = ok && f_write(&b, buf, csize, &done) == FR_OK && done == csize;
+	}
+	free(buf);
+	ok = f_close(&a) == FR_OK && ok;
+	ok = f_close(&b) == FR_OK && ok;
+	return ok;
+}
+
+/* every sector of FRAG.IMG read once, in an order that jumps back and
+   forth; returns the FAT sectors read meanwhile */
+static unsigned read_scrambled(BlockDevice *fb, int64_t nb, bool *data_ok, unsigned *card_reads)
+{
+	static uint8_t sec[512];
+	unsigned w0 = host_card.watch_reads, r0 = host_card.reads;
+	*data_ok = true;
+	for (int64_t i = 0; i < nb; i++) {
+		int64_t s = (i * 7919) % nb;            /* 7919 is prime, nb is not a multiple */
+		if (fb->read_async(fb, (uint64_t) s, sec, 1, NULL, NULL) != 0) {
+			*data_ok = false;
+			continue;
+		}
+		for (int k = 0; k < 512; k++)
+			if (sec[k] != frag_byte((uint32_t) (s * 512 + k)))
+				*data_ok = false;
+	}
+	*card_reads = host_card.reads - r0;
+	return host_card.watch_reads - w0;
+}
+
+/* v3.8: the image's clusters mapped once (FatFs's fast seek), so that a
+   seek reads no FAT, whatever pieces the image is in */
+static void fast_seek_checks(void)
+{
+	FATFS *fs;
+	DWORD fre;
+	f_getfree("0:", &fre, &fs);
+	UINT csize = fs->csize * 512;
+	const int pieces = 300;
+	CHECK(make_frag(pieces, csize), "FRAG.IMG made in %d pieces of %u bytes", pieces, csize);
+	host_card.watch_start = fs->fatbase;
+	host_card.watch_n = (size_t) fs->fsize * fs->n_fats;
+
+	BlockDevice *fb = block_device_init("0:/FRAG.IMG", BF_MODE_RO);
+	int64_t nb = ((BlockDeviceFile *) fb->opaque)->nb_sectors;
+	bool ok;
+	unsigned reads;
+	unsigned fat = read_scrambled(fb, nb, &ok, &reads);
+	CHECK(ok, "mapped: all %lld sectors of FRAG.IMG read back as written", (long long) nb);
+	CHECK(fat == 0, "mapped: %u FAT sector reads for %lld sectors read out of order (0 wanted)",
+	      fat, (long long) nb);
+	CHECK(reads == (unsigned) nb, "mapped: %u card reads for %lld sectors, one each",
+	      reads, (long long) nb);
+	close_bs(fb);
+
+	/* without the map, as through ESP-IDF's VFS before v3.8: the test
+	   sees the FAT walks */
+	disk_image_fast_seek = 0;
+	fb = block_device_init("0:/FRAG.IMG", BF_MODE_RO);
+	fat = read_scrambled(fb, nb, &ok, &reads);
+	CHECK(ok, "not mapped: the sectors read back as written");
+	CHECK(fat > (unsigned) nb, "not mapped: %u FAT sector reads for %lld sectors (the walks "
+	      "the map saves)", fat, (long long) nb);
+	close_bs(fb);
+	disk_image_fast_seek = 1;
+	host_card.watch_n = 0;
+	f_unlink("0:/FRAG.IMG");
+	f_unlink("0:/PAD.BIN");
+}
+
+/* v3.8: a card error costs one access a second try, not the disk for the
+   rest of the run */
+static void recovery_checks(BlockDevice *bs, int64_t nb)
+{
+	static uint8_t want[512], got[512];
+	struct disk_image_stats s0, s1;
+	unsigned e0 = ide_error_count();
+	int r;
+
+	memset(want, 0xC3, 512);
+	CHECK(bs->write_async(bs, 100, want, 1, NULL, NULL) == 0, "sector 100 written");
+
+	disk_image_get_stats(&s0, false);
+	host_card.fail_n = 1;
+	host_card.fail_read_at = host_card.reads + 1;
+	memset(got, 0, 512);
+	r = bs->read_async(bs, 100, got, 1, NULL, NULL);
+	host_card.fail_read_at = 0;
+	disk_image_get_stats(&s1, false);
+	CHECK(r == 0 && !memcmp(got, want, 512), "one read refused by the card: opened again, "
+	      "the read done, the data right");
+	CHECK(s1.errors == s0.errors + 1 && s1.recovered == s0.recovered + 1,
+	      "  counted as one error got over (%u, %u)", s1.errors - s0.errors,
+	      s1.recovered - s0.recovered);
+	CHECK(ide_error_count() == e0, "  not one the guest was told of");
+	bool later = true;
+	for (int i = 0; i < 64; i++)
+		later &= bs->read_async(bs, (uint64_t) ((i * 977) % nb), got, 1, NULL, NULL) == 0;
+	CHECK(later, "  every read after it works (64 reads)");
+
+	memset(want, 0x3C, 512);
+	disk_image_get_stats(&s0, false);
+	host_card.fail_write_at = host_card.writes + 1;
+	r = bs->write_async(bs, 101, want, 1, NULL, NULL);
+	host_card.fail_write_at = 0;
+	disk_image_get_stats(&s1, false);
+	memset(got, 0, 512);
+	CHECK(r == 0 && bs->read_async(bs, 101, got, 1, NULL, NULL) == 0 &&
+	      !memcmp(got, want, 512), "one write refused by the card: opened again, the write "
+	      "done, the sector reads back");
+	CHECK(s1.errors == s0.errors + 1 && s1.recovered == s0.recovered + 1,
+	      "  counted as one error got over");
+
+	/* a card that refuses everything for a while (pulled out): the guest
+	   is told, and once the card answers again the disk works again */
+	host_card.fail_n = 1000000;
+	host_card.fail_read_at = host_card.reads + 1;
+	r = bs->read_async(bs, 100, got, 1, NULL, NULL);
+	CHECK(r != 0, "a card that refuses everything: the read fails");
+	CHECK(ide_error_count() == e0 + 1, "  and the guest is told (%u)", ide_error_count() - e0);
+	host_card.fail_read_at = 0;
+	host_card.fail_n = 1;
+	memset(got, 0, 512);
+	memset(want, 0xC3, 512);
+	r = bs->read_async(bs, 100, got, 1, NULL, NULL);
+	CHECK(r == 0 && !memcmp(got, want, 512), "the card answering again: the next read works "
+	      "and is right");
+}
+#endif
+
+/* before v3.8 (ide.c through C stdio and the VFS): one refused read made
+   FatFs refuse the open image from then on; returns whether it did */
+static bool stdio_sticky(BlockDevice *bs)
+{
+	static uint8_t got[512];
+	host_card.fail_n = 1;
+	host_card.fail_read_at = host_card.reads + 1;
+	int r1 = bs->read_async(bs, 100, got, 1, NULL, NULL);
+	host_card.fail_read_at = 0;
+	int r2 = bs->read_async(bs, 100, got, 1, NULL, NULL);
+	int r3 = bs->read_async(bs, 2000, got, 1, NULL, NULL);
+	printf("  stdio path: a refused read gives %d; the next two, the card answering "
+	       "again, give %d and %d\n", r1, r2, r3);
+	return r1 != 0 && r2 != 0 && r3 != 0;
+}
+
 int main(int argc, char **argv)
 {
 	if (argc < 3) {
-		fprintf(stderr, "usage: test_ide_fatfs IMAGE SECTORS\n");
+		fprintf(stderr, "usage: test_ide_fatfs IMAGE SECTORS [stdio]\n");
 		return 2;
 	}
+	s_stdio = argc > 3 && !strcmp(argv[3], "stdio");
 	setvbuf(stdout, NULL, _IONBF, 0);       /* every line, even if it crashes */
 	int fd = open(argv[1], O_RDWR);
 	if (fd < 0) {
@@ -318,18 +527,29 @@ int main(int argc, char **argv)
 			      host_card.writes - w0 == 1 ? "" : "s");
 		}
 		CHECK(ide_error_count() == 0, "no card errors (%u)", ide_error_count());
-		fclose(((BlockDeviceFile *) d->bs->opaque)->f);
-		free(d->bs->opaque);
-		free(d->bs);
+		close_bs(d->bs);
 		free(d);
 		free(ifs);
 	}
 
+#ifdef BF_IMG
+	if (!s_stdio) {
+		CHECK(bf->img && !bf->f, "the image is open through disk_image.c, not stdio");
+		recovery_checks(bs, nb);
+		fast_seek_checks();
+	} else {
+		CHECK(!bf->img && bf->f, "the image is open through stdio");
+#else
+	{
+#endif
+		/* the test sees the fault that disk_image.c's second try removes */
+		CHECK(stdio_sticky(bs), "stdio path, as before v3.8: after one refused read FatFs "
+		      "refused the image from then on");
+	}
+
 	/* closed, the volume mounted again: the same size and space, and the
 	   writes inside the image there */
-	fclose(bf->f);
-	free(bf);
-	free(bs);
+	close_bs(bs);
 	f_mount(NULL, "0:", 0);
 	if (f_mount(&fs, "0:", 1) != FR_OK) {
 		printf("the volume did not mount again\n");

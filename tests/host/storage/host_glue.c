@@ -36,11 +36,26 @@ static void note_write(size_t start, size_t n)
 	}
 }
 
+/* the card refusing: the nth read (write) and fail_n - 1 after it */
+static bool refuse(unsigned n, unsigned at)
+{
+	if (at && n >= at && n < at + (host_card.fail_n ? host_card.fail_n : 1)) {
+		host_card.failed++;
+		return true;
+	}
+	return false;
+}
+
 esp_err_t sdmmc_read_sectors(sdmmc_card_t *card, void *dst, size_t start, size_t n)
 {
 	if (start + n > (size_t) card->csd.capacity)
 		return ESP_ERR_INVALID_SIZE;
 	host_card.reads++;
+	if (host_card.watch_n && start < host_card.watch_start + host_card.watch_n &&
+	    start + n > host_card.watch_start)
+		host_card.watch_reads++;
+	if (refuse(host_card.reads, host_card.fail_read_at))
+		return ESP_ERR_TIMEOUT;
 	ssize_t got = pread(card->fd, dst, n * 512, (off_t) start * 512);
 	return got == (ssize_t) (n * 512) ? ESP_OK : ESP_FAIL;
 }
@@ -49,6 +64,10 @@ esp_err_t sdmmc_write_sectors(sdmmc_card_t *card, const void *src, size_t start,
 {
 	if (start + n > (size_t) card->csd.capacity)
 		return ESP_ERR_INVALID_SIZE;
+	if (refuse(host_card.writes + 1, host_card.fail_write_at)) {
+		host_card.writes++;
+		return ESP_ERR_TIMEOUT;
+	}
 	note_write(start, n);
 	ssize_t put = pwrite(card->fd, src, n * 512, (off_t) start * 512);
 	return put == (ssize_t) (n * 512) ? ESP_OK : ESP_FAIL;
