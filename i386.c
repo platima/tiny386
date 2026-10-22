@@ -4744,9 +4744,9 @@ static bool IRAM_ATTR call_isr1(CPUI386 *cpu, int no, bool pusherr, int ext)
 	}
 
 	/* task gate: the new task's own stack gets the error code, as on a
-	   386 (Windows 95's VMM handles the double fault, error code 0, in a
-	   task of its own).  task_switch() never comes back false, so nothing
-	   below this undoes it. */
+	   386 (a double fault's handler in a task of its own finds its 0
+	   there).  task_switch() never comes back false, so nothing below
+	   this undoes it. */
 	if (gt == 5) {
 		uword err = cpu->excerr;
 		if (!task_switch(cpu, w1 >> 16, TS_CALL))
@@ -5073,9 +5073,12 @@ static const char *df_gate_words(CPUI386 *cpu)
    (vector 8, error code 0); any other is delivered after it; a
    contributory or page fault while delivering the double fault shuts the
    processor down, which here stops the emulator, as every fault in
-   delivery did before.  Windows 95's VMM handles a double fault in a task
-   of its own (a task gate on vector 8), which is how it gets over its ring
-   0 stack running off its page. */
+   delivery did before.  A guest with a task gate on vector 8 gets over a
+   ring 0 stack that ran off its page.  Windows 95 OSR2, in the PC runs of
+   v3.8's checks, had an interrupt gate there when its stack ran out, so
+   for it the double fault faults too and the emulator stops, as a 386
+   would shut down; the PIT's cap on missed ticks (i8254.c) is what keeps
+   its stack from running out. */
 static void IRAM_ATTR deliver(CPUI386 *cpu, int no, bool pusherr, int what)
 {
 	static unsigned doubles;

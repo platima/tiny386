@@ -73,9 +73,11 @@ static uint8_t *s_buf;                  /* DI_BUF_SECTORS sectors, internal RAM 
 static struct disk_image_stats s_stats;
 static char s_error[96];
 
+/* only the emulator's task opens and reads the images, so one line buffer
+   will do, and it stays off that task's 4 KiB stack */
 static void say(bool warn, const char *fmt, ...)
 {
-	char line[256];
+	static char line[256];
 	va_list ap;
 	va_start(ap, fmt);
 	vsnprintf(line, sizeof(line), fmt, ap);
