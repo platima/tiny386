@@ -12,6 +12,9 @@
  * Every line goes to the UART, to the ring, and to the panel while the
  * console has it.  Once the emulator's picture takes the panel
  * (console_release_display()), lines go to the UART and the ring only.
+ * While the PC runs (v3.8), the UART only with [esp] uart_log = 1, and then
+ * through a queue; and lines that repeat are held back after the first few
+ * (console_log_limit()).
  */
 #ifndef CONSOLE_H
 #define CONSOLE_H
@@ -56,6 +59,27 @@ void console_uart_printf(const char *fmt, ...)
    running without [esp] uart_log = 1); false: to the UART too.  A fatal
    message turns the UART back on. */
 void console_uart_quiet(bool quiet);
+/* true (the PC running with [esp] uart_log = 1): lines for the UART go
+   into a 4 KiB queue that a task on core 0 writes out as the UART takes
+   them, so that no task waits for the UART (at 115200 baud, 87 us a byte);
+   a line that does not fit is dropped from the UART only, and counted.
+   false: what is queued is written out now, by the caller, and lines go
+   straight to the UART again (an emulator abort). */
+void console_uart_async(bool on);
+
+/* true (the PC running without [esp] verbose_log = 1): of each kind of line
+   that comes through printf, fprintf(stderr) and ESP_LOGx (a kind being
+   the text with its numbers taken out), the first 5 in 5 s go out, and the
+   rest are counted and said in one line at the end of the 5 s.
+   console_printf() and the rest above are never held back.  false: every
+   line again, the counts held so far said first. */
+void console_log_limit(bool on);
+/* says the counts whose 5 s are over; cheap when there are none (the
+   speed screen's poll, every frame, on core 0) */
+void console_log_tick(void);
+/* lines held back by the limit, and lines dropped from the UART queue,
+   since boot */
+void console_log_stats(unsigned *held, unsigned *dropped);
 
 /* Warnings and errors shown since boot. */
 int console_problems(void);

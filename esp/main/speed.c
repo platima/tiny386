@@ -310,6 +310,8 @@ static void give_back(PC *pc)
 void speed_screen_poll(void *opaque, uint32_t pps)
 {
 	PC *pc = opaque;
+	/* the counts of lines held back whose 5 s are over (console.c) */
+	console_log_tick();
 	int req = __atomic_exchange_n(&s_req, 0, __ATOMIC_ACQ_REL);
 	/* a fatal message, or the PC switched off: the console stays, and
 	   neither the hotkey nor the USER key gives the panel back */
@@ -350,6 +352,10 @@ void speed_screen_poll(void *opaque, uint32_t pps)
 		speed_health(disk, sizeof(disk), timer, sizeof(timer));
 		console_puts(CON_INFO, disk);
 		console_puts(CON_INFO, timer);
+		unsigned held, dropped;
+		console_log_stats(&held, &dropped);
+		console_printf(CON_INFO, "Log: %u repeated lines held back, %u dropped from the "
+			       "UART's queue", held, dropped);
 		show_title(pps);
 		s_last_title_s = secs;
 	} else if (!want && s_shown) {

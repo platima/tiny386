@@ -295,6 +295,7 @@ struct esp_ini_config {
 	int lcd_invalidate;
 	int crash_test;         /* only read in a TINY386_CRASH_TEST build */
 	int uart_log;           /* the log to the UART too while the PC runs */
+	int verbose_log;        /* every line while the PC runs, none held back */
 	int fast_seek;          /* the disk images' clusters mapped (disk_image.c) */
 	int timer_catchup;      /* i8254_max_owed: timer ticks owed at once */
 	int memtest;            /* passes of the PSRAM test before the PC is built */
@@ -348,6 +349,7 @@ static struct esp_ini_config config = {
 	.console_s = 2,
 	.enable_usb = 1,        /* a keyboard unless the ini says no */
 	.uart_log = 0,          /* the log is on the panel (Ctrl+Alt+F12) */
+	.verbose_log = 0,       /* lines that repeat held back after 5 in 5 s */
 	.fast_seek = 1,
 	.timer_catchup = 1,     /* as a real 8254 and 8259 (i8254.c) */
 };
@@ -408,11 +410,16 @@ static void disk_image_line(bool warn, const char *line)
 
 /* first thing when the emulator aborts (i386.c's cpu_abort()): the UART
    on again for the dump, which version this is, and what held the
-   emulator up, so that the crash screen's last lines show them */
+   emulator up, so that the crash screen's last lines show them.  The
+   counts of lines held back are said, every line of the dump goes out,
+   and the UART is written straight again, what was queued first, so that
+   all of it is there before the panic handler's report. */
 static void abort_note(void)
 {
 	char disk[160], timer[120];
 	console_uart_quiet(false);
+	console_log_limit(false);
+	console_uart_async(false);
 	speed_health(disk, sizeof(disk), timer, sizeof(timer));
 	fprintf(stderr, "tiny386 %s stopped the PC. %s\n%s\n",
 		esp_app_get_description()->version, disk, timer);
@@ -511,20 +518,26 @@ static void i386_task(void *arg)
 		console_printf(CON_INFO, "The PC starts in %d seconds.", hold_ms / 1000);
 		vTaskDelay(pdMS_TO_TICKS(hold_ms));
 	}
-	if (config.uart_log) {
-		console_puts(CON_GOOD, "The PC is starting: its picture takes the panel. "
-			     "This log goes on on the UART. Ctrl+Alt+F12 shows it again, "
-			     "with the speed.");
-	} else {
-		console_puts(CON_GOOD, "The PC is starting: its picture takes the panel. "
-			     "Ctrl+Alt+F12 shows this log again, with the speed. While "
-			     "the PC runs the log stays off the UART ([esp] uart_log = 1 "
-			     "puts it there); a crash report goes there still.");
-		/* a line at 115200 baud would hold the emulator's core about
-		   87 us a byte, and every such wait comes back to the guest as
-		   timer ticks owed */
+	console_puts(CON_GOOD, "The PC is starting: its picture takes the panel. "
+		     "Ctrl+Alt+F12 shows this log again, with the speed.");
+	if (config.uart_log)
+		console_puts(CON_INFO, "While the PC runs the log goes on on the UART "
+			     "([esp] uart_log = 1), through a queue that no task waits for.");
+	else
+		console_puts(CON_INFO, "While the PC runs the log stays off the UART "
+			     "([esp] uart_log = 1 puts it there); a crash report goes there still.");
+	if (!config.verbose_log)
+		console_puts(CON_INFO, "A line the emulator repeats is shown 5 times in 5 s, "
+			     "then counted ([esp] verbose_log = 1 shows every one).");
+	/* Written straight out, a line at 115200 baud would hold the
+	   emulator's core about 87 us a byte, and every such wait comes back
+	   to the guest as timer ticks owed: so the UART is off, or reached
+	   through the queue */
+	if (config.uart_log)
+		console_uart_async(true);
+	else
 		console_uart_quiet(true);
-	}
+	console_log_limit(!config.verbose_log);
 	console_release_display();
 	/* a Ctrl+Alt+F12 from the boot console's time is not for the PC's
 	   screen: forgotten before vga_task can see it */
@@ -562,6 +575,7 @@ static const char *const known_keys[] = {
 	"esp:ssid", "esp:pass", "esp:enable_usb", "esp:console",
 	"esp:lcd_invalidate", "esp:led_brightness",
 	"esp:uart_log", "esp:fast_seek", "esp:timer_catchup", "esp:memtest",
+	"esp:verbose_log",
 #ifdef TINY386_CRASH_TEST
 	"esp:crash_test",
 #endif
@@ -662,6 +676,8 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		set_led_brightness(value);
 	} else if (NAME("uart_log")) {
 		ini_whole(name, value, 0, 1, &conf->uart_log);
+	} else if (NAME("verbose_log")) {
+		ini_whole(name, value, 0, 1, &conf->verbose_log);
 	} else if (NAME("fast_seek")) {
 		ini_whole(name, value, 0, 1, &conf->fast_seek);
 	} else if (NAME("timer_catchup")) {

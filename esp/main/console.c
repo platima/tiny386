@@ -21,6 +21,13 @@
 #define con_lock() do { } while (0)
 #define con_unlock() do { } while (0)
 #define con_alloc(size) malloc(size)
+#define uq_lock() do { } while (0)
+#define uq_unlock() do { } while (0)
+/* the test's clock and the UART's FIFO: console_host_set_ms(),
+   console_host_uart_drain() */
+static uint32_t s_host_ms;
+static uint32_t s_host_room;
+#define con_now_ms() s_host_ms
 #else
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
@@ -30,11 +37,23 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
+#include "esp_timer.h"
 #include "status_led.h"
+#if CONFIG_ESP_CONSOLE_UART
+#include "hal/uart_ll.h"
+/* the UART queue's writer puts bytes straight into the console UART's FIFO,
+   as ESP-IDF's own UART output does without its driver */
+#define UQ_UART 1
+#endif
 
 static portMUX_TYPE s_ring_mux = portMUX_INITIALIZER_UNLOCKED;
 #define ring_lock() portENTER_CRITICAL_SAFE(&s_ring_mux)
 #define ring_unlock() portEXIT_CRITICAL_SAFE(&s_ring_mux)
+/* the UART queue: a few microseconds at a time, from any task */
+static portMUX_TYPE s_uq_mux = portMUX_INITIALIZER_UNLOCKED;
+#define uq_lock() portENTER_CRITICAL(&s_uq_mux)
+#define uq_unlock() portEXIT_CRITICAL(&s_uq_mux)
+#define con_now_ms() ((uint32_t) (esp_timer_get_time() / 1000))
 
 /* the console's text, line buffers and the order of lines on the UART;
    recursive, as a line on its way out may make another */
@@ -406,14 +425,175 @@ void console_host_set_uart(FILE *f)
 
 /* Lines to the UART as well: yes until console_uart_quiet(true), which the
    firmware calls as the PC starts unless the ini says [esp] uart_log = 1.
-   A line at 115200 baud holds the core that logs it for about 87 us a
-   byte; the emulator's own lines are logged on its core.  The crash report
-   ESP-IDF prints goes to the UART whatever this says. */
+   Written straight out, a line at 115200 baud holds the core that logs it
+   for about 87 us a byte; so while the PC runs with uart_log = 1 the lines
+   go through the UART queue below instead.  The crash report ESP-IDF
+   prints goes to the UART whatever this says. */
 static volatile bool s_uart_quiet;
 
 void console_uart_quiet(bool quiet)
 {
 	s_uart_quiet = quiet;
+}
+
+/* ====
+ * The UART queue (v3.8).  After console_uart_async(true) a line for the
+ * UART is copied into this queue, and the uart_log task on core 0 writes
+ * it out as the UART's FIFO takes it, a tick (10 ms) at a time, so that
+ * the task that logged it (the emulator's above all) never waits for the
+ * UART.  A line that does not fit is dropped from the UART (not from the
+ * ring or the panel) and counted, and once the queue has emptied the task
+ * says how many.  console_uart_async(false) writes out what is queued
+ * there and then, and lines go straight to the UART again: an emulator
+ * abort, whose dump must be on the UART before the panic handler's report.
+ */
+#define UQ_SIZE 4096                    /* a power of two */
+static char *s_uq;
+static uint32_t s_uq_w, s_uq_r;         /* bytes ever put in, taken out */
+static unsigned s_uq_dropped;           /* lines that did not fit */
+static unsigned s_uq_said;              /* of those, how many were said */
+static volatile bool s_uq_on;           /* changed with the console's lock */
+
+#ifdef UQ_UART
+static TaskHandle_t s_uq_task;
+#define uq_wake() do { if (s_uq_task) xTaskNotifyGive(s_uq_task); } while (0)
+static inline uint32_t uart_room(void)
+{
+	return uart_ll_get_txfifo_len(UART_LL_GET_HW(CONFIG_ESP_CONSOLE_UART_NUM));
+}
+static inline void uart_put(char c)
+{
+	uart_ll_write_txfifo(UART_LL_GET_HW(CONFIG_ESP_CONSOLE_UART_NUM),
+			     (const uint8_t *) &c, 1);
+}
+#elif defined(CONSOLE_HOST)
+#define uq_wake() do { } while (0)
+static inline uint32_t uart_room(void)
+{
+	return s_host_room;
+}
+static inline void uart_put(char c)
+{
+	s_host_room--;
+	if (s_uart)
+		fputc(c, s_uart);
+}
+#else
+/* a console that is not a UART: no queue (console_uart_async() does
+   nothing) */
+#define uq_wake() do { } while (0)
+#endif
+
+/* a line into the queue, or counted as dropped; no wait */
+static void uq_put(const char *s, int n)
+{
+	bool put = false;
+	uq_lock();
+	if ((uint32_t) n + 1 <= UQ_SIZE - (s_uq_w - s_uq_r)) {
+		for (int i = 0; i < n; i++)
+			if (s[i] != '\r')
+				s_uq[s_uq_w++ & (UQ_SIZE - 1)] = s[i];
+		s_uq[s_uq_w++ & (UQ_SIZE - 1)] = '\n';
+		put = true;
+	} else {
+		s_uq_dropped++;
+	}
+	uq_unlock();
+	if (put)
+		uq_wake();
+}
+
+#if defined(UQ_UART) || defined(CONSOLE_HOST)
+/* as much of the queue as the FIFO has room for now, each '\n' as "\r\n"
+   as ESP-IDF's console sends it (CONFIG_LIBC_STDOUT_LINE_ENDING_CRLF);
+   returns the bytes left.  The FIFO is written only under the queue's lock,
+   so two writers never overfill it. */
+static uint32_t uq_out(void)
+{
+	uq_lock();
+	uint32_t room = uart_room();
+	while (s_uq_r != s_uq_w) {
+		char c = s_uq[s_uq_r & (UQ_SIZE - 1)];
+		if (room < (c == '\n' ? 2u : 1u))
+			break;
+		if (c == '\n') {
+			uart_put('\r');
+			room--;
+		}
+		uart_put(c);
+		room--;
+		s_uq_r++;
+	}
+	uint32_t left = s_uq_w - s_uq_r;
+	uq_unlock();
+	return left;
+}
+
+/* the lines dropped since this was last said, as a line of the queue's
+   own; true if there were any */
+static bool uq_say_dropped(void)
+{
+	uq_lock();
+	unsigned n = s_uq_dropped - s_uq_said;
+	s_uq_said = s_uq_dropped;
+	uq_unlock();
+	if (!n)
+		return false;
+	char line[96];
+	int len = snprintf(line, sizeof(line), "(%u line%s dropped here: the UART could not "
+			   "keep up; the ring and the panel have them)", n, n == 1 ? "" : "s");
+	uq_put(line, len);
+	return true;
+}
+#endif
+
+#ifdef UQ_UART
+static void uq_task(void *arg)
+{
+	(void) arg;
+	for (;;) {
+		if (uq_out()) {
+			vTaskDelay(1);  /* the FIFO's 128 bytes last 11 ms */
+			continue;
+		}
+		if (uq_say_dropped())
+			continue;
+		ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+	}
+}
+#endif
+
+void console_uart_async(bool on)
+{
+#if defined(UQ_UART) || defined(CONSOLE_HOST)
+	con_lock();
+	if (on && !s_uq_on) {
+		if (!s_uq)
+			s_uq = con_alloc(UQ_SIZE);
+#ifdef UQ_UART
+		if (s_uq && !s_uq_task &&
+		    xTaskCreatePinnedToCore(uq_task, "uart_log", 3072, NULL, 1, &s_uq_task, 0) != pdPASS)
+			s_uq_task = NULL;
+		s_uq_on = s_uq && s_uq_task;
+#else
+		s_uq_on = s_uq != NULL;
+#endif
+	} else if (!on && s_uq_on) {
+		/* what is queued, now, by this task: the FIFO's room is waited
+		   for here (an abort: nothing else is waiting for this core) */
+		s_uq_on = false;
+		while (uq_out()) {
+#ifdef UQ_UART
+			esp_rom_delay_us(200);
+#else
+			s_host_room = 128;
+#endif
+		}
+	}
+	con_unlock();
+#else
+	(void) on;
+#endif
 }
 
 static void emit(int level, const char *s, int n, int to)
@@ -422,7 +602,9 @@ static void emit(int level, const char *s, int n, int to)
 		s_problems++;
 	if (s_uart_quiet)
 		to &= ~TO_UART;
-	if ((to & TO_UART) && s_uart) {
+	if ((to & TO_UART) && s_uq_on) {
+		uq_put(s, n);
+	} else if ((to & TO_UART) && s_uart) {
 		fwrite(s, 1, n, s_uart);
 		fputc('\n', s_uart);
 	}
@@ -448,9 +630,171 @@ static int level_of(const char *s, int n)
 
 #define CON_AUTO (-1)
 
+/* ====
+ * Lines that repeat (v3.8).  After console_log_limit(true), which the
+ * firmware calls as the PC starts unless the ini says [esp] verbose_log =
+ * 1, the lines that come through printf, fprintf(stderr) and ESP_LOGx (the
+ * emulator's own debug lines, the guest BIOS's port 0x402 text, the
+ * drivers': not console_printf()'s) are sorted by kind, a line's kind being
+ * its text with every word that holds a digit taken as one and the same
+ * ("inw 0xa20 <= 0xffff" and "inw 0x3f <= 0xffff" are one kind).  Of each
+ * kind the first LIM_FIRST lines in LIM_PERIOD_MS go out as before; the
+ * rest are counted, and when the period is over one line says how many,
+ * with the last of them.  So a guest that hits an unknown port thousands
+ * of times a second costs a few lines every few seconds, on the UART, in
+ * the ring (the crash screen's last lines) and on the panel, where every
+ * line drawn while Ctrl+Alt+F12 is up costs a redraw.
+ */
+#define LIM_KINDS     16
+#define LIM_FIRST     5
+#define LIM_PERIOD_MS 5000
+#define LIM_LAST      100
+
+struct lim_kind {
+	uint32_t kind;          /* 0: a free slot */
+	uint32_t start_ms;      /* when its period began */
+	uint32_t seen_ms;       /* its last line: the slot least used goes first */
+	uint32_t shown;         /* lines out in this period */
+	uint32_t held;          /* lines held back in this period */
+	char last[LIM_LAST];    /* the last line held back */
+};
+static struct lim_kind *s_lim;
+static bool s_lim_on;
+static volatile bool s_lim_holding;     /* any kind has lines held back */
+static volatile unsigned s_lim_total;   /* lines held back since boot */
+
+static inline bool word_char(unsigned char c)
+{
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+	       c == '_';
+}
+
+/* the line's kind: FNV-1a over its text, each word with a digit in it as
+   '#'; never 0 */
+static uint32_t kind_of(const char *s, int n)
+{
+	uint32_t h = 2166136261u;
+	for (int i = 0; i < n; ) {
+		if (!word_char(s[i])) {
+			h = (h ^ (unsigned char) s[i++]) * 16777619u;
+			continue;
+		}
+		int j = i;
+		bool digit = false;
+		for (; j < n && word_char(s[j]); j++)
+			digit |= s[j] >= '0' && s[j] <= '9';
+		if (digit)
+			h = (h ^ '#') * 16777619u;
+		else
+			for (; i < j; i++)
+				h = (h ^ (unsigned char) s[i]) * 16777619u;
+		i = j;
+	}
+	return h ? h : 1;
+}
+
+/* one line for what a kind held back, and a new period for it */
+static void lim_say(struct lim_kind *k, uint32_t now)
+{
+	if (k->held) {
+		char line[LIM_LAST + 80];
+		unsigned s = (now - k->start_ms + 999) / 1000;
+		int n = snprintf(line, sizeof(line), "(not shown: %u more line%s like \"%s\" in %u s)",
+				 (unsigned) k->held, k->held == 1 ? "" : "s", k->last, s ? s : 1);
+		emit(CON_INFO, line, n < (int) sizeof(line) ? n : (int) sizeof(line) - 1, TO_ALL);
+	}
+	k->start_ms = now;
+	k->shown = 0;
+	k->held = 0;
+}
+
+/* true if the line goes out; with the console's lock held */
+static bool lim_pass(const char *s, int n)
+{
+	if (!s_lim_on)
+		return true;
+	uint32_t now = con_now_ms(), kind = kind_of(s, n);
+	struct lim_kind *k = NULL, *spare = NULL;
+	for (int i = 0; i < LIM_KINDS && !k; i++) {
+		struct lim_kind *x = &s_lim[i];
+		if (x->kind == kind)
+			k = x;
+		else if (!spare || (spare->kind && (!x->kind ||
+						    now - x->seen_ms > now - spare->seen_ms)))
+			spare = x;
+	}
+	if (!k) {
+		/* a new kind: a free slot, or the one least lately used,
+		   whose count is said first */
+		k = spare;
+		lim_say(k, now);
+		k->kind = kind;
+	} else if (now - k->start_ms >= LIM_PERIOD_MS) {
+		lim_say(k, now);
+	}
+	k->seen_ms = now;
+	if (k->shown < LIM_FIRST) {
+		k->shown++;
+		return true;
+	}
+	k->held++;
+	s_lim_total++;
+	s_lim_holding = true;
+	int m = n < LIM_LAST - 1 ? n : LIM_LAST - 1;
+	for (int i = 0; i < m; i++)
+		k->last[i] = (unsigned char) s[i] < 0x20 ? ' ' : s[i];
+	k->last[m] = 0;
+	return false;
+}
+
+/* the counts of every kind whose period is over (all: every count) */
+static void lim_say_due(bool all)
+{
+	uint32_t now = con_now_ms();
+	bool holding = false;
+	for (int i = 0; i < LIM_KINDS; i++) {
+		struct lim_kind *k = &s_lim[i];
+		if (k->held && (all || now - k->start_ms >= LIM_PERIOD_MS))
+			lim_say(k, now);
+		holding |= k->held != 0;
+	}
+	s_lim_holding = holding;
+}
+
+void console_log_limit(bool on)
+{
+	con_lock();
+	if (on && !s_lim)
+		s_lim = con_alloc(LIM_KINDS * sizeof(*s_lim));
+	if (s_lim) {
+		if (s_lim_on)
+			lim_say_due(true);
+		memset(s_lim, 0, LIM_KINDS * sizeof(*s_lim));
+		s_lim_holding = false;
+	}
+	s_lim_on = on && s_lim;
+	con_unlock();
+}
+
+void console_log_tick(void)
+{
+	if (!s_lim_holding)
+		return;
+	con_lock();
+	if (s_lim_on)
+		lim_say_due(false);
+	con_unlock();
+}
+
+void console_log_stats(unsigned *held, unsigned *dropped)
+{
+	*held = s_lim_total;
+	*dropped = s_uq_dropped;
+}
+
 /* text of one or more lines: "a\n" and "a" are one line, "" is an empty
-   one */
-static void emit_text(int level, const char *s, int to)
+   one; limited: through the limit on repeated lines */
+static void emit_text(int level, const char *s, int to, bool limited)
 {
 	for (const char *p = s; ; ) {
 		const char *e = strchr(p, '\n');
@@ -458,7 +802,8 @@ static void emit_text(int level, const char *s, int to)
 		if (!e && !n && p != s)
 			break;          /* nothing after the last '\n' */
 		int lvl = level == CON_AUTO ? level_of(p, n) : level;
-		emit(lvl, p, n, to);
+		if (!limited || lim_pass(p, n))
+			emit(lvl, p, n, to);
 		if (!e)
 			break;
 		p = e + 1;
@@ -471,7 +816,7 @@ void console_vprintf(int level, const char *fmt, va_list ap)
 {
 	con_lock();
 	vsnprintf(s_fmt_buf, sizeof(s_fmt_buf), fmt, ap);
-	emit_text(level, s_fmt_buf, TO_ALL);
+	emit_text(level, s_fmt_buf, TO_ALL, false);
 	con_unlock();
 }
 
@@ -489,7 +834,7 @@ void console_uart_printf(const char *fmt, ...)
 	va_start(ap, fmt);
 	con_lock();
 	vsnprintf(s_fmt_buf, sizeof(s_fmt_buf), fmt, ap);
-	emit_text(CON_INFO, s_fmt_buf, TO_UART);
+	emit_text(CON_INFO, s_fmt_buf, TO_UART, false);
 	con_unlock();
 	va_end(ap);
 }
@@ -497,7 +842,7 @@ void console_uart_printf(const char *fmt, ...)
 void console_puts(int level, const char *s)
 {
 	con_lock();
-	emit_text(level, s, TO_ALL);
+	emit_text(level, s, TO_ALL, false);
 	con_unlock();
 }
 
@@ -548,7 +893,7 @@ void console_show_previous(const char *why)
 		 why, s_prev_lines);
 	emit(CON_WARN, head, strlen(head), TO_UART | TO_PANEL);
 	/* not into the ring again: they would come back after the next reset */
-	emit_text(CON_OLD, s_prev, TO_UART | TO_PANEL);
+	emit_text(CON_OLD, s_prev, TO_UART | TO_PANEL, false);
 	const char *tail = "(end of the last run's lines)";
 	emit(CON_OLD, tail, strlen(tail), TO_UART | TO_PANEL);
 	con_unlock();
@@ -730,6 +1075,14 @@ uint16_t *console_fb(int *width, int *height)
  * The hooks.
  */
 
+/* a line from printf, puts or fprintf(stderr), through the limit on
+   repeated lines; with the console's lock held */
+static void tee_line(int level, const char *s, int n)
+{
+	if (lim_pass(s, n))
+		emit(level, s, n, TO_ALL);
+}
+
 #ifndef CONSOLE_HOST
 static vprintf_like_t s_prev_vprintf;
 static char s_log_buf[512];
@@ -746,12 +1099,25 @@ static int con_log_vprintf(const char *fmt, va_list ap)
 	con_lock();
 	int n;
 	if (s_in_log) {
-		/* a line logged while one is on its way out: UART only */
-		n = s_uart_quiet ? 0 : vfprintf(s_uart, fmt, ap);
+		/* a line logged while one is on its way out: UART only (through
+		   the queue while there is one: no wait) */
+		if (s_uart_quiet) {
+			n = 0;
+		} else if (s_uq_on) {
+			char line[160];
+			n = vsnprintf(line, sizeof(line), fmt, ap);
+			int len = n < (int) sizeof(line) ? n : (int) sizeof(line) - 1;
+			while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r'))
+				len--;
+			if (len > 0)
+				uq_put(line, len);
+		} else {
+			n = vfprintf(s_uart, fmt, ap);
+		}
 	} else {
 		s_in_log = true;
 		n = vsnprintf(s_log_buf, sizeof(s_log_buf), fmt, ap);
-		emit_text(CON_AUTO, s_log_buf, TO_ALL);
+		emit_text(CON_AUTO, s_log_buf, TO_ALL, true);
 		s_in_log = false;
 	}
 	con_unlock();
@@ -769,11 +1135,11 @@ static int tee_put(char c, FILE *f)
 	con_lock();
 	if (c == '\n') {
 		s_tee_line[s_tee_len] = 0;
-		emit(level_of(s_tee_line, s_tee_len), s_tee_line, s_tee_len, TO_ALL);
+		tee_line(level_of(s_tee_line, s_tee_len), s_tee_line, s_tee_len);
 		s_tee_len = 0;
 	} else if (c != '\r') {
 		if (s_tee_len >= (int) sizeof(s_tee_line) - 1) {
-			emit(CON_INFO, s_tee_line, s_tee_len, TO_ALL);
+			tee_line(CON_INFO, s_tee_line, s_tee_len);
 			s_tee_len = 0;
 		}
 		s_tee_line[s_tee_len++] = c;
@@ -812,6 +1178,37 @@ void console_host_ring_preset(const char *text, bool crashed)
 		ring_putc_locked(*p);
 	if (crashed)
 		s_ring.crashed = RING_CRASHED;
+}
+
+/* a line as the emulator's fprintf(stderr) gives it the tee, and the
+   ESP_LOGx path: through the limit on repeated lines */
+void console_host_tee_line(const char *s)
+{
+	tee_line(level_of(s, (int) strlen(s)), s, (int) strlen(s));
+}
+
+void console_host_log_line(const char *s)
+{
+	emit_text(CON_AUTO, s, TO_ALL, true);
+}
+
+/* the clock the limit's periods are counted on */
+void console_host_set_ms(uint32_t ms)
+{
+	s_host_ms = ms;
+}
+
+/* the uart_log task's work: room bytes taken by the UART's FIFO, then the
+   dropped lines said once the queue is empty; returns the bytes left */
+uint32_t console_host_uart_drain(uint32_t room)
+{
+	s_host_room = room;
+	uint32_t left = uq_out();
+	if (!left && uq_say_dropped()) {
+		s_host_room = room;
+		left = uq_out();
+	}
+	return left;
 }
 #endif
 
