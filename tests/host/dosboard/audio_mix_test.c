@@ -350,6 +350,17 @@ int main(void)
 		printf("  3. the default level, %d: the largest and smallest sums the devices can make "
 		       "come out %ld and %ld (%.1f and %.1f dB of full scale), nothing held\n", LEVEL,
 		       hi, lo, 20 * log10(hi / 32767.0), 20 * log10(lo / -32768.0));
+		/* and it is the loudest such level (board_dosboard.h says why it
+		   was chosen), and louder than tiny386's own 4 */
+		check(LEVEL < 4, "default level: louder than tiny386's 4", LEVEL, 4);
+		if (LEVEL > 0) {
+			int h1, h2;
+			one(32767, 32767, 0xFF, LEVEL - 1, &h1);
+			one(-32768, -32768, 0x00, LEVEL - 1, &h2);
+			check(h1 && h2, "default level: one step louder can be held", h1 + h2, 2);
+			printf("     one step louder, %d, the same sums are held at full scale: the default is "
+			       "the loudest level that cannot clip\n", LEVEL - 1);
+		}
 		/* and where v3.4 held at level 2: the SB16 and the AdLib each at
 		   30,000 came out 8,191 (held at 32,767 before the / 4); now 15,000 */
 		int h = 0;
