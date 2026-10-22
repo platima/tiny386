@@ -16,8 +16,9 @@
 // the board's netlist.
 // A DOS board image on a Korvo-1 halts at once (board_early_init() in
 // dosboard.c).  GPIO46 to GPIO57 are the Korvo-1's camera pins, all inputs
-// to the S31 there but GPIO55, its XCLK, so the image drives no pin but the
-// I2C bus until the MS7210 has answered (at I2C 0x59, then 0x2B).  If
+// to the S31 there but GPIO55, its XCLK, so until the MS7210 has answered
+// (at I2C 0x59, then 0x2B) the image drives no pin but the I2C bus and what
+// both boards share (the console's UART0, the status LED on GPIO37).  If
 // nothing answers at all, it reads GPIO46 with the weak pull-up on for
 // about 0.1 ms (R302 holds it low on this board; camera D0 on a Korvo-1),
 // leaves it an input with no pull, and pulses RSTN (GPIO49) and looks again
