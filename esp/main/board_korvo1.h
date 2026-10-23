@@ -74,3 +74,9 @@
 // Smaller ones are centred as they are: 720x400 text at (40,40), 640x480
 // at (80,0), 320x200 doubled to 640x400 at (80,40).
 #define VGA_SHRINK_LARGE
+// vga.c, pc.c (v4.0): what the guest writes into video memory is noted a
+// block of 1 KiB at a time, and a VBE picture of 8, 15, 16, 24 or 32 bits a
+// pixel (Windows at 800x480 through a VBE display driver, the BIOS's VBE
+// modes) is drawn again only in the rows written, each converted to RGB565
+// with no division; a still picture costs a look at a byte for each 1 KiB.
+#define VGA_DIRTY_BLOCKS

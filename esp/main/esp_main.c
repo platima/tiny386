@@ -299,6 +299,7 @@ struct esp_ini_config {
 	int fast_seek;          /* the disk images' clusters mapped (disk_image.c) */
 	int timer_catchup;      /* i8254_max_owed: timer ticks owed at once */
 	int memtest;            /* passes of the PSRAM test before the PC is built */
+	int vbe_blocks;         /* vga_dirty_blocks: VBE pictures from the blocks written */
 };
 
 #ifdef TINY386_CRASH_TEST
@@ -352,6 +353,7 @@ static struct esp_ini_config config = {
 	.verbose_log = 0,       /* lines that repeat held back after 5 in 5 s */
 	.fast_seek = 1,
 	.timer_catchup = 1,     /* as a real 8254 and 8259 (i8254.c) */
+	.vbe_blocks = 1,        /* v4.0: only what the guest wrote is drawn again */
 };
 static PCConfig conf;
 
@@ -575,7 +577,7 @@ static const char *const known_keys[] = {
 	"esp:ssid", "esp:pass", "esp:enable_usb", "esp:console",
 	"esp:lcd_invalidate", "esp:led_brightness",
 	"esp:uart_log", "esp:fast_seek", "esp:timer_catchup", "esp:memtest",
-	"esp:verbose_log",
+	"esp:verbose_log", "esp:vbe_blocks",
 #ifdef TINY386_CRASH_TEST
 	"esp:crash_test",
 #endif
@@ -684,6 +686,8 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		ini_whole(name, value, 0, 1000, &conf->timer_catchup);
 	} else if (NAME("memtest")) {
 		ini_whole(name, value, 0, 10, &conf->memtest);
+	} else if (NAME("vbe_blocks")) {
+		ini_whole(name, value, 0, 1, &conf->vbe_blocks);
 	} else if (NAME("crash_test")) {
 		conf->crash_test = atoi(value);
 	}
@@ -818,6 +822,18 @@ static void psram_test(int passes)
    warning, rather than stopping. */
 static void settle_memory(void)
 {
+	/* The guest is told the size of video memory in 64 KiB (VBE's
+	   VIDEO_MEMORY_64K), and its bank window steps by 64 KiB: a size in
+	   between would be reported smaller than it is, so it is rounded down
+	   to a whole 64 KiB here, with a line to say so. */
+	if (conf.vga_mem_size % (64 * 1024)) {
+		long down = conf.vga_mem_size / (64 * 1024) * (64 * 1024);
+		if (down < 64 * 1024)
+			down = 64 * 1024;
+		console_printf(CON_WARN, "vga_mem_size %ldK is not a whole number of 64K: "
+			       "%ldK is used.", conf.vga_mem_size / 1024, down / 1024);
+		conf.vga_mem_size = down;
+	}
 	long vga = round4k(conf.vga_mem_size + VGA_MEM_SLACK);
 	long fit = (psram_len - vga) / (1024 * 1024) * (1024 * 1024);
 	if (conf.mem_size <= 0) {
@@ -1288,6 +1304,10 @@ void app_main(void)
 			       "while the emulator waits are made up afterwards." :
 			       "every timer tick missed while the emulator waits is made "
 			       "up afterwards, as before v3.8 (Windows 95 can crash on that).");
+	vga_dirty_blocks = config.vbe_blocks;
+	if (!config.vbe_blocks)
+		console_puts(CON_INFO, "vbe_blocks = 0: VBE pictures are drawn in full every "
+			     "time, as before v4.0 (slower).");
 	psram_test(config.memtest);
 
 	if (config.enable_usb) {

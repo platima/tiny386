@@ -103,6 +103,7 @@
 #define VGA_RETRACE_REALTIME
 #define VGA_REDRAW_DIRTY_ROWS
 #define VGA_SHRINK_LARGE
+#define VGA_DIRTY_BLOCKS
 
 // Sound goes out over HDMI.  The MS7210 sends 44.1 kHz audio with its 48 kHz
 // settings, so the whole audio path runs at 48 kHz (FIRMWARE-PLAN 5.6).
