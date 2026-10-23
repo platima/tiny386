@@ -45,6 +45,9 @@ struct disk_image_stats {
 	uint32_t longest_us;            /* the longest access */
 	uint32_t recent_us;             /* the longest since the last reset_recent */
 	uint32_t over_tick;             /* accesses longer than a timer tick, 55 ms */
+	/* for the information port (perfport.h), wrapping */
+	uint32_t rsectors, wsectors;    /* 512-byte sectors read and written */
+	uint32_t busy_us;               /* all the accesses' time together */
 };
 void disk_image_get_stats(struct disk_image_stats *s, bool reset_recent);
 

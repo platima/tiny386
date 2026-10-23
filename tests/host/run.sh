@@ -103,7 +103,7 @@ vga_rename() {
              vga_ioport_read vbe_write vbe_read vga_mem_write vga_mem_read \
              vga_mem_write16 vga_mem_write32 vga_mem_write_string vga_pci_init \
              vga_planar_fast vga_set_text_ops vga_dirty_map vga_dirty vga_dirty_blocks \
-             vga_set_dirty_blocks; do
+             vga_set_dirty_blocks vga_get_info; do
         printf ' -D%s=%s%s' "$s" "$p" "$s"
     done
 }
@@ -281,6 +281,28 @@ $CC $CFLAGS -DSPEED_HOST -I"$TREE/esp/main" -o "$OUT/test_speed" \
     "$HERE/test_speed.c" "$TREE/esp/main/speed.c" || exit 1
 "$OUT/test_speed"
 result $? "speed.c: instructions a second, BENCH marks, lines as the Linux route prints them"
+
+# ==== 8b. the information port (perfport.c, perfport.h) ====
+# The protocol as a guest program sees it, against stand-ins for the
+# emulator's counters; vga_get_info() with vga.c as each board builds it
+# (test 3c's objects); and perfport.h as a guest program's C89 compiler
+# takes it, with nothing else included.
+echo
+NPPI=$(grep -c '^#define PP_I_' "$TREE/perfport.h")
+$CC $CFLAGS -I"$TREE" -o "$OUT/test_perfport" "$HERE/test_perfport.c" -lpthread || exit 1
+"$OUT/test_perfport" "$NPPI"
+result $? "perfport: found, snapshots, in and out of every width, the front end's values, the drawing's figures, two threads"
+for board in korvo1 dosboard; do
+    $CC $CFLAGS -I"$HERE/shim" -I"$TREE" -include "$TREE/esp/main/board_$board.h" \
+        -o "$OUT/test_vga_info-$board" "$HERE/test_vga_info.c" "$OUT/vbe-new-$board.o" \
+        "$OUT/vgafont.o" || exit 1
+    "$OUT/test_vga_info-$board"
+    result $? "vga_get_info(), $board: text, 16 and 256 colours, VBE, blank; VBE pictures, blocks and rows counted"
+done
+printf '#include "perfport.h"\nunsigned long magic = PP_MAGIC, version = PP_VERSION;\nunsigned port = PP_PORT_DATA;\nint count = PP_COUNT, text = PP_I_BOARD + PP_TEXT_INDEXES;\n' \
+    > "$OUT/perfport_guest.c"
+$CC -std=c89 -pedantic -Werror -Wall -Wextra -fsyntax-only -I"$TREE" "$OUT/perfport_guest.c"
+result $? "perfport.h in C89 with nothing else, as a guest program includes it"
 
 # ==== 9 to 12. the DOS board (FIRMWARE-PLAN 5): tests/host/dosboard ====
 D="$HERE/dosboard"

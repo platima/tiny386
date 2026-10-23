@@ -116,6 +116,15 @@ void status_led_fatal(int err)
 	portEXIT_CRITICAL(&s_lock);
 }
 
+uint32_t status_led_code(void)
+{
+	portENTER_CRITICAL(&s_lock);
+	uint32_t c = s_state.stage | (uint32_t) status_shown_error(&s_state) << 8 |
+		(uint32_t) s_cause << 16;
+	portEXIT_CRITICAL(&s_lock);
+	return c;
+}
+
 /* the LED task sends the new level within one look (STATUS_TICK_MS); the
    panic path reads it from internal RAM */
 void status_led_brightness(int level)

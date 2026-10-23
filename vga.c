@@ -281,6 +281,10 @@ struct VGAState {
 #endif
     uint8_t tmpbuf[(LCD_WIDTH > 720 ? LCD_WIDTH : 720) * 3 * 2];
 #endif
+
+    /* what the drawing has done, for vga_get_info(): the drawing writes
+       them, a word each; last in the state, so that no other field moves */
+    uint32_t n_vbe_pictures, n_vbe_whole, n_vbe_blocks, n_vbe_rows;
 };
 
 uint32_t get_uticks();
@@ -1465,6 +1469,7 @@ static void vga_take_marks(VGAState *s, uint32_t addr1, uint32_t line_offset,
             if (!__atomic_load_n(&map[b], __ATOMIC_RELAXED))
                 continue;
             __atomic_store_n(&map[b], 0, __ATOMIC_RELAXED);
+            s->n_vbe_blocks++;
             if (all)
                 continue;
             uint32_t lo = b << VGA_DIRTY_SHIFT;
@@ -1593,6 +1598,8 @@ static void vga_vbe_refresh(VGAState *s, SimpleFBDrawFunc *redraw_func,
     s->vbe_addr = addr1;
     s->vbe_line = line_offset;
     vga_take_marks(s, addr1, line_offset, h, h, all);
+    s->n_vbe_pictures++;
+    s->n_vbe_whole += all;
 
     int yoff = i0 / fb_dev->stride;
     bool all_dirty = s->fb_all_dirty;   /* redraw() of every row anyway */
@@ -1611,6 +1618,7 @@ static void vga_vbe_refresh(VGAState *s, SimpleFBDrawFunc *redraw_func,
             a = s->vga_ram_size;
         const uint32_t *p = (const uint32_t *) (s->vga_ram + a);
         uint32_t *d = (uint32_t *) (fb_dev->fb_data + i0 + y * fb_dev->stride);
+        s->n_vbe_rows++;
         if (vbe_row(d, p, w, bpp, palette)) {
             int r = y + yoff;
             if (b0 >= 0 && r - b1 > VGA_BAND_GAP) {
@@ -1788,6 +1796,8 @@ static void vga_graphic_refresh_shrunk(VGAState *s,
         s->vbe_addr = addr1;
         s->vbe_line = line_offset;
         vga_take_marks(s, addr1, line_offset, h, sh, all);
+        s->n_vbe_pictures++;
+        s->n_vbe_whole += all;
         s->vbe_drawn = true;
     } else {
         s->vbe_drawn = false;
@@ -1804,6 +1814,7 @@ static void vga_graphic_refresh_shrunk(VGAState *s,
                 continue;
             s->rowmark[dy] = 0;
         }
+        s->n_vbe_rows += s->vbe_drawn;  /* a VBE picture from the blocks */
 #endif
         int y = (int) ((uint32_t) dy * (uint32_t) h / (uint32_t) sh);
         uint32_t addr = addr1 + (uint32_t) (y / (multi_scan + 1)) * line_offset;
@@ -3655,4 +3666,48 @@ void vga_set_text_ops(VGAState *s, VGATextOps *ops, void *o)
 {
     s->vga_text_ops = ops;
     s->vga_text_obj = o;
+}
+
+/* See vga.h.  The sizes as the guest set them, worked out as vga_refresh()
+   and vga_graphic_refresh() do: mode 13h is 320x200, not the 640x400 its
+   registers count. */
+void vga_get_info(VGAState *s, struct vga_info *info)
+{
+    memset(info, 0, sizeof(*info));
+    info->screen_w = s->fb_dev->width;
+    info->screen_h = s->fb_dev->height;
+    info->vbe_pictures = s->n_vbe_pictures;
+    info->vbe_whole = s->n_vbe_whole;
+    info->vbe_blocks = s->n_vbe_blocks;
+    info->vbe_rows = s->n_vbe_rows;
+    if (!(s->ar_index & 0x20))
+        return;                         /* blank */
+    int vdisp = (s->cr[0x12] | ((s->cr[0x07] & 0x02) << 7) |
+                 ((s->cr[0x07] & 0x40) << 3)) + 1;
+    int scan = (s->cr[0x09] & 0x1f) + 1;
+    if (!(s->gr[0x06] & 1)) {
+        info->kind = 1;
+        info->width = s->cr[0x01] + 1;
+        info->height = vdisp / scan;
+        return;
+    }
+    if (vbe_enabled(s)) {
+        info->kind = 3;
+        info->width = s->vbe_regs[VBE_DISPI_INDEX_XRES];
+        info->height = s->vbe_regs[VBE_DISPI_INDEX_YRES];
+        info->bpp = s->vbe_regs[VBE_DISPI_INDEX_BPP];
+        info->line_bytes = s->vbe_line_offset;
+        info->start = s->vbe_start_addr * 4;
+        return;
+    }
+    int shift_control = (s->gr[0x05] >> 5) & 3;
+    info->kind = 2;
+    info->width = (s->cr[0x01] + 1) * 8;
+    if (shift_control >= 2) {
+        info->width /= 2;               /* 256 colours: two dots a pixel */
+        info->bpp = 8;
+    } else {
+        info->bpp = shift_control == 1 ? 2 : 4;
+    }
+    info->height = vdisp / ((s->cr[0x09] & 0x80) ? 2 : scan);
 }

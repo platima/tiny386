@@ -36,6 +36,8 @@ static int after_eq(uint32_t a, uint32_t b)
 
 #include "i8042.h"
 
+volatile unsigned ps2_key_events, ps2_mouse_reports, ps2_mouse_packets;
+
 #ifdef BUILD_ESP32
 #define THREAD_SAFE
 #include <stdatomic.h>
@@ -586,6 +588,7 @@ void ps2_put_keycode(PS2KbdState *s, int is_down, int keycode)
     while (atomic_flag_test_and_set_explicit(&(s->delay_flag),
                                              memory_order_acquire)) {}
 #endif
+    ps2_key_events = ps2_key_events + 1;
 
     if (s->delay) {
         s->delay = false;
@@ -824,6 +827,7 @@ static bool ps2_mouse_send_packet(PS2MouseState *s, int headroom)
     }
     if (!ps2_queue_bytes(&s->common, p, n, headroom))
         return false;
+    ps2_mouse_packets = ps2_mouse_packets + 1;
     s->mouse_dx -= dx1;
     s->mouse_dy -= dy1;
     s->mouse_dz -= dz1;
@@ -1002,6 +1006,7 @@ void ps2_mouse_event(PS2MouseState *s,
 {
     unsigned head = s->ring_head;
     uint32_t c = __atomic_load_n(&s->carry, __ATOMIC_ACQUIRE);
+    ps2_mouse_reports = ps2_mouse_reports + 1;
     /* left, right or middle newly down, or up, since the last report */
     int press = buttons_state & ~s->last_buttons & 7;
     int release = ~buttons_state & s->last_buttons & 7;
@@ -1078,11 +1083,13 @@ static void ps2_mouse_send_packet(PS2MouseState *s)
     s->mouse_dx -= dx1;
     s->mouse_dy -= dy1;
     s->mouse_dz -= dz1;
+    ps2_mouse_packets = ps2_mouse_packets + 1;
 }
 
 void ps2_mouse_event(PS2MouseState *s,
                      int dx, int dy, int dz, int buttons_state)
 {
+    ps2_mouse_reports = ps2_mouse_reports + 1;
     /* check if deltas are recorded when disabled */
     if (!(s->mouse_status & MOUSE_STATUS_ENABLED))
         return;

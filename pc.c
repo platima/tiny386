@@ -1,5 +1,8 @@
 #include "pc.h"
 #include "unaligned.h"
+#ifdef TINY386_PERFPORT
+#include "perfport.h"   /* the information port at 0F1F8h (perfport.c) */
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -280,6 +283,11 @@ static u8 pc_io_read(void *o, int addr)
 		val = 0;
 		emulink_data_read_string(pc->emulink, &val, 1, 1);
 		return val;
+#ifdef TINY386_PERFPORT
+	case 0xf1f8: case 0xf1f9: case 0xf1fa: case 0xf1fb:
+	case 0xf1fc: case 0xf1fd: case 0xf1fe: case 0xf1ff:
+		return perfport_io_read(pc, addr - PP_PORT_BASE, 1);
+#endif
 	default:
 		//fprintf(stderr, "in 0x%x <= 0x%x\n", addr, 0xff);
 		return 0xff;
@@ -312,6 +320,11 @@ static u16 pc_io_read16(void *o, int addr)
 		return val;
 	case 0x220:
 		return adlib_read(pc->adlib, addr);
+#ifdef TINY386_PERFPORT
+	case 0xf1f8: case 0xf1f9: case 0xf1fa: case 0xf1fb:
+	case 0xf1fc: case 0xf1fd: case 0xf1fe: case 0xf1ff:
+		return perfport_io_read(pc, addr - PP_PORT_BASE, 2);
+#endif
 	default:
 		fprintf(stderr, "inw 0x%x <= 0x%x\n", addr, 0xffff);
 		return 0xffff;
@@ -340,6 +353,11 @@ static u32 pc_io_read32(void *o, int addr)
 	case 0xf1f0:
 		val = emulink_status_read(pc->emulink);
 		return val;
+#ifdef TINY386_PERFPORT
+	case 0xf1f8: case 0xf1f9: case 0xf1fa: case 0xf1fb:
+	case 0xf1fc: case 0xf1fd: case 0xf1fe: case 0xf1ff:
+		return perfport_io_read(pc, addr - PP_PORT_BASE, 4);
+#endif
 	default:
 		fprintf(stderr, "ind 0x%x <= 0x%x\n", addr, 0xffffffff);
 	}
@@ -504,6 +522,12 @@ static void pc_io_write(void *o, int addr, u8 val)
 	case 0xf1f4:
 		emulink_data_write_string(pc->emulink, &val, 1, 1);
 		return;
+#ifdef TINY386_PERFPORT
+	case 0xf1f8: case 0xf1f9: case 0xf1fa: case 0xf1fb:
+	case 0xf1fc: case 0xf1fd: case 0xf1fe: case 0xf1ff:
+		perfport_io_write(pc, addr - PP_PORT_BASE, val, 1);
+		return;
+#endif
 	default:
 		fprintf(stderr, "out 0x%x => 0x%x\n", val, addr);
 		return;
@@ -541,6 +565,12 @@ static void pc_io_write16(void *o, int addr, u16 val)
 	case 0x310:
 		ne2000_asic_ioport_write(pc->ne2000, addr, val);
 		return;
+#ifdef TINY386_PERFPORT
+	case 0xf1f8: case 0xf1f9: case 0xf1fa: case 0xf1fb:
+	case 0xf1fc: case 0xf1fd: case 0xf1fe: case 0xf1ff:
+		perfport_io_write(pc, addr - PP_PORT_BASE, val, 2);
+		return;
+#endif
 	default:
 		fprintf(stderr, "outw 0x%x => 0x%x\n", val, addr);
 		return;
@@ -569,6 +599,12 @@ static void pc_io_write32(void *o, int addr, u32 val)
 	case 0xf1f4:
 		emulink_data_write(pc->emulink, val);
 		return;
+#ifdef TINY386_PERFPORT
+	case 0xf1f8: case 0xf1f9: case 0xf1fa: case 0xf1fb:
+	case 0xf1fc: case 0xf1fd: case 0xf1fe: case 0xf1ff:
+		perfport_io_write(pc, addr - PP_PORT_BASE, val, 4);
+		return;
+#endif
 	default:
 		fprintf(stderr, "outd 0x%x => 0x%x\n", val, addr);
 		return;
@@ -594,8 +630,15 @@ void pc_vga_step(void *o)
 	PC *pc = o;
 	int refresh = vga_step(pc->vga);
 	if (refresh) {
+#ifdef TINY386_PERFPORT
+		/* counted and timed for the information port */
+		uint32_t t0 = get_uticks();
+		vga_refresh(pc->vga, perfport_redraw, pc, pc->full_update != 0);
+		perfport_picture(t0, get_uticks() - t0);
+#else
 		vga_refresh(pc->vga, pc->redraw, pc->redraw_data,
 			    pc->full_update != 0);
+#endif
 		if (pc->full_update == 2)
 			pc->full_update = 0;
 	}

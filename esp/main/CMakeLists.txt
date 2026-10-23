@@ -28,6 +28,7 @@ set(srcs "esp_main.c"
 "../../i8257.c"
 "../../sb16.c"
 "../../pcspk.c"
+"../../perfport.c"
 "bootmenu.c"
 "console.c"
 "disk_image.c"
@@ -115,6 +116,9 @@ endif()
 add_definitions(-DPS2_KBD_HOOKS)
 add_definitions(-DI386_ENABLE_FPU)
 add_definitions(-DUSE_FMOPL)
+# the information port at 0F1F8h (perfport.h, perfport.c; speed.c fills the
+# board's part)
+add_definitions(-DTINY386_PERFPORT)
 
 set_source_files_properties("../../adlib.c" PROPERTIES COMPILE_FLAGS "-Wno-all")
 set_source_files_properties("../../fmopl.c" PROPERTIES COMPILE_FLAGS "-Wno-all -fsingle-precision-constant")

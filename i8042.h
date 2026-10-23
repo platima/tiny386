@@ -19,6 +19,11 @@ void ps2_put_keycode(PS2KbdState *s, int is_down, int keycode);
 void ps2_mouse_event(PS2MouseState *s,
                      int dx, int dy, int dz, int buttons_state);
 
+/* Counted for the information port (perfport.c), from the start, each
+   with one writer at a time: ps2_put_keycode() calls, ps2_mouse_event()
+   calls, and mouse packets queued for the guest. */
+extern volatile unsigned ps2_key_events, ps2_mouse_reports, ps2_mouse_packets;
+
 #ifdef PS2_KBD_HOOKS
 /* What the guest tells the keyboard, handed to the front end (the ESP-IDF
    port's kbd_input.c), which defines these two: the lights of command 0xED

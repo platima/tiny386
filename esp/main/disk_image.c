@@ -326,10 +326,14 @@ static int access_image(struct disk_image *d, uint64_t off, uint8_t *buf, size_t
 		s_stats.recent_us = dt;
 	if (dt > DI_TICK_US)
 		s_stats.over_tick++;
-	if (write)
+	s_stats.busy_us += dt;
+	if (write) {
 		s_stats.writes++;
-	else
+		s_stats.wsectors += (uint32_t) (n / 512);
+	} else {
 		s_stats.reads++;
+		s_stats.rsectors += (uint32_t) (n / 512);
+	}
 	return ret;
 }
 
