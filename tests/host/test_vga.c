@@ -420,6 +420,46 @@ int main(int argc, char **argv)
 	refresh(s);
 	expect_rows("800x600, one pixel changed", 240, 1);
 
+	/* ==== a VBE picture that runs past the end of video memory ==== */
+	/* v4.0-base, from the merge with upstream: a line that begins past the
+	   end is drawn black (v3.9 left it as it was; upstream draws it black
+	   since 4348cfa), a line that runs past it is drawn as far as video
+	   memory goes, then black (the slack's zeros) */
+	printf("VBE 640x480x16 shown from line 400 of 1 MiB: past the end\n");
+	memset(bigvram, 0, sizeof(bigvram));
+	s = vga_init((char *) bigvram, 1024 * 1024, (uint8_t *) fb, W, H);
+	refresh(s);
+	vbe_write(s, 0, 1); vbe_write(s, 1, 640);
+	vbe_write(s, 0, 2); vbe_write(s, 1, 480);
+	vbe_write(s, 0, 3); vbe_write(s, 1, 16);
+	vbe_write(s, 0, 4); vbe_write(s, 1, 0x41);
+	memset(bigvram, 0x55, 1024 * 1024);     /* every pixel 0x5555 */
+	refresh(s);
+	/* 1 MiB is 819.2 lines of 1,280 bytes: from line 400, the screen's rows
+	   0 to 418 are in video memory, row 419 has its first 128 pixels
+	   there, rows 420 to 479 begin past the end */
+	vbe_write(s, 0, 9); vbe_write(s, 1, 400);       /* Y offset */
+	refresh(s);     /* the clear the offset asks for, and the picture */
+	for (int i = 0; i < W * H; i++)
+		fb[i] = 0x1234;                 /* something else on the screen */
+	refresh(s);     /* no clear: every row of the picture drawn over it */
+	int in = 1, part = 1, past = 1;
+	for (int x = 0; x < 640; x++) {
+		for (int y = 0; y < 419; y++)
+			if (fb[y * W + 80 + x] != 0x5555)
+				in = 0;
+		if (fb[419 * W + 80 + x] != (x < 128 ? 0x5555 : 0))
+			part = 0;
+		for (int y = 420; y < 480; y++)
+			if (fb[y * W + 80 + x] != 0)
+				past = 0;
+	}
+	check(in, "past the end: rows 0 to 418 drawn from video memory");
+	check(part, "past the end: row 419 its first 128 pixels, then black");
+	check(past, "past the end: rows 420 to 479, which begin past it, black");
+	printf("  rows 0 to 418 %s, row 419 %s, rows 420 to 479 %s\n", in ? "drawn" : "WRONG",
+	       part ? "half drawn" : "WRONG", past ? "black" : "WRONG");
+
 	if (failures) {
 		printf("test_vga: %d checks FAILED\n", failures);
 		return 1;

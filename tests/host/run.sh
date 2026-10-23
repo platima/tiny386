@@ -383,6 +383,23 @@ if git -C "$TREE" rev-parse -q --verify pristine >/dev/null; then
     "$OUT/test_pit_pristine" pristine | sed 's/^/    | /'
     result ${PIPESTATUS[0]} "the PIT test sees the burst in pristine i8254.c"
 fi
+# v4.0-base: the one-shot modes came with upstream; v3.9's i8254.c has to
+# pass everything before them and then stop at mode 0 (abort())
+if git -C "$TREE" rev-parse -q --verify v3.9 >/dev/null; then
+    git -C "$TREE" show v3.9:i8254.c > "$OUT/i8254-v3.9.c"
+    $CC -O1 -g -w -I"$TREE" -c -o "$OUT/pit_i8254_v39.o" "$OUT/i8254-v3.9.c" || exit 1
+    $CC $CFLAGS -I"$TREE" -o "$OUT/test_pit_v39" "$HERE/test_pit.c" \
+        "$OUT/pit_i8254_v39.o" "$OUT/pit_misc.o" || exit 1
+    echo "(the same test against v3.9's i8254.c, which has to stop at mode 0)"
+    "$OUT/test_pit_v39" > "$OUT/pit-v3.9.log" 2>&1
+    st=$?
+    tail -2 "$OUT/pit-v3.9.log" | sed 's/^/    | /'
+    echo "    | ($(grep -c '^  ok:' "$OUT/pit-v3.9.log") checks passed, $(grep -c 'FAIL' "$OUT/pit-v3.9.log") failed; exit status $st)"
+    [ $st != 0 ] && ! grep -q FAIL "$OUT/pit-v3.9.log" &&
+        grep -q "^== the one-shot modes" "$OUT/pit-v3.9.log" &&
+        tail -1 "$OUT/pit-v3.9.log" | grep -q "^abort() called"
+    result $? "the PIT test sees v3.9's i8254.c stop at mode 0"
+fi
 
 # ==== 20. faults while an exception or interrupt is delivered (v3.8) ====
 # i386.c with a small protected-mode guest (tests/host/cpu): the double

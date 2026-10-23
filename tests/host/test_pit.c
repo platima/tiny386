@@ -9,7 +9,9 @@
  * page.  With i8254_max_owed (default 1) the ticks beyond that are dropped
  * and one is raised, on the counter's own phase, as a real 8254 and 8259
  * would.  Also the CMOS periodic interrupt (misc.c), which caught up the
- * same way.
+ * same way.  Since v4.0-base also upstream's one-shot modes (0 and 4),
+ * modes 1 and 5 (no interrupt) and 6 and 7 (2 and 3, the cap included),
+ * merged beside the cap; i8254.c of v3.9 stops at mode 0 with abort().
  *
  *   test_pit [pristine]     "pristine": i8254.c as tiny386 released it, where
  *                           the burst must be seen (the test sees the bug)
@@ -23,8 +25,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <signal.h>
+#include <unistd.h>
 
 #include "i8254.h"
+
+/* an abort() in i8254.c (v3.9's at mode 0): said, and the test ends there
+   with the status abort() gives, without a core dump */
+static void on_abort(int sig)
+{
+	static const char m[] = "abort() called\n";
+	(void) sig;
+	ssize_t w = write(1, m, sizeof(m) - 1);
+	(void) w;
+	_exit(134);
+}
 
 static int checks, fails;
 #define CHECK(c, ...) do { \
@@ -105,6 +120,67 @@ static void rtc_irq(void *pic, int irq, int level)
 		s_rtc_edges++;
 }
 
+/* channel 0: the control word, then the count, low byte first */
+static void load(PITState *pit, int control, int count)
+{
+	i8254_ioport_write(pit, 0x43, control);
+	i8254_ioport_write(pit, 0x40, count & 0xff);
+	i8254_ioport_write(pit, 0x40, (count >> 8) & 0xff);
+}
+
+/* Upstream's one-shot modes (7989c8f, 16a060a, 4ce2e06), merged in
+   v4.0-base beside the cap: modes 0 and 4 give one interrupt when the
+   count runs out, held up or not, and nothing is counted as dropped;
+   1 and 5 give none (channel 0's gate never rises); 6 and 7 are 2 and 3,
+   the cap included.  v3.9's i8254.c called abort() at mode 0. */
+static void one_shot_checks(PITState *pit)
+{
+	printf("== the one-shot modes beside the cap (upstream's, merged in v4.0-base)\n");
+	uint32_t d0 = i8254_dropped;
+	load(pit, 0x30, 1193);                  /* mode 0, 1 ms */
+	int n = run_for(pit, 2000);
+	CHECK(n == 1, "mode 0, a count of 1 ms: %d interrupt within 2 ms (1)", n);
+	n = run_for(pit, 100000);
+	CHECK(n == 0, "mode 0: no more in the next 100 ms (%d)", n);
+	load(pit, 0x30, 1193);
+	s_us += 50000;                          /* held up for 50 of its counts */
+	n = burst(pit, 500);
+	CHECK(n == 1 && i8254_dropped == d0, "mode 0 loaded again and held up 50 ms: %d "
+	      "interrupt (1), none counted as dropped (%u)", n, (unsigned) (i8254_dropped - d0));
+	n = run_for(pit, 100000);
+	CHECK(n == 0, "and none after it in 100 ms (%d)", n);
+	load(pit, 0x38, 1193);                  /* mode 4 */
+	n = run_for(pit, 100000);
+	CHECK(n == 1, "mode 4, a count of 1 ms: %d interrupt in 100 ms (1)", n);
+	load(pit, 0x32, 1193);                  /* mode 1 */
+	n = run_for(pit, 100000);
+	CHECK(n == 0, "mode 1: %d interrupts in 100 ms (none), and no abort()", n);
+	load(pit, 0x3a, 1193);                  /* mode 5 */
+	n = run_for(pit, 100000);
+	CHECK(n == 0, "mode 5: %d interrupts in 100 ms (none)", n);
+	load(pit, 0x3c, 1193);                  /* mode 6, which is 2 */
+	n = run_for(pit, 100000);
+	CHECK(n >= 99 && n <= 101, "mode 6 (as 2), 1 kHz for 100 ms: %d ticks", n);
+	s_us += 200000;
+	n = burst(pit, 500);
+	CHECK(n == 1 && i8254_dropped - d0 >= 198 && i8254_dropped - d0 <= 200,
+	      "mode 6 held up 200 ms: %d tick (1), %u dropped (199 or so): the cap", n,
+	      (unsigned) (i8254_dropped - d0));
+	i8254_max_owed = 0;
+	run_for(pit, 2000);
+	s_us += 30000;
+	n = burst(pit, 100);
+	CHECK(n >= 29 && n <= 31, "mode 6 with i8254_max_owed 0 (timer_catchup = 0), held up 30 ms: "
+	      "%d ticks back to back, as before v3.8", n);
+	i8254_max_owed = 1;
+	load(pit, 0x3e, 1193);                  /* mode 7, which is 3 */
+	n = run_for(pit, 100000);
+	CHECK(n >= 99 && n <= 101, "mode 7 (as 3), 1 kHz for 100 ms: %d ticks", n);
+	load(pit, 0x34, 0);                     /* mode 2 at the reset count */
+	n = run_for(pit, 1000000);
+	CHECK(n >= 18 && n <= 19, "mode 2 at the reset count again: %d ticks in 1 s", n);
+}
+
 static void cmos_checks(void)
 {
 	printf("== the CMOS periodic interrupt (misc.c)\n");
@@ -143,6 +219,7 @@ int main(int argc, char **argv)
 {
 	bool pristine = argc > 1 && !strcmp(argv[1], "pristine");
 	setvbuf(stdout, NULL, _IONBF, 0);
+	signal(SIGABRT, on_abort);
 	s_us = 1000000;
 	PITState *pit = i8254_init(0, NULL, set_irq);
 
@@ -224,6 +301,7 @@ int main(int argc, char **argv)
 	n = burst(pit, 500);
 	CHECK(n == 1, "1 kHz, held up 200 ms: %d tick (1, not 200)", n);
 
+	one_shot_checks(pit);
 	cmos_checks();
 #endif
 	printf("test_pit: %d checks, %d failed\n", checks, fails);
