@@ -102,7 +102,8 @@ vga_rename() {
     for s in vga_init vga_set_force_8dm vga_step vga_refresh vga_ioport_write \
              vga_ioport_read vbe_write vbe_read vga_mem_write vga_mem_read \
              vga_mem_write16 vga_mem_write32 vga_mem_write_string vga_pci_init \
-             vga_planar_fast vga_set_text_ops vga_dirty_map vga_dirty vga_dirty_blocks; do
+             vga_planar_fast vga_set_text_ops vga_dirty_map vga_dirty vga_dirty_blocks \
+             vga_set_dirty_blocks; do
         printf ' -D%s=%s%s' "$s" "$p" "$s"
     done
 }

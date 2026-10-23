@@ -434,6 +434,12 @@ static void hotkey(void)
 	hotkeys++;
 }
 
+static int hotkeys2;
+static void hotkey2(void)
+{
+	hotkeys2++;
+}
+
 static int sunk;
 static uint8_t sunk_last, sunk_mods;
 static void sink(uint8_t u, uint8_t mods)
@@ -527,6 +533,38 @@ static void test_keyboards(void)
 	up(a);
 	EXPECT("and its release", 0xD8);
 	CHECK(hotkeys == 1, "hotkey called %d times", hotkeys);
+
+	printf("Ctrl+Alt+F11 beside it (vbe_blocks, v4.2):\n");
+	kbd_input_set_hotkey(HID_KEY_F11, hotkey2);
+	report(a, KBD_MOD_LCTRL | KBD_MOD_LALT, 0);
+	EXPECT("Ctrl and Alt down", 0x1D, 0x38);
+	report(a, KBD_MOD_LCTRL | KBD_MOD_LALT, 1, HID_KEY_F11);
+	EXPECT_NONE("F11 with them: not to the PC");
+	CHECK(hotkeys2 == 1 && hotkeys == 1, "F11's hotkey called %d times, F12's %d",
+	      hotkeys2, hotkeys);
+	report(a, KBD_MOD_LCTRL | KBD_MOD_LALT, 0);
+	EXPECT_NONE("F11 let go: its release not sent");
+	report(a, KBD_MOD_LCTRL | KBD_MOD_LALT, 1, HID_KEY_F12);
+	EXPECT_NONE("F12 with them: still not to the PC");
+	CHECK(hotkeys2 == 1 && hotkeys == 2, "F11's hotkey called %d times, F12's %d",
+	      hotkeys2, hotkeys);
+	up(a);
+	EXPECT("all let go", 0x9D, 0xB8);
+	press(a, 0, HID_KEY_F11);
+	EXPECT("F11 alone goes to the PC", 0x57);
+	up(a);
+	EXPECT("and its release", 0xD7);
+	kbd_input_set_hotkey(HID_KEY_F11, NULL);
+	press(a, KBD_MOD_LCTRL | KBD_MOD_LALT, HID_KEY_F11);
+	EXPECT("F11's hotkey taken away: Ctrl+Alt+F11 goes to the PC", 0x1D, 0x38, 0x57);
+	up(a);
+	EXPECT("and its release", 0xD7, 0x9D, 0xB8);
+	CHECK(hotkeys2 == 1, "F11's hotkey called %d times", hotkeys2);
+	kbd_input_set_hotkey(HID_KEY_F11, hotkey2);
+	press(a, KBD_MOD_LCTRL | KBD_MOD_LALT, HID_KEY_F11);
+	up(a);
+	CHECK(hotkeys2 == 2, "F11's hotkey set again: called %d times", hotkeys2);
+	EXPECT("only Ctrl and Alt reach the PC", 0x1D, 0x38, 0x9D, 0xB8);
 
 	printf("the boot menu's sink, and no PC yet:\n");
 	kbd_input_set_sink(sink);

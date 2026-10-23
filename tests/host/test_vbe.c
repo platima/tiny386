@@ -35,6 +35,11 @@
  * VBE (which go through the planar path, unmarked) are drawn at the next
  * picture after chain 4 is back on.
  *
+ * v4.2: vbe_blocks changed while the PC runs (vga_set_dirty_blocks(), the
+ * board's Ctrl+Alt+F11): to 0 and back to 1 with no picture between, the
+ * stores made while it was 0 (unmarked) are drawn; and a store that read
+ * the old 0 and lands after the first picture is drawn by the second.
+ *
  * Exit status 0 when every check passes.
  */
 #include <stdbool.h>
@@ -554,6 +559,70 @@ static void marks_where_read(void)
 	printf("  vbe_blocks 0, then 1 again: %s\n", ok ? "the same in every picture" : "DIFFERENT");
 }
 
+/* ==== v4.2: vbe_blocks changed while the PC runs ==== */
+
+/* a store into the linear frame buffer that read vga_dirty_blocks as 0:
+   straight into video memory, not marked */
+static void each_lfb_unmarked(uint32_t off, const uint8_t *p, int n)
+{
+	for (int i = 0; i < ninst; i++)
+		memcpy(insts[i].vram + off, p, n);
+}
+
+static void blocks_switched(void)
+{
+	int size = 1024 * 1024;
+	static const int depths[] = { 8, 16, 32 };
+	for (unsigned di = 0; di < sizeof(depths) / sizeof(depths[0]); di++) {
+		int bpp = depths[di];
+		char what[200];
+		uint8_t buf[256];
+		ninst = 0;
+		inst_init(&insts[ninst++], &api_new, size);
+		inst_init(&insts[ninst++], &api_ref, size);
+		vga_set_dirty_blocks(1);
+		set_mode(W, H, bpp, false);
+		if (bpp == 8)
+			set_palette(11);
+		uint32_t shown = (uint32_t) W * H * bytes_of(bpp);
+		scribble(100, 0, shown, size);
+		picture("vbe_blocks 1", 0);
+		picture("vbe_blocks 1", 0);
+		/* 0 and back to 1 between two pictures, stores while it was 0 */
+		vga_set_dirty_blocks(0);
+		for (int k = 0; k < 20; k++) {
+			for (int j = 0; j < (int) sizeof(buf); j++)
+				buf[j] = rnd() >> 5;
+			each_lfb((rnd() % (shown / 4 - 64)) * 4, buf, sizeof(buf));
+		}
+		vga_set_dirty_blocks(1);
+		snprintf(what, sizeof(what), "%dx%dx%d, vbe_blocks 0 and back to 1, no picture "
+			 "between", W, H, bpp);
+		bool ok = picture(what, 0);
+		/* a store that read the old value and lands after that picture */
+		for (int j = 0; j < (int) sizeof(buf); j++)
+			buf[j] = rnd() >> 5;
+		each_lfb_unmarked((shown / 2) & ~3u, buf, sizeof(buf));
+		snprintf(what, sizeof(what), "%dx%dx%d, a store unmarked after the first picture "
+			 "since the change", W, H, bpp);
+		ok &= picture(what, 0);
+		/* and on as usual */
+		scribble(20, 0, shown, size);
+		ok &= picture("vbe_blocks 1 again", 0);
+		/* to 0 and left there: every picture whole */
+		vga_set_dirty_blocks(0);
+		scribble(20, 0, shown, size);
+		ok &= picture("vbe_blocks 0", 0);
+		each_lfb_unmarked(0, buf, sizeof(buf));
+		ok &= picture("vbe_blocks 0, a store unmarked", 0);
+		vga_set_dirty_blocks(1);
+		ok &= picture("vbe_blocks 1", 0);
+		printf("  %dx%dx%d, vbe_blocks switched while drawing: %s\n", W, H, bpp,
+		       ok ? "the same in every picture" : "DIFFERENT");
+	}
+	vga_set_dirty_blocks(1);
+}
+
 /* ==== v4.1: chain 4 switched off and on again under VBE ==== */
 
 static void chain4_switched(void)
@@ -730,6 +799,8 @@ int main(int argc, char **argv)
 	marks_where_read();
 	printf("chain 4 switched under VBE (v4.1)\n");
 	chain4_switched();
+	printf("vbe_blocks changed while the PC runs (v4.2)\n");
+	blocks_switched();
 
 	printf("two threads\n");
 	for (unsigned di = 0; di < sizeof(depths) / sizeof(depths[0]); di++)
