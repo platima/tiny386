@@ -183,6 +183,8 @@ static volatile uint32_t s_flushes;      /* disk flushes, for the log */
 #define REQ_TOGGLE 1
 #define REQ_SHOW 2
 static int s_req;
+/* Ctrl+Alt+F11 pressed: vbe_blocks to change, on core 0 between pictures */
+static int s_blocks_req;
 static bool s_shown;            /* core 0 only, as below */
 static const char *s_normal_title = "";
 static uint32_t s_last_title_s, s_last_log_s;
@@ -196,8 +198,10 @@ void speed_run_init(void *opaque)
 void speed_forget_requests(void)
 {
 	/* a Ctrl+Alt+F12 from before the PC ran is not for its screen: called
-	   before vga_task is let go, so that it never sees one */
+	   before vga_task is let go, so that it never sees one; nor a
+	   Ctrl+Alt+F11 */
 	__atomic_store_n(&s_req, 0, __ATOMIC_RELEASE);
+	__atomic_store_n(&s_blocks_req, 0, __ATOMIC_RELEASE);
 }
 
 void speed_run_step(void *opaque, uint32_t now_us)
@@ -246,6 +250,22 @@ void speed_run_aside(uint32_t now_us)
 void speed_hotkey(void)
 {
 	__atomic_store_n(&s_req, REQ_TOGGLE, __ATOMIC_RELEASE);
+}
+
+void speed_blocks_hotkey(void)
+{
+	__atomic_store_n(&s_blocks_req, 1, __ATOMIC_RELEASE);
+}
+
+/* the line that says what vbe_blocks is now */
+static void blocks_line(bool changed)
+{
+	console_printf(CON_INFO, "vbe_blocks = %d%s: %s Ctrl+Alt+F11 changes it until the PC "
+		       "starts again; the ini is not changed.", vga_dirty_blocks,
+		       changed ? " now" : "",
+		       vga_dirty_blocks ? "VBE pictures are drawn again only where the guest "
+		       "wrote." : "VBE pictures are drawn in full every time and no store is "
+		       "marked, as before v4.0.");
 }
 
 void speed_set_title(const char *normal)
@@ -317,6 +337,12 @@ void speed_screen_poll(void *opaque, uint32_t pps)
 	   neither the hotkey nor the USER key gives the panel back */
 	if (console_held())
 		return;
+	/* Ctrl+Alt+F11: vbe_blocks the other way, at once (vga.h says how the
+	   drawing takes it; here, between two pictures) */
+	if (__atomic_exchange_n(&s_blocks_req, 0, __ATOMIC_ACQ_REL)) {
+		vga_set_dirty_blocks(!vga_dirty_blocks);
+		blocks_line(true);
+	}
 	bool want = s_shown;
 	if (req == REQ_TOGGLE)
 		want = !s_shown;
@@ -356,6 +382,7 @@ void speed_screen_poll(void *opaque, uint32_t pps)
 		console_log_stats(&held, &dropped);
 		console_printf(CON_INFO, "Log: %u repeated lines held back, %u dropped from the "
 			       "UART's queue", held, dropped);
+		blocks_line(false);
 		show_title(pps);
 		s_last_title_s = secs;
 	} else if (!want && s_shown) {

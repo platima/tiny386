@@ -27,8 +27,11 @@ static StaticSemaphore_t s_mutex_buf;
 static PS2KbdState *s_kbd;
 static PS2MouseState *s_mouse;
 static kbd_input_key_fn *s_sink;
-static uint8_t s_hotkey;
-static void (*s_hotkey_fn)(void);
+/* Ctrl+Alt+usage: the speed screen (F12), vbe_blocks (F11) */
+static struct {
+	uint8_t usage;
+	void (*fn)(void);
+} s_hot[KBD_INPUT_HOTKEYS];
 static kbd_input_leds_fn *s_leds_fn;
 static void (*s_wake)(void);
 static uint8_t s_leds;          /* USB order */
@@ -202,11 +205,14 @@ static void key_event(uint8_t u, bool down)
 		uint8_t mods = mods_down();
 		/* a real keyboard repeats the last key pressed, and only it */
 		s_rep_usage = 0;
-		if (s_hotkey_fn && u == s_hotkey && (mods & KBD_MOD_CTRL) &&
-		    (mods & KBD_MOD_ALT)) {
-			set_swallowed(u, true);
-			s_hotkey_fn();
-			return;
+		if ((mods & KBD_MOD_CTRL) && (mods & KBD_MOD_ALT)) {
+			for (int i = 0; i < KBD_INPUT_HOTKEYS; i++) {
+				if (s_hot[i].fn && s_hot[i].usage == u) {
+					set_swallowed(u, true);
+					s_hot[i].fn();
+					return;
+				}
+			}
 		}
 		if (s_sink) {
 			set_swallowed(u, true);
@@ -311,8 +317,20 @@ void kbd_input_set_sink(kbd_input_key_fn *fn)
 void kbd_input_set_hotkey(uint8_t usage, void (*fn)(void))
 {
 	LOCK();
-	s_hotkey = usage;
-	s_hotkey_fn = fn;
+	/* the key's own slot, else the first free one */
+	int at = -1;
+	for (int i = 0; i < KBD_INPUT_HOTKEYS; i++) {
+		if (s_hot[i].fn && s_hot[i].usage == usage) {
+			at = i;
+			break;
+		}
+		if (!s_hot[i].fn && at < 0)
+			at = i;
+	}
+	if (at >= 0) {
+		s_hot[at].usage = usage;
+		s_hot[at].fn = fn;
+	}
 	UNLOCK();
 }
 

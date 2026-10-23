@@ -63,8 +63,13 @@ void vga_dirty(VGAState *s, uint32_t addr, uint32_t len);
    before v4.0 (the board's [esp] vbe_blocks).  Set before the PC is built
    (the board), or changed between pictures with a picture drawn at each
    setting (test_vbe): a picture drawn while it is 0 makes the next one
-   with 1 a whole picture. */
+   with 1 a whole picture.  While the PC runs, change it only through
+   vga_set_dirty_blocks() (the board's Ctrl+Alt+F11), from any core at any
+   time: the two VBE pictures after the change are drawn whole, so that a
+   store made as it changed, which may have read the old value and not
+   marked, is drawn too, even with no picture drawn while it was 0. */
 extern int vga_dirty_blocks;
+void vga_set_dirty_blocks(int on);
 
 /* Bytes addr to addr + len - 1 of video memory were written: len 1 or
    more, all of them inside video memory. */

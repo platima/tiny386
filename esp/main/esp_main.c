@@ -1195,6 +1195,8 @@ void app_main(void)
 	/* the speed screen (speed.c), over the picture and back */
 	speed_set_title(s_title);
 	kbd_input_set_hotkey(HID_KEY_F12, speed_hotkey);
+	/* v4.2: vbe_blocks changed while the PC runs */
+	kbd_input_set_hotkey(HID_KEY_F11, speed_blocks_hotkey);
 
 #ifdef ESPDEBUG
 	uart_config_t uart_config = {

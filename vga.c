@@ -43,6 +43,14 @@
 int vga_planar_fast = 1;
 /* VGA_DIRTY_BLOCKS: 0 draws VBE pictures pixel by pixel every time (vga.h) */
 int vga_dirty_blocks = 1;
+/* how many times vga_set_dirty_blocks() has changed it */
+static uint32_t vga_dirty_blocks_changes;
+
+void vga_set_dirty_blocks(int on)
+{
+    __atomic_store_n(&vga_dirty_blocks, on ? 1 : 0, __ATOMIC_RELAXED);
+    __atomic_add_fetch(&vga_dirty_blocks_changes, 1, __ATOMIC_RELEASE);
+}
 
 #ifdef BUILD_ESP32
 #include "esp_attr.h"
@@ -263,6 +271,8 @@ struct VGAState {
     int vbe_w, vbe_h, vbe_bpp, vbe_i0;
     uint32_t vbe_addr, vbe_line;
     uint16_t vbe_pal[256];  /* 8 bits a pixel: the colours it was drawn in */
+    uint32_t blocks_changes_seen;   /* vga_dirty_blocks_changes, as dealt with */
+    int vbe_whole_left;     /* VBE pictures still to draw whole after it */
 #endif
 
 #if defined(SCALE_3_2) || defined(SCALE_2_1) || defined(SWAPXY)
@@ -2576,6 +2586,19 @@ void vga_refresh(VGAState *s,
        it comes back */
     if (s->graphic_mode != 2)
         s->vbe_drawn = false;
+    /* vbe_blocks changed while the PC runs (vga_set_dirty_blocks()): this
+       picture and the next drawn whole */
+    {
+        uint32_t c = __atomic_load_n(&vga_dirty_blocks_changes, __ATOMIC_ACQUIRE);
+        if (c != s->blocks_changes_seen) {
+            s->blocks_changes_seen = c;
+            s->vbe_whole_left = 2;
+        }
+        if (s->vbe_whole_left) {
+            s->vbe_whole_left--;
+            s->vbe_drawn = false;
+        }
+    }
 #endif
     if (s->graphic_mode == 2) {
         vga_graphic_refresh(s, redraw_func, opaque, full_update);
