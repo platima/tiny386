@@ -417,6 +417,7 @@ int main(int argc, char **argv)
 	refresh(s);
 	expect_rows("800x600, nothing changed", 0, 0);
 	bigvram[(300 * 800 + 400) * 2] ^= 0xff;  /* a pixel on line 300 = row 240 */
+	vga_dirty(s, (300 * 800 + 400) * 2, 1);  /* as the emulator's stores say so */
 	refresh(s);
 	expect_rows("800x600, one pixel changed", 240, 1);
 
@@ -439,10 +440,15 @@ int main(int argc, char **argv)
 	   0 to 418 are in video memory, row 419 has its first 128 pixels
 	   there, rows 420 to 479 begin past the end */
 	vbe_write(s, 0, 9); vbe_write(s, 1, 400);       /* Y offset */
-	refresh(s);     /* the clear the offset asks for, and the picture */
+	refresh(s);     /* the new start: the picture drawn again */
 	for (int i = 0; i < W * H; i++)
 		fb[i] = 0x1234;                 /* something else on the screen */
-	refresh(s);     /* no clear: every row of the picture drawn over it */
+	/* no clear: every row of the picture drawn over it.  Since v4.0 a VBE
+	   picture is drawn again only where video memory was written, so the
+	   caller says that something else drew on the screen (full_update),
+	   as the firmware does after its console */
+	fake_us += 30000;
+	vga_refresh(s, redraw, NULL, 1);
 	int in = 1, part = 1, past = 1;
 	for (int x = 0; x < 640; x++) {
 		for (int y = 0; y < 419; y++)

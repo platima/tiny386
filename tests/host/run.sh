@@ -90,6 +90,52 @@ $CC -o "$OUT/test_vga_dosboard" "$OUT/test_vga_dosboard.o" "$OUT/vga-dosboard.o"
 "$OUT/test_vga_dosboard"
 result $? "vga.c on the DOS board: text, 16 and 256 colours, VBE whole, scaled and 8-bit, at 800x600"
 
+# ==== 3c. VBE pictures from the blocks written (v4.0, VGA_DIRTY_BLOCKS) ====
+# vga.c three times: as the board builds it, the same with
+# VGA_DIRTY_BLOCKS taken out (every pixel of every picture, the old loop),
+# and v4.0-base's vga.c when the tag is there; the second and third have
+# their symbols renamed.  The same modes, writes and changes go to each, and
+# the pictures must be the same; on both boards' screens.
+echo
+vga_rename() {
+    local p=$1 s
+    for s in vga_init vga_set_force_8dm vga_step vga_refresh vga_ioport_write \
+             vga_ioport_read vbe_write vbe_read vga_mem_write vga_mem_read \
+             vga_mem_write16 vga_mem_write32 vga_mem_write_string vga_pci_init \
+             vga_planar_fast vga_set_text_ops vga_dirty_map vga_dirty vga_dirty_blocks; do
+        printf ' -D%s=%s%s' "$s" "$p" "$s"
+    done
+}
+printf '#undef VGA_DIRTY_BLOCKS\n' > "$OUT/no_dirty_blocks.h"
+VBE_BASE=
+if git -C "$TREE" rev-parse -q --verify v4.0-base >/dev/null; then
+    mkdir -p "$OUT/v40base"
+    git -C "$TREE" show v4.0-base:vga.c > "$OUT/v40base/vga.c"
+    git -C "$TREE" show v4.0-base:vga.h > "$OUT/v40base/vga.h"
+    VBE_BASE=1
+fi
+for board in korvo1 dosboard; do
+    hdr="$TREE/esp/main/board_$board.h"
+    $CC $CFLAGS -c -I"$HERE/shim" -I"$TREE" -include "$hdr" ${VBE_BASE:+-DWITH_BASE} \
+        -o "$OUT/test_vbe-$board.o" "$HERE/test_vbe.c" || exit 1
+    $CC -O2 -g -w -c -I"$HERE/shim" -I"$TREE" -include "$hdr" \
+        -o "$OUT/vbe-new-$board.o" "$TREE/vga.c" || exit 1
+    $CC -O2 -g -w -c -I"$HERE/shim" -I"$TREE" -include "$hdr" -include "$OUT/no_dirty_blocks.h" \
+        $(vga_rename ref_) -o "$OUT/vbe-ref-$board.o" "$TREE/vga.c" || exit 1
+    objs="$OUT/test_vbe-$board.o $OUT/vbe-new-$board.o $OUT/vbe-ref-$board.o $OUT/vgafont.o"
+    if [ -n "$VBE_BASE" ]; then
+        $CC -O2 -g -w -c -I"$OUT/v40base" -I"$HERE/shim" -I"$TREE" -include "$hdr" \
+            $(vga_rename base_) -o "$OUT/vbe-base-$board.o" "$OUT/v40base/vga.c" || exit 1
+        objs="$objs $OUT/vbe-base-$board.o"
+    fi
+    $CC -o "$OUT/test_vbe-$board" $objs -lpthread || exit 1
+    "$OUT/test_vbe-$board" "$OUT"
+    st=$?
+    against="the old loop"
+    [ -n "$VBE_BASE" ] && against="the old loop and v4.0-base"
+    result $st "vga.c, $board: VBE pictures from the blocks written are as $against draws them, pixel for pixel; the bank window"
+done
+
 # ==== 4. the keyboard and mouse layer (FIRMWARE-PLAN 3.3) ====
 # kbd_input.c with i8042.c as the emulator has it, without BUILD_ESP32 (no
 # locks) and with PS2_KBD_HOOKS; usb_hid.c for v2's key table, to compare.
