@@ -226,6 +226,10 @@ struct VGAState {
     uint32_t clear_req_seen;
     uint32_t force_clear_req;   /* a VBE mode was set: a clear */
     uint32_t force_clear_seen;
+#ifdef VGA_DIRTY_BLOCKS
+    uint32_t vbe_whole_req;     /* chain 4 switched under VBE: a VBE */
+    uint32_t vbe_whole_seen;    /* picture drawn whole (vga_vbe_whole()) */
+#endif
 #endif
 #ifdef VGA_REDRAW_DIRTY_ROWS
     bool fb_all_dirty;      /* cleared since the last redraw(): all rows */
@@ -1297,8 +1301,32 @@ static void vga_text_refresh(VGAState *s,
 }
 
 #ifdef VGA_DIRTY_BLOCKS
-/* VGA_DIRTY_BLOCKS: see vga.h */
-#define VRAM_WRITTEN(s, addr, len) vga_dirty_mark((s)->dirty, (addr), (len))
+/* VGA_DIRTY_BLOCKS: see vga.h.  A chain-4 store is marked only while VBE is
+   on and vga_dirty_blocks is 1: only a VBE picture of 8 to 32 bits a pixel
+   reads the marks.  Mode 13h and the BIOS's other 256-colour modes are
+   drawn by the loop in vga_graphic_refresh() every time, so their stores
+   pay this test, not the mark and its fence.  Turning VBE on always asks
+   for a clear (vbe_update_vgaregs()), and with it a whole picture, so what
+   was stored before is drawn. */
+#define VRAM_WRITTEN(s, addr, len) do { \
+        if (vbe_enabled(s) && vga_dirty_blocks) \
+            vga_dirty_mark((s)->dirty, (addr), (len)); \
+    } while (0)
+
+/* Video memory may have been written where no mark says so: chain 4 was
+   switched off or on while VBE is on, and the odd/even and planar stores
+   are not marked.  The next VBE picture is drawn whole.  This runs on the
+   emulator's core; with VGA_TWO_CORES the drawing takes the request in
+   vga_refresh(), and a release here and an acquire there put the stores
+   made before it ahead of that picture's reads. */
+static void vga_vbe_whole(VGAState *s)
+{
+#ifdef VGA_TWO_CORES
+    vga_ask(&s->vbe_whole_req);
+#else
+    s->vbe_drawn = false;
+#endif
+}
 
 uint8_t *vga_dirty_map(VGAState *s)
 {
@@ -1481,7 +1509,8 @@ static void vga_vbe_refresh(VGAState *s, SimpleFBDrawFunc *redraw_func,
             s->rowmark[y] = 0;
         }
         /* a line that begins past the end of video memory shows the
-           slack's zeros, as in vga_graphic_refresh() */
+           slack, as in vga_graphic_refresh() (zeros, unless a store ran
+           into it) */
         uint64_t a = addr1 + (uint64_t) y * line_offset;
         if (a > (uint64_t) s->vga_ram_size)
             a = s->vga_ram_size;
@@ -2010,8 +2039,12 @@ static void vga_graphic_refresh(VGAState *s,
            video memory (VGA_MEM_SLACK, more than any line here reads); a
            line that begins past the end (only in a VBE mode, or with less
            than 256 KB) reads them from their start, so it is drawn as
-           zeros, black, where it used to be left as it was (upstream draws
-           such a line black too, since 4348cfa). */
+           zeros, where it used to be left as it was: black, or palette
+           entry 0 at 8 bits a pixel (upstream draws such a line black,
+           since 4348cfa).  A 16 or 32-bit store through the bank window
+           at the last bytes of the last bank puts up to 3 bytes into the
+           slack (the chain-4 stores below do not split at the end), and
+           such a line then shows them. */
         if (!vbe)
             addr &= 0x3ffff;
         if (addr >= (uint32_t) s->vga_ram_size)
@@ -2427,6 +2460,17 @@ void vga_refresh(VGAState *s,
         vga_clear_screen(s);
         full_update = 1;
     }
+#ifdef VGA_DIRTY_BLOCKS
+    /* chain 4 was switched under VBE on the emulator's core
+       (vga_vbe_whole()): this VBE picture is drawn whole */
+    {
+        uint32_t r = __atomic_load_n(&s->vbe_whole_req, __ATOMIC_ACQUIRE);
+        if (r != s->vbe_whole_seen) {
+            s->vbe_whole_seen = r;
+            s->vbe_drawn = false;
+        }
+    }
+#endif
 #endif
     if (graphic_mode != s->graphic_mode) {
         s->graphic_mode = graphic_mode;
@@ -2639,6 +2683,14 @@ void vga_ioport_write(VGAState *s, uint32_t addr, uint32_t val)
 #ifdef DEBUG_VGA_REG
         printf("vga: write SR%x = 0x%02x\n", s->sr_index, val);
 #endif
+#ifdef VGA_DIRTY_BLOCKS
+        /* Chain 4 switched while VBE is on: what is stored with it off goes
+           through the odd/even and planar paths, which are not marked, so
+           the next VBE picture is drawn whole. */
+        if (s->sr_index == VGA_SEQ_MEMORY_MODE && vbe_enabled(s) &&
+            ((s->sr[VGA_SEQ_MEMORY_MODE] ^ val) & VGA_SR04_CHN_4M))
+            vga_vbe_whole(s);
+#endif
         s->sr[s->sr_index] = val & sr_mask[s->sr_index];
         break;
     case 0x3c6:
@@ -2806,7 +2858,11 @@ void vbe_write(VGAState *s, uint32_t offset, uint32_t val)
                picture's size and place are the same, so no clear of the
                screen, which on the panel is a black flash every time.
                The drawing sees the new start and draws all of the
-               picture again (vga_vbe_refresh()). */
+               picture again (vga_vbe_refresh()).  Unlike QEMU, this does
+               not set chain 4, the graphics mode and the CRT controller's
+               size again (vbe_update_vgaregs()): that matters only to a
+               guest that changes those under VBE and pans to have them
+               put back, and none is known to. */
             s->vbe_regs[s->vbe_index] = val;
             vbe_fixup_regs(s);
             break;

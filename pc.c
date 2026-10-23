@@ -648,9 +648,13 @@ static void set_pci_vga_bar(void *opaque, int bar_num, uint32_t addr, bool enabl
 }
 
 /* VGA_DIRTY_BLOCKS: a store into the linear frame buffer is noted for the
-   drawing (vga.h) */
+   drawing (vga.h), unless vga_dirty_blocks is 0 ([esp] vbe_blocks = 0: the
+   drawing reads no marks, and no store pays for one) */
 #ifdef VGA_DIRTY_BLOCKS
-#define LFB_WRITTEN(pc, addr, len) vga_dirty_mark((pc)->vga_dirty, (addr), (len))
+#define LFB_WRITTEN(pc, addr, len) do { \
+		if (vga_dirty_blocks) \
+			vga_dirty_mark((pc)->vga_dirty, (addr), (len)); \
+	} while (0)
 #else
 #define LFB_WRITTEN(pc, addr, len) ((void) 0)
 #endif

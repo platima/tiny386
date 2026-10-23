@@ -37,12 +37,17 @@ bool vga_mem_write_string(VGAState *s, uint32_t addr, uint8_t *buf, int len);
  * VGA_DIRTY_BLOCKS (a board header turns it on): what the guest writes into
  * video memory is noted a block of 1 KiB at a time, a byte for each block,
  * and a VBE picture of 8, 15, 16, 24 or 32 bits a pixel is drawn again only
- * in the rows that the blocks written lie in (see vga_refresh()).  Every
- * store into video memory says so: vga_mem_write*() in vga.c, and the
- * linear frame buffer in pc.c, which stores straight into video memory and
- * then marks the map that vga_dirty_map() gives with vga_dirty_mark().
- * vga_dirty_map() is NULL without VGA_DIRTY_BLOCKS.  vga_dirty() does the
- * same for anything else that writes video memory behind vga.c's back.
+ * in the rows that the blocks written lie in (see vga_refresh()).  The
+ * stores that such a picture can show say so: the chain-4 stores of
+ * vga_mem_write*() in vga.c while VBE is on, and the linear frame buffer
+ * in pc.c, which stores straight into video memory and then marks the map
+ * that vga_dirty_map() gives with vga_dirty_mark().  Neither marks
+ * anything while vga_dirty_blocks is 0, and vga.c marks nothing while VBE
+ * is off (mode 13h and the other 256-colour modes of the BIOS, whose
+ * pictures never read the marks): turning VBE on asks for a clear, and so
+ * for a picture drawn in full, before the marks are read again.
+ * vga_dirty_map() is NULL without VGA_DIRTY_BLOCKS.  vga_dirty() marks
+ * for anything else that writes video memory behind vga.c's back.
  *
  * The drawing may run on the other core (VGA_TWO_CORES): it clears a
  * block's byte and then reads the block.  So the byte is set after the
@@ -54,8 +59,11 @@ bool vga_mem_write_string(VGAState *s, uint32_t addr, uint8_t *buf, int len);
 uint8_t *vga_dirty_map(VGAState *s);
 void vga_dirty(VGAState *s, uint32_t addr, uint32_t len);
 /* With VGA_DIRTY_BLOCKS: 1 (which it starts as) draws VBE pictures from the
-   blocks written, 0 every pixel of every picture as before (the board's
-   [esp] vbe_blocks).  The blocks are noted either way. */
+   blocks written, 0 every pixel of every picture and no store marked, as
+   before v4.0 (the board's [esp] vbe_blocks).  Set before the PC is built
+   (the board), or changed between pictures with a picture drawn at each
+   setting (test_vbe): a picture drawn while it is 0 makes the next one
+   with 1 a whole picture. */
 extern int vga_dirty_blocks;
 
 /* Bytes addr to addr + len - 1 of video memory were written: len 1 or
