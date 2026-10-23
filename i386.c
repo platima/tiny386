@@ -265,11 +265,13 @@ static inline void pstore8(CPUI386 *cpu, uword addr, u8 val)
 
 #ifdef I386_OPT1
 /* only works on hosts that are little-endian.  Upstream (b7980ab) has
-   -DI386_ALIGNED_ONLY take the packed accesses below; this tree has
-   unaligned.h for it, which the boards were measured with: the same
-   bytes loaded (the board's compiler makes the same code of both loads),
-   and a store to an aligned word made in one where the packed store is
-   always four.  So the packed accesses stay MIPS's. */
+   -DI386_ALIGNED_ONLY take the packed accesses below; this tree keeps
+   unaligned.h for it, which the boards have run.  With the boards' own
+   flags (-mtune=esp32s31, which lets the compiler make misaligned
+   accesses) both forms are one load or store at any address, unaligned.h's
+   store behind a test whose two arms are the same; only with plain rv32gc
+   is the packed store four byte stores.  So there is no speed reason
+   either way, and the packed accesses stay MIPS's. */
 #ifdef __mips__
 static inline u16 pload16(CPUI386 *cpu, uword addr)
 {

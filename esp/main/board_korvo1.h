@@ -47,11 +47,15 @@
 // v1.1 page 3).  The DOS board has the same circuit on the same pin.
 #define STATUS_LED_GPIO 37
 
-// From the Linux route's patch (tiny386-korvo.patch), shared with it.
-// No load or store of 16 or 32 bits at an address that is not aligned: one
-// that is not is made of smaller ones that are (unaligned.h).  Nothing in
-// ESP-IDF carries out a misaligned access by hand if the core traps on one,
-// and under Linux on this board this build was the faster of the two.
+// From the Linux route's patch (tiny386-korvo.patch), shared with it: the
+// emulator's 16 and 32-bit accesses to guest memory through unaligned.h,
+// which makes one that is not aligned of smaller ones that are.  With this
+// board's flags (-mtune=esp32s31) the compiler joins them into one again,
+// so in this build each is one load or store at any address (a store behind
+// a test whose two arms are alike), as without the define.  The S31's cores
+// do misaligned accesses themselves: ESP-IDF has no handler for the trap,
+// and the board runs Windows 95, whose code is full of them.  Kept as the
+// board has run it.
 #define I386_ALIGNED_ONLY
 // A pixel is stored only where the frame buffer does not show it already;
 // with BPP 16 this also turns on the quick way of drawing the 16-colour
@@ -79,4 +83,6 @@
 // pixel (Windows at 800x480 through a VBE display driver, the BIOS's VBE
 // modes) is drawn again only in the rows written, each converted to RGB565
 // with no division; a still picture costs a look at a byte for each 1 KiB.
+// Since v4.1 a store through the VGA window is noted only while VBE is on
+// (not in mode 13h), and none at all with [esp] vbe_blocks = 0.
 #define VGA_DIRTY_BLOCKS

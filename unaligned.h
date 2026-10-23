@@ -10,7 +10,13 @@
  * times slower, and nothing says so.
  *
  * With I386_ALIGNED_ONLY defined, an access that is not aligned is made
- * of smaller ones that are.  What is loaded and stored is the same.
+ * of smaller ones that are.  What is loaded and stored is the same.  A
+ * compiler told that the host does misaligned accesses quickly joins them
+ * into one again: GCC does so for the ESP32-S31 (-mtune=esp32s31), where
+ * each of these is one load or store at any address, the stores behind a
+ * test whose two arms are alike.  The S31's cores carry out misaligned
+ * loads and stores themselves (ESP-IDF has no handler for the trap, and
+ * the board runs Windows 95).
  */
 #ifndef UNALIGNED_H
 #define UNALIGNED_H
