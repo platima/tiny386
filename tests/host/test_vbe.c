@@ -29,6 +29,12 @@
  * The bank window at 768K, 1152K and 1536K: every bank lands where its
  * number says (the mask of v4.0-base put banks 4 to 7 over 0 to 3 at 768K).
  *
+ * v4.1: a store through the window marks nothing while VBE is off (mode
+ * 13h's case) or vbe_blocks is 0, and what was stored unmarked is drawn
+ * once VBE is on again; and stores made with chain 4 switched off under
+ * VBE (which go through the planar path, unmarked) are drawn at the next
+ * picture after chain 4 is back on.
+ *
  * Exit status 0 when every check passes.
  */
 #include <stdbool.h>
@@ -211,8 +217,8 @@ static void each_io(int port, int val)
 		insts[i].a->io_write(insts[i].s, port, val);
 }
 
-/* the linear frame buffer: straight into video memory, then the mark, as
-   pc.c's iomem_write*() do */
+/* the linear frame buffer: straight into video memory, then the mark
+   unless vga_dirty_blocks is 0, as pc.c's iomem_write*() do */
 static void each_lfb(uint32_t off, const uint8_t *p, int n)
 {
 	for (int i = 0; i < ninst; i++) {
@@ -220,7 +226,7 @@ static void each_lfb(uint32_t off, const uint8_t *p, int n)
 		if (off + n > (uint32_t) t->size)
 			continue;
 		memcpy(t->vram + off, p, n);
-		if (t->map)
+		if (t->map && vga_dirty_blocks)
 			vga_dirty_mark(t->map, off, n);
 	}
 }
@@ -455,6 +461,144 @@ static bool bank_test(const struct api *a, int size)
 	return ok;
 }
 
+/* ==== v4.1: marks only where a picture reads them ==== */
+
+/* blocks of video memory marked in the new instance's map */
+static int marked_blocks(void)
+{
+	struct inst *t = &insts[0];
+	int n = 0;
+	for (int b = 0; b < (t->size >> VGA_DIRTY_SHIFT); b++)
+		n += t->map[b] != 0;
+	return n;
+}
+
+static void clear_marks(void)
+{
+	memset(insts[0].map, 0, insts[0].size >> VGA_DIRTY_SHIFT);
+}
+
+/* stores through the window into banks 0 to banks - 1: 8, 16 and 32 bits
+   and, with chain 4, a string (how up to hows - 1) */
+static void window_stores(int banks, int hows, uint8_t seed)
+{
+	uint8_t buf[64];
+	for (int k = 0; k < (int) sizeof(buf); k++)
+		buf[k] = seed + k * 3;
+	for (int b = 0; b < banks; b++) {
+		each_vbe(5, b);
+		for (int how = 0; how < hows; how++)
+			each_win(0x400 * (how + 1) + b * 8, buf, sizeof(buf), how);
+	}
+}
+
+static void marks_where_read(void)
+{
+	char msg[200];
+	int size = 1024 * 1024;
+	vga_dirty_blocks = 1;
+	/* bank_test() freed what insts[0] had last */
+	insts[0].vram = NULL;
+	insts[0].fb = NULL;
+	for (int sharp = 0; sharp < 2; sharp++) {
+		ninst = 0;
+		inst_init(&insts[ninst++], &api_new, size);
+		inst_init(&insts[ninst++], &api_ref, size);
+		set_mode(320, 200, 8, false);
+		set_palette(5);
+		picture("320x200x8, VBE on", 0);
+		/* VBE off, chain 4 still on: a 256-colour picture drawn by the
+		   loop every time, as mode 13h's, which reads no mark */
+		each_vbe(4, 0);
+		if (!sharp)
+			picture("320x200x8, VBE off", 0);
+		clear_marks();
+		window_stores(1, 4, 0x40 + sharp);
+		snprintf(msg, sizeof(msg), "VBE off, chain 4 on: stores through the window made "
+			 "(%s) and %d blocks marked (none wanted)",
+			 insts[0].vram[0x400] == 0x40 + sharp ? "yes" : "NO", marked_blocks());
+		check(insts[0].vram[0x400] == 0x40 + sharp && marked_blocks() == 0, msg);
+		printf("  VBE off, chain 4 on, %s: %d blocks marked by stores through the window\n",
+		       sharp ? "no picture since VBE was on" : "a picture drawn", marked_blocks());
+		/* VBE on again, video memory kept: turning it on asks for a whole
+		   picture, which shows what was stored unmarked.  With sharp, the
+		   last picture was a VBE one, so nothing else would draw it. */
+		each_vbe(4, 0xc1);
+		snprintf(msg, sizeof(msg), "320x200x8, VBE on again with video memory kept (%s)",
+			 sharp ? "no picture while it was off" : "a picture while it was off");
+		bool ok = picture(msg, 0);
+		printf("  %-60s %s\n", msg, ok ? "the same" : "DIFFERENT");
+	}
+
+	/* vbe_blocks = 0: no store marks anything; back to 1 after a picture */
+	ninst = 0;
+	inst_init(&insts[ninst++], &api_new, size);
+	inst_init(&insts[ninst++], &api_ref, size);
+	set_mode(W, H, 16, false);
+	scribble(50, 0, (uint32_t) W * H * 2, size);
+	picture("vbe_blocks 1", 0);
+	clear_marks();
+	vga_dirty_blocks = 0;
+	window_stores(8, 4, 0x77);
+	scribble(50, 0, (uint32_t) W * H * 2, size);
+	snprintf(msg, sizeof(msg), "vbe_blocks 0: %d blocks marked by stores (none wanted)",
+		 marked_blocks());
+	check(marked_blocks() == 0, msg);
+	printf("  vbe_blocks 0, VBE on: %d blocks marked by stores through the window and "
+	       "the frame buffer\n", marked_blocks());
+	bool ok = picture("vbe_blocks 0", 0);
+	vga_dirty_blocks = 1;
+	ok &= picture("vbe_blocks back to 1", 0);
+	scribble(50, 0, (uint32_t) W * H * 2, size);
+	ok &= picture("vbe_blocks 1, written", 0);
+	printf("  vbe_blocks 0, then 1 again: %s\n", ok ? "the same in every picture" : "DIFFERENT");
+}
+
+/* ==== v4.1: chain 4 switched off and on again under VBE ==== */
+
+static void chain4_switched(void)
+{
+	static const int modes[][3] = {
+		{ 640, 480, 8 }, { W, H, 8 }, { W, H, 16 }, { 640, 480, 32 },
+		{ 800, 600, 16 }, { 1024, 768, 8 },
+	};
+	int size = 2048 * 1024;
+	vga_dirty_blocks = 1;
+	for (unsigned mi = 0; mi < sizeof(modes) / sizeof(modes[0]); mi++) {
+		int w = modes[mi][0], h = modes[mi][1], bpp = modes[mi][2];
+		for (int between = 0; between < 2; between++) {
+			char what[200];
+			snprintf(what, sizeof(what), "%dx%dx%d, chain 4 off and on, %s", w, h, bpp,
+				 between ? "a picture between" : "no picture between");
+			ninst = 0;
+			inst_init(&insts[ninst++], &api_new, size);
+			inst_init(&insts[ninst++], &api_ref, size);
+			set_mode(w, h, bpp, false);
+			if (bpp == 8)
+				set_palette(7);
+			uint32_t shown = (uint32_t) w * h * bytes_of(bpp);
+			scribble(100, 0, shown, size);
+			picture(what, 0);
+			each_io(0x3c4, 4);
+			uint32_t sr4 = insts[0].a->io_read(insts[0].s, 0x3c5);
+			each_io(0x3c5, sr4 & ~8u);      /* chain 4 off */
+			if (between)
+				picture(what, 0);
+			/* 4,000 bytes through the window, by the planar path: four
+			   bytes of video memory each */
+			uint8_t buf[4000];
+			for (int k = 0; k < (int) sizeof(buf); k++)
+				buf[k] = rnd() >> 9;
+			each_vbe(5, 0);
+			each_win(0x2000, buf, sizeof(buf), 0);
+			each_io(0x3c4, 4);
+			each_io(0x3c5, sr4);            /* chain 4 on again */
+			bool ok = picture(what, 0);
+			printf("  %-52s %s\n", what, ok ? "the same" : "DIFFERENT");
+		}
+	}
+}
+
 /* ==== two threads: the emulator writing while the drawing draws ==== */
 
 static volatile int writer_stop;
@@ -581,6 +725,11 @@ int main(int argc, char **argv)
 		check(bank_test(&api_base, size) == pow2, msg);
 #endif
 	}
+
+	printf("marks only where a picture reads them (v4.1)\n");
+	marks_where_read();
+	printf("chain 4 switched under VBE (v4.1)\n");
+	chain4_switched();
 
 	printf("two threads\n");
 	for (unsigned di = 0; di < sizeof(depths) / sizeof(depths[0]); di++)
