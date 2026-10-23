@@ -109,4 +109,19 @@ typedef struct VGATextOps {
 
 void vga_set_text_ops(VGAState *s, VGATextOps *ops, void *o);
 
+/* The mode the guest has set and what the drawing has done, for the
+   information port (perfport.c).  From either thread: each figure is read
+   once, so a set may be a picture apart.  kind: 0 blank, 1 text, 2 VGA
+   graphics, 3 VBE; width and height in pixels (text: characters); bpp 0 in
+   text; line_bytes and start (bytes) for VBE.  The vbe_ counts, from the
+   start, wrapping: VBE pictures drawn from the blocks written, of them
+   drawn whole, blocks found written, rows converted. */
+struct vga_info {
+    int kind, width, height, bpp;
+    uint32_t line_bytes, start;
+    int screen_w, screen_h;
+    uint32_t vbe_pictures, vbe_whole, vbe_blocks, vbe_rows;
+};
+void vga_get_info(VGAState *s, struct vga_info *info);
+
 #endif /* VGA_H */
