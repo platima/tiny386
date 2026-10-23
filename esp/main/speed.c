@@ -167,6 +167,14 @@ void speed_total_line(uint64_t insns, uint64_t us, const char *what,
 #ifdef USER_KEY_GPIO
 #include "driver/gpio.h"
 #endif
+#ifdef TINY386_PERFPORT
+#include "sdkconfig.h"
+#include "esp_app_desc.h"
+#include "esp_heap_caps.h"
+#include "esp_timer.h"
+#include "../../perfport.h"
+#include "status_led.h"
+#endif
 
 /* how often the figures go to the UART */
 #define SPEED_LOG_S 10
@@ -187,10 +195,87 @@ static bool s_shown;            /* core 0 only, as below */
 static const char *s_normal_title = "";
 static uint32_t s_last_title_s, s_last_log_s;
 
+#ifdef TINY386_PERFPORT
+static int64_t s_pc_t0_us;      /* esp_timer when the PC started */
+
+/* The board's values for the information port (perfport.h): on the
+   emulator's core, in the guest's out that asks for a snapshot.  The
+   figures are the speed screen's own, so that a program in the guest sees
+   what Ctrl+Alt+F12 shows. */
+static void perf_fill(void *opaque, uint32_t *v, uint32_t *ok)
+{
+	PC *pc = opaque;
+	int64_t now = esp_timer_get_time();
+	PERFPORT_PUT(v, ok, PP_I_SOURCE, PP_SOURCE_BOARD);
+	PERFPORT_PUT(v, ok, PP_I_UPTIME_MS, (uint32_t) (now / 1000));
+	PERFPORT_PUT(v, ok, PP_I_PC_UPTIME_MS, (uint32_t) ((now - s_pc_t0_us) / 1000));
+
+	/* this core's own: the count at the last step and what this step has
+	   run so far, 64 bits */
+	uint64_t insns = s_speed.insns +
+		(uint32_t) ((uint32_t) cpui386_get_cycle(pc->cpu) - s_speed.last_cycle);
+	PERFPORT_PUT(v, ok, PP_I_INSNS_LO, (uint32_t) insns);
+	PERFPORT_PUT(v, ok, PP_I_INSNS_HI, (uint32_t) (insns >> 32));
+	PERFPORT_PUT(v, ok, PP_I_KIPS, s_kips);
+	PERFPORT_PUT(v, ok, PP_I_HALT_PCT, s_halt_pct);
+	PERFPORT_PUT(v, ok, PP_I_RUN_MS, (uint32_t) (s_speed.run_us / 1000));
+	PERFPORT_PUT(v, ok, PP_I_HALT_MS, (uint32_t) (s_speed.halt_us / 1000));
+	PERFPORT_PUT(v, ok, PP_I_SECONDS, s_seconds);
+#ifdef LCD_FRAME_MS
+	PERFPORT_PUT(v, ok, PP_I_FRAME_MS, LCD_FRAME_MS);
+#endif
+
+	PERFPORT_PUT(v, ok, PP_I_PSRAM_FREE_KB, heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
+	PERFPORT_PUT(v, ok, PP_I_PSRAM_LARGEST_KB,
+		     heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) / 1024);
+	PERFPORT_PUT(v, ok, PP_I_IRAM_FREE_KB, heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
+	PERFPORT_PUT(v, ok, PP_I_IRAM_LARGEST_KB,
+		     heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024);
+	PERFPORT_PUT(v, ok, PP_I_IRAM_MIN_FREE_KB,
+		     heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024);
+
+	struct disk_image_stats d;
+	disk_image_get_stats(&d, false);
+	PERFPORT_PUT(v, ok, PP_I_DISK_READS, d.reads);
+	PERFPORT_PUT(v, ok, PP_I_DISK_WRITES, d.writes);
+	PERFPORT_PUT(v, ok, PP_I_DISK_READ_SECTORS, d.rsectors);
+	PERFPORT_PUT(v, ok, PP_I_DISK_WRITE_SECTORS, d.wsectors);
+	PERFPORT_PUT(v, ok, PP_I_DISK_BUSY_US, d.busy_us);
+	PERFPORT_PUT(v, ok, PP_I_DISK_LONGEST_US, d.longest_us);
+	PERFPORT_PUT(v, ok, PP_I_DISK_OVER_TICK, d.over_tick);
+	PERFPORT_PUT(v, ok, PP_I_DISK_ERRORS, d.errors);
+	PERFPORT_PUT(v, ok, PP_I_DISK_RECOVERED, d.recovered);
+	PERFPORT_PUT(v, ok, PP_I_DISK_REFUSED, ide_error_count() + emulink_error_count());
+	PERFPORT_PUT(v, ok, PP_I_DISK_FLUSHES, s_flushes);
+	PERFPORT_PUT(v, ok, PP_I_DISK_ACTIVITY, ide_activity + emulink_activity);
+
+	unsigned held, dropped;
+	console_log_stats(&held, &dropped);
+	PERFPORT_PUT(v, ok, PP_I_LOG_HELD, held);
+	PERFPORT_PUT(v, ok, PP_I_LOG_DROPPED, dropped);
+#ifdef STATUS_LED_GPIO
+	PERFPORT_PUT(v, ok, PP_I_STATUS, status_led_code());
+#endif
+	PERFPORT_PUT(v, ok, PP_I_CPU_MHZ, CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ);
+
+	perfport_put_text(v, ok, PP_I_FIRMWARE, esp_app_get_description()->version);
+#ifdef BOARD_NAME
+	const char *board = BOARD_NAME;
+	if (!strncmp(board, "the ", 4))
+		board += 4;
+	perfport_put_text(v, ok, PP_I_BOARD, board);
+#endif
+}
+#endif
+
 void speed_run_init(void *opaque)
 {
 	PC *pc = opaque;
 	speed_init(&s_speed, get_uticks(), (uint32_t) cpui386_get_cycle(pc->cpu));
+#ifdef TINY386_PERFPORT
+	s_pc_t0_us = esp_timer_get_time();
+	perfport_set_fill(perf_fill, pc);
+#endif
 }
 
 void speed_forget_requests(void)

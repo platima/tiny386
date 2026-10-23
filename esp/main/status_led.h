@@ -30,6 +30,9 @@ void status_led_stage(int stage);
 void status_led_error(int err, bool on);
 /* tiny386 has stopped: the first such error stays for good. */
 void status_led_fatal(int err);
+/* What the LED shows, for the information port: the stage | the error
+   shown (0 none) << 8 | the last run's end (enum status_cause) << 16. */
+uint32_t status_led_code(void);
 /* [esp] led_brightness, as the ini is read: 0 (dark, a crash included) to
    255 (full); STATUS_BRIGHTNESS_DEFAULT until then.  Sent within one look
    (STATUS_TICK_MS, 20 ms). */
@@ -66,6 +69,7 @@ static inline void status_led_report(void) { }
 static inline void status_led_stage(int stage) { (void) stage; }
 static inline void status_led_error(int err, bool on) { (void) err; (void) on; }
 static inline void status_led_fatal(int err) { (void) err; }
+static inline uint32_t status_led_code(void) { return 0; }
 static inline void status_led_brightness(int level) { (void) level; }
 static inline void status_led_heartbeat(void) { }
 static inline void status_led_disk_counter(uint32_t (*count)(void)) { (void) count; }
