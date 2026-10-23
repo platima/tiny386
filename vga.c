@@ -41,6 +41,8 @@
 #endif
 /* 0 draws them the way every other mode is drawn, pixel by pixel */
 int vga_planar_fast = 1;
+/* VGA_DIRTY_BLOCKS: 0 draws VBE pictures pixel by pixel every time (vga.h) */
+int vga_dirty_blocks = 1;
 
 #ifdef BUILD_ESP32
 #include "esp_attr.h"
@@ -230,6 +232,20 @@ struct VGAState {
 #endif
 #ifdef VGA_SHRINK_LARGE
     int shrunk_w, shrunk_h; /* a picture larger than the screen, as drawn */
+    uint16_t *shrink_x;     /* the picture's column for each of the screen's */
+    int shrink_x_w, shrink_x_sw;    /* the widths it was worked out for */
+#endif
+#ifdef VGA_DIRTY_BLOCKS
+    /* VBE pictures drawn from the blocks of video memory written (vga.h,
+       vga_vbe_refresh()) */
+    uint8_t *dirty;         /* a byte for each 1 KiB of video memory */
+    uint32_t dirty_n;       /* how many: video memory and its slack */
+    uint8_t *rowmark;       /* the screen's rows to draw again, this picture */
+    bool vbe_drawn;         /* the screen shows the picture the rest says */
+    int vbe_kind;           /* 1: drawn 1:1, 2: shrunk */
+    int vbe_w, vbe_h, vbe_bpp, vbe_i0;
+    uint32_t vbe_addr, vbe_line;
+    uint16_t vbe_pal[256];  /* 8 bits a pixel: the colours it was drawn in */
 #endif
 
 #if defined(SCALE_3_2) || defined(SCALE_2_1) || defined(SWAPXY)
@@ -272,6 +288,9 @@ static void vga_clear_screen(VGAState *s)
 #endif
 #ifdef VGA_REDRAW_DIRTY_ROWS
     s->fb_all_dirty = true;
+#endif
+#ifdef VGA_DIRTY_BLOCKS
+    s->vbe_drawn = false;
 #endif
 }
 
@@ -1277,6 +1296,230 @@ static void vga_text_refresh(VGAState *s,
 #endif
 }
 
+#ifdef VGA_DIRTY_BLOCKS
+/* VGA_DIRTY_BLOCKS: see vga.h */
+#define VRAM_WRITTEN(s, addr, len) vga_dirty_mark((s)->dirty, (addr), (len))
+
+uint8_t *vga_dirty_map(VGAState *s)
+{
+    return s->dirty;
+}
+
+void vga_dirty(VGAState *s, uint32_t addr, uint32_t len)
+{
+    uint32_t n = s->dirty_n << VGA_DIRTY_SHIFT;
+    if (len == 0 || addr >= n)
+        return;
+    if (len > n - addr)
+        len = n - addr;
+    vga_dirty_mark(s->dirty, addr, len);
+}
+
+/* changed rows less than this far apart are given to redraw() as one */
+#define VGA_BAND_GAP 16
+
+/*
+ * The blocks of video memory that lines 0 to h - 1 of a picture lie in
+ * (line_offset bytes apart, the first at addr1; what lies past the end of
+ * video memory is left out): each one written since the last picture has
+ * its byte cleared and, unless the whole picture is to be drawn (all),
+ * the screen's rows that show its lines are set in s->rowmark.  The screen
+ * shows the picture's h lines in sh rows: 1:1 if sh is h, else row dy
+ * shows line dy * h / sh.  A fence then puts the clearing before every
+ * read of video memory that follows: a store the guest makes after the
+ * drawing has read its block sets the block's byte again.
+ */
+static void vga_take_marks(VGAState *s, uint32_t addr1, uint32_t line_offset,
+                           int h, int sh, bool all)
+{
+    uint8_t *map = s->dirty;
+    uint64_t end64 = (uint64_t) addr1 + (uint64_t) h * line_offset;
+    uint32_t end = end64 < (uint64_t) s->vga_ram_size ?
+        (uint32_t) end64 : (uint32_t) s->vga_ram_size;
+    if (addr1 < end) {
+        uint32_t b1 = (end - 1) >> VGA_DIRTY_SHIFT;
+        for (uint32_t b = addr1 >> VGA_DIRTY_SHIFT; b <= b1; b++) {
+            if (!__atomic_load_n(&map[b], __ATOMIC_RELAXED))
+                continue;
+            __atomic_store_n(&map[b], 0, __ATOMIC_RELAXED);
+            if (all)
+                continue;
+            uint32_t lo = b << VGA_DIRTY_SHIFT;
+            uint32_t hi = lo + (1u << VGA_DIRTY_SHIFT) - 1;
+            if (lo < addr1)
+                lo = addr1;
+            if (hi >= end)
+                hi = end - 1;
+            uint32_t ya = (lo - addr1) / line_offset;
+            uint32_t yb = (hi - addr1) / line_offset;
+            if (sh != h) {
+                /* the rows dy with ya <= dy * h / sh <= yb */
+                ya = (ya * (uint32_t) sh + h - 1) / h;
+                yb = ((yb + 1) * (uint32_t) sh - 1) / h;
+                if (yb >= (uint32_t) sh)
+                    yb = sh - 1;
+                if (ya > yb)
+                    continue;
+            }
+            memset(s->rowmark + ya, 1, yb - ya + 1);
+        }
+    }
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+}
+
+/* An RGB565 pixel of 24 or 32 bits (B, G, R from the bottom up; what is
+   above bit 23 does not matter) */
+static inline uint32_t vbe_rgb565(uint32_t p)
+{
+    return ((p >> 8) & 0xf800) | ((p >> 5) & 0x07e0) | ((p >> 3) & 0x001f);
+}
+
+/* d = v, if it is not already; *changed set if it was not */
+#define VBE_PUT(d, v, changed) do { \
+        uint32_t v_ = (v); \
+        if ((d) != v_) { \
+            (d) = v_; \
+            (changed) = true; \
+        } \
+    } while (0)
+
+/*
+ * One line of a VBE picture into a row of the screen: n pixels (a multiple
+ * of 4) from p, as RGB565 into d, two pixels a word, each word stored only
+ * where the screen differs.  Both are 4-byte aligned.  The colours are
+ * those of the loop in vga_graphic_refresh(), with no division: 8 bits
+ * through the palette, 15 bits with green made 6 bits (its lowest 0), 16
+ * as they are, 24 and 32 bits their top 5, 6 and 5 bits.  True if any
+ * pixel was stored.
+ */
+static bool vbe_row(uint32_t *d, const uint32_t *p, int n, int bpp,
+                    const uint32_t *palette)
+{
+    bool changed = false;
+    switch (bpp) {
+    case 8:
+        for (int i = 0; i < n / 4; i++, d += 2) {
+            uint32_t v = p[i];
+            VBE_PUT(d[0], palette[v & 0xff] | (palette[(v >> 8) & 0xff] << 16),
+                    changed);
+            VBE_PUT(d[1], palette[(v >> 16) & 0xff] | (palette[v >> 24] << 16),
+                    changed);
+        }
+        break;
+    case 15:
+        for (int i = 0; i < n / 2; i++) {
+            uint32_t v = p[i];
+            VBE_PUT(d[i], (v & 0x001f001f) | ((v & 0x7fe07fe0) << 1), changed);
+        }
+        break;
+    case 16:
+        for (int i = 0; i < n / 2; i++)
+            VBE_PUT(d[i], p[i], changed);
+        break;
+    case 24:
+        /* four pixels in three words */
+        for (int i = 0; i < n / 4; i++, p += 3, d += 2) {
+            uint32_t a = p[0], b = p[1], c = p[2];
+            VBE_PUT(d[0], vbe_rgb565(a) | (vbe_rgb565((a >> 24) | (b << 8)) << 16),
+                    changed);
+            VBE_PUT(d[1], vbe_rgb565((b >> 16) | (c << 16)) | (vbe_rgb565(c >> 8) << 16),
+                    changed);
+        }
+        break;
+    case 32:
+        for (int i = 0; i < n / 2; i++, p += 2)
+            VBE_PUT(d[i], vbe_rgb565(p[0]) | (vbe_rgb565(p[1]) << 16), changed);
+        break;
+    }
+    return changed;
+}
+
+/*
+ * A VBE picture of 8, 15, 16, 24 or 32 bits a pixel no larger than the
+ * screen, drawn 1:1 (centred if it is smaller: i0 is where its top left
+ * is): only the rows that blocks of video memory written since the last
+ * picture lie in, each converted with vbe_row().  All of it is drawn when
+ * anything that decides where a pixel is or what colour it is has changed
+ * since the last picture: the size, the depth, the start, the line length,
+ * the place on the screen, the palette (8 bits), a clear of the screen,
+ * another kind of picture in between, or the caller's full_update.  A
+ * still picture then costs a look at a byte for each 1 KiB it shows.
+ */
+static void vga_vbe_refresh(VGAState *s, SimpleFBDrawFunc *redraw_func,
+                            void *opaque, int full_update, int w, int h,
+                            int i0, uint32_t addr1, uint32_t line_offset,
+                            int bpp, const uint32_t *palette)
+{
+    FBDevice *fb_dev = s->fb_dev;
+    bool all = full_update || !s->vbe_drawn || s->vbe_kind != 1 ||
+        s->vbe_w != w || s->vbe_h != h || s->vbe_bpp != bpp ||
+        s->vbe_i0 != i0 || s->vbe_addr != addr1 || s->vbe_line != line_offset;
+    if (bpp == 8) {
+        for (int i = 0; i < 256; i++) {
+            if (s->vbe_pal[i] != (uint16_t) palette[i]) {
+                s->vbe_pal[i] = palette[i];
+                all = true;
+            }
+        }
+    }
+    s->vbe_kind = 1;
+    s->vbe_w = w;
+    s->vbe_h = h;
+    s->vbe_bpp = bpp;
+    s->vbe_i0 = i0;
+    s->vbe_addr = addr1;
+    s->vbe_line = line_offset;
+    vga_take_marks(s, addr1, line_offset, h, h, all);
+
+    int yoff = i0 / fb_dev->stride;
+    bool all_dirty = s->fb_all_dirty;   /* redraw() of every row anyway */
+    int b0 = -1, b1 = -1;               /* the rows drawn not yet redrawn */
+    for (int y = 0; y < h; y++) {
+        if (!all) {
+            if (!s->rowmark[y])
+                continue;
+            s->rowmark[y] = 0;
+        }
+        /* a line that begins past the end of video memory shows the
+           slack's zeros, as in vga_graphic_refresh() */
+        uint64_t a = addr1 + (uint64_t) y * line_offset;
+        if (a > (uint64_t) s->vga_ram_size)
+            a = s->vga_ram_size;
+        const uint32_t *p = (const uint32_t *) (s->vga_ram + a);
+        uint32_t *d = (uint32_t *) (fb_dev->fb_data + i0 + y * fb_dev->stride);
+        if (vbe_row(d, p, w, bpp, palette)) {
+            int r = y + yoff;
+            if (b0 >= 0 && r - b1 > VGA_BAND_GAP) {
+                if (!all_dirty)
+                    vga_redraw_rows(s, redraw_func, opaque, b0, b1 + 1);
+                b0 = -1;
+            }
+            if (b0 < 0)
+                b0 = r;
+            b1 = r;
+        }
+    }
+    if (all_dirty)
+        vga_redraw_rows(s, redraw_func, opaque, 0, 0);      /* every row */
+    else if (b0 >= 0)
+        vga_redraw_rows(s, redraw_func, opaque, b0, b1 + 1);
+    s->vbe_drawn = true;
+}
+#else
+#define VRAM_WRITTEN(s, addr, len) ((void) 0)
+
+uint8_t *vga_dirty_map(VGAState *s)
+{
+    (void) s;
+    return NULL;
+}
+
+void vga_dirty(VGAState *s, uint32_t addr, uint32_t len)
+{
+    (void) s; (void) addr; (void) len;
+}
+#endif
+
 #ifdef VGA_SHRINK_LARGE
 /* One pixel of the picture, as the main loop of vga_graphic_refresh()
    works it out (RGB565). */
@@ -1322,13 +1565,17 @@ static uint32_t vga_pixel(VGAState *s, uint32_t addr, int x1,
  * the Korvo-1): scaled down by the same factor both ways, each pixel of
  * the screen taken from the nearest pixel of the picture, and centred, so
  * that all of it can be seen instead of its top left corner.  800x600 shows
- * as 640x480 in the middle of the screen.  Drawn the plain way, every
- * pixel every time: these modes are rare here.  No split screen, no
- * panning and no CGA line addressing in them.
+ * as 640x480 in the middle of the screen.  No split screen, no panning and
+ * no CGA line addressing in them.  The picture's column for each column of
+ * the screen is worked out once for each size (s->shrink_x), so that no
+ * pixel needs a division.  A VBE picture of 8 to 32 bits a pixel is drawn
+ * again only in the rows whose lines were written (VGA_DIRTY_BLOCKS, as in
+ * vga_vbe_refresh()); any other is drawn in full every time.
  */
 static void vga_graphic_refresh_shrunk(VGAState *s,
                                        SimpleFBDrawFunc *redraw_func,
-                                       void *opaque, int w, int h,
+                                       void *opaque, int full_update,
+                                       int w, int h,
                                        uint32_t addr1, uint32_t line_offset,
                                        int multi_scan, int shift_control,
                                        int xdiv, int bpp,
@@ -1376,9 +1623,62 @@ static void vga_graphic_refresh_shrunk(VGAState *s,
     else
         line_bytes = (uint32_t) (w / xdiv) * ((bpp + 7) / 8);
 
+    /* the picture's pixel (x / xdiv) for each column of the screen */
+    if (s->shrink_x_w != w || s->shrink_x_sw != sw || s->shrink_x[0] != xdiv) {
+        for (int dx = 0; dx < sw; dx++)
+            s->shrink_x[dx + 1] = (uint32_t) dx * (uint32_t) w / (uint32_t) sw /
+                (uint32_t) xdiv;
+        s->shrink_x[0] = xdiv;
+        s->shrink_x_w = w;
+        s->shrink_x_sw = sw;
+    }
+    const uint16_t *col = s->shrink_x + 1;
+
+    bool all = true;
+#ifdef VGA_DIRTY_BLOCKS
+    /* a VBE picture of 8 to 32 bits written through chain 4 or the linear
+       frame buffer: only the rows that show lines written */
+    if (vga_dirty_blocks && vbe && shift_control == 2 && multi_scan == 0 && xdiv == 1 &&
+        line_offset > 0 && (s->sr[VGA_SEQ_MEMORY_MODE] & VGA_SR04_CHN_4M) &&
+        (bpp == 8 || bpp == 15 || bpp == 16 || bpp == 24 || bpp == 32)) {
+        int i0 = (sw << 16) | sh;       /* the size it is shown at */
+        all = full_update || !s->vbe_drawn || s->vbe_kind != 2 ||
+            s->vbe_w != w || s->vbe_h != h || s->vbe_bpp != bpp ||
+            s->vbe_i0 != i0 || s->vbe_addr != addr1 || s->vbe_line != line_offset;
+        if (bpp == 8) {
+            for (int i = 0; i < 256; i++) {
+                if (s->vbe_pal[i] != (uint16_t) palette[i]) {
+                    s->vbe_pal[i] = palette[i];
+                    all = true;
+                }
+            }
+        }
+        s->vbe_kind = 2;
+        s->vbe_w = w;
+        s->vbe_h = h;
+        s->vbe_bpp = bpp;
+        s->vbe_i0 = i0;
+        s->vbe_addr = addr1;
+        s->vbe_line = line_offset;
+        vga_take_marks(s, addr1, line_offset, h, sh, all);
+        s->vbe_drawn = true;
+    } else {
+        s->vbe_drawn = false;
+    }
+#else
+    (void) full_update;
+#endif
+
     int gy0 = fh, gy1 = 0;
     for (int dy = 0; dy < sh; dy++) {
-        int y = (int) ((int64_t) dy * h / sh);
+#ifdef VGA_DIRTY_BLOCKS
+        if (!all) {
+            if (!s->rowmark[dy])
+                continue;
+            s->rowmark[dy] = 0;
+        }
+#endif
+        int y = (int) ((uint32_t) dy * (uint32_t) h / (uint32_t) sh);
         uint32_t addr = addr1 + (uint32_t) (y / (multi_scan + 1)) * line_offset;
         if (!vbe)
             addr &= 0x3ffff;
@@ -1387,9 +1687,8 @@ static void vga_graphic_refresh_shrunk(VGAState *s,
         uint16_t *d = (uint16_t *) (fb_dev->fb_data) + (oy + dy) * fw + ox;
         bool row_drawn = false;
         for (int dx = 0; dx < sw; dx++) {
-            int x = (int) ((int64_t) dx * w / sw);
             uint16_t px = blank ? 0 :
-                vga_pixel(s, addr, x / xdiv, shift_control, bpp, plane_mask,
+                vga_pixel(s, addr, col[dx], shift_control, bpp, plane_mask,
                           palette);
             if (d[dx] != px) {
                 d[dx] = px;
@@ -1528,8 +1827,8 @@ static void vga_graphic_refresh(VGAState *s,
 #else
 #ifdef VGA_SHRINK_LARGE
     if (w > fb_dev->width || h > fb_dev->height) {
-        vga_graphic_refresh_shrunk(s, redraw_func, opaque, w, h, addr1,
-                                   line_offset, multi_scan, shift_control,
+        vga_graphic_refresh_shrunk(s, redraw_func, opaque, full_update, w, h,
+                                   addr1, line_offset, multi_scan, shift_control,
                                    xdiv, bpp, palette);
         return;
     }
@@ -1661,6 +1960,31 @@ static void vga_graphic_refresh(VGAState *s,
         free(s->seen);
         s->seen = NULL;
         s->seen_cols = s->seen_rows = 0;
+    }
+#endif
+#ifdef VGA_DIRTY_BLOCKS
+    /* A VBE picture of 8 to 32 bits a pixel, written through chain 4 or
+       the linear frame buffer, as Windows' display drivers and the BIOS's
+       VBE modes give it: from the blocks written (vga_vbe_refresh()).
+       Anything that does not fit that loop, or a line longer than the
+       slack behind video memory, is drawn by the loop below. */
+    {
+        int bytes = bpp == 15 ? 2 : bpp / 8;
+        if (vga_dirty_blocks && vbe && shift_control == 2 && multi_scan == 0 &&
+            (s->cr[0x17] & 3) == 3 && (s->sr[VGA_SEQ_MEMORY_MODE] & VGA_SR04_CHN_4M) &&
+            (bpp == 8 || bpp == 15 || bpp == 16 || bpp == 24 || bpp == 32) &&
+            w > 0 && h > 0 && !(w & 3) && line_offset > 0 && !(line_offset & 3) &&
+            !(addr1 & 3) && (uint32_t) w * bytes <= VGA_MEM_SLACK &&
+            !((uintptr_t) s->vga_ram & 3) &&
+            !((uintptr_t) (fb_dev->fb_data + i0) & 3) && !(fb_dev->stride & 3)) {
+#ifdef VGA_PLANAR_FAST
+            s->seen_valid = false;
+#endif
+            vga_vbe_refresh(s, redraw_func, opaque, full_update, w, h, i0,
+                            addr1, line_offset, bpp, palette);
+            return;
+        }
+        s->vbe_drawn = false;
     }
 #endif
 #ifdef VGA_REDRAW_DIRTY_ROWS
@@ -2111,6 +2435,12 @@ void vga_refresh(VGAState *s,
         vga_clear_screen(s);
     }
 
+#ifdef VGA_DIRTY_BLOCKS
+    /* text or nothing on the screen: a VBE picture is drawn in full when
+       it comes back */
+    if (s->graphic_mode != 2)
+        s->vbe_drawn = false;
+#endif
     if (s->graphic_mode == 2) {
         vga_graphic_refresh(s, redraw_func, opaque, full_update);
     } else if (s->graphic_mode == 1) {
@@ -2469,22 +2799,44 @@ void vbe_write(VGAState *s, uint32_t offset, uint32_t val)
             vbe_fixup_regs(s);
             vbe_update_vgaregs(s);
             break;
+#ifdef VGA_DIRTY_BLOCKS
+        case VBE_DISPI_INDEX_X_OFFSET:
+        case VBE_DISPI_INDEX_Y_OFFSET:
+            /* The display start (a driver's panning or page flipping): the
+               picture's size and place are the same, so no clear of the
+               screen, which on the panel is a black flash every time.
+               The drawing sees the new start and draws all of the
+               picture again (vga_vbe_refresh()). */
+            s->vbe_regs[s->vbe_index] = val;
+            vbe_fixup_regs(s);
+            break;
+#endif
         case VBE_DISPI_INDEX_XRES:
         case VBE_DISPI_INDEX_YRES:
         case VBE_DISPI_INDEX_BPP:
         case VBE_DISPI_INDEX_VIRT_WIDTH:
         case VBE_DISPI_INDEX_VIRT_HEIGHT:
+#ifndef VGA_DIRTY_BLOCKS
         case VBE_DISPI_INDEX_X_OFFSET:
         case VBE_DISPI_INDEX_Y_OFFSET:
+#endif
             s->vbe_regs[s->vbe_index] = val;
             vbe_fixup_regs(s);
             vbe_update_vgaregs(s);
             break;
-        case VBE_DISPI_INDEX_BANK:
-            val &= (s->vga_ram_size >> 16) - 1;
+        case VBE_DISPI_INDEX_BANK: {
+            /* The 64 KiB window at A0000h over bank val.  With video
+               memory not a power of two in size (768K, 1152K, 1536K) a
+               mask of its size less one would put some banks over others
+               (11 at 768K takes bank 4 to bank 0); the remainder keeps
+               every bank that is there where it is, and is the same as the
+               mask for a power of two. */
+            uint32_t banks = (uint32_t) s->vga_ram_size >> 16;
+            val = banks ? val % banks : 0;
             s->vbe_regs[s->vbe_index] = val;
             s->bank_offset = (val << 16);
             break;
+        }
         }
     }
 }
@@ -2640,6 +2992,7 @@ void IRAM_ATTR vga_mem_write16(VGAState *s, uint32_t addr, uint16_t val16)
     mask = (1 << plane);
     if (s->sr[VGA_SEQ_PLANE_WRITE] & mask) {
         stu16(&(s->vga_ram[addr]), val);
+        VRAM_WRITTEN(s, addr, 2);
     }
 }
 
@@ -2689,6 +3042,7 @@ void IRAM_ATTR vga_mem_write32(VGAState *s, uint32_t addr, uint32_t val)
     mask = (1 << plane);
     if (s->sr[VGA_SEQ_PLANE_WRITE] & mask) {
         stu32(&(s->vga_ram[addr]), val);
+        VRAM_WRITTEN(s, addr, 4);
     }
 }
 
@@ -2734,6 +3088,8 @@ bool IRAM_ATTR vga_mem_write_string(VGAState *s, uint32_t addr, uint8_t *buf, in
     mask = (1 << plane);
     if (s->sr[VGA_SEQ_PLANE_WRITE] & mask) {
         memcpy(s->vga_ram + addr, buf, len);
+        if (len > 0)
+            VRAM_WRITTEN(s, addr, len);
         return true;
     }
     return false;
@@ -2783,6 +3139,7 @@ void IRAM_ATTR vga_mem_write(VGAState *s, uint32_t addr, uint8_t val8)
         mask = (1 << plane);
         if (s->sr[VGA_SEQ_PLANE_WRITE] & mask) {
             s->vga_ram[addr] = val;
+            VRAM_WRITTEN(s, addr, 1);
 #ifdef DEBUG_VGA_MEM
             printf("vga: chain4: [0x" TARGET_FMT_plx "]\n", addr);
 #endif
@@ -2993,6 +3350,26 @@ VGAState *vga_init(char *vga_ram, int vga_ram_size,
 
     s->vga_ram = (uint8_t *) vga_ram;
     s->vga_ram_size = vga_ram_size;
+#ifdef VGA_SHRINK_LARGE
+    /* the picture's column for each of the screen's, after the xdiv it
+       was worked out for */
+    s->shrink_x = pcmalloc((width + 1) * sizeof(uint16_t));
+#endif
+#ifdef VGA_DIRTY_BLOCKS
+    {
+        /* a byte for each 1 KiB that vga_mem_write*() and the linear frame
+           buffer can store into: video memory and its slack, or the 128 KiB
+           window at A0000h with less */
+        uint32_t span = (uint32_t) vga_ram_size + VGA_MEM_SLACK;
+        if (span < 0x20000 + 4)
+            span = 0x20000 + 4;
+        s->dirty_n = (span >> VGA_DIRTY_SHIFT) + 1;
+        s->dirty = pcmalloc(s->dirty_n);
+        memset(s->dirty, 0, s->dirty_n);
+        s->rowmark = pcmalloc(height);
+        memset(s->rowmark, 0, height);
+    }
+#endif
 
     s->vbe_regs[VBE_DISPI_INDEX_ID] = VBE_DISPI_ID5;
     s->vbe_regs[VBE_DISPI_INDEX_VIDEO_MEMORY_64K] = s->vga_ram_size >> 16;

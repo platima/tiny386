@@ -647,6 +647,14 @@ static void set_pci_vga_bar(void *opaque, int bar_num, uint32_t addr, bool enabl
 				 NULL);
 }
 
+/* VGA_DIRTY_BLOCKS: a store into the linear frame buffer is noted for the
+   drawing (vga.h) */
+#ifdef VGA_DIRTY_BLOCKS
+#define LFB_WRITTEN(pc, addr, len) vga_dirty_mark((pc)->vga_dirty, (addr), (len))
+#else
+#define LFB_WRITTEN(pc, addr, len) ((void) 0)
+#endif
+
 static u8 iomem_read8(void *iomem, uword addr)
 {
 	PC *pc = iomem;
@@ -667,8 +675,10 @@ static void iomem_write8(void *iomem, uword addr, u8 val)
 	uword vga_addr2 = pc->pci_vga_ram_addr;
 	if (addr >= vga_addr2) {
 		addr -= vga_addr2;
-		if (addr < pc->vga_mem_size)
+		if (addr < pc->vga_mem_size) {
 			pc->vga_mem[addr] = val;
+			LFB_WRITTEN(pc, addr, 1);
+		}
 		return;
 	}
 	vga_mem_write(pc->vga, addr - 0xa0000, val);
@@ -676,6 +686,12 @@ static void iomem_write8(void *iomem, uword addr, u8 val)
 
 static u16 iomem_read16(void *iomem, uword addr)
 {
+	PC *pc = iomem;
+	// fast path for vga ram, as for the writes: one load where it was
+	// four calls (a Windows display driver reads the screen back)
+	uword vga_addr2 = pc->pci_vga_ram_addr;
+	if (addr >= vga_addr2 && addr - vga_addr2 + 1 < pc->vga_mem_size)
+		return ldu16((uint8_t *) &(pc->vga_mem[addr - vga_addr2]));
 	return iomem_read8(iomem, addr) |
 		((u16) iomem_read8(iomem, addr + 1) << 8);
 }
@@ -687,8 +703,10 @@ static void iomem_write16(void *iomem, uword addr, u16 val)
 	uword vga_addr2 = pc->pci_vga_ram_addr;
 	if (addr >= vga_addr2) {
 		addr -= vga_addr2;
-		if (addr + 1 < pc->vga_mem_size)
+		if (addr + 1 < pc->vga_mem_size) {
 			stu16((uint8_t *) &(pc->vga_mem[addr]), val);
+			LFB_WRITTEN(pc, addr, 2);
+		}
 		return;
 	}
 	vga_mem_write16(pc->vga, addr - 0xa0000, val);
@@ -696,6 +714,11 @@ static void iomem_write16(void *iomem, uword addr, u16 val)
 
 static u32 iomem_read32(void *iomem, uword addr)
 {
+	PC *pc = iomem;
+	// fast path for vga ram, as for the writes
+	uword vga_addr2 = pc->pci_vga_ram_addr;
+	if (addr >= vga_addr2 && addr - vga_addr2 + 3 < pc->vga_mem_size)
+		return ldu32((uint8_t *) &(pc->vga_mem[addr - vga_addr2]));
 	return iomem_read16(iomem, addr) |
 		((u32) iomem_read16(iomem, addr + 2) << 16);
 }
@@ -708,8 +731,10 @@ static void iomem_write32(void *iomem, uword addr, u32 val)
 	if (addr >= vga_addr2) {
 		uword vga_addr2 = pc->pci_vga_ram_addr;
 		addr -= vga_addr2;
-		if (addr + 3 < pc->vga_mem_size)
+		if (addr + 3 < pc->vga_mem_size) {
 			stu32((uint8_t *) &(pc->vga_mem[addr]), val);
+			LFB_WRITTEN(pc, addr, 4);
+		}
 		return;
 	}
 	vga_mem_write32(pc->vga, addr - 0xa0000, val);
@@ -740,6 +765,8 @@ static bool iomem_write_string(void *iomem, uword addr, uint8_t *buf, int len)
 		addr -= vga_addr2;
 		if (addr + len < pc->vga_mem_size) {
 			memcpy(pc->vga_mem + addr, buf, len);
+			if (len > 0)
+				LFB_WRITTEN(pc, addr, len);
 			return true;
 		}
 		return false;
@@ -849,6 +876,7 @@ PC *pc_new(SimpleFBDrawFunc *redraw, void *redraw_data,
 	memset(pc->vga_mem, 0, pc->vga_mem_size);
 	pc->vga = vga_init(pc->vga_mem, pc->vga_mem_size,
 			   fb, conf->width, conf->height);
+	pc->vga_dirty = vga_dirty_map(pc->vga);
 	vga_set_force_8dm(pc->vga, conf->vga_force_8dm);
 	pc->pci_vga = vga_pci_init(pc->vga, pc->pcibus, pc, set_pci_vga_bar);
 	pc->pci_vga_ram_addr = -1;

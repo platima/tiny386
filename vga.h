@@ -33,6 +33,43 @@ void vga_mem_write16(VGAState *s, uint32_t addr, uint16_t val);
 void vga_mem_write32(VGAState *s, uint32_t addr, uint32_t val);
 bool vga_mem_write_string(VGAState *s, uint32_t addr, uint8_t *buf, int len);
 
+/*
+ * VGA_DIRTY_BLOCKS (a board header turns it on): what the guest writes into
+ * video memory is noted a block of 1 KiB at a time, a byte for each block,
+ * and a VBE picture of 8, 15, 16, 24 or 32 bits a pixel is drawn again only
+ * in the rows that the blocks written lie in (see vga_refresh()).  Every
+ * store into video memory says so: vga_mem_write*() in vga.c, and the
+ * linear frame buffer in pc.c, which stores straight into video memory and
+ * then marks the map that vga_dirty_map() gives with vga_dirty_mark().
+ * vga_dirty_map() is NULL without VGA_DIRTY_BLOCKS.  vga_dirty() does the
+ * same for anything else that writes video memory behind vga.c's back.
+ *
+ * The drawing may run on the other core (VGA_TWO_CORES): it clears a
+ * block's byte and then reads the block.  So the byte is set after the
+ * bytes it stands for are stored, with a release fence between them, and
+ * a store that lands after the drawing has read its block leaves the byte
+ * set for the next picture.
+ */
+#define VGA_DIRTY_SHIFT 10
+uint8_t *vga_dirty_map(VGAState *s);
+void vga_dirty(VGAState *s, uint32_t addr, uint32_t len);
+/* With VGA_DIRTY_BLOCKS: 1 (which it starts as) draws VBE pictures from the
+   blocks written, 0 every pixel of every picture as before (the board's
+   [esp] vbe_blocks).  The blocks are noted either way. */
+extern int vga_dirty_blocks;
+
+/* Bytes addr to addr + len - 1 of video memory were written: len 1 or
+   more, all of them inside video memory. */
+static inline void vga_dirty_mark(uint8_t *map, uint32_t addr, uint32_t len)
+{
+    uint32_t b = addr >> VGA_DIRTY_SHIFT;
+    uint32_t e = (addr + len - 1) >> VGA_DIRTY_SHIFT;
+    __atomic_thread_fence(__ATOMIC_RELEASE);
+    __atomic_store_n(&map[b], 1, __ATOMIC_RELAXED);
+    while (b < e)
+        __atomic_store_n(&map[++b], 1, __ATOMIC_RELAXED);
+}
+
 typedef struct PCIDevice PCIDevice;
 typedef struct PCIBus PCIBus;
 PCIDevice *vga_pci_init(VGAState *s, PCIBus *bus,
@@ -40,6 +77,15 @@ PCIDevice *vga_pci_init(VGAState *s, PCIBus *bus,
 
 #ifndef BPP
 #define BPP 32
+#endif
+
+/* The drawing from blocks written (VGA_DIRTY_BLOCKS above) is for a screen
+   of RGB565 drawn 1:1, whose changed rows go to redraw(); vga.c and pc.c
+   both see this. */
+#if defined(VGA_DIRTY_BLOCKS) && (BPP != 16 || !defined(VGA_REDRAW_DIRTY_ROWS) || \
+    defined(SCALE_3_2) || defined(SCALE_2_1) || defined(SWAPXY) || \
+    defined(HOST_WORDS_BIGENDIAN))
+#undef VGA_DIRTY_BLOCKS
 #endif
 
 /* In a build with BPP 16 and VGA_STORE_CHANGED: 0 draws the 16-colour modes

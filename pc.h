@@ -54,6 +54,7 @@ typedef struct {
 	long phys_mem_size;
 	char *vga_mem;
 	int vga_mem_size;
+	uint8_t *vga_dirty;	/* vga_dirty_map(): NULL without VGA_DIRTY_BLOCKS */
 	int64_t boot_start_time;
 
 	SimpleFBDrawFunc *redraw;
