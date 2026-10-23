@@ -136,6 +136,48 @@ for board in korvo1 dosboard; do
     result $st "vga.c, $board: VBE pictures from the blocks written are as $against draws them, pixel for pixel; the bank window"
 done
 
+# ==== 3d. clears made by the picture after them (v4.2, VGA_CLEAR_AROUND) ====
+# vga.c as the board builds it against the same vga.c with v4.1's memset()
+# clears (VGA_NO_CLEAR_AROUND, symbols renamed): the same pictures, and no
+# page of the screen stored into without a pixel in it changing, none at all
+# where the guest's picture is as it was (a VBE mode set again over itself).
+# v4.1's vga.c under the same test, when the tag is there, has to give
+# every picture right and fail the stores (exit status 2).
+echo
+CLEAR_V41=
+if git -C "$TREE" rev-parse -q --verify v4.1 >/dev/null; then
+    mkdir -p "$OUT/v41"
+    git -C "$TREE" show v4.1:vga.c > "$OUT/v41/vga.c"
+    git -C "$TREE" show v4.1:vga.h > "$OUT/v41/vga.h"
+    CLEAR_V41=1
+fi
+for board in korvo1 dosboard; do
+    hdr="$TREE/esp/main/board_$board.h"
+    $CC $CFLAGS -c -I"$HERE/shim" -I"$TREE" -include "$hdr" \
+        -o "$OUT/test_clear-$board.o" "$HERE/test_clear.c" || exit 1
+    $CC -O2 -g -w -c -I"$HERE/shim" -I"$TREE" -include "$hdr" -DVGA_NO_CLEAR_AROUND \
+        $(vga_rename ref_) -o "$OUT/clear-ref-$board.o" "$TREE/vga.c" || exit 1
+    $CC -o "$OUT/test_clear-$board" "$OUT/test_clear-$board.o" "$OUT/vbe-new-$board.o" \
+        "$OUT/clear-ref-$board.o" "$OUT/vgafont.o" || exit 1
+    "$OUT/test_clear-$board" > "$OUT/clear-$board.log" 2>&1
+    st=$?
+    grep "FAIL\|pictures,\|test_clear" "$OUT/clear-$board.log" | head -12
+    result $st "vga.c, $board: a clear is made by the picture after it, the same pictures as a memset(), no page stored into for nothing"
+    if [ -n "$CLEAR_V41" ]; then
+        $CC -O2 -g -w -c -I"$OUT/v41" -I"$HERE/shim" -I"$TREE" -include "$hdr" \
+            -o "$OUT/clear-v41-$board.o" "$OUT/v41/vga.c" || exit 1
+        $CC -o "$OUT/test_clear_v41-$board" "$OUT/test_clear-$board.o" "$OUT/clear-v41-$board.o" \
+            "$OUT/clear-ref-$board.o" "$OUT/vgafont.o" || exit 1
+        echo "(the same test against vga.c at the v4.1 tag, which has to draw every picture right and fail the stores)"
+        "$OUT/test_clear_v41-$board" > "$OUT/clear-v41-$board.log" 2>&1
+        st=$?
+        grep "pictures,\|test_clear" "$OUT/clear-v41-$board.log" | sed 's/^/    | /'
+        echo "    | ($(grep -c 'FAIL' "$OUT/clear-v41-$board.log") checks failed; exit status $st)"
+        [ $st = 2 ]
+        result $? "vga.c, $board: the clear test catches v4.1's memset() (pictures right, pages stored into for nothing)"
+    fi
+done
+
 # ==== 4. the keyboard and mouse layer (FIRMWARE-PLAN 3.3) ====
 # kbd_input.c with i8042.c as the emulator has it, without BUILD_ESP32 (no
 # locks) and with PS2_KBD_HOOKS; usb_hid.c for v2's key table, to compare.
