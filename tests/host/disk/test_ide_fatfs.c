@@ -369,6 +369,19 @@ static void recovery_checks(BlockDevice *bs, int64_t nb)
 	unsigned e0 = ide_error_count();
 	int r;
 
+	/* the information port's counts (perfport.h): sectors as well as
+	   accesses */
+	static uint8_t eight[8 * 512];
+	disk_image_get_stats(&s0, false);
+	r = bs->read_async(bs, 8, eight, 8, NULL, NULL);
+	CHECK(r == 0 && bs->write_async(bs, 8, eight, 8, NULL, NULL) == 0,
+	      "8 sectors read and written back");
+	disk_image_get_stats(&s1, false);
+	CHECK(s1.rsectors - s0.rsectors == 8 && s1.wsectors - s0.wsectors == 8 &&
+	      s1.reads > s0.reads && s1.writes > s0.writes,
+	      "  counted as 8 sectors each way (%u, %u)", s1.rsectors - s0.rsectors,
+	      s1.wsectors - s0.wsectors);
+
 	memset(want, 0xC3, 512);
 	CHECK(bs->write_async(bs, 100, want, 1, NULL, NULL) == 0, "sector 100 written");
 
