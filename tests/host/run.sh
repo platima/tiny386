@@ -299,6 +299,16 @@ for board in korvo1 dosboard; do
     "$OUT/test_vga_info-$board"
     result $? "vga_get_info(), $board: text, 16 and 256 colours, VBE, blank; VBE pictures, blocks and rows counted"
 done
+# v4.3: the port and Ctrl+Alt+F11 together, perfport.c with vga.c as each
+# board builds it (test 3c's objects): a snapshot gives vbe_blocks as it is
+# at that moment, and the two whole pictures after each change are counted
+for board in korvo1 dosboard; do
+    $CC $CFLAGS -I"$HERE/shim" -I"$TREE" -include "$TREE/esp/main/board_$board.h" \
+        -o "$OUT/test_port_blocks-$board" "$HERE/test_port_blocks.c" "$OUT/vbe-new-$board.o" \
+        "$OUT/vgafont.o" || exit 1
+    "$OUT/test_port_blocks-$board"
+    result $? "perfport and Ctrl+Alt+F11, $board: vbe_blocks read as it is, the whole pictures after a change counted"
+done
 printf '#include "perfport.h"\nunsigned long magic = PP_MAGIC, version = PP_VERSION;\nunsigned port = PP_PORT_DATA;\nint count = PP_COUNT, text = PP_I_BOARD + PP_TEXT_INDEXES;\n' \
     > "$OUT/perfport_guest.c"
 $CC -std=c89 -pedantic -Werror -Wall -Wextra -fsyntax-only -I"$TREE" "$OUT/perfport_guest.c"
