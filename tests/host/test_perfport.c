@@ -97,7 +97,7 @@ static const struct { const char *name; unsigned i, n; } names[] = {
     N(PP_I_PICTURES), N(PP_I_PICTURES_1S), N(PP_I_DRAW_US), N(PP_I_DRAW_AVG_US_1S),
     N(PP_I_DRAW_MAX_US_1S), N(PP_I_DRAW_MAX_US), N(PP_I_FLUSHES), N(PP_I_FLUSH_ROWS),
     N(PP_I_VBE_PICTURES), N(PP_I_VBE_WHOLE), N(PP_I_VBE_BLOCKS), N(PP_I_VBE_ROWS),
-    N(PP_I_VBE_BLOCKS_ON), N(PP_I_FRAME_MS),
+    N(PP_I_VBE_BLOCKS_ON), N(PP_I_FRAME_MS), N(PP_I_CHANGED), N(PP_I_CHANGED_1S),
     N(PP_I_MODE_KIND), N(PP_I_MODE_WIDTH), N(PP_I_MODE_HEIGHT), N(PP_I_MODE_BPP),
     N(PP_I_MODE_LINE_BYTES), N(PP_I_MODE_START), N(PP_I_BIOS_MODE),
     N(PP_I_SCREEN_WIDTH), N(PP_I_SCREEN_HEIGHT),
@@ -217,6 +217,7 @@ static void test_snapshot(void)
     unsigned mine[] = { PP_I_MAGIC, PP_I_VERSION, PP_I_COUNT, PP_I_SNAPSHOTS, PP_I_VALID0,
         PP_I_VALID3, PP_I_CLOCK_US, PP_I_SNAP_US, PP_I_PORT_IO, PP_I_INSNS_LO, PP_I_INSNS_HI,
         PP_I_PICTURES, PP_I_PICTURES_1S, PP_I_DRAW_US, PP_I_DRAW_MAX_US, PP_I_FLUSHES,
+        PP_I_CHANGED, PP_I_CHANGED_1S,
         PP_I_MODE_KIND, PP_I_BIOS_MODE, PP_I_GUEST_MEM_KB, PP_I_TIMER_DROPPED,
         PP_I_MOUSE_PACKETS, PP_I_VBE_BLOCKS_ON };
     for (unsigned k = 0; k < sizeof(mine) / sizeof(mine[0]); k++)
@@ -333,6 +334,9 @@ static void test_drawing(void)
     CHECK(rd(PP_I_DRAW_AVG_US_1S) == (34 * 2000 + 9000) / 35, "average %u",
           rd(PP_I_DRAW_AVG_US_1S));
     CHECK(rd(PP_I_FLUSHES) == 2 && rd(PP_I_FLUSH_ROWS) == 20, "flushes");
+    /* the two redraws came before the first picture: it alone changed */
+    CHECK(rd(PP_I_CHANGED) == 1 && rd(PP_I_CHANGED_1S) == 1, "changed %u, %u in the last second",
+          rd(PP_I_CHANGED), rd(PP_I_CHANGED_1S));
     /* the next second without the long one */
     for (; t < 10000000 + 2400000; t += 30000, n++)
         perfport_picture(t, 2000);
@@ -340,6 +344,7 @@ static void test_drawing(void)
     snap();
     CHECK(rd(PP_I_DRAW_MAX_US_1S) == 2000 && rd(PP_I_DRAW_MAX_US) == 9000 &&
           rd(PP_I_DRAW_AVG_US_1S) == 2000, "the last second without the long picture");
+    CHECK(rd(PP_I_CHANGED) == 1 && rd(PP_I_CHANGED_1S) == 0, "a still second: none changed");
     /* the drawing's clock a little ahead of the snapshot's: still fresh */
     fake_now = pp_draw.win_end - 5;
     snap();
@@ -357,6 +362,83 @@ static void test_drawing(void)
     fake_now = t;
     snap();
     CHECK(rd(PP_I_PICTURES_1S) == 35, "across the clock's wrap: %u", rd(PP_I_PICTURES_1S));
+}
+
+/* 1.1: the pictures that changed, and the last second after a pause */
+static uint32_t draw_for(uint32_t t, uint32_t until, uint32_t us)
+{
+    for (; (int32_t) (t - until) < 0; t += 30000)
+        perfport_picture(t, us);
+    return t;
+}
+
+static void test_changed_pause(void)
+{
+    /* a second of pictures, each with rows sent but every fifth, which
+       has a redraw of no rows: 35 pictures in the second, 28 changed */
+    setup();
+    uint32_t t = 30000000;
+    for (int k = 0; k < 35; k++, t += 30000) {
+        perfport_redraw(&pc, 0, 10, 800, k % 5 ? 4 : 0);
+        perfport_picture(t, 2000);
+    }
+    fake_now = t;
+    snap();
+    CHECK(rd(PP_I_PICTURES_1S) == 35 && rd(PP_I_CHANGED_1S) == 28 && rd(PP_I_CHANGED) == 28 &&
+          rd(PP_I_FLUSHES) == 35 && rd(PP_I_FLUSH_ROWS) == 28 * 4,
+          "changed: %u of %u in the second, %u in all", rd(PP_I_CHANGED_1S),
+          rd(PP_I_PICTURES_1S), rd(PP_I_CHANGED));
+
+    /* the review's case: 10.5 s at 30 ms a picture, 0.9 s with none (the
+       speed screen), then a whole redraw of 40 ms.  1.0 then gave 10
+       pictures, 5,800 us average and 40,000 longest for about a second */
+    setup();
+    t = draw_for(10000000, 10000000 + 10500000, 2000);
+    uint32_t last = t - 30000 + 2000;           /* the last picture's end */
+    fake_now = last + 500000;
+    snap();
+    CHECK(rd(PP_I_PICTURES_1S) >= 33 && rd(PP_I_DRAW_MAX_US_1S) == 2000,
+          "half a second into a pause the last second still reads");
+    t = last + 900000;
+    perfport_picture(t, 40000);
+    fake_now = t + 40000;
+    snap();
+    CHECK(rd(PP_I_PICTURES_1S) >= 33 && rd(PP_I_DRAW_AVG_US_1S) == 2000 &&
+          rd(PP_I_DRAW_MAX_US_1S) == 2000,
+          "after the pause, the second before it: %u pictures, %u us average, %u longest",
+          rd(PP_I_PICTURES_1S), rd(PP_I_DRAW_AVG_US_1S), rd(PP_I_DRAW_MAX_US_1S));
+    t = draw_for(t + 60000, t + 1100000, 2000);    /* the next, 20 ms after its end */
+    fake_now = t;
+    snap();
+    CHECK(rd(PP_I_PICTURES_1S) >= 33 && rd(PP_I_DRAW_MAX_US_1S) == 40000,
+          "the first whole second after the pause: %u pictures, %u us longest",
+          rd(PP_I_PICTURES_1S), rd(PP_I_DRAW_MAX_US_1S));
+    /* a whole second with no picture: the last second reads 0 */
+    last = t - 30000 + 2000;
+    fake_now = last + 999000;
+    snap();
+    CHECK(rd(PP_I_PICTURES_1S) > 0, "under a second since the last picture: still read");
+    fake_now = last + 1000000;
+    snap();
+    CHECK(rd(PP_I_PICTURES_1S) == 0 && rd(PP_I_CHANGED_1S) == 0 && rd(PP_I_DRAW_AVG_US_1S) == 0,
+          "a second since the last picture: 0");
+
+    /* a hitch of 150 ms is not a pause: its second counts it */
+    setup();
+    t = draw_for(50000000, 50000000 + 300000, 2000);
+    t = draw_for(t + 150000, 50000000 + 1300000, 2000);
+    fake_now = t;
+    snap();
+    CHECK(rd(PP_I_PICTURES_1S) >= 28 && rd(PP_I_PICTURES_1S) <= 30,
+          "a second with a 150 ms hitch: %u pictures", rd(PP_I_PICTURES_1S));
+    /* a gap over PP_PAUSE_US is a pause: the second it interrupted goes */
+    setup();
+    t = draw_for(60000000, 60000000 + 300000, 2000);
+    t = draw_for(t + PP_PAUSE_US, 60000000 + 1300000, 2000);
+    fake_now = t;
+    snap();
+    CHECK(rd(PP_I_PICTURES_1S) == 0, "a second broken by a pause is not counted: %u",
+          rd(PP_I_PICTURES_1S));
 }
 
 /* the 32-bit count of the board, made 64 bits */
@@ -405,6 +487,8 @@ static void test_threads(void)
     CHECK(back == 0, "totals went back %d times in %d snapshots", back, snaps);
     CHECK(rd(PP_I_PICTURES) == 200000 && rd(PP_I_FLUSHES) == 200000 &&
           rd(PP_I_DRAW_US) == 2000000, "totals at the end");
+    /* each redraw marks the next picture: all but the first changed */
+    CHECK(rd(PP_I_CHANGED) == 199999, "changed at the end: %u", rd(PP_I_CHANGED));
 }
 
 int main(int argc, char **argv)
@@ -414,6 +498,7 @@ int main(int argc, char **argv)
     test_snapshot();
     test_fill();
     test_drawing();
+    test_changed_pause();
     test_extend();
     test_threads();
     printf("perfport: %d checks, %d failed\n", checks, failed);

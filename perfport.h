@@ -46,6 +46,12 @@
  * Figures marked "last whole second" are the emulator's own, the same as
  * the board's Ctrl+Alt+F12 screen shows.
  *
+ * Pictures: the board draws one every 30 ms (FRAME_MS) whether or not
+ * anything on the screen changed, so PICTURES_1S reads 33 or 34 on a still
+ * desktop and falls only when the drawing cannot keep up.  The panel's
+ * frames a second, as a game would count them, are CHANGED_1S (1.1 on):
+ * the pictures in which at least one row went to the panel.
+ *
  * How busy the guest is: PP_I_HALT_PCT is the share of the last second in
  * which the guest's processor was halted, waiting for an interrupt.  Windows
  * 95 halts when it has nothing to do (on the PC harness: 67 to 89 per cent
@@ -64,8 +70,8 @@
 
 #define PP_MAGIC                0x36383354UL    /* "T386" as four bytes */
 #define PP_VERSION_MAJOR        1
-#define PP_VERSION_MINOR        0
-#define PP_VERSION              0x00010000UL    /* major << 16 | minor */
+#define PP_VERSION_MINOR        1       /* 1.1: CHANGED, CHANGED_1S */
+#define PP_VERSION              0x00010001UL    /* major << 16 | minor */
 
 /* COMMAND */
 #define PP_CMD_NONE             0       /* nothing */
@@ -104,7 +110,8 @@
 #define PP_I_SECONDS            0x16    /* whole seconds counted for KIPS and HALT_PCT */
 
 /* the drawing (on the board, its other core) */
-#define PP_I_PICTURES           0x20    /* total: pictures drawn */
+#define PP_I_PICTURES           0x20    /* total: pictures drawn, changed or not
+                                           (on the board one every FRAME_MS) */
 #define PP_I_PICTURES_1S        0x21    /* last whole second: pictures drawn */
 #define PP_I_DRAW_US            0x22    /* total: us spent drawing them */
 #define PP_I_DRAW_AVG_US_1S     0x23    /* last whole second: us a picture, average */
@@ -121,6 +128,10 @@
 #define PP_I_VBE_ROWS           0x2B    /* total: rows of them converted */
 #define PP_I_VBE_BLOCKS_ON      0x2C    /* 1: [esp] vbe_blocks is on; 0: off */
 #define PP_I_FRAME_MS           0x2D    /* a picture at most every this many ms */
+#define PP_I_CHANGED            0x2E    /* 1.1, total: pictures in which at least
+                                           one row went to the screen */
+#define PP_I_CHANGED_1S         0x2F    /* 1.1, last whole second: those pictures,
+                                           the panel's frames a second */
 
 /* the display mode the guest has set */
 #define PP_I_MODE_KIND          0x30    /* PP_MODE_* */
@@ -177,7 +188,8 @@
 
 /* text: 4 characters an index, the first in the low byte, padded with 0;
    31 characters at most, then a 0 */
-#define PP_I_FIRMWARE           0x70    /* 0x70 to 0x77: the firmware's version, "v4.1" */
+#define PP_I_FIRMWARE           0x70    /* 0x70 to 0x77: the firmware's version
+                                           (esp/version.txt, "v4.1-perfport") */
 #define PP_I_BOARD              0x78    /* 0x78 to 0x7F: the board's name */
 #define PP_TEXT_INDEXES         8       /* 32 bytes each */
 
@@ -223,8 +235,8 @@ void perfport_set_fill(PerfPortFill *fn, void *opaque);
         (val)[i] = (uint32_t) (x); \
         (valid)[(i) >> 5] |= 1u << ((i) & 31); \
     } while (0)
-/* text at PP_I_FIRMWARE or PP_I_BOARD (first: the index), at most 32
-   characters */
+/* text at PP_I_FIRMWARE or PP_I_BOARD (first: the index), at most 31
+   characters (the 32nd byte is always 0) */
 void perfport_put_text(uint32_t *val, uint32_t *valid, int first, const char *s);
 
 /* everything back to its start (host tests) */

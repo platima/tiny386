@@ -27,14 +27,24 @@
 #endif
 
 /* ==== the drawing's figures (its thread only writes them) ==== */
+
+/* A gap longer than this between one picture's end and the next one's
+   start is a pause: the speed screen or the console had the panel.  The
+   second it interrupted is not counted.  A picture comes every 30 ms
+   (LCD_FRAME_MS) and the next starts at once when one runs late, so
+   shorter gaps are hitches in the drawing, and count. */
+#define PP_PAUSE_US 250000
+
 static struct {
 	volatile uint32_t pictures, draw_us, draw_max;
 	volatile uint32_t flushes, flush_rows;
+	volatile uint32_t changed;      /* pictures with a row sent */
+	bool cur_changed;               /* this picture has sent a row */
 	/* the second being counted */
 	bool win_on;
-	uint32_t win_t0, win_n, win_us, win_max;
-	/* the last whole one, and when it ended */
-	volatile uint32_t pps, avg_1s, max_1s, win_end;
+	uint32_t win_t0, win_n, win_changed, win_us, win_max;
+	/* the last whole one, when it ended, and when the last picture ended */
+	volatile uint32_t pps, changed_1s, avg_1s, max_1s, win_end, last_end;
 } pp_draw;
 
 /* ==== the emulator's thread ==== */
@@ -92,33 +102,52 @@ void perfport_redraw(void *opaque, int x, int y, int w, int h)
 {
 	PC *pc = opaque;
 	pp_draw.flushes = pp_draw.flushes + 1;
-	if (h > 0)
+	if (h > 0) {
 		pp_draw.flush_rows = pp_draw.flush_rows + (uint32_t) h;
+		pp_draw.cur_changed = true;
+	}
 	pc->redraw(pc->redraw_data, x, y, w, h);
 }
 
 void perfport_picture(uint32_t start_us, uint32_t us)
 {
+	bool changed = pp_draw.cur_changed;
+	pp_draw.cur_changed = false;
 	pp_draw.pictures = pp_draw.pictures + 1;
+	if (changed)
+		pp_draw.changed = pp_draw.changed + 1;
 	pp_draw.draw_us = pp_draw.draw_us + us;
 	if (us > pp_draw.draw_max)
 		pp_draw.draw_max = us;
+	/* after a pause, a new second from this picture: the one the pause
+	   interrupted would hold the pause and give a picture count, an
+	   average and a longest that belong to no second */
+	if (pp_draw.win_on && (int32_t) (start_us - pp_draw.last_end) > PP_PAUSE_US)
+		pp_draw.win_on = false;
 	if (!pp_draw.win_on) {
 		pp_draw.win_on = true;
 		pp_draw.win_t0 = start_us;
+		pp_draw.win_n = 0;
+		pp_draw.win_changed = 0;
+		pp_draw.win_us = 0;
+		pp_draw.win_max = 0;
 	}
 	pp_draw.win_n++;
+	pp_draw.win_changed += changed;
 	pp_draw.win_us += us;
 	if (us > pp_draw.win_max)
 		pp_draw.win_max = us;
 	uint32_t now = start_us + us;
+	pp_draw.last_end = now;
 	if (now - pp_draw.win_t0 >= 1000000) {
 		pp_draw.pps = pp_draw.win_n;
+		pp_draw.changed_1s = pp_draw.win_changed;
 		pp_draw.avg_1s = pp_draw.win_us / pp_draw.win_n;
 		pp_draw.max_1s = pp_draw.win_max;
 		pp_draw.win_end = now;
 		pp_draw.win_t0 = now;
 		pp_draw.win_n = 0;
+		pp_draw.win_changed = 0;
 		pp_draw.win_us = 0;
 		pp_draw.win_max = 0;
 	}
@@ -174,15 +203,19 @@ static void snapshot(PC *pc)
 	PERFPORT_PUT(v, ok, PP_I_INSNS_HI, (uint32_t) (n >> 32));
 
 	/* the drawing's; its last whole second is stale (the console has the
-	   screen, or nothing is drawn) once two seconds have gone by */
+	   screen, or nothing is drawn) once two seconds have gone by since it
+	   ended, or one since the last picture ended */
 	PERFPORT_PUT(v, ok, PP_I_PICTURES, pp_draw.pictures);
 	PERFPORT_PUT(v, ok, PP_I_DRAW_US, pp_draw.draw_us);
 	PERFPORT_PUT(v, ok, PP_I_DRAW_MAX_US, pp_draw.draw_max);
 	PERFPORT_PUT(v, ok, PP_I_FLUSHES, pp_draw.flushes);
 	PERFPORT_PUT(v, ok, PP_I_FLUSH_ROWS, pp_draw.flush_rows);
-	uint32_t end = pp_draw.win_end;
-	bool fresh = pp_draw.pps && (int32_t) (t0 - end) < 2000000;
+	PERFPORT_PUT(v, ok, PP_I_CHANGED, pp_draw.changed);
+	uint32_t end = pp_draw.win_end, last = pp_draw.last_end;
+	bool fresh = pp_draw.pps && (int32_t) (t0 - end) < 2000000 &&
+		(int32_t) (t0 - last) < 1000000;
 	PERFPORT_PUT(v, ok, PP_I_PICTURES_1S, fresh ? pp_draw.pps : 0);
+	PERFPORT_PUT(v, ok, PP_I_CHANGED_1S, fresh ? pp_draw.changed_1s : 0);
 	PERFPORT_PUT(v, ok, PP_I_DRAW_AVG_US_1S, fresh ? pp_draw.avg_1s : 0);
 	PERFPORT_PUT(v, ok, PP_I_DRAW_MAX_US_1S, fresh ? pp_draw.max_1s : 0);
 
