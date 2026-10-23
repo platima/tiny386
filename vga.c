@@ -81,6 +81,16 @@ void *pcmalloc(long size);
     defined(SCALE_3_2) || defined(SCALE_2_1) || defined(SWAPXY))
 #undef VGA_SHRINK_LARGE
 #endif
+/* A clear of the screen is not a memset() of it but is left to the picture
+   that follows, which is drawn whole and makes only the rest of the screen
+   black (vga_clear_screen(), vga_clear_around()): for a screen that is the
+   glass itself, where the black of a memset() would be seen before the
+   picture is drawn again.  VGA_NO_CLEAR_AROUND (host tests) keeps the
+   memset(). */
+#if defined(VGA_PLANAR_FAST) && defined(VGA_REDRAW_DIRTY_ROWS) && \
+    !defined(VGA_NO_CLEAR_AROUND)
+#define VGA_CLEAR_AROUND
+#endif
 
 //#define DEBUG_VBE
 //#define DEBUG_VGA_REG
@@ -215,6 +225,9 @@ struct VGAState {
     int drawn_w, drawn_h;   /* the picture's size; drawn_w 0: none since a clear */
     bool cleared;           /* nothing drawn on the screen since it was cleared */
 #endif
+#ifdef VGA_CLEAR_AROUND
+    bool clear_around;      /* a clear that the next picture is to make */
+#endif
 
 #ifdef VGA_TWO_CORES
     /* Clears that the emulator asks for and the drawing does.  Each count
@@ -266,13 +279,21 @@ static int after_eq(uint32_t a, uint32_t b)
     return (a - b) < (1u << 31);
 }
 
+#ifndef VGA_CLEAR_AROUND
 static void simplefb_clear(FBDevice *fb_dev)
 {
     memset(fb_dev->fb_data, 0, fb_dev->width * fb_dev->height * (BPP / 8));
 }
+#endif
 
 /* The screen is cleared, and whatever was known about what it shows is not
-   so any more. */
+   so any more.  With VGA_CLEAR_AROUND nothing is stored here: the picture
+   that follows is drawn whole over what the screen shows, and only the
+   rest of the screen is made black (vga_clear_around()), so that the panel
+   goes from the old picture to the new one with no black between them.  A
+   memset() of the panel's frame buffer reaches the glass in part before
+   the picture is drawn again (the frame buffer is many times the size of
+   the cache it is written through), a black flash at every clear. */
 static void vga_clear_screen(VGAState *s)
 {
 #ifdef VGA_TWO_CORES
@@ -282,7 +303,11 @@ static void vga_clear_screen(VGAState *s)
     s->clear_req_seen = __atomic_load_n(&s->clear_req, __ATOMIC_ACQUIRE);
     s->force_clear_seen = __atomic_load_n(&s->force_clear_req, __ATOMIC_ACQUIRE);
 #endif
+#ifdef VGA_CLEAR_AROUND
+    s->clear_around = true;
+#else
     simplefb_clear(s->fb_dev);
+#endif
 #ifdef VGA_PLANAR_FAST
     s->seen_valid = false;
     s->clear_wanted = false;
@@ -297,6 +322,59 @@ static void vga_clear_screen(VGAState *s)
     s->vbe_drawn = false;
 #endif
 }
+
+#ifdef VGA_CLEAR_AROUND
+/* n pixels black, each stored only if it is not black already */
+static void vga_black(uint16_t *d, int n)
+{
+    for (int i = 0; i < n; i++)
+        if (d[i])
+            d[i] = 0;
+}
+
+/*
+ * The clear asked for before this picture (vga_clear_screen()), made now
+ * that the picture's place is known: x, y, w, h on the screen, which the
+ * caller draws whole straight after (every pixel worked out and stored
+ * where it differs).  The rest of the screen is made black.  With w or h
+ * 0 (nothing is drawn: blanked, or text that does not fit) all of it.
+ * vga_clear_screen() has set fb_all_dirty, so every row goes to redraw()
+ * with the picture.
+ */
+static void vga_clear_around(VGAState *s, int x, int y, int w, int h)
+{
+    if (!s->clear_around)
+        return;
+    s->clear_around = false;
+    FBDevice *fb_dev = s->fb_dev;
+    int fw = fb_dev->width, fh = fb_dev->height;
+    if (x < 0) {
+        w += x;
+        x = 0;
+    }
+    if (y < 0) {
+        h += y;
+        y = 0;
+    }
+    if (w > fw - x)
+        w = fw - x;
+    if (h > fh - y)
+        h = fh - y;
+    if (w <= 0 || h <= 0)
+        w = h = 0;
+    for (int r = 0; r < fh; r++) {
+        uint16_t *d = (uint16_t *) (fb_dev->fb_data + r * fb_dev->stride);
+        if (r < y || r >= y + h) {
+            vga_black(d, fw);
+        } else {
+            vga_black(d, x);
+            vga_black(d + x + w, fw - x - w);
+        }
+    }
+}
+#else
+#define vga_clear_around(s, x, y, w, h) ((void) 0)
+#endif
 
 #ifdef VGA_TWO_CORES
 /* The emulator (core 1) asks for a clear: one count more, stored once. */
@@ -1093,6 +1171,13 @@ static void vga_text_refresh(VGAState *s,
 #ifdef VGA_PLANAR_FAST
     s->cleared = false;     /* text is drawn on it below */
 #endif
+#ifdef VGA_CLEAR_AROUND
+    /* a clear: black around the text, and every cell of it drawn */
+    if (s->clear_around) {
+        vga_clear_around(s, x1, y1, width1, height1);
+        full_update = 1;
+    }
+#endif
 #endif
     if ((s->cr[0x14] & 0x1f) != s->last_underline) {
         s->last_underline = s->cr[0x14] & 0x1f;
@@ -1634,6 +1719,9 @@ static void vga_graphic_refresh_shrunk(VGAState *s,
     s->clear_wanted = false;
     if (s->drawn_w != sw || s->drawn_h != sh || !s->rest_black)
         vga_clear_screen(s);
+    /* every row of the picture is drawn below after a clear (vbe_drawn
+       false, or not a VBE picture) */
+    vga_clear_around(s, ox, oy, sw, sh);
     s->drawn_w = sw;
     s->drawn_h = sh;
     s->cleared = false;
@@ -1913,6 +2001,10 @@ static void vga_graphic_refresh(VGAState *s,
     if (s->clear_wanted && !(s->rest_black && same_place))
         vga_clear_screen(s);
     s->clear_wanted = false;
+    /* A clear, this one or one vga_refresh() made: every pixel of the
+       picture is drawn below (the quick way's words and a VBE picture's
+       blocks are not trusted after it), and the rest is made black now. */
+    vga_clear_around(s, (i0 % fb_dev->stride) / (BPP / 8), i0 / fb_dev->stride, w, h);
     /* a picture drawn over one that was somewhere else: what is left of the
        other one is not black */
     if (s->drawn_w && !same_place)
@@ -2490,9 +2582,13 @@ void vga_refresh(VGAState *s,
     } else if (s->graphic_mode == 1) {
         vga_text_refresh(s, redraw_func, opaque, full_update);
     }
+    /* A clear that no picture made: blanked, or text that does not fit the
+       screen.  All of the screen black. */
+    vga_clear_around(s, 0, 0, 0, 0);
 #ifdef VGA_REDRAW_DIRTY_ROWS
-    else if (s->fb_all_dirty) {
-        /* blanked: the black screen must reach the panel too */
+    if (s->fb_all_dirty) {
+        /* nothing drawn since a clear: the black screen must reach the
+           panel too */
         vga_redraw_rows(s, redraw_func, opaque, 0, 0);
     }
 #endif
@@ -2760,8 +2856,9 @@ void vga_ioport_write(VGAState *s, uint32_t addr, uint32_t val)
                else, and is drawn again from nothing.  The BIOS writes two
                of them for every character it prints, where the text cursor
                would be.  On a screen that is slow to write and is the
-               glass itself, each clear is a black flash and a whole
-               picture stored again.  So it waits for the next picture,
+               glass itself, each clear was a black flash (until v4.2,
+               vga_clear_around()) and is a whole picture worked out
+               again.  So it waits for the next picture,
                which can tell whether it would make a difference.  On one
                core without that (no VGA_PLANAR_FAST, or vga_planar_fast 0)
                nothing is cleared here: a clear at once on every write is
