@@ -1,0 +1,116 @@
+v4.4 (HEAD e83f0da): a card partition as the guest's whole disk on the PC harness, 2026-10-24 13:48:00.
+The harness: /home/owner/org2/v44sd/ph (part 1's T386MON harness copy; build.sh compiles sd_part.c, diskfat.c answers
+storage.c's three questions about the card image, run.sh's SDPART=N runs hda = sd:N with p1 mounted).
+headless: tree: /home/owner/org2/v44sd/t-final HEAD e83f0da 
+
+==== 1. the card images, made by s31/newcard/newcard.sh
+-- the inputs: win95.img 2871f4726e5563a2 (a copy of the pristine image), root.img (a stand-in ext4 of
+-- 192 MiB with one file), old/mbr.bin (a first sector whose disk signature is deadbeef), p1/ (tiny386/win95-sd.ini)
+-- newcard.sh --win95 win95.img --root root.img --p1 p1 --mbr old/mbr.bin --out card-512.img
+== the inputs
+  win95.img: partition from sector 63, 818433 sectors, type 0e; its volume 818433 sectors (399 MiB)
+  root.img: an ext4 image, 393216 sectors (192 MiB)
+== the new card's layout (sectors of 512 bytes)
+  p1 FAT32 KORVO_SD  from       8192,    1048576 sectors (512 MiB)
+  p3 Windows (0e)    from    1056768,     819200 sectors (400 MiB)
+  p2 Linux root (83) from    1875968,     393216 sectors (192 MiB)
+  the image: 2269184 sectors, 1108 MiB; the card must be at least that
+  the table written: p1 0C, p2 83, p3 0E; disk signature deadbeef
+== p1: FAT32 KORVO_SD
+  1 files from p1 copied
+== p3: the Windows volume, from win95.img
+  the boot sector's hidden-sectors field: 1056768 (was 63)
+== p2: Linux's root, from root.img
+== checks
+  the table: p1, p2, p3 where they were put, none overlapping, p4 empty
+  ok: the table read back
+  ok: fsck.fat -n finds p1 clean (card-512.img.work/p1.img: 3 files, 3/130811 clusters)
+  ok: fsck.fat -n finds on p3 what it finds on the image's volume (exit 1: Label '' stored in boot sector is not valid. Auto-removing label from boot sector. card-512.img.work/p3.img: 1624 files, 28036/51125 clusters )
+  ok: p3 is the image's volume, every one of its 818433 sectors, but the hidden-sectors field (now 1056768)
+  ok: p3 against the volume in win95.img
+  ok: every file and folder of the volume as mtools lists it, the same on p3 (1801 lines)
+  ok: p2 is the root, every sector (SHA-256 bc14540515edb18a)
+  ok: e2fsck -fn finds p2 clean (rootfs: 13/49152 files (0.0% non-contiguous), 18003/196608 blocks)
+== card-512.img: ready
+   SHA-256 of the image: 73bd87aa8d4bdec3c7897ae20130ac27e20ac8e4ed99e27de9cdd7e46ba5c8ff
+exit 0
+-- the same with --p1-mib 64
+== the new card's layout (sectors of 512 bytes)
+  p1 FAT32 KORVO_SD  from       8192,     131072 sectors (64 MiB)
+  p3 Windows (0e)    from     139264,     819200 sectors (400 MiB)
+  p2 Linux root (83) from     958464,     393216 sectors (192 MiB)
+  the image: 1351680 sectors, 660 MiB; the card must be at least that
+  the table written: p1 0C, p2 83, p3 0E; disk signature deadbeef
+== p1: FAT32 KORVO_SD
+  1 files from p1 copied
+== p3: the Windows volume, from win95.img
+  the boot sector's hidden-sectors field: 139264 (was 63)
+== p2: Linux's root, from root.img
+== checks
+  the table: p1, p2, p3 where they were put, none overlapping, p4 empty
+  ok: the table read back
+  ok: fsck.fat -n finds p1 clean (card-64.img.work/p1.img: 3 files, 3/128992 clusters)
+  ok: fsck.fat -n finds on p3 what it finds on the image's volume (exit 1: Label '' stored in boot sector is not valid. Auto-removing label from boot sector. card-64.img.work/p3.img: 1624 files, 28036/51125 clusters )
+  ok: p3 is the image's volume, every one of its 818433 sectors, but the hidden-sectors field (now 139264)
+  ok: p3 against the volume in win95.img
+  ok: every file and folder of the volume as mtools lists it, the same on p3 (1801 lines)
+  ok: p2 is the root, every sector (SHA-256 bc14540515edb18a)
+exit 0
+
+==== 2. Windows 95 from p3, against the same image as a file
+== pp-sd512: outcome: desktop (desktop seen at t=222 s)
+   END t=342.038 s insns=588027252 idle=60723280 stall=17.7 s cs:eip=0028:c002a804 esp=c13a1c58 ss=0030 cr0=80000005 cr3=00499000 fl=00003202 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+   sectors changed: 6508 in 146 ranges
+   Dirty bit is set. Fs was not properly unmounted and some data may be corrupt.
+   /home/owner/org2/v44sd/ph/runs/pp-sd512/p3.img: 1645 files, 28728/51125 clusters
+   fsck.fat -n of the card's p3: exit 1
+   card p3 from 1056768, 819200 sectors; its hidden-sectors field 1056768, put back to 63
+   the table, sector 0 to p1: as newcard.sh made it, every sector (b04f991ce0d27606)
+   p1: as newcard.sh made it, every sector (6ca3c7c7b6ac1d0f)
+   p2: as newcard.sh made it, every sector (bc14540515edb18a)
+   IOS.LOG's units through real-mode drivers (00 and 01 the floppies; C: is 02):
+      unit 00: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
+      unit 01: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
+== pp-sd64: outcome: desktop (desktop seen at t=223 s)
+   END t=343.039 s insns=588632128 idle=61980864 stall=17.7 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=00499000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+   sectors changed: 6864 in 138 ranges
+   Dirty bit is set. Fs was not properly unmounted and some data may be corrupt.
+   /home/owner/org2/v44sd/ph/runs/pp-sd64/p3.img: 1645 files, 28536/51125 clusters
+   fsck.fat -n of the card's p3: exit 1
+   card p3 from 139264, 819200 sectors; its hidden-sectors field 139264, put back to 63
+   the table, sector 0 to p1: as newcard.sh made it, every sector (3271145e1e50c660)
+   p1: as newcard.sh made it, every sector (94d23651852ebf9b)
+   p2: as newcard.sh made it, every sector (bc14540515edb18a)
+   IOS.LOG's units through real-mode drivers (00 and 01 the floppies; C: is 02):
+      unit 00: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
+      unit 01: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
+== pp-filecard: outcome: desktop (desktop seen at t=224 s)
+   END t=344.289 s insns=589837629 idle=61926656 stall=18.4 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=00499000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+   sectors changed: 7220 in 153 ranges
+   /home/owner/org2/v44sd/ph/runs/pp-filecard/p3.img: 2 files, 102313/523260 clusters
+   fsck.fat -n of the card's p3: exit 0
+== pp-file: outcome: desktop (desktop seen at t=210 s)
+   END t=330.030 s insns=587292185 idle=71945744 stall=0.4 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=00499000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+   sectors changed: 6533 in 139 ranges
+   IOS.LOG's units through real-mode drivers:
+      unit 00: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
+      unit 01: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
+-- the pristine image's own IOS.LOG (from the install, before fill_cmos):
+      unit 00: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
+      unit 01: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
+      unit 02: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
+-- the sectors each run changed, against the plain file's (the first 40 ranges):
+   pp-sd512: the same first ranges as pp-file
+   pp-sd64: first ranges differ (Windows' own timing)
+   pp-filecard: first ranges differ (Windows' own timing)
+
+==== 3. refused (each a run of 30 virtual seconds at most, on a copy of card-64.img)
+/home/owner/org2/v44sd/ppfinal.sh: line 81: 536106 Aborted                 timeout 120 $B -out runs/$name -wall 60 -card runs/$name/card.img:$cpart -vsecs 30 runs/$name/run.ini > runs/$name/log.txt 2>&1
+  hda = sd:3, FatFs has p3: exit 134; tiny386_fatal: sd:3: card partition 3 is mounted by tiny386's own FatFs, so the guest cannot have it whole as well.
+/home/owner/org2/v44sd/ppfinal.sh: line 81: 536117 Aborted                 timeout 120 $B -out runs/$name -wall 60 -card runs/$name/card.img:$cpart -vsecs 30 runs/$name/run.ini > runs/$name/log.txt 2>&1
+  hda = sd:2, FatFs has p1: exit 134; tiny386_fatal: sd:2: card partition 2 is a Linux partition (Linux's root is one) (type 83): only a FAT16 partition (type 04, 06 or 0E) or a FAT32 one (0B or 0C) can be the guest's disk.
+/home/owner/org2/v44sd/ppfinal.sh: line 81: 536126 Aborted                 timeout 120 $B -out runs/$name -wall 60 -card runs/$name/card.img:$cpart -vsecs 30 runs/$name/run.ini > runs/$name/log.txt 2>&1
+  hda = sd:1, FatFs has p1: exit 134; tiny386_fatal: sd:1: card partition 1 is mounted by tiny386's own FatFs, so the guest cannot have it whole as well.
+/home/owner/org2/v44sd/ppfinal.sh: line 81: 536135 Aborted                 timeout 120 $B -out runs/$name -wall 60 -card runs/$name/card.img:$cpart -vsecs 30 runs/$name/run.ini > runs/$name/log.txt 2>&1
+  hda = sd:4, FatFs has p1: exit 134; tiny386_fatal: sd:4: the card has no partition 4.
+==== done 2026-10-24 13:48:26

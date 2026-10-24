@@ -1107,9 +1107,9 @@ To undo: A with `e 2168 1`, or B with `-Undo`.
 ### 14e. Ctrl+Alt+F11 (vbe_blocks)
 
 Ctrl+Alt+F11 turns `vbe_blocks` the other way at once; the console's log says `vbe_blocks = 0 now`
-or `1 now` (Ctrl+Alt+F12 shows the log, and since v4.2 its info lines say which it is). It lasts
-until the PC starts again; the ini is not changed (keep `vbe_blocks` in the ini for good, edited on
-the PC or from Linux on the dual boot). With the pointer change in, the A/B of 13d becomes a
+or `1 now` (Ctrl+Alt+F12 shows the log, and since v4.2 its info lines say which it is). Up to v4.3 it
+lasted until the PC started again and the ini was not changed; since v4.4 the key also saves it in
+the ini the PC was started from (16b). With the pointer change in, the A/B of 13d becomes a
 two-key job: the same window drag or scroll with 1, Ctrl+Alt+F11, the same with 0, Ctrl+Alt+F12's
 speed line photographed each time. On the PC `vbe_blocks` changes nothing in the pictures (the
 same pictures either way, to the pixel) [verified]; on the board it changes what the drawing costs
@@ -1130,8 +1130,7 @@ the driver's install in section 13, or whenever it runs with the standard VGA dr
 behind "Windows is now restarting..." and Setup's lines may be light grey, with dark lines between
 the character cells, for up to a minute, where it should be black; the text itself is right. On
 the PC it comes with the VGA BIOS of v4.0 on (`BUILD-NOTES.md` 26.3) [verified on the PC; on the
-board, unknown]. If you have seen it (on v4.0 or v4.1 too) or see it now, say so: a photo is
-enough. It is for a later version.
+board, unknown]. v4.4 fixes it (16d); if you still see it, a photo is enough.
 
 
 ## 15. T386MON on the board (v4.3)
@@ -1191,7 +1190,7 @@ far lower; text and the pointer should be nearer [inferred: `..\t386mon\README.m
 When you later shut Windows down from 16 colours, the text screen it goes to may look wrong for a
 moment (a quarter of a second on the PC; nothing black). That is the known text-screen fault of
 14f (`BUILD-NOTES.md` 26.3), older than v4.3, not the port [verified on the PC: `BUILD-NOTES.md`
-28.3].
+28.3]. v4.4 fixes it (16d).
 
 ### 15d. The tests at 800x480 in 16 bits
 
@@ -1226,6 +1225,114 @@ board goes off. To read it on the PC, from a copy of the card's `win95.img`:
 the log are what the next round works from; and anything that looked wrong: T386MON's window drawn
 wrong, Windows much slower with it open (its own cost on the PC: about 6 per cent of the guest with
 the live view at 800x480, 4 at 640x480, less when compact or minimised).
+
+
+## 16. v4.4: settings saved, two cures for tearing, and Windows on a partition of its own
+
+v4.4 answers your T386MON log and your notes on v4.3. Ctrl+Alt+F11 now saves `vbe_blocks` in the
+ini (and the two new keys save theirs); the grey screen at a restart from 16 colours is gone; VBE
+pictures cost core 0 less; two ways to stop the tearing you saw are there to try, both off unless
+you turn them on; and Windows can run from a partition of the card instead of `win95.img`, on a new
+card laid out for it, with the old card kept as it is. On the PC: all of it [verified:
+`BUILD-NOTES.md` 29 and 30]. On the board: none of it yet [unknown]; this section is what to try.
+
+### 16a. The app, and the card's files
+
+1. `flash-dualboot.bat COM10 app` (FLASH.txt 3), as for v4.3; its lines should say
+   `App version: v4.4`.
+2. The card: `card\tiny386\win95-14m.ini` and `win95-800x480.ini` have new lines, all commented
+   out (what each new setting does, so that a key's save lands beside its comment): copy them over
+   your old ones if you have not changed those, or leave yours, which work as before.
+   `win95-sd.ini` is new, for 16e. No other card file changed.
+
+### 16b. The Ctrl+Alt keys save their settings
+
+Start Windows at 800x480 (`win95-800x480.ini`) and press Ctrl+Alt+F11. Ctrl+Alt+F12's log should
+show `vbe_blocks = 0 now`, then `vbe_blocks = 0 saved in /sdcard/tiny386/win95-800x480.ini (a line
+added to [esp]).`: the ini has the setting only as a comment, `;vbe_blocks = 1`, and the new line
+goes straight under it. Press it again: `vbe_blocks = 1 saved in ... (its line in [esp]
+changed).` The same for Ctrl+Alt+F10 (`pace_quiet`) and Ctrl+Alt+F9 (`double_buffer`). A red line, `... could not be saved in ...`, says why, and the
+setting still holds until the PC starts again.
+
+**Photo**: the log with the saved line. Then, after Windows is shut down, the ini on the PC: only
+that one line should differ, with its CRLF or LF kept [verified on the PC: `test_ini_edit.c`, 28
+shapes of ini, 106 checks; `BUILD-NOTES.md` 29.2]. The new file is made whole beside the old one
+before the two change places, and if the card loses power part way, the next start puts the files
+right [verified on the PC: the same].
+
+### 16c. Tearing: two cures to compare
+
+Both are off by default. Try each with the pointer change of 14c in:
+
+* **Pacing** (`pace_quiet`, Ctrl+Alt+F10): a picture waits until Windows has stopped drawing for a
+  moment (5000 of its instructions), at most 15 ms. Press Ctrl+Alt+F10 while you move windows and
+  type, and again to turn it off: does the sprite of T386MON's test, or a window you drag, still go
+  black and back? On the PC it takes the pictures caught part way through drawing from 7, 4 and 4
+  per cent of your session's to 2, 0 and 1, but T386MON's tests get a third fewer pictures
+  [verified on the PC: `BUILD-NOTES.md` 29.7].
+* **Double buffering** (`double_buffer`, Ctrl+Alt+F9, the Korvo-1 only): Windows' picture goes to a
+  second frame buffer, shown at the panel's next frame, so no frame shows two pictures at once (your
+  16-bit colour bands). Set `double_buffer = 1` in the ini (or press Ctrl+Alt+F9, which saves it, and
+  restart). Expect a short black on the panel as the boot console starts again in its new buffer.
+  **Photo** the boot console's memory lines: the second buffer takes 752 KiB of the emulator's
+  memory, which on your pool probably leaves Windows 1M less (13M rather than 14M at 768K)
+  [inferred: `BUILD-NOTES.md` 29.6]. Then T386MON's full-picture test at 16 bits: the band of mixed
+  rows should be gone. If Ctrl+Alt+F12's `display:` line shows its "swaps not reported" count going
+  up, set `double_buffer = 0` and tell me.
+
+Then T386MON's tests at 800x480 again, both cures off (**Photo** the table): the drawing's
+milliseconds should fall in fill, scroll, text and sprite, and stay in the full copy
+[verified on the PC: `BUILD-NOTES.md` 29.4; the board unknown].
+
+Two choices are yours after this: whether double buffering is worth 1M of Windows' memory, and
+whether pacing should be on by default for Windows.
+
+### 16d. The grey screen at a restart from 16 colours
+
+Fixed: a text screen is drawn again whole when Windows loads its font. If you still see the grey
+screen with dark lines behind "Windows is now restarting..." (14f), photograph it [verified on the
+PC: the install's 1,706 wrong pictures are none; `BUILD-NOTES.md` 29.3].
+
+### 16e. The new card: Windows from partition 3
+
+`newcard\README.md` has the steps: Linux's root copied off the old card on the board's Linux
+(`export-root.sh`), everything into WSL, `newcard.sh` builds the new card as an image file, you
+write it with your image writer, and the old card is never written. What the new card holds: p1
+`KORVO_SD` with the tiny386 folder (512 MiB), p3 Windows' own FAT16 volume straight after it,
+taken out of your `win95.img` sector for sector, and p2 your Linux root after that; the table
+lists them as p1, p2, p3, so Linux finds its root where it always has.
+
+1. **Linux** from the new card, as usual: it should come up as before, with the tiny386 folder in
+   `/mnt/sd`. `poweroff`.
+2. **tiny386**, VOL+ through reset, `win95-sd.ini` in the menu. On the boot console, after the
+   card's partitions: `Card partition 3: FAT16, 400 MiB, at /sdcard3.`; after the ini's settings:
+   `Card partition 3 unmounted from /sdcard3: the guest has it whole.` and `hda: card partition 3,
+   FAT16, 400 MiB from sector 1056768, read and written raw: the guest's disk is 916 MiB, this
+   partition alone in its table, nothing outside it writable.` (the default layout's numbers). No
+   yellow line. **Photo** the console.
+3. Windows should start and run as it did from `win95.img`. Ctrl+Alt+F12's `Disk:` line counts the
+   partition's reads and writes as it counted the image's. **Photo** the speed screen at the desktop.
+4. Shut Windows down, switch the board off once Windows says it is safe, and put the card in the
+   PC: p3 shows up as a FAT16 drive beside KORVO_SD. `chkdsk X:` with its letter, without `/f`
+   (it only reads): **copy** what it prints. Copying a file onto p3 and seeing it in Windows 95 at
+   the next start is worth a try too.
+
+On the PC: Windows 95 reached the desktop from p3 of a card image made by `newcard.sh` from a copy
+of the pristine `win95.img`, with p3 at 516 MiB (the default) and at 68 MiB, writing what it writes
+from `win95.img`, with C: in protected mode, not "MS-DOS compatibility mode", and the card's table,
+p1 and p2 unchanged to the sector [verified: `BUILD-NOTES.md` 30.5]. What tiny386 refuses, each with
+a plain red line and the PC not started: `sd:1` (where the inis are), Linux's root, an empty slot,
+a partition that is not FAT16 or FAT32, one that overlaps another, and p3 mounted by its own FatFs
+[verified: host test `sdpart`, the harness].
+
+The DOS board takes `hda = sd:3` too (commented in `win95-800x600.ini`) [inferred: the same
+`storage.c` and `sd_part.c`; not run on the PC for that board].
+
+### 16f. What to send back
+
+The photos of 16b to 16e, the ini after a save, T386MON's log and tables with each cure, the two
+choices of 16c, and for the new card the console, the speed screen and `chkdsk`'s output; and
+anything that looked wrong.
 
 
 ## Other ways to run it

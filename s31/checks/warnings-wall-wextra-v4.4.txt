@@ -1,0 +1,16 @@
+-Wall -Wextra on the files v4.4's storage work changed, each compiled as the board's build compiles it
+(bt-c3's compile_commands.json, -Werror taken out), against part 1's copies (de24383, WSL
+~/org2/v44sd/t-part1); wall.py as part 1 used it, 2026-10-24.
+
+== korvo1: -Wall -Wextra on the files v4.4's storage work changed, against part 1's (de24383) copies
+esp/main/sd_part.c         now   0 warnings, before   -
+esp/main/storage.c         now   0 warnings, before   0
+esp/main/disk_image.c      now   0 warnings, before   0
+esp/main/esp_main.c        now   0 warnings, before   0
+ide.c                      now   0 warnings, before   0
+== dosboard: -Wall -Wextra on the files v4.4's storage work changed, against part 1's (de24383) copies
+esp/main/sd_part.c         now   0 warnings, before   -
+esp/main/storage.c         now   0 warnings, before   0
+esp/main/disk_image.c      now   0 warnings, before   0
+esp/main/esp_main.c        now   0 warnings, before   0
+ide.c                      now   0 warnings, before   0

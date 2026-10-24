@@ -1,0 +1,139 @@
+setup.c and ini.c at tag v4.4 on a pretend card with this folder's card files, 2026-10-24:
+bios.bin
+dosboard.ini
+freedos-hd.img
+freedos.ini
+tiny386.ini
+vbe-reg.img
+vgabios.bin
+win95-14m.ini
+win95-800x480.ini
+win95-800x600.ini
+win95-sd.ini
+boot menu: 6 inis in /sdcard/tiny386
+  1 freedos.ini      FreeDOS from the hard disk image: the first thing to try on the board.
+  2 tiny386.ini      FreeDOS from freedos-hd.img, 4 MB (enough for BENCH): the first boot
+  3 win95-14m.ini    Windows 95 OSR2 from win95.img on the WIN9X partition, 14 MB
+  4 win95-800x480.ini Windows 95 OSR2 at the panel's own size, 800x480 (v4.0)
+  5 win95-800x600.ini Windows 95 OSR2 at the DOS board's own size, 800x600 (v4.1)
+  6 win95-sd.ini     Windows 95 OSR2 from the card's partition 3, raw (v4.4, the new card)
+default without lastboot.txt: tiny386.ini
+  freedos.ini:
+    [pc] bios = bios.bin   -> /sdcard/tiny386/bios.bin (there)
+    [pc] vga_bios = vgabios.bin   -> /sdcard/tiny386/vgabios.bin (there)
+    [pc] mem_size = 2M
+    [pc] vga_mem_size = 256K
+    [pc] hda = freedos-hd.img   -> /sdcard/tiny386/freedos-hd.img (there)
+    [pc] fill_cmos = 1
+    [display] width = 800
+    [display] height = 480
+    [cpu] gen = 4
+    [cpu] fpu = 0
+    ini_parse: 0
+  tiny386.ini:
+    [esp] console = 2
+    [esp] enable_usb = 1
+    [pc] bios = bios.bin   -> /sdcard/tiny386/bios.bin (there)
+    [pc] vga_bios = vgabios.bin   -> /sdcard/tiny386/vgabios.bin (there)
+    [pc] mem_size = 4M
+    [pc] vga_mem_size = 256K
+    [pc] hda = freedos-hd.img   -> /sdcard/tiny386/freedos-hd.img (there)
+    [pc] fill_cmos = 1
+    [cpu] gen = 4
+    [cpu] fpu = 0
+    ini_parse: 0
+  win95-14m.ini:
+    [esp] console = 2
+    [esp] enable_usb = 1
+    [pc] bios = bios.bin   -> /sdcard/tiny386/bios.bin (there)
+    [pc] vga_bios = vgabios.bin   -> /sdcard/tiny386/vgabios.bin (there)
+    [pc] mem_size = 14M
+    [pc] vga_mem_size = 320K
+    [pc] hda = /sdcard3/win95.img   -> /sdcard3/win95.img (there)
+    [pc] fill_cmos = 1
+    [cpu] gen = 3
+    [cpu] fpu = 0
+    ini_parse: 0
+  win95-800x480.ini:
+    [esp] console = 2
+    [esp] enable_usb = 1
+    [pc] bios = bios.bin   -> /sdcard/tiny386/bios.bin (there)
+    [pc] vga_bios = vgabios.bin   -> /sdcard/tiny386/vgabios.bin (there)
+    [pc] mem_size = max
+    [pc] vga_mem_size = 768K
+    [pc] hda = /sdcard3/win95.img   -> /sdcard3/win95.img (there)
+    [pc] fill_cmos = 1
+    [cpu] gen = 3
+    [cpu] fpu = 0
+    ini_parse: 0
+  win95-800x600.ini:
+    [esp] console = 2
+    [esp] enable_usb = 1
+    [pc] bios = bios.bin   -> /sdcard/tiny386/bios.bin (there)
+    [pc] vga_bios = vgabios.bin   -> /sdcard/tiny386/vgabios.bin (there)
+    [pc] mem_size = max
+    [pc] vga_mem_size = 1M
+    [pc] hda = /sdcard3/win95.img   -> /sdcard3/win95.img (there)
+    [pc] fill_cmos = 1
+    [cpu] gen = 3
+    [cpu] fpu = 0
+    ini_parse: 0
+  win95-sd.ini:
+    [esp] console = 2
+    [esp] enable_usb = 1
+    [pc] bios = bios.bin   -> /sdcard/tiny386/bios.bin (there)
+    [pc] vga_bios = vgabios.bin   -> /sdcard/tiny386/vgabios.bin (there)
+    [pc] mem_size = max
+    [pc] vga_mem_size = 768K
+    [pc] hda = sd:3   -> card partition 3 (a partition, checked when the PC starts)
+    [pc] fill_cmos = 1
+    [cpu] gen = 3
+    [cpu] fpu = 0
+    ini_parse: 0
+cardcheck: 0 problems
+== the card files against v4.3's (previous-v4.3/SHA256SUMS): v4.4 changes the three Windows inis
+== (commented lines added) and adds win95-sd.ini; every other card file is v4.3's
+  card/tiny386/bios.bin: OK
+  card/tiny386/tiny386.ini: OK
+  card/tiny386/vgabios.bin: OK
+  card/tiny386/win95-14m.ini: FAILED
+  card/tiny386/win95-800x480.ini: FAILED
+  card/tiny386/vbe-reg.img: OK
+  card-dosboard/tiny386/dosboard.ini: OK
+  card-dosboard/tiny386/win95-800x600.ini: FAILED
+  sha256sum: WARNING: 3 computed checksums did NOT match
+card/tiny386/win95-sd.ini
+== the [esp] keys the three Korvo-1 inis name, commented or not, against esp_main.c's known_keys:
+  console: known
+  double_buffer: known
+  enable_usb: known
+  fast_seek: known
+  led_brightness: known
+  memtest: known
+  pace_quiet: known
+  pace_wait_ms: known
+  timer_catchup: known
+  uart_log: known
+  vbe_blocks: known
+  verbose_log: known
+== the [pc] keys of win95-800x480.ini and win95-800x600.ini, commented or not, against known_keys:
+  bios: known
+  fda: known
+  fdb: known
+  fill_cmos: known
+  hda: known
+  mem_size: known
+  vga_bios: known
+  vga_mem_size: known
+== dosboard.ini's settings: every [dosboard] key is one dosboard.c knows:
+  pclk_phase: known
+  pclk_neg: known
+  rb_swap: known
+  hdmi_mode: known
+  hdmi_audio: known
+  i2s_slot_bits: known
+  audio_shift: known
+  lcd_bounce_px: known
+  test_card_ms: known
+  ch9350_state: known
+  kbd_zero_guard_ms: known

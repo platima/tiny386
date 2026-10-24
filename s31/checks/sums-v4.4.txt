@@ -1,0 +1,111 @@
+SHA256SUMS of tiny386-idf v4.4 made, and every checksum list in the package checked, 2026-10-24.
+
+== the top SHA256SUMS: 180 lines
+    180 OK
+== against v4.3's list (previous-v4.3/SHA256SUMS): files whose hash changed
+  BUILD-NOTES.md
+  build.sh
+  card-dosboard/tiny386/win95-800x600.ini
+  card/tiny386/win95-14m.ini
+  card/tiny386/win95-800x480.ini
+  FLASH.txt
+  images/dosboard/tiny386.bin
+  images/dosboard/tiny386.elf
+  images/korvo1-dualboot/tiny386.bin
+  images/korvo1-dualboot-tiny386-default/tiny386.bin
+  images/korvo1-dualboot/tiny386.elf
+  images/korvo1-standalone/tiny386.bin
+  images/korvo1-standalone/tiny386.elf
+  README.md
+  TEST-PLAN.md
+  tiny386-idf-v3.diffstat.txt
+  tiny386-idf-v3.patch
+  tiny386-idf-v4.diffstat.txt
+  tiny386-idf-v4.patch
+== new in the list: 6 files
+  card/tiny386/win95-sd.ini
+  checks/flicker/harness-v4.4.diff
+  checks/sdpart-harness-v4.4.diff
+  newcard/export-root.sh
+  newcard/newcard.sh
+  newcard/README.md
+== not in the list: research/FLICKER-PLAT-NOTES.md (Plat's reports, added to as they come), and checks/
+== but the harness changes named above
+
+== each image folder's own list
+  images/dosboard/: 5 OK, 0 not
+  images/korvo1-dualboot/: 5 OK, 0 not
+  images/korvo1-dualboot-tiny386-default/: 4 OK, 0 not
+  images/korvo1-standalone/: 5 OK, 0 not
+
+== every previous list, file by file: where each file is found with its hash
+== (the folder itself first, then v3\, then the places README.md names)
+  previous-v4.3: 174 files: v3 142; itself 32; not found 0
+  previous-v4.2: card/tiny386/win95-14m.ini from previous-v4.3
+  previous-v4.2: card/tiny386/win95-800x480.ini from previous-v4.3
+  previous-v4.2: card-dosboard/tiny386/win95-800x600.ini from previous-v4.3
+  previous-v4.2: 170 files: v3 138; previous-v4.3 3; itself 29; not found 0
+  previous-v4.1: card/tiny386/win95-14m.ini from previous-v4.3
+  previous-v4.1: card/tiny386/win95-800x480.ini from previous-v4.3
+  previous-v4.1: card-dosboard/tiny386/win95-800x600.ini from previous-v4.3
+  previous-v4.1: 72 files: v3 40; previous-v4.3 3; itself 29; not found 0
+  previous-v4.0: 64 files: v3 31; itself 33; not found 0
+  previous-v3.9: REVIEW-RESOLUTION.md from previous-v4.0
+  previous-v3.9: card/tiny386/win95-14m.ini from previous-v4.0
+  previous-v3.9: 50 files: v3 21; previous-v4.0 2; itself 27; not found 0
+  previous-v3.8: card/tiny386/vgabios.bin from previous-v3.9
+  previous-v3.8: card/tiny386/win95-14m.ini from previous-v4.0
+  previous-v3.8: 45 files: v3 13; previous-v3.9 1; previous-v4.0 1; itself 30; not found 0
+  previous-v3.7: REVIEW-RESOLUTION.md from previous-v3.8
+  previous-v3.7: flash-dualboot.bat from checks/bootswap/scripts-before
+  previous-v3.7: flash-standalone.bat from checks/bootswap/scripts-before
+  previous-v3.7: back-to-linux.bat from checks/bootswap/scripts-before
+  previous-v3.7: flash-paths.cmd from checks/bootswap/scripts-before
+  previous-v3.7: card/tiny386/vgabios.bin from previous-v3.9
+  previous-v3.7: 41 files: v3 10; previous-v3.8 1; previous-v3.9 1; checks/bootswap/scripts-before 4; itself 25; not found 0
+  previous-v3.6: REVIEW-RESOLUTION.md from previous-v3.8
+  previous-v3.6: flash-dualboot.bat from checks/bootswap/scripts-before
+  previous-v3.6: flash-standalone.bat from checks/bootswap/scripts-before
+  previous-v3.6: back-to-linux.bat from checks/bootswap/scripts-before
+  previous-v3.6: flash-paths.cmd from checks/bootswap/scripts-before
+  previous-v3.6: card/tiny386/vgabios.bin from previous-v3.9
+  previous-v3.6: 41 files: v3 10; previous-v3.8 1; previous-v3.9 1; checks/bootswap/scripts-before 4; itself 25; not found 0
+  previous-v3.5: flash-dualboot.bat from checks/bootswap/scripts-before
+  previous-v3.5: flash-standalone.bat from checks/bootswap/scripts-before
+  previous-v3.5: back-to-linux.bat from checks/bootswap/scripts-before
+  previous-v3.5: flash-paths.cmd from checks/bootswap/scripts-before
+  previous-v3.5: card/tiny386/tiny386.ini from previous-v3.6
+  previous-v3.5: card/tiny386/vgabios.bin from previous-v3.9
+  previous-v3.5: card/tiny386/win95-14m.ini from previous-v3.6
+  previous-v3.5: 40 files: v3 8; previous-v3.9 1; previous-v3.6 2; checks/bootswap/scripts-before 4; itself 25; not found 0
+  previous-v3.4: REVIEW-RESOLUTION.md from previous-v3.5
+  previous-v3.4: flash-dualboot.bat from checks/bootswap/scripts-before
+  previous-v3.4: flash-standalone.bat from checks/bootswap/scripts-before
+  previous-v3.4: back-to-linux.bat from checks/bootswap/scripts-before
+  previous-v3.4: flash-paths.cmd from checks/bootswap/scripts-before
+  previous-v3.4: card/tiny386/tiny386.ini from previous-v3.6
+  previous-v3.4: card/tiny386/vgabios.bin from previous-v3.9
+  previous-v3.4: card/tiny386/win95-14m.ini from previous-v3.6
+  previous-v3.4: 40 files: v3 7; previous-v3.9 1; previous-v3.5 1; previous-v3.6 2; checks/bootswap/scripts-before 4; itself 25; not found 0
+  previous-v3.3: flash-dualboot.bat from checks/bootswap/scripts-before
+  previous-v3.3: flash-standalone.bat from checks/bootswap/scripts-before
+  previous-v3.3: back-to-linux.bat from checks/bootswap/scripts-before
+  previous-v3.3: flash-paths.cmd from checks/bootswap/scripts-before
+  previous-v3.3: card/tiny386/tiny386.ini from previous-v3.6
+  previous-v3.3: card/tiny386/vgabios.bin from previous-v3.9
+  previous-v3.3: card/tiny386/win95-14m.ini from previous-v3.6
+  previous-v3.3: card-dosboard/tiny386/dosboard.ini from previous-v3.4
+  previous-v3.3: 39 files: v3 6; previous-v3.9 1; previous-v3.4 1; previous-v3.6 2; checks/bootswap/scripts-before 4; itself 25; not found 0
+  previous-v3.2: REVIEW-RESOLUTION.md from previous-v3.3
+  previous-v3.2: flash-dualboot.bat from checks/bootswap/scripts-before
+  previous-v3.2: flash-standalone.bat from checks/bootswap/scripts-before
+  previous-v3.2: back-to-linux.bat from checks/bootswap/scripts-before
+  previous-v3.2: flash-paths.cmd from checks/bootswap/scripts-before
+  previous-v3.2: card/tiny386/tiny386.ini from previous-v3.6
+  previous-v3.2: card/tiny386/vgabios.bin from previous-v3.9
+  previous-v3.2: card/tiny386/win95-14m.ini from previous-v3.6
+  previous-v3.2: 37 files: v3 6; previous-v3.9 1; previous-v3.3 1; previous-v3.6 2; checks/bootswap/scripts-before 4; itself 23; not found 0
+
+== the T386MON folder (..\t386mon): unchanged by v4.4; its own SHA256SUMS checked
+  161 OK, 0 not, of 161
+  files in the folder not in the list: 0
