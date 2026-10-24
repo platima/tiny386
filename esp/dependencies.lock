@@ -1,56 +1,21 @@
 dependencies:
-  espressif/cmake_utilities:
-    component_hash: 351350613ceafba240b761b4ea991e0f231ac7a9f59a9ee901f751bddc0bb18f
+  espressif/usb:
+    component_hash: 99eee72ea224d9117d4c342442717a1f20bf8112e2ab5d7d7038b827874f4c92
     dependencies:
     - name: idf
       require: private
-      version: '>=4.1'
+      version: '>=5.5.3'
     source:
       registry_url: https://components.espressif.com
       type: service
-    version: 0.5.3
-  espressif/esp_lcd_axs15231b:
-    component_hash: ae92c4bec4f69442757b42638aebc05c1acc42fe8b54a6fd4b1ecebdd67657e6
-    dependencies:
-    - name: idf
-      require: private
-      version: '>5.0.4,!=5.1.1'
-    - name: espressif/cmake_utilities
-      registry_url: https://components.espressif.com
-      require: private
-      version: 0.*
-    - name: espressif/esp_lcd_touch
-      registry_url: https://components.espressif.com
-      require: public
-      version: ^1
-    source:
-      registry_url: https://components.espressif.com/
-      type: service
-    version: 1.0.0
-  espressif/esp_lcd_touch:
-    component_hash: 3f85a7d95af876f1a6ecca8eb90a81614890d0f03a038390804e5a77e2caf862
-    dependencies:
-    - name: idf
-      require: private
-      version: '>=4.4.2'
-    source:
-      registry_url: https://components.espressif.com
-      type: service
-    version: 1.2.1
-  espressif/esp_lcd_touch_gt911:
-    component_hash: 6029febef66eefd0910d527d7f30292779ccbf22a8dedd2bd69466acf0068a7b
-    dependencies:
-    - name: espressif/esp_lcd_touch
-      registry_url: https://components.espressif.com
-      require: public
-      version: ^1.2.0
-    - name: idf
-      require: private
-      version: '>=5.2'
-    source:
-      registry_url: https://components.espressif.com/
-      type: service
-    version: 1.2.0~2
+    targets:
+    - esp32s2
+    - esp32s3
+    - esp32s31
+    - esp32p4
+    - esp32h4
+    - linux
+    version: 1.6.0
   espressif/usb_host_hid:
     component_hash: a6c5366f9b6d80b0d5f56d085d62941464512e0968b96c5877e76a80fcc23f13
     dependencies:
@@ -78,12 +43,10 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 5.2.7
+    version: 6.2.0
 direct_dependencies:
-- espressif/esp_lcd_axs15231b
-- espressif/esp_lcd_touch_gt911
 - espressif/usb_host_hid
 - idf
-manifest_hash: 2f2b5dc04a7ca3f89b2ddf85b36be8ae87eb6d09dab492ff01b49275c2bcde6f
-target: esp32s3
-version: 2.0.0
+manifest_hash: 07d5599ccc065c200588494c63b05f11b5097a043fe0903115edb2cd9a1b49d8
+target: esp32s31
+version: 3.0.0
