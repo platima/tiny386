@@ -82,5 +82,8 @@ void *lcd_vga_present(void);
 /* everything in the back buffer is to be copied at the next swap: the
    console has drawn over the front one */
 void lcd_vga_copy_all(void);
+/* v4.5: the swaps since the PC started, and how many of them the panel did
+   not report within 100 ms (lcd_get_stats() has the same per 10 s) */
+void lcd_double_totals(uint32_t *swaps, uint32_t *unreported);
 
 #endif /* LCD_H */

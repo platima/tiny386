@@ -57,6 +57,7 @@ static bool s_double;           /* pictures drawn into s_back and swapped */
 static SemaphoreHandle_t s_switched;
 static uint8_t s_rows[LCD_HEIGHT];      /* rows the last picture changed */
 static bool s_rows_any, s_copy_all;
+static uint32_t s_swaps, s_unreported;  /* v4.5: since the start, never reset */
 
 /* the panel's settings, with one frame buffer the driver allocates, or
    with fb0 and fb1 the two given */
@@ -255,8 +256,13 @@ static bool double_start(void *fb)
 		panel_config(&cfg, NULL, NULL);
 		panel = panel_start(&cfg, &fb_ptr);
 		if (!panel) {
+			/* no panel at all now: the console stops drawing (its
+			   buffer was the driver's, freed with the panel) and
+			   says what follows on the UART only (v4.5, the review
+			   of v4.4, F6) */
 			s_fb = NULL;
 			globals.panel_fb = NULL;
+			console_set_fb(NULL);
 			return false;
 		}
 		memcpy(fb_ptr, fb, FB_BYTES);
@@ -398,10 +404,21 @@ void *lcd_vga_present(void)
 	s_stats.copied_rows += copied;
 	s_stats.wait_cycles += t1 - t0;
 	s_stats.copy_cycles += t2 - t1;
-	if (!ok)
+	s_swaps++;
+	if (!ok) {
 		s_stats.flip_timeouts++;
+		s_unreported++;
+	}
 	portEXIT_CRITICAL_SAFE(&s_stats_lock);
 	return back;
+}
+
+void lcd_double_totals(uint32_t *swaps, uint32_t *unreported)
+{
+	portENTER_CRITICAL_SAFE(&s_stats_lock);
+	*swaps = s_swaps;
+	*unreported = s_unreported;
+	portEXIT_CRITICAL_SAFE(&s_stats_lock);
 }
 
 #endif /* USE_LCD_RGB_KORVO1 */

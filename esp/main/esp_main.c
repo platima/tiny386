@@ -963,10 +963,18 @@ static void double_buffer_start(void)
 		console_printf(CON_INFO, "double_buffer = 1: a second frame buffer of %ld KiB, "
 			       "from the emulator's memory (%ld KiB now); pictures go to the panel "
 			       "at its frame.", take / 1024, psram_len / 1024);
-	} else {
+	} else if (globals.panel_fb) {
 		psram_len += take;
 		console_printf(CON_WARN, "double_buffer = 1: the panel could not be started with "
 			       "two frame buffers; one is used.");
+		speed_set_double(0);
+	} else {
+		/* v4.5: not even with one (lcd_korvo1.c's last fallback; the
+		   review of v4.4, F6): the console no longer draws */
+		psram_len += take;
+		console_printf(CON_ERROR, "double_buffer = 1: the panel could not be started "
+			       "again, with two frame buffers or with one; from here on only the "
+			       "UART shows the console. Set double_buffer = 0 in the ini.");
 		speed_set_double(0);
 	}
 #else
