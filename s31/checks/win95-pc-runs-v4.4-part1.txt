@@ -1,0 +1,100 @@
+BUILD-NOTES 29.10: the standard Windows 95 runs of v4.3 (std43.sh) made again with v4.4 part 1 at 3398146
+on my copy of the T386MON harness (WSL ~/org2/v44disp/ph), each against v4.3's run in ~/v43/merge/ph,
+2026-10-24 (std44.sh).  40b4513 after it changes only what the information port reports past 2^30 KiB.
+
+warnings: 0
+warnings: 0
+27
+std27 done, 109 s
+nat done, 136 s
+bvbe480 done, 145 s
+bench and install done, 181 s
+==== 1. the 27 standard configurations
+-- 27 of 27 at the desktop
+-- 27 of 27 with v4.3's END line and final picture
+==== 2. the 11 native configurations
+  n16-13M-1M                 desktop (desktop seen at t=221 s)        v4.3 same      
+  n16-14M-768K               desktop (desktop seen at t=220 s)        v4.3 same      
+  n16-14M-768K-audit         desktop (desktop seen at t=220 s)        v4.3 same      audit: 11276 pictures held against a full redraw, 0 with a difference
+  n16-14M-768K-mouse         desktop (desktop seen at t=300 s)        v4.3 same      
+  n16-14M-768K-mouse-audit   desktop (desktop seen at t=300 s)        v4.3 same      audit: 13939 pictures held against a full redraw, 0 with a difference
+  n24-13M-1152K-audit        desktop (desktop seen at t=229 s)        v4.3 same      audit: 11572 pictures held against a full redraw, 0 with a difference
+  n32-13M-1536K-audit        desktop (desktop seen at t=224 s)        v4.3 same      audit: 11410 pictures held against a full redraw, 0 with a difference
+  n32-13M-1536K-mouse        desktop (desktop seen at t=304 s)        v4.3 same      
+  n8-14M-768K-audit          desktop (desktop seen at t=223 s)        v4.3 same      audit: 11376 pictures held against a full redraw, 0 with a difference
+  dos16-13M-1M-audit         desktop (desktop seen at t=222 s)        v4.3 same      audit: 11343 pictures held against a full redraw, 0 with a difference
+  dos16-13M-1M-mouse         desktop (desktop seen at t=300 s)        v4.3 same      
+==== 3. BVBE480
+vbe480-v44-dosboard-1152K 800x600, 1152 KiB of video memory: 55 pictures, every one right [stopped: guest-done] 
+vbe480-v44-dosboard-1536K 800x600, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-v44-dosboard-1536K-vgathread 800x600, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-v44-dosboard-1M 800x600, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v44-dosboard-1M-vbeblocks0 800x600, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v44-dosboard-1M-vgathread 800x600, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v44-dosboard-2M 800x600, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-v44-dosboard-2M-vgathread 800x600, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-v44-dosboard-768K 800x600, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-v44-dosboard-768K-vgathread 800x600, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-v44-korvo1-1152K 800x480, 1152 KiB of video memory: 55 pictures, every one right [stopped: guest-done] 
+vbe480-v44-korvo1-1536K 800x480, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-v44-korvo1-1536K-vgathread 800x480, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-v44-korvo1-1M 800x480, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v44-korvo1-1M-vbeblocks0 800x480, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v44-korvo1-1M-vgathread 800x480, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v44-korvo1-2M 800x480, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-v44-korvo1-2M-vgathread 800x480, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-v44-korvo1-768K 800x480, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-v44-korvo1-768K-vbeblocks0 800x480, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-v44-korvo1-768K-vgathread 800x480, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+  dosboard-1152K: END against v4.3 same
+  dosboard-1536K: END against v4.3 same
+  dosboard-1536K-vgathread: END against v4.3 same
+  dosboard-1M: END against v4.3 same
+  dosboard-1M-vbeblocks0: END against v4.3 same
+  dosboard-1M-vgathread: END against v4.3 same
+  dosboard-2M: END against v4.3 same
+  dosboard-2M-vgathread: END against v4.3 same
+  dosboard-768K: END against v4.3 same
+  dosboard-768K-vgathread: END against v4.3 same
+  korvo1-1152K: END against v4.3 same
+  korvo1-1536K: END against v4.3 same
+  korvo1-1536K-vgathread: END against v4.3 same
+  korvo1-1M: END against v4.3 same
+  korvo1-1M-vbeblocks0: END against v4.3 same
+  korvo1-1M-vgathread: END against v4.3 same
+  korvo1-2M: END against v4.3 same
+  korvo1-2M-vgathread: END against v4.3 same
+  korvo1-768K: END against v4.3 same
+  korvo1-768K-vbeblocks0: END against v4.3 same
+  korvo1-768K-vgathread: END against v4.3 same
+==== 4. BENCH
+  11 of 11 marks at v4.3's instruction count
+  END and final picture v4.3's
+==== 5. the install through the dialogs (gi18)
+  v4.4: desktop (desktop seen at t=211 s); audit: 35845 pictures held against a full redraw, 0 with a difference
+  v4.3: desktop (desktop seen at t=211 s); audit: 35845 pictures held against a full redraw, 1 with a difference
+  END and final picture v4.3's
+==== done 2026-10-24 11:56:01
+
+== BVBE480 (bv-v44.out)
+vbe480-v44-dosboard-1152K 800x600, 1152 KiB of video memory: 55 pictures, every one right   [stopped: guest-done] vbe480-v44-dosboard-1152K
+vbe480-v44-dosboard-1536K 800x600, 1536 KiB of video memory: 67 pictures, every one right   [stopped: guest-done] vbe480-v44-dosboard-1536K
+vbe480-v44-dosboard-1536K-vgathread 800x600, 1536 KiB of video memory: 67 pictures, every one right   [stopped: guest-done] vbe480-v44-dosboard-1536K-vgathread
+vbe480-v44-dosboard-1M 800x600, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] vbe480-v44-dosboard-1M
+vbe480-v44-dosboard-1M-vbeblocks0 800x600, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] vbe480-v44-dosboard-1M-vbeblocks0
+vbe480-v44-dosboard-1M-vgathread 800x600, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] vbe480-v44-dosboard-1M-vgathread
+vbe480-v44-dosboard-2M 800x600, 2048 KiB of video memory: 72 pictures, every one right   [stopped: guest-done] vbe480-v44-dosboard-2M
+vbe480-v44-dosboard-2M-vgathread 800x600, 2048 KiB of video memory: 72 pictures, every one right   [stopped: guest-done] vbe480-v44-dosboard-2M-vgathread
+vbe480-v44-dosboard-768K 800x600, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] vbe480-v44-dosboard-768K
+vbe480-v44-dosboard-768K-vgathread 800x600, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] vbe480-v44-dosboard-768K-vgathread
+vbe480-v44-korvo1-1152K 800x480, 1152 KiB of video memory: 55 pictures, every one right   [stopped: guest-done] vbe480-v44-korvo1-1152K
+vbe480-v44-korvo1-1536K 800x480, 1536 KiB of video memory: 67 pictures, every one right   [stopped: guest-done] vbe480-v44-korvo1-1536K
+vbe480-v44-korvo1-1536K-vgathread 800x480, 1536 KiB of video memory: 67 pictures, every one right   [stopped: guest-done] vbe480-v44-korvo1-1536K-vgathread
+vbe480-v44-korvo1-1M 800x480, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] vbe480-v44-korvo1-1M
+vbe480-v44-korvo1-1M-vbeblocks0 800x480, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] vbe480-v44-korvo1-1M-vbeblocks0
+vbe480-v44-korvo1-1M-vgathread 800x480, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] vbe480-v44-korvo1-1M-vgathread
+vbe480-v44-korvo1-2M 800x480, 2048 KiB of video memory: 72 pictures, every one right   [stopped: guest-done] vbe480-v44-korvo1-2M
+vbe480-v44-korvo1-2M-vgathread 800x480, 2048 KiB of video memory: 72 pictures, every one right   [stopped: guest-done] vbe480-v44-korvo1-2M-vgathread
+vbe480-v44-korvo1-768K 800x480, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] vbe480-v44-korvo1-768K
+vbe480-v44-korvo1-768K-vbeblocks0 800x480, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] vbe480-v44-korvo1-768K-vbeblocks0
+vbe480-v44-korvo1-768K-vgathread 800x480, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] vbe480-v44-korvo1-768K-vgathread

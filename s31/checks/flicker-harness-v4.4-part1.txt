@@ -1,0 +1,669 @@
+BUILD-NOTES 29: the flicker harness runs of v4.4 part 1 (branch s31-v4.4), 2026-10-24.
+My copy of the flicker harness (WSL ~/org2/v44disp/fh, ~/v43/merge/fh's with flicker/harness-v4.4.diff),
+-board: every picture of the board model held against the guest's screen.  Builds: fin2 = 40b4513 (the
+branch's last code commit), fin = 3398146, v43 = esp32-s31 (8d4b758, v4.3), b43 = v4.3 built before the
+harness's later changes, f44 = 4758608's vga.c (the font) in the worktree, p44 = 63058e9's tree (pacing),
+d44 = d5848e2's tree (double buffering).  Runs of v4.3 in ~/v43/merge/fh (a43-, d43-, c43-, e43-) and
+~/v43/review/fh (fb-vga, dos-*-r43-) are the merge step's and the review's, on their harness copies.
+
+== 1. v4.3's 28 runs on 40b4513 (tab.sh: pictures, differing from the guest's screen, blank, black; END against v4.3's)
+run                      pics  diff blank |    vb_px vb_mid | END against v4.3's run
+ga-n16                   9252     0    12 |     3654      0 | same as a43-n16
+ga-n16dib                9187     0    12 |     3654      0 | same as a43-n16dib
+ga-vga                   9386     0    12 |   149756      0 | same as a43-vga
+ga-n16-blocks0           9252     0    12 |     3654      0 | same as a43-n16-blocks0
+ga-n16dib-blocks0        9187     0    12 |     3654      0 | same as a43-n16dib-blocks0
+ga-n16-thread            7543     0    10 |     3672      0 | same as a43-n16-thread
+ga-n16dib-thread         7542     0     8 |     3672      0 | same as a43-n16dib-thread
+ga-off8                  9052     0    21 |     8103      0 | same as a43-off8
+ga-off8dib               8985     0    21 |     8103      0 | same as a43-off8dib
+ga-off16                 8952     0    21 |     8103      0 | same as a43-off16
+ga-off16dib              8985     0    21 |     8103      0 | same as a43-off16dib
+ga-off24                 9250     0    20 |   147112      0 | same as a43-off24
+ga-off24dib              9118     0    20 |   147112      0 | same as a43-off24dib
+ga-off32                 9085     0    21 |     8103      0 | same as a43-off32
+ga-off32dib              8985     0    21 |     8103      0 | same as a43-off32dib
+ga-v640                  8985     0    21 |     8825      0 | same as a43-v640
+ga-v640dib               8952     0    21 |     8825      0 | same as a43-v640dib
+ga-dos16                 9019     0    21 |     8103      0 | same as a43-dos16
+ga-dos16dib              8986     0    21 |     8103      0 | same as a43-dos16dib
+ga-dosfix               13062     0    13 |    99654      0 | same as a43-dosfix
+gd-n16                  10411     0    68 |   626308      0 | same as d43-n16
+gd-ps1                  10378     0    70 |   305936      0 | same as d43-ps1
+gd-vga                  10544     0    16 |   776571      0 | same as d43-vga
+gd-ps1-thread            8613     0    52 |   867324      0 | same as d43-ps1-thread
+gc-gi                   35846     0    42 |   260185      0 | same as c43-gi
+gc-gi-rel               35845     0    42 |   260185      0 | same as c43-gi-rel
+ge-ptr8                 19030     0    43 |   669867      0 | same as e43-ptr8
+ge-rel8                 19064     0    12 |     3654      0 | same as e43-rel8
+END lines: 28 of 28 the same as v4.3's run
+
+== 1b. the same 28 on 3398146
+run                      pics  diff blank |    vb_px vb_mid | END against v4.3's run
+fa-n16                   9252     0    12 |     3654      0 | same as a43-n16
+fa-n16dib                9187     0    12 |     3654      0 | same as a43-n16dib
+fa-vga                   9386     0    12 |   149756      0 | same as a43-vga
+fa-n16-blocks0           9252     0    12 |     3654      0 | same as a43-n16-blocks0
+fa-n16dib-blocks0        9187     0    12 |     3654      0 | same as a43-n16dib-blocks0
+fa-n16-thread            7399     0     9 |     3654      0 | same as a43-n16-thread
+fa-n16dib-thread         7317     0    10 |     3654      0 | same as a43-n16dib-thread
+fa-off8                  9052     0    21 |     8103      0 | same as a43-off8
+fa-off8dib               8985     0    21 |     8103      0 | same as a43-off8dib
+fa-off16                 8952     0    21 |     8103      0 | same as a43-off16
+fa-off16dib              8985     0    21 |     8103      0 | same as a43-off16dib
+fa-off24                 9250     0    20 |   147112      0 | same as a43-off24
+fa-off24dib              9118     0    20 |   147112      0 | same as a43-off24dib
+fa-off32                 9085     0    21 |     8103      0 | same as a43-off32
+fa-off32dib              8985     0    21 |     8103      0 | same as a43-off32dib
+fa-v640                  8985     0    21 |     8825      0 | same as a43-v640
+fa-v640dib               8952     0    21 |     8825      0 | same as a43-v640dib
+fa-dos16                 9019     0    21 |     8103      0 | same as a43-dos16
+fa-dos16dib              8986     0    21 |     8103      0 | same as a43-dos16dib
+fa-dosfix               13062     0    13 |    99654      0 | same as a43-dosfix
+fd-n16                  10411     0    68 |   626308      0 | same as d43-n16
+fd-ps1                  10378     0    70 |   305936      0 | same as d43-ps1
+fd-vga                  10544     0    16 |   776571      0 | same as d43-vga
+fd-ps1-thread            7988     0    37 |   862896      0 | same as d43-ps1-thread
+fc-gi                   35846     0    42 |   260185      0 | same as c43-gi
+fc-gi-rel               35845     0    42 |   260185      0 | same as c43-gi-rel
+fe-ptr8                 19030     0    43 |   669867      0 | same as e43-ptr8
+fe-rel8                 19064     0    12 |     3654      0 | same as e43-rel8
+END lines: 28 of 28 the same as v4.3's run
+
+== 2. the DOS programs, v4.4 against v4.3 on the same harness (s93.sh, s99.sh)
+m13x-256K: v4.4 against v4.3, both on this harness: END same; 8 shots, 0 differ
+   dos-m13x-v43-256K: 418 pictures; 418 checked against the reference: 0 differ (0 pixels, 0 of them black where the refer
+   dos-m13x-fin-256K: 418 pictures; 418 checked against the reference: 0 differ (0 pixels, 0 of them black where the refer
+m13x-768K: v4.4 against v4.3, both on this harness: END same; 8 shots, 0 differ
+   dos-m13x-v43-768K: 418 pictures; 418 checked against the reference: 0 differ (0 pixels, 0 of them black where the refer
+   dos-m13x-fin-768K: 418 pictures; 418 checked against the reference: 0 differ (0 pixels, 0 of them black where the refer
+bmodes-256K: v4.4 against v4.3, both on this harness: END same; 15 shots, 0 differ
+   dos-bmodes-v43-256K: 429 pictures; 429 checked against the reference: 0 differ (0 pixels, 0 of them black where the refer
+   dos-bmodes-fin-256K: 429 pictures; 429 checked against the reference: 0 differ (0 pixels, 0 of them black where the refer
+== dos-m13x-fin2-256K against dos-m13x-fin-256K: END same; 418 pictures; 418 checked against the reference: 0 differ (0 pixels, 0 of them black where the refer
+== dos-m13x-fin2-768K against dos-m13x-fin-768K: END same; 418 pictures; 418 checked against the reference: 0 differ (0 pixels, 0 of them black where the refer
+== dos-bmodes-fin2-256K against dos-bmodes-fin-256K: END same; 429 pictures; 429 checked against the reference: 0 differ (0 pixels, 0 of them black where the refer
+(against the review's own runs on its harness copy the END lines differ, for v4.3 as for v4.4: s82.sh)
+
+== 3. Windows' shut down from 16 colours (28.3): the review's run fb-vga made again (s89.sh, s99.sh)
+== fbv-v43 against fbv-fin: END same
+  fbv-v43: 19517 pictures; 19517 checked against the reference: 8 differ (719640 pixels, 0 of them black where the reference is not), first at step 19393; cache view differs 8; unfl
+  fbv-fin: 19517 pictures; 19517 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed row
+== fbv-fin2 against fbv-fin: END same; 19517 pictures; 19517 checked against the reference: 0 differ (0 pixels, 0 of them black where the r
+the review's fb-vga: 19517 pictures; 19517 checked against the reference: 8 differ (719640 pixels, 0 of them black where the reference is not), first at step 19393; cache view differs 8; unflushed rows in 0
+
+== 4. T386MON's m1 session (its tests, then Windows shut down), v4.3 against v4.4
+== m1-v43-vga against m1-fin-vga: END same
+  m1-v43-vga: 19525 pictures; 19525 checked against the reference: 8 differ (719640 pixels, 0 of them black where the reference is not), first at step 19403; cache view differs 8; unfl
+  m1-fin-vga: 19525 pictures; 19525 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed row
+  m1-v43-vga: # summary: fill 343.42, scroll 351.90, text 7.33, text-aside 7.41, text-nopointer 7.41, sprite 57.71, full-copy 23.44, full-picture 0.45, frames a second; idle: guest 0% 
+  m1-fin-vga: # summary: fill 343.42, scroll 351.90, text 7.33, text-aside 7.41, text-nopointer 7.41, sprite 57.71, full-copy 23.44, full-picture 0.45, frames a second; idle: guest 0% 
+  T386MON.LOG the same bytes
+== m1-v43-p16 against m1-fin-p16: END DIFFERENT
+  m1-v43-p16: 19500 pictures; 19500 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed row
+  m1-fin-p16: 19506 pictures; 19506 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed row
+  m1-v43-p16: # summary: fill 487.66, scroll 321.45, text 3.49, text-aside 3.78, text-nopointer 3.79, sprite 71.87, full-copy 350.50, full-picture 1.13, frames a second; idle: guest 0%
+  m1-fin-p16: # summary: fill 477.09, scroll 325.65, text 3.49, text-aside 3.79, text-nopointer 3.79, sprite 72.85, full-copy 348.20, full-picture 1.13, frames a second; idle: guest 0%
+  T386MON.LOG differs
+== m1-fin2-vga against m1-fin-vga: END same; 19525 pictures; 19525 checked against the reference: 0 differ (0 pixels, 0 of them black where the r
+  T386MON.LOG the same bytes
+== m1-fin2-p16 against m1-fin-p16: END same; 19506 pictures; 19506 checked against the reference: 0 differ (0 pixels, 0 of them black where the r
+  T386MON.LOG the same bytes
+
+== 5. the grey text screen: the install through the dialogs (g43-gi v4.3, g44-gi the font change)
+v4.4 flicker runs, 2026-10-24 10:29:23, list /home/owner/org2/v44disp/l-font.txt, 66 s
+
+== g43-gi: outcome: desktop (desktop seen at t=211 s)
+   b43 /home/owner/v4-work/v41/h/img/win95.pristine.img 14M 768K vgabios.bin - 0 0 1080 @fda=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/card/tiny386/vbe-reg.img @fdb=/home/owner/flicker/apply42/drv/floppy-ptrfix.img -keyfile /home/owner/v4-work/v41/gi/gi18.keys
+   END t=1080.000 s insns=1741638772 idle=416557728 stall=0.9 s wall=56.2 s cs:eip=0137:0100d143 esp=0062f780 ss=013f cr0=80000005 cr3=004ad000 fl=00000202 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 35846 pictures, 1251.5 ms of host time in all, 34.9 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 1556, 8224 instructions each on average; 145 of them had a picture taken while under way (212 pictures); lengths <1k 591, 1-4k 403, 4-16k 447, 16-64k 93, 64-256k 19, 256k-1M 3, more 0; 3DAh read 1222639 times
+   board: 35846 pictures; 35846 checked against the reference: 1706 differ (404752768 pixels, 0 of them black where the reference is not), first at step 18772; cache view differs 1706; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 42
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 16 steps; vga_black() made 260185 pixels black in 7 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 114 pictures, 237275 pixels; in the reference too: 114 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 30 strips written
+
+== g44-gi: outcome: desktop (desktop seen at t=211 s)
+   f44 /home/owner/v4-work/v41/h/img/win95.pristine.img 14M 768K vgabios.bin - 0 0 1080 @fda=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/card/tiny386/vbe-reg.img @fdb=/home/owner/flicker/apply42/drv/floppy-ptrfix.img -keyfile /home/owner/v4-work/v41/gi/gi18.keys
+   END t=1080.000 s insns=1741638772 idle=416557728 stall=0.9 s wall=55.2 s cs:eip=0137:0100d143 esp=0062f780 ss=013f cr0=80000005 cr3=004ad000 fl=00000202 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 35846 pictures, 1248.7 ms of host time in all, 34.8 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 1556, 8224 instructions each on average; 145 of them had a picture taken while under way (212 pictures); lengths <1k 591, 1-4k 403, 4-16k 447, 16-64k 93, 64-256k 19, 256k-1M 3, more 0; 3DAh read 1222639 times
+   board: 35846 pictures; 35846 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 42
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 16 steps; vga_black() made 260185 pixels black in 7 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 114 pictures, 237323 pixels; in the reference too: 114 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 27 strips written
+
+run                segment     pics   mid mid%  mid/s ptr w/p/n       upd    med   late    max diff  clr  blk
+g43-gi             (no analysis)
+g44-gi             (no analysis)
+
+== 6. double buffering, modelled (-double): 12 runs (summary-double.txt) and T386MON's tests (xd-p16; xs-p16 without)
+v4.4 flicker runs, 2026-10-24 11:41:20, list /home/owner/org2/v44disp/l-double.txt, 110 s
+
+== qd-n16dib: outcome: desktop (desktop seen at t=72 s)
+   d44 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -double
+   END t=277.013 s insns=548200082 idle=5024896 stall=0.4 s wall=35.4 s cs:eip=0137:0100d100 esp=0062f780 ss=013f cr0=80000005 cr3=004ad000 fl=00000246 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9187 pictures, 787.3 ms of host time in all, 85.7 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2990, 3879 instructions each on average; 132 of them had a picture taken while under way (189 pictures); lengths <1k 2354, 1-4k 177, 4-16k 270, 16-64k 177, 64-256k 8, 256k-1M 4, more 0; 3DAh read 434762 times
+   board: 9187 pictures; 9187 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 12
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 6 steps; vga_black() made 3654 pixels black in 1 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 379 pictures, 28852 pixels; in the reference too: 379 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 22 strips written
+
+== qd-n16: outcome: desktop (desktop seen at t=74 s)
+   d44 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -double
+   END t=279.014 s insns=552201926 idle=5024912 stall=0.4 s wall=37.2 s cs:eip=0028:c0fd8034 esp=c0eefe20 ss=0030 cr0=80000005 cr3=004ad000 fl=00000283 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9252 pictures, 1132.1 ms of host time in all, 122.4 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 8376, 17987 instructions each on average; 2502 of them had a picture taken while under way (2554 pictures); lengths <1k 203, 1-4k 25, 4-16k 3067, 16-64k 5074, 64-256k 4, 256k-1M 3, more 0; 3DAh read 434762 times
+   board: 9252 pictures; 9252 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 12
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 6 steps; vga_black() made 3654 pixels black in 1 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 3029 pictures, 195818 pixels; in the reference too: 3029 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 22 strips written
+
+== qd-vga: outcome: desktop (desktop seen at t=78 s)
+   d44 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios.bin plat 205 1 1000 -cursor-box 250,0,720,448 -double
+   END t=283.013 s insns=560201649 idle=5003088 stall=0.4 s wall=38.3 s cs:eip=0137:0100c033 esp=0062fcfc ss=013f cr0=80000005 cr3=004ac000 fl=00000206 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9386 pictures, 1183.6 ms of host time in all, 126.1 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2619, 6664 instructions each on average; 302 of them had a picture taken while under way (309 pictures); lengths <1k 611, 1-4k 333, 4-16k 1444, 16-64k 225, 64-256k 6, 256k-1M 0, more 0; 3DAh read 555716 times
+   board: 9386 pictures; 9386 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 12
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 7 steps; vga_black() made 149756 pixels black in 3 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 1152 pictures, 164713 pixels; in the reference too: 1152 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 22 strips written
+
+== qd-off8dib: outcome: desktop (desktop seen at t=221 s)
+   d44 /home/owner/flicker/fix/h/img/off8-dib.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448 -double
+   END t=271.032 s insns=536233697 idle=5024896 stall=0.4 s wall=34.4 s cs:eip=0028:c0295c7e esp=c0f0acec ss=0030 cr0=80000005 cr3=00499000 fl=00000213 mode=03 pit-behind=0 max=0 esp-min=c0367af4
+   drawing: 8985 pictures, 726.8 ms of host time in all, 80.9 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 867, 3187 instructions each on average; 20 of them had a picture taken while under way (48 pictures); lengths <1k 784, 1-4k 47, 4-16k 22, 16-64k 7, 64-256k 4, 256k-1M 3, more 0; 3DAh read 564909 times
+   board: 8985 pictures; 8985 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 21
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 9 steps; vga_black() made 8103 pixels black in 2 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 121 pictures, 26669 pixels; in the reference too: 121 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 7 strips written
+
+== qd-off24dib: outcome: desktop (desktop seen at t=225 s)
+   d44 /home/owner/flicker/fix/h/img/off24-dib.img 13M 1152K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448 -double
+   END t=275.034 s insns=544213190 idle=5066272 stall=0.4 s wall=36.5 s cs:eip=0028:c0036da0 esp=c0f0ac2c ss=0030 cr0=80000005 cr3=00499000 fl=00000246 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9118 pictures, 1019.5 ms of host time in all, 111.8 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 744, 19775 instructions each on average; 80 of them had a picture taken while under way (245 pictures); lengths <1k 579, 1-4k 40, 4-16k 51, 16-64k 16, 64-256k 47, 256k-1M 7, more 4; 3DAh read 936496 times
+   board: 9118 pictures; 9118 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 20
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 9 steps; vga_black() made 147112 pixels black in 3 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 35 pictures, 153906 pixels; in the reference too: 35 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 7 strips written
+
+== qd-off32dib: outcome: desktop (desktop seen at t=221 s)
+   d44 /home/owner/flicker/fix/h/img/off32-dib.img 13M 1536K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448 -double
+   END t=271.031 s insns=536227499 idle=5053552 stall=0.4 s wall=36.7 s cs:eip=0137:bff7424a esp=0056f9f0 ss=013f cr0=80000005 cr3=00499000 fl=00000246 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 8985 pictures, 742.0 ms of host time in all, 82.6 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 655, 10943 instructions each on average; 19 of them had a picture taken while under way (119 pictures); lengths <1k 571, 1-4k 42, 4-16k 28, 16-64k 6, 64-256k 5, 256k-1M 0, more 3; 3DAh read 568938 times
+   board: 8985 pictures; 8985 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 21
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 9 steps; vga_black() made 8103 pixels black in 2 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 13 pictures, 13769 pixels; in the reference too: 13 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 7 strips written
+
+== qd-v640dib: outcome: desktop (desktop seen at t=220 s)
+   d44 /home/owner/flicker/fix/h/img/v640x16-dib.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 250,0,720,448 -double
+   END t=270.031 s insns=534231436 idle=5024896 stall=0.4 s wall=33.9 s cs:eip=0028:c002b203 esp=c0f0ac90 ss=0030 cr0=80000005 cr3=00499000 fl=00000207 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 8952 pictures, 708.1 ms of host time in all, 79.1 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 866, 4277 instructions each on average; 20 of them had a picture taken while under way (63 pictures); lengths <1k 767, 1-4k 42, 4-16k 44, 16-64k 6, 64-256k 4, 256k-1M 3, more 0; 3DAh read 571775 times
+   board: 8952 pictures; 8952 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 21
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 9 steps; vga_black() made 8825 pixels black in 3 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 123 pictures, 15133 pixels; in the reference too: 123 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 7 strips written
+
+== qdd-n16: outcome: desktop (desktop seen at t=74 s)
+   d44 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin dosbox 240 1 1500 -cursor-box 170,0,640,448 -double
+   END t=314.014 s insns=622183758 idle=5024912 stall=0.4 s wall=40.8 s cs:eip=0137:0100c02e esp=0062fcfc ss=013f cr0=80000005 cr3=004ad000 fl=00000246 mode=06 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 10411 pictures, 1613.3 ms of host time in all, 155.0 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 4008, 18462 instructions each on average; 1101 of them had a picture taken while under way (1243 pictures); lengths <1k 94, 1-4k 24, 4-16k 1668, 16-64k 2208, 64-256k 5, 256k-1M 9, more 0; 3DAh read 435308 times
+   board: 10411 pictures; 10411 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 68
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 25 steps; vga_black() made 626308 pixels black in 7 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 1281 pictures, 155064 pixels; in the reference too: 1281 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 30 strips written
+
+== qdd-vga: outcome: desktop (desktop seen at t=78 s)
+   d44 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios.bin dosbox 240 1 1500 -cursor-box 250,0,720,448 -double
+   END t=318.013 s insns=630177723 idle=5003088 stall=0.4 s wall=41.7 s cs:eip=0028:c0ff9ff2 esp=c0ef6dc4 ss=0030 cr0=80000005 cr3=004ac000 fl=00000206 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 10544 pictures, 1280.1 ms of host time in all, 121.4 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 1352, 6148 instructions each on average; 133 of them had a picture taken while under way (140 pictures); lengths <1k 382, 1-4k 167, 4-16k 722, 16-64k 76, 64-256k 5, 256k-1M 0, more 0; 3DAh read 556972 times
+   board: 10544 pictures; 10544 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 16
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 17 steps; vga_black() made 776571 pixels black in 9 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 496 pictures, 179996 pixels; in the reference too: 496 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 26 strips written
+
+== qdc-gi: outcome: desktop (desktop seen at t=211 s)
+   d44 /home/owner/v4-work/v41/h/img/win95.pristine.img 14M 768K vgabios.bin - 0 0 1080 @fda=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/card/tiny386/vbe-reg.img @fdb=/home/owner/flicker/apply42/drv/floppy-ptrfix.img -keyfile /home/owner/v4-work/v41/gi/gi18.keys -double
+   END t=1080.000 s insns=1741638772 idle=416557728 stall=0.9 s wall=96.5 s cs:eip=0137:0100d143 esp=0062f780 ss=013f cr0=80000005 cr3=004ad000 fl=00000202 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 35846 pictures, 2046.9 ms of host time in all, 57.1 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 1556, 8224 instructions each on average; 145 of them had a picture taken while under way (212 pictures); lengths <1k 591, 1-4k 403, 4-16k 447, 16-64k 93, 64-256k 19, 256k-1M 3, more 0; 3DAh read 1222639 times
+   board: 35846 pictures; 35846 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 42
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 16 steps; vga_black() made 260185 pixels black in 7 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 114 pictures, 237323 pixels; in the reference too: 114 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 27 strips written
+
+== qde-ptr8: outcome: desktop (desktop seen at t=73 s)
+   d44 /home/owner/flicker/apply42/h/runs/c42-gis60/win95.img 14M 768K vgabios.bin depth8 500 1 1500 -cursor-box 170,0,640,448 -double
+   END t=573.013 s insns=834345399 idle=310861632 stall=0.4 s wall=59.1 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=004ad000 fl=00003246 mode=06 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 19030 pictures, 1563.5 ms of host time in all, 82.2 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2330, 5886 instructions each on average; 98 of them had a picture taken while under way (214 pictures); lengths <1k 1678, 1-4k 281, 4-16k 256, 16-64k 97, 64-256k 6, 256k-1M 12, more 0; 3DAh read 435320 times
+   board: 19030 pictures; 19030 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 43
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 24 steps; vga_black() made 669867 pixels black in 6 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 199 pictures, 524922 pixels; in the reference too: 199 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 29 strips written
+
+== qd-n16dib-p5k15: outcome: desktop (desktop seen at t=72 s)
+   d44 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -double -pace 5000:15
+   END t=277.013 s insns=548200082 idle=5024896 stall=0.4 s wall=35.1 s cs:eip=0137:0100d100 esp=0062f780 ss=013f cr0=80000005 cr3=004ad000 fl=00000246 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9115 pictures, 800.6 ms of host time in all, 87.8 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2990, 3879 instructions each on average; 26 of them had a picture taken while under way (61 pictures); lengths <1k 2354, 1-4k 177, 4-16k 270, 16-64k 177, 64-256k 8, 256k-1M 4, more 0; 3DAh read 434762 times
+   board: 9115 pictures; 9115 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 8
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 6 steps; vga_black() made 3654 pixels black in 1 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 374 pictures, 32075 pixels; in the reference too: 374 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 17 strips written
+
+run                segment     pics   mid mid%  mid/s ptr w/p/n       upd    med   late    max diff  clr  blk
+qd-n16dib          idle         332     0    0    0.0 332/0/0           2    165    0.2    0.3    0    0    0
+qd-n16dib          sweep        531     2    0    0.1 531/0/0         635    165    0.1    0.3    0    0    0
+qd-n16dib          still        265     0    0    0.0 265/0/0           2    165    0.2    0.3    0    0    0
+qd-n16dib          startmenu    929     6    1    0.2 -               390    165    0.2    0.3    0    0    0
+qd-n16dib          notepad     1393    11    1    0.3 -               253    187    0.2    0.3    0    0    0
+qd-n16dib          typing       796    55    7    2.3 -               575    950    0.1    0.3    0    0    0
+qd-n16dib          scroll       630    25    4    1.3 -               375    187    0.1    0.3    0    0    0
+qd-n16dib          move         630    24    4    1.3 -               135    165    0.2    0.3    0    0    0
+qd-n16dib          sweep2       498     1    0    0.1 -               460    165    0.1    0.3    0    0    0
+qd-n16             idle         332    11    3    1.1 324/3/5          35  18415    0.2    0.3    0    0    0
+qd-n16             sweep        531   302   57   18.9 269/132/105    1254  14155    0.1    0.3    0    0    0
+qd-n16             still        265     0    0    0.0 265/0/0           2  13984    0.2    0.3    0    0    0
+qd-n16             startmenu    928   195   21    7.0 -               761  18261    0.2    0.3    0    0    0
+qd-n16             notepad     1393   221   16    5.3 -               802  18261    0.2    0.3    0    0    0
+qd-n16             typing       796   456   57   19.0 -              1410  18451    0.1    0.3    0    0    0
+qd-n16             scroll       630   384   61   20.2 -              1155  18451    0.1    0.3    0    0    0
+qd-n16             move         630   367   58   19.4 -              1120  18451    0.1    0.3    0    0    0
+qd-n16             sweep2       498   316   64   21.1 -              1063  18261    0.1    0.3    0    0    0
+qd-vga             idle         332     0    0    0.0 332/0/0           0      0    0.2    0.3    0    0    0
+qd-vga             sweep        530    73   14    4.6 451/12/0        659   6260    0.1    0.3    0    0    0
+qd-vga             still        266     0    0    0.0 265/1/0           1   5472    0.1    0.3    0    0    0
+qd-vga             startmenu    929    29    3    1.0 -               326   4464    0.1    0.3    0    0    0
+qd-vga             notepad     1394    16    1    0.4 -               205   1379    0.1    0.3    0    0    0
+qd-vga             typing       796    54    7    2.3 -               411   1035    0.1    0.3    0    0    0
+qd-vga             scroll       631    43    7    2.3 -               318     75    0.1    0.3    0    0    0
+qd-vga             move         630     8    1    0.4 -                81   5257    0.2    0.3    0    0    0
+qd-vga             sweep2       498    64   13    4.3 -               480   5529    0.1    0.3    0    0    0
+qd-off8dib         idle         332     0    0    0.0 332/0/0           0      0    0.1    0.3    0    0    0
+qd-off8dib         sweep        531     3    1    0.2 531/0/0         632    165    0.1    0.3    0    0    0
+qd-off8dib         still        265     0    0    0.0 265/0/0           5    165    0.2    0.3    0    0    0
+qd-off24dib        idle         331     0    0    0.0 331/0/0           1   4471    0.1    0.3    0    0    0
+qd-off24dib        sweep        532     1    0    0.1 532/0/0         460    165    0.1    0.3    0    0    0
+qd-off24dib        still        265     0    0    0.0 265/0/0           4    165    0.1    0.3    0    0    0
+qd-off32dib        idle         332     0    0    0.0 332/0/0           0      0    0.1    0.3    0    0    0
+qd-off32dib        sweep        531     4    1    0.3 531/0/0         423    165    0.1    0.3    0    0    0
+qd-off32dib        still        265     0    0    0.0 265/0/0           4    165    0.1    0.3    0    0    0
+qd-v640dib         idle         331     0    0    0.0 331/0/0           0      0    0.1    0.3    0    0    0
+qd-v640dib         sweep        532     5    1    0.3 532/0/0         629    165    0.1    0.3    0    0    0
+qd-v640dib         still        265     0    0    0.0 265/0/0           4    165    0.2    0.3    0    0    0
+qdd-n16            idle         166    11    7    2.2 158/3/5          35  18415    0.2    0.2    0    0    0
+qdd-n16            sweep        133    53   40   13.3 51/19/26        238  14168    0.1    0.3    0    0    0
+qdd-n16            open        1791   232   13    4.3 -               836  18261    0.2    0.3    0    0    0
+qdd-n16            full        1790     3    0    0.1 -                47    440    0.2    0.3    0    0    2
+qdd-n16            back         962   302   31   10.4 -              1023  18261    0.2    0.3    0    0   18
+qdd-n16            quick       1127   335   30    9.9 -               906  18261    0.2    0.3    0    0   36
+qdd-n16            after        298    58   20    6.5 -               254  15426    0.2    0.3    0    0    0
+qdd-n16            closed       995    91    9    3.0 -               342  18261    0.1    0.3    0    0    0
+qdd-vga            idle         166     0    0    0.0 166/0/0           0      0    0.2    0.3    0    0    0
+qdd-vga            sweep        133    13   10    3.3 133/0/0         124   6292    0.1    0.3    0    0    0
+qdd-vga            open        1791    13    1    0.2 -               214    870    0.2    0.3    0    0    0
+qdd-vga            full        1790     4    0    0.1 -                44    220    0.2    0.3    0    0    1
+qdd-vga            back         962    34    4    1.2 -               367   6404    0.2    0.3    0    0    0
+qdd-vga            quick       1127    20    2    0.6 -               187   2367    0.2    0.6    0    0    3
+qdd-vga            after        299    20    7    2.2 -               141   6458    0.2    0.3    0    0    0
+qdd-vga            closed       995    14    1    0.5 -               147   5457    0.1    0.3    0    0    0
+qdc-gi             (no analysis)
+qde-ptr8           idle        1293     0    0    0.0 1293/0/0        130    165    0.2    0.3    0    0    0
+qde-ptr8           dialogs     4477    15    0    0.1 -               283   2441    0.2    0.3    0    0    0
+qde-ptr8           change      1758    34    2    0.6 -               178   2068    0.1    0.3    0    0    0
+qde-ptr8           sweep        631     0    0    0.0 537/94/0        346    165    0.1    0.3    0    0    0
+qde-ptr8           open        1797    22    1    0.4 -               289    165    0.1    0.3    0    0    0
+qde-ptr8           full        1798     3    0    0.1 -                46    142    0.0    0.3    0    0    1
+qde-ptr8           back         965    26    3    0.9 -               378    165    0.1    0.3    0    0   10
+qde-ptr8           quick       1131    44    4    1.3 -               213    684    0.0    0.3    0    0   20
+qde-ptr8           after        299     1    0    0.1 -               142    165    0.1    0.3    0    0    0
+qde-ptr8           closed       999     2    0    0.1 -               161    165    0.0    0.3    0    0    0
+qd-n16dib-p5k15    idle         331     0    0    0.0 331/0/0           2    165    0.2    0.3    0    0    0
+qd-n16dib-p5k15    sweep        530     0    0    0.0 530/0/0         635    165    0.2    2.7    0    0    0
+qd-n16dib-p5k15    still        266     0    0    0.0 266/0/0           2    165    0.2    0.3    0    0    0
+qd-n16dib-p5k15    startmenu    926     0    0    0.0 -               390    165    0.2    6.4    0    0    0
+qd-n16dib-p5k15    notepad     1388     2    0    0.0 -               253    187    0.3   15.1    0    0    0
+qd-n16dib-p5k15    typing       776    13    2    0.5 -               575    950    0.9   15.3    0    0    0
+qd-n16dib-p5k15    scroll       622     0    0    0.0 -               375    187    0.5   15.1    0    0    0
+qd-n16dib-p5k15    move         621     6    1    0.3 -               135    165    0.6   15.2    0    0    0
+qd-n16dib-p5k15    sweep2       496     0    0    0.0 -               460    165    0.2    4.0    0    0    0
+-- xd-p16
+window 0 367.2 to 370.5 s: insns 6599977 halted-steps 0; lfb stores 1:0 2:0 4:96851000 str:345 bytes 387436640; lfb reads 16320 bytes 16320; window calls 8:0 16:0 32:0 str:0; pictures 110 (100 sent rows), rows 20008, dra
+window 1 373.2 to 376.0 s: insns 5600049 halted-steps 0; lfb stores 1:0 2:0 4:53476400 str:552 bytes 213957824; lfb reads 52788912 bytes 211077312; window calls 8:0 16:0 32:0 str:0; pictures 93 (93 sent rows), rows 27884
+window 2 378.2 to 381.8 s: insns 7200063 halted-steps 0; lfb stores 1:0 2:0 4:755642 str:793 bytes 3097640; lfb reads 35904 bytes 35904; window calls 8:0 16:0 32:0 str:0; pictures 119 (119 sent rows), rows 5159, draw 1.4
+window 3 385.2 to 388.8 s: insns 7200406 halted-steps 0; lfb stores 1:0 2:0 4:819781 str:0 bytes 3279124; lfb reads 0 bytes 0; window calls 8:0 16:0 32:0 str:0; pictures 120 (120 sent rows), rows 5321, draw 1.2 ms (10.2 
+window 4 391.2 to 394.8 s: insns 7200286 halted-steps 0; lfb stores 1:0 2:0 4:819421 str:0 bytes 3277684; lfb reads 0 bytes 0; window calls 8:0 16:0 32:0 str:0; pictures 119 (119 sent rows), rows 5331, draw 1.2 ms (10.0 
+window 5 397.2 to 400.0 s: insns 5599795 halted-steps 0; lfb stores 1:0 2:0 4:706677 str:173 bytes 2843028; lfb reads 477045 bytes 1888596; window calls 8:0 16:0 32:0 str:0; pictures 93 (93 sent rows), rows 4459, draw 0.
+window 6 404.0 to 407.0 s: insns 5999652 halted-steps 0; lfb stores 1:0 2:0 4:0 str:908008 bytes 824670656; lfb reads 6528 bytes 6528; window calls 8:0 16:0 32:0 str:0; pictures 100 (100 sent rows), rows 47981, draw 9.7 
+window 7 409.2 to 413.0 s: insns 7144575 halted-steps 28452; lfb stores 1:0 2:0 4:765015 str:34 bytes 3063324; lfb reads 0 bytes 0; window calls 8:0 16:0 32:0 str:0; pictures 126 (117 sent rows), rows 2044, draw 0.8 ms (
+double: 2082 swaps, 191090 rows copied (91.8 a swap), 82.4 ms of host time copying
+board: 15599 pictures; 15599 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+-- xs-p16
+window 0 367.2 to 370.5 s: insns 6599977 halted-steps 0; lfb stores 1:0 2:0 4:96851000 str:345 bytes 387436640; lfb reads 16320 bytes 16320; window calls 8:0 16:0 32:0 str:0; pictures 110 (100 sent rows), rows 20008, dra
+window 1 373.2 to 376.0 s: insns 5600049 halted-steps 0; lfb stores 1:0 2:0 4:53476400 str:552 bytes 213957824; lfb reads 52788912 bytes 211077312; window calls 8:0 16:0 32:0 str:0; pictures 93 (93 sent rows), rows 27884
+window 2 378.2 to 381.8 s: insns 7200063 halted-steps 0; lfb stores 1:0 2:0 4:755642 str:793 bytes 3097640; lfb reads 35904 bytes 35904; window calls 8:0 16:0 32:0 str:0; pictures 119 (119 sent rows), rows 5159, draw 1.5
+window 3 385.2 to 388.8 s: insns 7200406 halted-steps 0; lfb stores 1:0 2:0 4:819781 str:0 bytes 3279124; lfb reads 0 bytes 0; window calls 8:0 16:0 32:0 str:0; pictures 120 (120 sent rows), rows 5321, draw 1.4 ms (11.4 
+window 4 391.2 to 394.8 s: insns 7200286 halted-steps 0; lfb stores 1:0 2:0 4:819421 str:0 bytes 3277684; lfb reads 0 bytes 0; window calls 8:0 16:0 32:0 str:0; pictures 119 (119 sent rows), rows 5331, draw 1.3 ms (11.3 
+window 5 397.2 to 400.0 s: insns 5599795 halted-steps 0; lfb stores 1:0 2:0 4:706677 str:173 bytes 2843028; lfb reads 477045 bytes 1888596; window calls 8:0 16:0 32:0 str:0; pictures 93 (93 sent rows), rows 4459, draw 0.
+window 6 404.0 to 407.0 s: insns 5999652 halted-steps 0; lfb stores 1:0 2:0 4:0 str:908008 bytes 824670656; lfb reads 6528 bytes 6528; window calls 8:0 16:0 32:0 str:0; pictures 100 (100 sent rows), rows 47981, draw 10.6
+window 7 409.2 to 413.0 s: insns 7144575 halted-steps 28452; lfb stores 1:0 2:0 4:765015 str:34 bytes 3063324; lfb reads 0 bytes 0; window calls 8:0 16:0 32:0 str:0; pictures 126 (117 sent rows), rows 2044, draw 0.8 ms (
+board: 15599 pictures; 15599 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+
+== 7. pacing (-pace Q:D): Plat's session and others (summary-pace.txt, summary-pace2.txt)
+v4.4 flicker runs, 2026-10-24 11:18:19, list /home/owner/org2/v44disp/l-pace.txt, 71 s
+
+== qa-n16dib: outcome: desktop (desktop seen at t=72 s)
+   p44 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448
+   END t=277.013 s insns=548200082 idle=5024896 stall=0.4 s wall=41.7 s cs:eip=0137:0100d100 esp=0062f780 ss=013f cr0=80000005 cr3=004ad000 fl=00000246 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9187 pictures, 639.1 ms of host time in all, 69.6 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2990, 3879 instructions each on average; 132 of them had a picture taken while under way (189 pictures); lengths <1k 2354, 1-4k 177, 4-16k 270, 16-64k 177, 64-256k 8, 256k-1M 4, more 0; 3DAh read 434762 times
+   board: 9187 pictures; 9187 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 12
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 6 steps; vga_black() made 3654 pixels black in 1 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 379 pictures, 28852 pixels; in the reference too: 379 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 22 strips written
+
+== qa-n16dib-p10k30: outcome: desktop (desktop seen at t=72 s)
+   p44 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -pace 10000:30
+   END t=277.013 s insns=548200082 idle=5024896 stall=0.4 s wall=34.9 s cs:eip=0137:0100d100 esp=0062f780 ss=013f cr0=80000005 cr3=004ad000 fl=00000246 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 8993 pictures, 620.5 ms of host time in all, 69.0 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2990, 3879 instructions each on average; 10 of them had a picture taken while under way (34 pictures); lengths <1k 2354, 1-4k 177, 4-16k 270, 16-64k 177, 64-256k 8, 256k-1M 4, more 0; 3DAh read 434762 times
+   board: 8993 pictures; 8993 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 7
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 8 steps; vga_black() made 3654 pixels black in 1 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 345 pictures, 38455 pixels; in the reference too: 345 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 11 strips written
+
+== qa-n16dib-p5k30: outcome: desktop (desktop seen at t=72 s)
+   p44 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -pace 5000:30
+   END t=277.013 s insns=548200082 idle=5024896 stall=0.4 s wall=39.6 s cs:eip=0137:0100d100 esp=0062f780 ss=013f cr0=80000005 cr3=004ad000 fl=00000246 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9101 pictures, 627.0 ms of host time in all, 68.9 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2990, 3879 instructions each on average; 12 of them had a picture taken while under way (34 pictures); lengths <1k 2354, 1-4k 177, 4-16k 270, 16-64k 177, 64-256k 8, 256k-1M 4, more 0; 3DAh read 434762 times
+   board: 9101 pictures; 9101 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 6
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 6 steps; vga_black() made 3654 pixels black in 1 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 375 pictures, 43579 pixels; in the reference too: 375 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 11 strips written
+
+== qa-n16dib-p2k30: outcome: desktop (desktop seen at t=72 s)
+   p44 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -pace 2000:30
+   END t=277.013 s insns=548200082 idle=5024896 stall=0.4 s wall=41.9 s cs:eip=0137:0100d100 esp=0062f780 ss=013f cr0=80000005 cr3=004ad000 fl=00000246 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9135 pictures, 624.3 ms of host time in all, 68.3 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2990, 3879 instructions each on average; 52 of them had a picture taken while under way (74 pictures); lengths <1k 2354, 1-4k 177, 4-16k 270, 16-64k 177, 64-256k 8, 256k-1M 4, more 0; 3DAh read 434762 times
+   board: 9135 pictures; 9135 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 6
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 6 steps; vga_black() made 3654 pixels black in 1 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 374 pictures, 38916 pixels; in the reference too: 374 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 22 strips written
+
+== qa-n16dib-p10k60: outcome: desktop (desktop seen at t=72 s)
+   p44 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -pace 10000:60
+   END t=277.013 s insns=548200082 idle=5024896 stall=0.4 s wall=35.2 s cs:eip=0137:0100d100 esp=0062f780 ss=013f cr0=80000005 cr3=004ad000 fl=00000246 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 8982 pictures, 622.0 ms of host time in all, 69.2 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2990, 3879 instructions each on average; 9 of them had a picture taken while under way (22 pictures); lengths <1k 2354, 1-4k 177, 4-16k 270, 16-64k 177, 64-256k 8, 256k-1M 4, more 0; 3DAh read 434762 times
+   board: 8982 pictures; 8982 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 5
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 8 steps; vga_black() made 3654 pixels black in 1 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 347 pictures, 69528 pixels; in the reference too: 347 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 10 strips written
+
+== qa-n16: outcome: desktop (desktop seen at t=74 s)
+   p44 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448
+   END t=279.014 s insns=552201926 idle=5024912 stall=0.4 s wall=40.0 s cs:eip=0028:c0fd8034 esp=c0eefe20 ss=0030 cr0=80000005 cr3=004ad000 fl=00000283 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9252 pictures, 686.5 ms of host time in all, 74.2 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 8376, 17987 instructions each on average; 2502 of them had a picture taken while under way (2554 pictures); lengths <1k 203, 1-4k 25, 4-16k 3067, 16-64k 5074, 64-256k 4, 256k-1M 3, more 0; 3DAh read 434762 times
+   board: 9252 pictures; 9252 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 12
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 6 steps; vga_black() made 3654 pixels black in 1 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 3029 pictures, 195818 pixels; in the reference too: 3029 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 22 strips written
+
+== qa-n16-p10k30: outcome: desktop (desktop seen at t=74 s)
+   p44 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -pace 10000:30
+   END t=279.014 s insns=552201926 idle=5024912 stall=0.4 s wall=31.4 s cs:eip=0028:c0fd8034 esp=c0eefe20 ss=0030 cr0=80000005 cr3=004ad000 fl=00000283 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 7558 pictures, 625.1 ms of host time in all, 82.7 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 8376, 17987 instructions each on average; 788 of them had a picture taken while under way (811 pictures); lengths <1k 203, 1-4k 25, 4-16k 3067, 16-64k 5074, 64-256k 4, 256k-1M 3, more 0; 3DAh read 434762 times
+   board: 7558 pictures; 7558 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 7
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 8 steps; vga_black() made 3654 pixels black in 1 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 1431 pictures, 102056 pixels; in the reference too: 1431 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 22 strips written
+
+== qa-vga: outcome: desktop (desktop seen at t=78 s)
+   p44 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios.bin plat 205 1 1000 -cursor-box 250,0,720,448
+   END t=283.013 s insns=560201649 idle=5003088 stall=0.4 s wall=43.2 s cs:eip=0137:0100c033 esp=0062fcfc ss=013f cr0=80000005 cr3=004ac000 fl=00000206 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9386 pictures, 994.8 ms of host time in all, 106.0 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2619, 6664 instructions each on average; 302 of them had a picture taken while under way (309 pictures); lengths <1k 611, 1-4k 333, 4-16k 1444, 16-64k 225, 64-256k 6, 256k-1M 0, more 0; 3DAh read 555716 times
+   board: 9386 pictures; 9386 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 12
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 7 steps; vga_black() made 149756 pixels black in 3 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 1152 pictures, 164713 pixels; in the reference too: 1152 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 22 strips written
+
+== qa-vga-p10k30: outcome: desktop (desktop seen at t=78 s)
+   p44 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios.bin plat 205 1 1000 -cursor-box 250,0,720,448 -pace 10000:30
+   END t=283.013 s insns=560201649 idle=5003088 stall=0.4 s wall=42.0 s cs:eip=0137:0100c033 esp=0062fcfc ss=013f cr0=80000005 cr3=004ac000 fl=00000206 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9195 pictures, 1007.1 ms of host time in all, 109.5 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2619, 6664 instructions each on average; 26 of them had a picture taken while under way (28 pictures); lengths <1k 611, 1-4k 333, 4-16k 1444, 16-64k 225, 64-256k 6, 256k-1M 0, more 0; 3DAh read 555716 times
+   board: 9195 pictures; 9195 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 7
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 6 steps; vga_black() made 10747 pixels black in 2 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 1034 pictures, 24675 pixels; in the reference too: 1034 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 15 strips written
+
+== qa-vga-p2k30: outcome: desktop (desktop seen at t=78 s)
+   p44 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios.bin plat 205 1 1000 -cursor-box 250,0,720,448 -pace 2000:30
+   END t=283.013 s insns=560201649 idle=5003088 stall=0.4 s wall=42.1 s cs:eip=0137:0100c033 esp=0062fcfc ss=013f cr0=80000005 cr3=004ac000 fl=00000206 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9352 pictures, 1027.5 ms of host time in all, 109.9 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2619, 6664 instructions each on average; 66 of them had a picture taken while under way (66 pictures); lengths <1k 611, 1-4k 333, 4-16k 1444, 16-64k 225, 64-256k 6, 256k-1M 0, more 0; 3DAh read 555716 times
+   board: 9352 pictures; 9352 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 7
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 6 steps; vga_black() made 10747 pixels black in 2 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 1139 pictures, 27594 pixels; in the reference too: 1139 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 22 strips written
+
+run                segment     pics   mid mid%  mid/s ptr w/p/n       upd    med   late    max diff  clr  blk
+qa-n16dib          idle         332     0    0    0.0 332/0/0           2    165    0.2    0.3    0    0    0
+qa-n16dib          sweep        531     2    0    0.1 531/0/0         635    165    0.1    0.3    0    0    0
+qa-n16dib          still        265     0    0    0.0 265/0/0           2    165    0.2    0.3    0    0    0
+qa-n16dib          startmenu    929     6    1    0.2 -               390    165    0.2    0.3    0    0    0
+qa-n16dib          notepad     1393    11    1    0.3 -               253    187    0.2    0.3    0    0    0
+qa-n16dib          typing       796    55    7    2.3 -               575    950    0.1    0.3    0    0    0
+qa-n16dib          scroll       630    25    4    1.3 -               375    187    0.1    0.3    0    0    0
+qa-n16dib          move         630    24    4    1.3 -               135    165    0.2    0.3    0    0    0
+qa-n16dib          sweep2       498     1    0    0.1 -               460    165    0.1    0.3    0    0    0
+qa-n16dib-p10k30   idle         331     0    0    0.0 331/0/0           2    165    0.2    0.3    0    0    0
+qa-n16dib-p10k30   sweep        518     0    0    0.0 518/0/0         635    165    0.9    5.5    0    0    0
+qa-n16dib-p10k30   still        265     0    0    0.0 265/0/0           2    165    0.2    1.0    0    0    0
+qa-n16dib-p10k30   startmenu    917     0    0    0.0 -               390    165    0.5   18.3    0    0    0
+qa-n16dib-p10k30   notepad     1381     1    0    0.0 -               253    187    0.4   30.2    0    0    0
+qa-n16dib-p10k30   typing       735     0    0    0.0 -               575    950    2.7   30.2    0    0    0
+qa-n16dib-p10k30   scroll       601     0    0    0.0 -               375    187    1.6   30.2    0    0    0
+qa-n16dib-p10k30   move         615     3    0    0.2 -               135    165    0.9   30.2    0    0    0
+qa-n16dib-p10k30   sweep2       488     0    0    0.0 -               460    165    0.8    6.6    0    0    0
+qa-n16dib-p5k30    idle         331     0    0    0.0 331/0/0           2    165    0.2    0.3    0    0    0
+qa-n16dib-p5k30    sweep        530     0    0    0.0 530/0/0         635    165    0.2    2.7    0    0    0
+qa-n16dib-p5k30    still        266     0    0    0.0 266/0/0           2    165    0.2    0.3    0    0    0
+qa-n16dib-p5k30    startmenu    926     0    0    0.0 -               390    165    0.2    6.4    0    0    0
+qa-n16dib-p5k30    notepad     1388     0    0    0.0 -               253    187    0.3   19.7    0    0    0
+qa-n16dib-p5k30    typing       774     1    0    0.0 -               575    950    1.0   30.1    0    0    0
+qa-n16dib-p5k30    scroll       622     0    0    0.0 -               375    187    0.5   17.7    0    0    0
+qa-n16dib-p5k30    move         619     4    1    0.2 -               135    165    0.7   30.2    0    0    0
+qa-n16dib-p5k30    sweep2       496     0    0    0.0 -               460    165    0.2    4.0    0    0    0
+qa-n16dib-p2k30    idle         331     0    0    0.0 331/0/0           2    165    0.2    0.3    0    0    0
+qa-n16dib-p2k30    sweep        531     0    0    0.0 531/0/0         635    165    0.2    1.5    0    0    0
+qa-n16dib-p2k30    still        265     0    0    0.0 265/0/0           2    165    0.2    0.3    0    0    0
+qa-n16dib-p2k30    startmenu    928     1    0    0.0 -               390    165    0.2    2.8    0    0    0
+qa-n16dib-p2k30    notepad     1392    10    1    0.2 -               253    187    0.2    9.2    0    0    0
+qa-n16dib-p2k30    typing       788    11    1    0.5 -               575    950    0.4    8.3    0    0    0
+qa-n16dib-p2k30    scroll       627     8    1    0.4 -               375    187    0.3    9.4    0    0    0
+qa-n16dib-p2k30    move         624    14    2    0.7 -               135    165    0.5   30.2    0    0    0
+qa-n16dib-p2k30    sweep2       497     1    0    0.1 -               460    165    0.2    2.4    0    0    0
+qa-n16dib-p10k60   idle         331     0    0    0.0 331/0/0           2    165    0.2    0.3    0    0    0
+qa-n16dib-p10k60   sweep        518     0    0    0.0 518/0/0         635    165    0.9    5.5    0    0    0
+qa-n16dib-p10k60   still        265     0    0    0.0 265/0/0           2    165    0.2    1.0    0    0    0
+qa-n16dib-p10k60   startmenu    917     0    0    0.0 -               390    165    0.5   18.3    0    0    0
+qa-n16dib-p10k60   notepad     1380     1    0    0.0 -               253    187    0.4   60.1    0    0    0
+qa-n16dib-p10k60   typing       735     0    0    0.0 -               575    950    2.6   36.8    0    0    0
+qa-n16dib-p10k60   scroll       601     0    0    0.0 -               375    187    1.6   34.1    0    0    0
+qa-n16dib-p10k60   move         614     1    0    0.1 -               135    165    1.0   60.2    0    0    0
+qa-n16dib-p10k60   sweep2       488     0    0    0.0 -               460    165    0.8    6.6    0    0    0
+qa-n16             idle         332    11    3    1.1 324/3/5          35  18415    0.2    0.3    0    0    0
+qa-n16             sweep        531   302   57   18.9 269/132/105    1254  14155    0.1    0.3    0    0    0
+qa-n16             still        265     0    0    0.0 265/0/0           2  13984    0.2    0.3    0    0    0
+qa-n16             startmenu    928   195   21    7.0 -               761  18261    0.2    0.3    0    0    0
+qa-n16             notepad     1393   221   16    5.3 -               802  18261    0.2    0.3    0    0    0
+qa-n16             typing       796   456   57   19.0 -              1410  18451    0.1    0.3    0    0    0
+qa-n16             scroll       630   384   61   20.2 -              1155  18451    0.1    0.3    0    0    0
+qa-n16             move         630   367   58   19.4 -              1120  18451    0.1    0.3    0    0    0
+qa-n16             sweep2       498   316   64   21.1 -              1063  18261    0.1    0.3    0    0    0
+qa-n16-p10k30      idle         325     1    0    0.1 321/0/4          35  18415    0.8   30.2    0    0    0
+qa-n16-p10k30      sweep        323     0    0    0.0 302/4/1        1254  14155   19.6   30.1    0    0    0
+qa-n16-p10k30      still        265     0    0    0.0 265/0/0           2  13984    0.2   20.3    0    0    0
+qa-n16-p10k30      startmenu    821    22    3    0.8 -               761  18261    4.1   30.3    0    0    0
+qa-n16-p10k30      notepad     1246    76    6    1.8 -               802  18261    3.7   30.2    0    0    0
+qa-n16-p10k30      typing       488   176   36    7.3 -              1410  18451   19.2   30.3    0    0    0
+qa-n16-p10k30      scroll       372   150   40    7.9 -              1155  18451   21.1   30.3    0    0    0
+qa-n16-p10k30      move         381   141   37    7.4 -              1120  18451   19.9   30.3    0    0    0
+qa-n16-p10k30      sweep2       287   127   44    8.5 -              1063  18261   22.2   30.3    0    0    0
+qa-vga             idle         332     0    0    0.0 332/0/0           0      0    0.2    0.3    0    0    0
+qa-vga             sweep        530    73   14    4.6 451/12/0        659   6260    0.1    0.3    0    0    0
+qa-vga             still        266     0    0    0.0 265/1/0           1   5472    0.1    0.3    0    0    0
+qa-vga             startmenu    929    29    3    1.0 -               326   4464    0.1    0.3    0    0    0
+qa-vga             notepad     1394    16    1    0.4 -               205   1379    0.1    0.3    0    0    0
+qa-vga             typing       796    54    7    2.3 -               411   1035    0.1    0.3    0    0    0
+qa-vga             scroll       631    43    7    2.3 -               318     75    0.1    0.3    0    0    0
+qa-vga             move         630     8    1    0.4 -                81   5257    0.2    0.3    0    0    0
+qa-vga             sweep2       498    64   13    4.3 -               480   5529    0.1    0.3    0    0    0
+qa-vga-p10k30      idle         332     0    0    0.0 332/0/0           0      0    0.2    0.3    0    0    0
+qa-vga-p10k30      sweep        508     0    0    0.0 438/6/0         659   6260    1.5    8.7    0    0    0
+qa-vga-p10k30      still        266     0    0    0.0 266/0/0           1   5472    0.2    5.7    0    0    0
+qa-vga-p10k30      startmenu    911     1    0    0.0 -               326   4464    0.7   30.0    0    0    0
+qa-vga-p10k30      notepad     1385     0    0    0.0 -               205   1379    0.3   30.1    0    0    0
+qa-vga-p10k30      typing       732     1    0    0.0 -               411   1035    2.8   30.2    0    0    0
+qa-vga-p10k30      scroll       588    18    3    0.9 -               318     75    2.3   30.3    0    0    0
+qa-vga-p10k30      move         626     0    0    0.0 -                81   5257    0.3   18.8    0    0    0
+qa-vga-p10k30      sweep2       480     1    0    0.1 -               480   5529    1.3   30.2    0    0    0
+qa-vga-p2k30       idle         332     0    0    0.0 332/0/0           0      0    0.2    0.3    0    0    0
+qa-vga-p2k30       sweep        528     4    1    0.3 456/6/0         659   6260    0.3    4.3    0    0    0
+qa-vga-p2k30       still        265     0    0    0.0 265/0/0           1   5472    0.1    0.3    0    0    0
+qa-vga-p2k30       startmenu    927     3    0    0.1 -               326   4464    0.2    3.6    0    0    0
+qa-vga-p2k30       notepad     1391     6    0    0.1 -               205   1379    0.2   15.5    0    0    0
+qa-vga-p2k30       typing       790    18    2    0.8 -               411   1035    0.4   12.2    0    0    0
+qa-vga-p2k30       scroll       621    21    3    1.1 -               318     75    0.6   15.0    0    0    0
+qa-vga-p2k30       move         629     1    0    0.1 -                81   5257    0.2   14.8    0    0    0
+qa-vga-p2k30       sweep2       496     4    1    0.3 -               480   5529    0.3   11.8    0    0    0
+v4.4 flicker runs, 2026-10-24 11:21:45, list /home/owner/org2/v44disp/l-pace2.txt, 53 s
+
+== qa-n16dib-p5k15: outcome: desktop (desktop seen at t=72 s)
+   p44 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -pace 5000:15
+   END t=277.013 s insns=548200082 idle=5024896 stall=0.4 s wall=35.8 s cs:eip=0137:0100d100 esp=0062f780 ss=013f cr0=80000005 cr3=004ad000 fl=00000246 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9115 pictures, 587.2 ms of host time in all, 64.4 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2990, 3879 instructions each on average; 26 of them had a picture taken while under way (61 pictures); lengths <1k 2354, 1-4k 177, 4-16k 270, 16-64k 177, 64-256k 8, 256k-1M 4, more 0; 3DAh read 434762 times
+   board: 9115 pictures; 9115 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 8
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 6 steps; vga_black() made 3654 pixels black in 1 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 374 pictures, 32075 pixels; in the reference too: 374 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 17 strips written
+
+== qa-n16dib-p2k15: outcome: desktop (desktop seen at t=72 s)
+   p44 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -pace 2000:15
+   END t=277.013 s insns=548200082 idle=5024896 stall=0.4 s wall=36.3 s cs:eip=0137:0100d100 esp=0062f780 ss=013f cr0=80000005 cr3=004ad000 fl=00000246 mode=03 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9145 pictures, 575.2 ms of host time in all, 62.9 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2990, 3879 instructions each on average; 56 of them had a picture taken while under way (91 pictures); lengths <1k 2354, 1-4k 177, 4-16k 270, 16-64k 177, 64-256k 8, 256k-1M 4, more 0; 3DAh read 434762 times
+   board: 9145 pictures; 9145 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 8
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 6 steps; vga_black() made 3654 pixels black in 1 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 368 pictures, 27017 pixels; in the reference too: 368 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 22 strips written
+
+== qa-vga-p5k30: outcome: desktop (desktop seen at t=78 s)
+   p44 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios.bin plat 205 1 1000 -cursor-box 250,0,720,448 -pace 5000:30
+   END t=283.013 s insns=560201649 idle=5003088 stall=0.4 s wall=38.1 s cs:eip=0137:0100c033 esp=0062fcfc ss=013f cr0=80000005 cr3=004ac000 fl=00000206 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+   drawing: 9293 pictures, 898.9 ms of host time in all, 96.7 us a picture
+   board: guest updates of video memory (stores less than 4000 instructions apart): 2619, 6664 instructions each on average; 4 of them had a picture taken while under way (4 pictures); lengths <1k 611, 1-4k 333, 4-16k 1444, 16-64k 225, 64-256k 6, 256k-1M 0, more 0; 3DAh read 555716 times
+   board: 9293 pictures; 9293 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first at step 0; cache view differs 0; unflushed rows in 0
+   board: clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 7
+   board: black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 6 steps; vga_black() made 10747 pixels black in 2 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   board: blips (a pixel other for one picture) in 1122 pictures, 29103 pixels; in the reference too: 1122 pictures; not in the reference: 0 pictures, 0 pixels
+   board: 8 strips written
+
+run                segment     pics   mid mid%  mid/s ptr w/p/n       upd    med   late    max diff  clr  blk
+qa-n16dib-p5k15    idle         331     0    0    0.0 331/0/0           2    165    0.2    0.3    0    0    0
+qa-n16dib-p5k15    sweep        530     0    0    0.0 530/0/0         635    165    0.2    2.7    0    0    0
+qa-n16dib-p5k15    still        266     0    0    0.0 266/0/0           2    165    0.2    0.3    0    0    0
+qa-n16dib-p5k15    startmenu    926     0    0    0.0 -               390    165    0.2    6.4    0    0    0
+qa-n16dib-p5k15    notepad     1388     2    0    0.0 -               253    187    0.3   15.1    0    0    0
+qa-n16dib-p5k15    typing       776    13    2    0.5 -               575    950    0.9   15.3    0    0    0
+qa-n16dib-p5k15    scroll       622     0    0    0.0 -               375    187    0.5   15.1    0    0    0
+qa-n16dib-p5k15    move         621     6    1    0.3 -               135    165    0.6   15.2    0    0    0
+qa-n16dib-p5k15    sweep2       496     0    0    0.0 -               460    165    0.2    4.0    0    0    0
+qa-n16dib-p2k15    idle         332     0    0    0.0 332/0/0           2    165    0.2    0.3    0    0    0
+qa-n16dib-p2k15    sweep        530     0    0    0.0 530/0/0         635    165    0.1    1.4    0    0    0
+qa-n16dib-p2k15    still        266     0    0    0.0 266/0/0           2    165    0.2    0.6    0    0    0
+qa-n16dib-p2k15    startmenu    927     3    0    0.1 -               390    165    0.2    3.8    0    0    0
+qa-n16dib-p2k15    notepad     1392    11    1    0.3 -               253    187    0.2    9.2    0    0    0
+qa-n16dib-p2k15    typing       788    11    1    0.5 -               575    950    0.4    8.3    0    0    0
+qa-n16dib-p2k15    scroll       627     8    1    0.4 -               375    187    0.3    9.4    0    0    0
+qa-n16dib-p2k15    move         625    15    2    0.8 -               135    165    0.4   15.1    0    0    0
+qa-n16dib-p2k15    sweep2       498     0    0    0.0 -               460    165    0.2    1.5    0    0    0
+qa-vga-p5k30       idle         332     0    0    0.0 332/0/0           0      0    0.2    0.3    0    0    0
+qa-vga-p5k30       sweep        513     0    0    0.0 443/6/0         659   6260    1.2    6.9    0    0    0
+qa-vga-p5k30       still        265     0    0    0.0 265/0/0           1   5472    0.1    0.3    0    0    0
+qa-vga-p5k30       startmenu    921     0    0    0.0 -               326   4464    0.4   13.9    0    0    0
+qa-vga-p5k30       notepad     1389     0    0    0.0 -               205   1379    0.2   24.4    0    0    0
+qa-vga-p5k30       typing       783     0    0    0.0 -               411   1035    0.7   19.8    0    0    0
+qa-vga-p5k30       scroll       607     0    0    0.0 -               318     75    1.3   22.4    0    0    0
+qa-vga-p5k30       move         627     0    0    0.0 -                81   5257    0.3   17.8    0    0    0
+qa-vga-p5k30       sweep2       485     0    0    0.0 -               480   5529    0.9   22.7    0    0    0
+
+== 8. pacing in T386MON's tests at 16 bits (y-p16*, built from 64a45b3's worktree with pacing)
+== pictures a second in each test window and how late on average (winpics.py; the board model, 16 bits, VMDisp9x with the pointer's byte changed)
+y-p16            fill 33.3/s  0.2ms  scroll 33.2/s  0.2ms  text 33.1/s  0.2ms  sprite 33.2/s  0.2ms  copy 33.3/s  0.1ms  pic 33.2/s  0.2ms
+y-p16-p2k15      fill 29.4/s  4.1ms  scroll 30.0/s  3.1ms  text 30.8/s  2.3ms  sprite 25.4/s  9.3ms  copy 27.3/s  6.5ms  pic 24.7/s 10.4ms
+y-p16-p2k30      fill 29.1/s  4.3ms  scroll 30.0/s  3.1ms  text 30.8/s  2.3ms  sprite 23.2/s 12.9ms  copy 26.7/s  7.6ms  pic 19.7/s 20.2ms
+y-p16-p5k15      fill 22.4/s 14.6ms  scroll 22.9/s 13.9ms  text 29.4/s  4.0ms  sprite 22.5/s 14.5ms  copy 22.7/s 14.0ms  pic 23.2/s 13.0ms
+y-p16-p5k30      fill 17.9/s 25.5ms  scroll 18.2/s 24.8ms  text 29.4/s  4.1ms  sprite 18.2/s 24.8ms  copy 17.0/s 28.2ms  pic 18.9/s 22.5ms
+y-p16-p10k30     fill 17.6/s 27.0ms  scroll 17.5/s 27.5ms  text 18.1/s 25.5ms  sprite 16.8/s 29.8ms  copy 17.3/s 27.8ms  pic 18.2/s 24.7ms
+== the sprite as each picture shows it (sp2.py, 397.2 to 400.0 s)
+y-p16              93 pictures: whole 16.1 %, black 53.8 %, gone 16.1 %, part 14.0 %   e.g. 0/353 0/1308 0/1875 1144/146 0/52 0/1344 0/1828 999/244 0/0 0/1368 0/1828 678/744
+y-p16-p2k15        71 pictures: whole 26.8 %, black 35.2 %, gone 32.4 %, part  5.6 %   e.g. 0/47 0/47 1174/116 0/1039 0/1112 1174/69 0/1126 1174/69 362/1431 0/0 0/0 817/460
+y-p16-p2k30        65 pictures: whole 40.0 %, black 23.1 %, gone 30.8 %, part  6.2 %   e.g. 0/47 0/47 1174/116 0/1618 1174/69 0/1755 1174/69 362/1431 662/775 0/0 817/460 1174/69
+y-p16-p5k15        63 pictures: whole 17.5 %, black 47.6 %, gone 17.5 %, part 17.5 %   e.g. 318/1537 0/151 0/1510 642/867 0/10 0/1396 602/914 0/501 9/1819 1174/69 0/810 1174/69
+y-p16-p5k30        51 pictures: whole 15.7 %, black 49.0 %, gone 27.5 %, part  7.8 %   e.g. 0/57 0/1687 1174/116 0/1550 1174/69 0/1828 0/31 72/1756 1121/122 1163/80 0/47 0/1865
+y-p16-p10k30       47 pictures: whole 17.0 %, black 57.4 %, gone 17.0 %, part  8.5 %   e.g. 0/1872 0/47 0/1624 1174/69 0/1507 602/910 0/810 582/959 1163/80 9/1866 0/47 0/1875
+y-p16:  -cursor-box 200,90,600,390 
+15599 pictures; 15599 checked against the reference: 0 differ (0 pixels, 0 of them black w
+y-p16-p2k15:  -cursor-box 200,90,600,390 -pace 2000:15 
+15415 pictures; 15415 checked against the reference: 0 differ (0 pixels, 0 of them black w
+y-p16-p2k30:  -cursor-box 200,90,600,390 -pace 2000:30 
+15370 pictures; 15370 checked against the reference: 0 differ (0 pixels, 0 of them black w
+y-p16-p5k15:  -cursor-box 200,90,600,390 -pace 5000:15 
+15282 pictures; 15282 checked against the reference: 0 differ (0 pixels, 0 of them black w
+y-p16-p5k30:  -cursor-box 200,90,600,390 -pace 5000:30 
+15171 pictures; 15171 checked against the reference: 0 differ (0 pixels, 0 of them black w
+y-p16-p10k30:  -cursor-box 200,90,600,390 -pace 10000:30 
+14969 pictures; 14969 checked against the reference: 0 differ (0 pixels, 0 of them black w

@@ -1,0 +1,527 @@
+diff -ruN a/harness/build.sh harness/build.sh
+--- a/harness/build.sh	2026-10-23 23:49:01.291391302 +0800
++++ b/harness/build.sh	2026-10-24 10:47:45.264487023 +0800
+@@ -133,6 +133,7 @@
+ # flicker repro: the harness's hooks in the copy of vga.c (instr_vga.py)
+ python3 -I "$H/instr_vga.py" "$OUT/src/vga.c" > "$OUT/instr.txt" || { echo "instr_vga.py failed"; exit 1; }
+ python3 -I "$H/instr_pc.py" "$OUT/src/pc.c" >> "$OUT/instr.txt" || { echo "instr_pc.py failed"; exit 1; }
++python3 -I "$H/instr_v44.py" "$OUT/src/pc.c" "$OUT/src/vga.c" >> "$OUT/instr.txt" || { echo "instr_v44.py failed"; exit 1; }
+ # patches against the tree's top-level files (a/i8254.c b/i8254.c), in order
+ for p in ${PATCHES:-}; do
+     case "$p" in /*) ;; *) [ -f "$H/patches/$p" ] && p=$H/patches/$p ;; esac
+diff -ruN a/harness/headless.c harness/headless.c
+--- a/harness/headless.c	2026-10-23 23:49:01.284400595 +0800
++++ b/harness/headless.c	2026-10-24 11:38:29.378781904 +0800
+@@ -93,6 +93,12 @@
+ static const char *opt_skeys, *opt_smouse;
+ static int opt_keep_cache = 40;         /* -cache-rows N: rows a clear leaves in the cache (64 KiB) */
+ static uint64_t opt_quiet_q;            /* -quiet Q:D: a picture waits for Q guest instructions */
++static uint32_t opt_pace_q;             /* v4.4 -pace Q:D: the board's pacing, vga.c's rule */
++static uint64_t opt_pace_d_us;
++static uint64_t pace_quiet_pics, pace_late_pics, pace_delay_us_sum, pace_delay_us_max;
++/* vga.c's, in a tree that has them (v4.4 on) */
++extern uint32_t vga_pace_quiet __attribute__((weak));
++bool vga_pace_after_step(uint32_t insns, bool halted) __attribute__((weak));
+ static uint64_t opt_quiet_d_us;         /*   with no store into video memory, at most D ms */
+ static double opt_dump_t0 = -1, opt_dump_t1 = -1;  /* -dump T0:T1: every panel picture then */
+ struct key_ev { double t; int sc; int down; };
+@@ -431,6 +437,13 @@
+ /* ==== the screen ==== */
+ static uint8_t *fb;
+ static int fb_w, fb_h;
++/* v4.4 -double: the board's double buffering */
++static int opt_double;
++static uint8_t *db_front, *db_back, db_rows[4096];
++static int db_any;
++static uint64_t db_flips, db_rows_copied, db_copy_us;
++void vga_set_fb(VGAState *s, uint8_t *fb) __attribute__((weak));
++static void db_present(void);
+ static int snap_no;
+ static pthread_mutex_t vga_lock = PTHREAD_MUTEX_INITIALIZER;
+ 
+@@ -460,8 +473,14 @@
+ 		if (y + h > fb_h)
+ 			h = fb_h - y;
+ 		if (h > 0) {
+-			memcpy(panel + (size_t) y * fb_w, (uint16_t *) fb + (size_t) y * fb_w,
+-			       (size_t) h * fb_w * 2);
++			if (opt_double) {
++				/* v4.4 -double: the rows of the back buffer, for the swap */
++				memset(db_rows + y, 1, h);
++				db_any = 1;
++			} else {
++				memcpy(panel + (size_t) y * fb_w, (uint16_t *) fb + (size_t) y * fb_w,
++				       (size_t) h * fb_w * 2);
++			}
+ 			board_flush_rows += h;
+ 			board_bands++;
+ 		}
+@@ -547,12 +566,24 @@
+ 	return strstr(buf, needle) != NULL;
+ }
+ 
++/* v4.4, from the T386MON harness: in time order among those still to come, so that a
++   dialog's Enter is not left behind a -keyfile's later keys */
++static void put_key(struct key_ev e)
++{
++	int i = nkeys++;
++	while (i > next_key && keys[i - 1].t > e.t) {
++		keys[i] = keys[i - 1];
++		i--;
++	}
++	keys[i] = e;
++}
++
+ static void add_key(double t, int sc)
+ {
+ 	if (nkeys + 2 > 2048)
+ 		return;
+-	keys[nkeys++] = (struct key_ev) { t, sc, 1 };
+-	keys[nkeys++] = (struct key_ev) { t + 0.1, sc, 0 };
++	put_key((struct key_ev) { t, sc, 1 });
++	put_key((struct key_ev) { t + 0.1, sc, 0 });
+ }
+ 
+ /* -bootmenu N: F8 while "Starting Windows 95..." is up, then item N of the
+@@ -721,6 +752,101 @@
+    which is what it should have been.  The caller holds vga_lock. */
+ static uint64_t audit_pics, audit_bad, audit_worst;
+ static uint64_t draw_us;                /* host time in the periodic pc_vga_step() */
++
++/* v4.4: PCR_WIN=T0:T1,T2:T3,... (virtual seconds, up to 16): for each window the guest's
++   instructions and halted steps, its stores into the linear frame buffer (count by size and
++   bytes), its reads of it (count and bytes), its calls of the VGA window's four store
++   functions, and the pictures drawn there with their host time and the rows flushed */
++#define WIN_N 16
++struct win {
++	double t0, t1;
++	uint64_t insns, halted, lfb_w[5], lfb_wbytes, lfb_r, lfb_rbytes, vcall[9];
++	uint64_t pics, draw_us, rows, pics_changed;
++	uint64_t vrows, vpx, vbytes;    /* VBE rows converted, their pixels, video memory read */
++};
++static uint64_t tot_vrows, tot_vpx, tot_vbytes;
++static struct win wins[WIN_N];
++static int n_wins = -1, cur_win = -1;
++static void win_init(void)
++{
++	n_wins = 0;
++	const char *e = getenv("PCR_WIN");
++	while (e && *e && n_wins < WIN_N) {
++		double a, c;
++		int used = 0;
++		if (sscanf(e, "%lf:%lf%n", &a, &c, &used) != 2)
++			break;
++		wins[n_wins].t0 = a;
++		wins[n_wins].t1 = c;
++		n_wins++;
++		e += used;
++		if (*e == ',')
++			e++;
++	}
++}
++static void win_at(uint64_t t)
++{
++	if (n_wins < 0)
++		win_init();
++	cur_win = -1;
++	for (int i = 0; i < n_wins; i++)
++		if (t >= wins[i].t0 * 1e6 && t < wins[i].t1 * 1e6) {
++			cur_win = i;
++			break;
++		}
++}
++void pcr_vread(uint32_t n)
++{
++	if (cur_win >= 0 && pthread_equal(pthread_self(), main_thread)) {
++		wins[cur_win].lfb_r++;
++		wins[cur_win].lfb_rbytes += n;
++	}
++}
++void pcr_vrow(int n, int bpp)
++{
++	if (in_reference || in_snapshot)
++		return;
++	uint64_t bytes = (uint64_t) n * (bpp == 15 ? 2 : bpp / 8);
++	tot_vrows++;
++	tot_vpx += n;
++	tot_vbytes += bytes;
++	if (cur_win >= 0) {
++		wins[cur_win].vrows++;
++		wins[cur_win].vpx += n;
++		wins[cur_win].vbytes += bytes;
++	}
++}
++void pcr_vcall(int kind)
++{
++	if (cur_win >= 0 && pthread_equal(pthread_self(), main_thread) && kind >= 0 && kind <= 8)
++		wins[cur_win].vcall[kind]++;
++}
++static void win_print(void)
++{
++	for (int i = 0; i < n_wins; i++) {
++		struct win *w = &wins[i];
++		fprintf(hout, "[harness] window %d %.1f to %.1f s: insns %llu halted-steps %llu; "
++			"lfb stores 1:%llu 2:%llu 4:%llu str:%llu bytes %llu; lfb reads %llu bytes %llu; "
++			"window calls 8:%llu 16:%llu 32:%llu str:%llu; pictures %llu (%llu sent rows), "
++			"rows %llu, draw %.1f ms (%.1f us a picture)\n", i, w->t0, w->t1,
++			(unsigned long long) w->insns, (unsigned long long) w->halted,
++			(unsigned long long) w->lfb_w[1], (unsigned long long) w->lfb_w[2],
++			(unsigned long long) w->lfb_w[4], (unsigned long long) w->lfb_w[0],
++			(unsigned long long) w->lfb_wbytes, (unsigned long long) w->lfb_r,
++			(unsigned long long) w->lfb_rbytes, (unsigned long long) w->vcall[1],
++			(unsigned long long) w->vcall[2], (unsigned long long) w->vcall[4],
++			(unsigned long long) w->vcall[8], (unsigned long long) w->pics,
++			(unsigned long long) w->pics_changed, (unsigned long long) w->rows,
++			w->draw_us / 1000.0, w->pics ? (double) w->draw_us / w->pics : 0.0);
++		fprintf(hout, "[harness] window %d: VBE rows converted %llu, pixels %llu (%.0f a row, %.0f a "
++			"picture), video memory read %llu bytes\n", i, (unsigned long long) w->vrows,
++			(unsigned long long) w->vpx, w->vrows ? (double) w->vpx / w->vrows : 0.0,
++			w->pics ? (double) w->vpx / w->pics : 0.0, (unsigned long long) w->vbytes);
++	}
++	fprintf(hout, "[harness] VBE rows converted in all: %llu, pixels %llu, video memory read %llu bytes\n",
++		(unsigned long long) tot_vrows, (unsigned long long) tot_vpx,
++		(unsigned long long) tot_vbytes);
++}
+ static long audit_screen(void)
+ {
+ 	static uint8_t *copy;
+@@ -747,7 +873,7 @@
+    instructions by where its CS:EIP was at the end of each step (CS and the
+    256 bytes of EIP), and prints the 40 places that took most at the end */
+ #define EH_N 65536
+-static struct { uint64_t key; uint64_t n; } eh_tab[EH_N];
++static struct { uint64_t key; uint64_t n; uint32_t eip; uint8_t code[48]; int ncode; } eh_tab[EH_N];
+ static int eh_on = -1;
+ static double eh_t0, eh_t1;
+ static uint64_t eh_total, eh_lost;
+@@ -765,6 +891,17 @@
+ 	uint32_t h = (uint32_t) ((key * 0x9E3779B97F4A7C15ull) >> 40) % EH_N;
+ 	for (int i = 0; i < 64; i++, h = (h + 1) % EH_N) {
+ 		if (eh_tab[h].n == 0 || eh_tab[h].key == key) {
++			if (eh_tab[h].n == 0) {
++				/* v4.4: the code here, as the guest sees it now */
++				eh_tab[h].eip = st.ip;
++				eh_tab[h].ncode = 0;
++				for (int k = 0; k < 48; k++) {
++					u8 b;
++					if (!cpu_load8(g_pc->cpu, 1, st.ip + k, &b))
++						break;
++					eh_tab[h].code[eh_tab[h].ncode++] = b;
++				}
++			}
+ 			eh_tab[h].key = key;
+ 			eh_tab[h].n += d;
+ 			eh_total += d;
+@@ -789,6 +926,13 @@
+ 		fprintf(hout, "[harness] eiphist: cs %04x eip %06xxx: %llu (%.1f %%)\n",
+ 			(unsigned) (eh_tab[i].key >> 32), (unsigned) (eh_tab[i].key & 0xffffff),
+ 			(unsigned long long) eh_tab[i].n, 100.0 * eh_tab[i].n / (eh_total ? eh_total : 1));
++	for (int i = 0; i < 12 && eh_tab[i].n; i++) {
++		fprintf(hout, "[harness] eiphist code: cs %04x eip %08x:", (unsigned) (eh_tab[i].key >> 32),
++			(unsigned) eh_tab[i].eip);
++		for (int k = 0; k < eh_tab[i].ncode; k++)
++			fprintf(hout, " %02x", eh_tab[i].code[k]);
++		fprintf(hout, "\n");
++	}
+ }
+ 
+ /* "@shot NAME" from a guest test program: one more picture drawn as the
+@@ -807,6 +951,7 @@
+ 	in_board_step = opt_board;
+ 	vga_refresh(g_pc->vga, redraw, NULL, 0);
+ 	bk_done();
++	db_present();
+ 	in_board_step = was;
+ 	snprintf(file, sizeof(file), "shot-%s", name);
+ 	save_ppm(file);
+@@ -893,6 +1038,10 @@
+ }
+ void pcr_vwrite(int lfb, uint32_t addr, uint32_t len)
+ {
++	if (lfb && cur_win >= 0 && pthread_equal(pthread_self(), main_thread)) {
++		wins[cur_win].lfb_w[len == 1 || len == 2 || len == 4 ? len : 0]++;
++		wins[cur_win].lfb_wbytes += len;
++	}
+ 	if (!opt_board || in_reference || in_snapshot ||
+ 	    !pthread_equal(pthread_self(), main_thread))
+ 		return;
+@@ -1222,8 +1371,34 @@
+ 			 "%s%llu:%s", strip_why[0] ? " " : "", (unsigned long long) step_no, why);
+ }
+ 
++/* v4.4 -double: lcd_vga_present() of the board */
++static void db_present(void)
++{
++	if (!opt_double || !db_any)
++		return;
++	uint64_t t0 = real_us();
++	uint8_t *front = db_back, *back = db_front;
++	db_front = front;
++	db_back = back;
++	/* the panel shows the new front buffer from its next frame: all of it */
++	memcpy(panel, front, (size_t) fb_w * fb_h * 2);
++	for (int y = 0; y < fb_h; y++) {
++		if (!db_rows[y])
++			continue;
++		memcpy(back + (size_t) y * fb_w * 2, front + (size_t) y * fb_w * 2, (size_t) fb_w * 2);
++		db_rows_copied++;
++	}
++	memset(db_rows, 0, sizeof(db_rows));
++	db_any = 0;
++	db_flips++;
++	vga_set_fb(g_pc->vga, back);
++	fb = back;
++	db_copy_us += real_us() - t0;
++}
++
+ static uint64_t pic_since_vw, pic_burst_sofar;  /* for the record of the step */
+ static uint64_t pic_delay_us;                   /* how late the picture is (-quiet) */
++static uint64_t pic_draw_us;                    /* v4.4: the step's host time */
+ static void board_step(void)
+ {
+ 	step_no++;
+@@ -1241,9 +1416,18 @@
+ 	}
+ 	board_flush_rows = board_bands = 0;
+ 	in_board_step = 1;
++	uint64_t d0 = real_us();
+ 	pc_vga_step(g_pc);
++	pic_draw_us = real_us() - d0;
+ 	bk_done();
++	db_present();
+ 	in_board_step = 0;
++	if (cur_win >= 0 && !opt_vgathread) {
++		wins[cur_win].pics++;
++		wins[cur_win].draw_us += pic_draw_us;
++		wins[cur_win].rows += board_flush_rows;
++		wins[cur_win].pics_changed += board_flush_rows > 0;
++	}
+ }
+ 
+ /* The record of the step just made.  kind: L the drawing in the run loop
+@@ -1326,13 +1510,14 @@
+ 	}
+ 	/* the pointer in an empty stretch of desktop: its white and black
+ 	   pixels, on the panel and in the reference */
+-	long cw = 0, cb = 0, rw = 0, rbk = 0;
++	long cw = 0, cb = 0, rw = 0, rbk = 0, cy = 0;
+ 	if (opt_cbox[0] >= 0) {
+ 		for (int y = opt_cbox[1]; y < opt_cbox[3] && y < fb_h; y++)
+ 			for (int x = opt_cbox[0]; x < opt_cbox[2] && x < fb_w; x++) {
+ 				uint16_t p = panel[(size_t) y * fb_w + x];
+ 				cw += p == 0xffff;
+ 				cb += p == 0;
++				cy += p == 0xffe0;
+ 				if (check) {
+ 					uint16_t r = refbuf[(size_t) y * fb_w + x];
+ 					rw += r == 0xffff;
+@@ -1360,7 +1545,7 @@
+ 	fprintf(fr_f, "%llu\t%c\t%.4f\t%llu\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%u\t%u\t%llu\t%llu\t"
+ 		"%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%s\t%ld\t"
+ 		"%ld\t%ld\t%d\t%d\t%d\t%ld\t%ld\t%ld\t%ld\t%ld\t%ld\t%ld\t%ld\t%d\t%d\t"
+-		"%u\t%llu\t%llu\t%ld\t%ld\t%ld\t%ld\t%llu\t%016llx\n",
++		"%u\t%llu\t%llu\t%ld\t%ld\t%ld\t%ld\t%llu\t%016llx\t%llu\t%ld\n",
+ 		(unsigned long long) step_no, kind, vt / 1e6, (unsigned long long) insn,
+ 		vi.gm_now, vi.gm_drawn, vi.vbe_on, vi.vbe[1], vi.vbe[2], vi.vbe[3], vi.vbe[6],
+ 		vi.vbe[8], vi.vbe[9], vi.start, vi.line,
+@@ -1370,7 +1555,8 @@
+ 		d_panel, d_black, nrows, r0, r1, d_fb, unfl, chg, blip, blipb, blipm, rblip, blipnr,
+ 		mx, my, a.n3da, (unsigned long long) pic_since_vw,
+ 		(unsigned long long) pic_burst_sofar, cw, cb, rw, rbk,
+-		(unsigned long long) (kind == 'L' ? pic_delay_us : 0), (unsigned long long) hsh);
++		(unsigned long long) (kind == 'L' ? pic_delay_us : 0), (unsigned long long) hsh,
++		(unsigned long long) pic_draw_us, cy);
+ 	if (opt_dump_t0 >= 0 && desktop_at >= 0) {
+ 		double st = vt / 1e6 - (desktop_at + opt_session_after);
+ 		if (st >= opt_dump_t0 && st < opt_dump_t1) {
+@@ -1498,7 +1684,7 @@
+ 		"ev_sr04\tev_dac\task_force\task_crt\task_whole\tcleared\tclear_sites\tflash_px\t"
+ 		"d_panel\td_black\td_rows\td_r0\td_r1\td_fb\tunflushed\tchg_prev\tblip_prev\tblip_black\t"
+ 		"blip_mouse\tref_blip\tblip_not_ref\tmouse_x\tmouse_y\tn3da\tsince_vwrite\tburst_sofar\t"
+-		"cur_white\tcur_black\tref_white\tref_black\tdelay_us\thash\n");
++		"cur_white\tcur_black\tref_white\tref_black\tdelay_us\thash\tdraw_us\tcur_yellow\n");
+ 	fprintf(ev_f, "insn\tt\tstep\tkind\ta\tb\tc\n");
+ 	fprintf(strip_f, "strip\tfrom\tto\twhy\n");
+ 	snprintf(path, sizeof(path), "%s/bursts.tsv", opt_out);
+@@ -1843,6 +2029,11 @@
+ 		"  -quiet Q:D    a trial pacing (not the board's): a picture that is due\n"
+ 		"                waits until the guest has made no store into video memory\n"
+ 		"                for Q instructions, or until it is D ms late\n"
++		"  -pace Q:D     v4.4: the board's pacing (display.c with vga.c's\n"
++		"                vga_pace_after_step()): a picture that is due waits for a\n"
++		"                step with no store into video memory for Q instructions, or\n"
++		"                halted, at most D ms\n"
++		"  -double       v4.4: the board's double buffering (lcd_korvo1.c), with -board\n"
+ 		"  -dump T0:T1   every panel picture from T0 to T1 s of the session saved\n"
+ 		"                (dumpSTEP.png)\n");
+ 	exit(1);
+@@ -1907,6 +2098,7 @@
+ 		else if (!strcmp(a, "-audit")) opt_audit = atoi(ARG());
+ 		else if (!strcmp(a, "-vbe-blocks")) opt_vbe_blocks = atoi(ARG());
+ 		else if (!strcmp(a, "-board")) opt_board = 1;
++		else if (!strcmp(a, "-double")) opt_double = 1;
+ 		else if (!strcmp(a, "-vgalog-all")) opt_vgalog_all = 1;
+ 		else if (!strcmp(a, "-strips")) opt_strips = atoi(ARG());
+ 		else if (!strcmp(a, "-check-every")) opt_check_every = atoi(ARG());
+@@ -1923,6 +2115,14 @@
+ 			opt_quiet_q = q;
+ 			opt_quiet_d_us = (uint64_t) (dms * 1000);
+ 		}
++		else if (!strcmp(a, "-pace")) {
++			double dms;
++			unsigned long q;
++			if (sscanf(ARG(), "%lu:%lf", &q, &dms) != 2)
++				usage();
++			opt_pace_q = (uint32_t) q;
++			opt_pace_d_us = (uint64_t) (dms * 1000);
++		}
+ 		else if (!strcmp(a, "-dump")) {
+ 			if (sscanf(ARG(), "%lf:%lf", &opt_dump_t0, &opt_dump_t1) != 2)
+ 				usage();
+@@ -1960,6 +2160,10 @@
+ 
+ 	if (opt_pit_owed >= 0 && &i8254_max_owed)
+ 		i8254_max_owed = opt_pit_owed;
++	if (&vga_pace_quiet)
++		vga_pace_quiet = opt_pace_q;
++	else if (opt_pace_q)
++		fprintf(hout, "[harness] -pace: this tree has no vga_pace_after_step(); not paced\n");
+ 	if (opt_vbe_blocks >= 0 && &vga_dirty_blocks)
+ 		vga_dirty_blocks = opt_vbe_blocks;
+ #ifdef PCR_HAVE_DISK_IMAGE
+@@ -2004,6 +2208,14 @@
+ 			opt_audit = 0;
+ 		}
+ 		board_init();
++		if (opt_double) {
++			if (!vga_set_fb || fb_h > (int) sizeof(db_rows)) {
++				fprintf(hout, "[harness] -double: this tree has no vga_set_fb()\n");
++				return 2;
++			}
++			db_back = fb;
++			db_front = calloc(1, (size_t) fb_w * fb_h * 4);
++		}
+ 	}
+ 	session_load();
+ 
+@@ -2077,6 +2289,11 @@
+ 			idle_insns += opt_idle;
+ 		uint64_t t = vnow_us();
+ 		eiphist_step(t, after - before);
++		win_at(t);
++		if (cur_win >= 0) {
++			wins[cur_win].insns += after - before;
++			wins[cur_win].halted += after == before;
++		}
+ 		__atomic_store_n(&insns_pub, after, __ATOMIC_RELAXED);
+ 		if (opt_board && opt_vgathread)
+ 			service_pause();
+@@ -2121,6 +2338,23 @@
+ 		if (opt_quiet_q && !opt_vgathread && t >= next_vga && t < next_vga + opt_quiet_d_us &&
+ 		    vw_last && after - vw_last < opt_quiet_q)
+ 			quiet_wait = 1;         /* -quiet: the guest is still writing */
++		if (opt_pace_q && vga_pace_after_step) {
++			int quiet = vga_pace_after_step((uint32_t) after, after == before);
++			if (!opt_vgathread && t >= next_vga) {
++				if (quiet)
++					pace_quiet_pics++;
++				else if (t >= next_vga + opt_pace_d_us)
++					pace_late_pics++;
++				else
++					quiet_wait = 1;
++				if (!quiet_wait) {
++					uint64_t dl = t - next_vga;
++					pace_delay_us_sum += dl;
++					if (dl > pace_delay_us_max)
++						pace_delay_us_max = dl;
++				}
++			}
++		}
+ 		if (!opt_vgathread && !quiet_wait && (vga_period == 0 || t >= next_vga)) {
+ 			pic_delay_us = t - next_vga;
+ 			uint64_t d0 = real_us();
+@@ -2231,6 +2465,7 @@
+ 	}
+ 	state_line("END");
+ 	eiphist_print();
++	win_print();
+ 	if (getenv("PCR_DUMPCS")) {
+ 		/* the code segment the guest is in at the end, from offset 0 to
+ 		   the end of the 64 KiB or the first byte that does not load */
+@@ -2255,6 +2490,12 @@
+ 		(unsigned long long) rows_hist[0], (unsigned long long) rows_hist[1],
+ 		(unsigned long long) rows_hist[2], (unsigned long long) rows_hist[3],
+ 		(unsigned long long) rows_hist[4], (unsigned long long) rows_hist[5]);
++	if (opt_pace_q)
++		fprintf(hout, "[harness] pace %u:%.0f: %llu pictures at a quiet step, %llu late; delay "
++			"%.2f ms on average, %.2f ms the most\n", opt_pace_q, opt_pace_d_us / 1000.0,
++			(unsigned long long) pace_quiet_pics, (unsigned long long) pace_late_pics,
++			(pace_quiet_pics + pace_late_pics) ? pace_delay_us_sum / 1000.0 /
++			(pace_quiet_pics + pace_late_pics) : 0.0, pace_delay_us_max / 1000.0);
+ 	fprintf(hout, "[harness] drawing: %llu pictures, %.1f ms of host time in all, %.1f us a picture\n",
+ 		(unsigned long long) rows_pics, draw_us / 1000.0,
+ 		rows_pics ? (double) draw_us / rows_pics : 0.0);
+@@ -2263,6 +2504,11 @@
+ 			"with a difference, at most %llu pixels\n",
+ 			(unsigned long long) audit_pics, (unsigned long long) audit_bad,
+ 			(unsigned long long) audit_worst);
++	if (opt_double)
++		fprintf(hout, "[harness] double: %llu swaps, %llu rows copied (%.1f a swap), %.1f ms of "
++			"host time copying\n", (unsigned long long) db_flips,
++			(unsigned long long) db_rows_copied, db_flips ? (double) db_rows_copied / db_flips : 0.0,
++			db_copy_us / 1000.0);
+ 	if (opt_board) {
+ 		board_end();
+ 		save_ppm_buf("final-panel", panel);
+diff -ruN a/harness/instr_v44.py harness/instr_v44.py
+--- a/harness/instr_v44.py	1970-01-01 08:00:00.000000000 +0800
++++ b/harness/instr_v44.py	2026-10-24 10:59:53.756501975 +0800
+@@ -0,0 +1,48 @@
++#!/usr/bin/env python3
++# instr_v44.py PC_C VGA_C: v4.4's counters for the flicker harness, put into the COPIES of
++# pc.c and vga.c (build.sh's src/): every read of the linear frame buffer (pcr_vread(n),
++# the three fast paths and iomem_read8's), every call of the four stores through the
++# VGA window (pcr_vcall(kind): 1 vga_mem_write, 2 vga_mem_write16, 4 vga_mem_write32,
++# 8 vga_mem_write_string), at the top of each, and the pixels each converted row of a VBE
++# picture covers (pcr_vrow(n, bpp) at the top of vbe_row(), where there is one).  Counted
++# per window (PCR_WIN) by headless.c.
++import re, sys
++
++pc, vga = sys.argv[1], sys.argv[2]
++src = open(pc).read()
++k = src.index('#include "pc.h"\n') + len('#include "pc.h"\n')
++src = src[:k] + 'void pcr_vread(uint32_t n);   /* flicker harness, v4.4 */\n' + src[k:]
++n = 0
++for stmt, ln in (('return pc->vga_mem[addr];', '1'),
++                 ('return ldu16((uint8_t *) &(pc->vga_mem[addr - vga_addr2]));', '2'),
++                 ('return ldu32((uint8_t *) &(pc->vga_mem[addr - vga_addr2]));', '4')):
++    pat = re.compile(r'^([ \t]*)' + re.escape(stmt) + r'\n', re.M)
++    m = pat.search(src)
++    if not m:
++        sys.exit('instr_v44.py: no "%s" in pc.c' % stmt)
++    src = src[:m.start()] + '%s{ pcr_vread(%s); %s }\n' % (m.group(1), ln, stmt) + src[m.end():]
++    n += 1
++open(pc, 'w').write(src)
++
++src = open(vga).read()
++k = src.index('#include "unaligned.h"\n') + len('#include "unaligned.h"\n')
++src = src[:k] + ('void pcr_vcall(int kind);   /* flicker harness, v4.4 */\n'
++                 'void pcr_vrow(int n, int bpp);\n') + src[k:]
++m_ = 0
++for sig, kind in (('void IRAM_ATTR vga_mem_write16(VGAState *s, uint32_t addr, uint16_t val16)\n{\n', 2),
++                  ('void IRAM_ATTR vga_mem_write32(VGAState *s, uint32_t addr, uint32_t val)\n{\n', 4),
++                  ('bool IRAM_ATTR vga_mem_write_string(VGAState *s, uint32_t addr, uint8_t *buf, int len)\n{\n', 8),
++                  ('void IRAM_ATTR vga_mem_write(VGAState *s, uint32_t addr, uint8_t val8)\n{\n', 1)):
++    if src.count(sig) != 1:
++        sys.exit('instr_v44.py: no "%s" in vga.c' % sig.split('(')[0])
++    src = src.replace(sig, sig + '    pcr_vcall(%d);\n' % kind)
++    m_ += 1
++sig = ('static bool vbe_row(uint32_t *d, const uint32_t *p, int n, int bpp,\n'
++       '                    const uint32_t *palette)\n{\n')
++nv = 0
++if src.count(sig) == 1:
++    src = src.replace(sig, sig + '    pcr_vrow(n, bpp);\n')
++    nv = 1
++open(vga, 'w').write(src)
++print("instr_v44.py: %d reads of the linear frame buffer and %d window store functions counted, "
++      "vbe_row %s" % (n, m_, "counted" if nv else "not there"))

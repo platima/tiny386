@@ -1,0 +1,46 @@
+BUILD-NOTES 29.11: instructions in the built Korvo-1 image, v4.3's release ELF against v4.4 part 1
+(in-tree build of 40b4513, ~/org2/v44disp/bt-fin2), dis44.sh, 2026-10-24.
+
+v4.3: /mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/images/korvo1-dualboot/tiny386.elf (v4.3)
+v4.4: /home/owner/org2/v44disp/bt-fin2/src/esp/build-korvo1/tiny386.elf ()
+FUNCTION                     V4.3   V4.4 THE SAME WITH NUMBERS TAKEN OUT
+iomem_write8                   23     30 no
+iomem_write16                  32     36 no
+iomem_write32                  32     36 no
+iomem_write_string             55     57 no
+vga_mem_write                 185    187 no
+vga_mem_write16                81     82 no
+vga_mem_write32                92     93 no
+vga_mem_write_string           82     84 no
+pc_step                        39     39 yes
+pc_vga_step                    39     39 yes
+vga_refresh                   835    852 no
+vga_graphic_refresh          1989   2030 no
+vga_vbe_refresh                 0      0 (not in v4.4, or inlined)
+vga_text_refresh                0      0 (not in v4.4, or inlined)
+vga_take_marks                171    213 no
+vbe_row                         0      0 (not in v4.4, or inlined)
+vga_graphic_refresh_shrunk      0      0 (not in v4.4, or inlined)
+vga_ioport_write              253    271 no
+vga_pace_after_step             0     21 (not in v4.3, or inlined)
+display_pace_step               0     24 (not in v4.3, or inlined)
+vga_set_fb                      0      3 (not in v4.3, or inlined)
+== iomem_write16, v4.3 against v4.4 (numbers taken out), the lines that differ:
+> lui	aN,N
+> li	aN,N
+> sb	aN,N(aN) 
+> ret
+< ret
+> j	A
+== iomem_write32, v4.3 against v4.4 (numbers taken out), the lines that differ:
+> lui	aN,N
+> li	aN,N
+> sb	aN,N(aN) 
+> ret
+< ret
+> j	A
+== vga_mem_write, v4.3 against v4.4 (numbers taken out), the lines that differ:
+< slli	aN,aN,N
+> lui	aN,N
+> sb	aN,N(aN) 
+> slli	aN,aN,N

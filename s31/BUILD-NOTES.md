@@ -48,7 +48,11 @@ floppy run, a text screen at Windows' restart from 16 colours newly seen (older 
 docs corrected; where it corrects section 25, section 25 says so. Section 27 is v4.3, 2026-10-24:
 v4.2 with the information port at 0F1F8h (the branch `perfport`, which T386MON reads) merged in,
 nothing else changed for the guest; its figures replace section 25's, and v4.2's own files are in
-`previous-v4.2\`.
+`previous-v4.2\`. Section 28 is the review of v4.3 (`REVIEW-v43.md`), the same day: no firmware
+change. Section 29 is the first part of v4.4, the same day, on the branch `s31-v4.4` of Plat's
+fork: the display (Ctrl+Alt+F11's setting saved in the ini, the grey text screen at a restart,
+what a picture costs, the text test, double buffering and pacing for Plat to choose between); no
+image is made for it, and part 2 adds the storage work, packages v4.4 and gives its figures.
 
 Tags:
 
@@ -4611,3 +4615,515 @@ patches, the lists), `a2.sh` (the host tests and the build), `f1.sh` and
 `findings-v4.3-review.txt` (the findings checked), `sums.sh` (the lists), and the `look*.sh` that
 only read. On Windows the session's scratch folder `v43apply\` holds the scripts as written. Nothing
 started for this is still running; no copy of Windows was made.
+
+## 29. v4.4, part 1 of 2: the display (2026-10-24)
+
+Plat ran v4.3 with T386MON 1.2 and sent its log (board figures in 29.0), with three requests
+about the display: Ctrl+Alt+F11 should also save `vbe_blocks` in the ini ("yeah that'd make
+sense to me"); the grey text screen at a restart from 16 colours fixed "If you want"; and he saw
+tearing in every mode: T386MON's sprite going black and coloured again, and in 16 bits a band of
+mixed rows in the colour bands. This part makes those, looks at what each picture costs core 0
+and where the guest's time goes in the text test, and adds two ways to take the tearing away
+that he can turn on and off. Part 2 adds the storage work and packages v4.4; no image is made
+here.
+
+This is the first round on Plat's fork rather than the scratch tree: branch `s31-v4.4`, made from
+`esp32-s31` (8d4b758, v4.3 and `s31/`) in its own worktree, WSL `~/fw/wt-v44` of the canonical
+repository `~/fw/tiny386-s31`, every commit by Platima with his GitHub noreply address and the
+Co-Authored-By line. The task asked for this section as 28; 28 is the review of v4.3, so it is
+29. Nothing was flashed, no serial port was opened, nothing was pushed, and nothing of this has
+run on a board.
+
+### 29.0 In one screen
+
+* **Plat's figures** [reported: his `T386MON.LOG`]: at 800x480, the drawing on core 0 takes up to
+  41 ms a picture when Windows changes the whole screen, in 256 colours and in 16 bits alike
+  (the panel then gets 14 pictures a second); the guest is busy all the time and runs 0.4 to 2.0
+  million instructions a second; text is the slowest test, 3.7 frames a second in 256 colours
+  and 2.9 in 16 bits against 6.6 with the standard VGA driver.
+* **Ctrl+Alt+F11 saves** (29.2): the setting goes into the ini the PC was started from, that one
+  line changed or added, the new file made whole beside the old one before they change places,
+  on the emulator's core after the guest's disk writes are on the card. 28 shapes of ini tested.
+* **The grey text screen** (29.3): fixed. A text screen is drawn whole when plane 2, the font,
+  is written; the install's 1,706 wrong pictures are now none [verified: harness].
+* **What a picture costs** (29.4): the drawing is bound by PSRAM, not by instructions (the 256
+  colour picture converts twice the instructions of the 16-bit one and takes the same 41 ms).
+  A VBE row is now converted only where its blocks were written, and the blocks are 256 bytes:
+  T386MON's sprite converts 22 per cent of the pixels it did, its text 55, its fills 64, its
+  full copy all of them [verified: harness]. What the board gains is [unknown].
+* **Text** (29.5): Windows' DIB engine runs 571,000 instructions a frame of the text test at 16
+  bits against 272,000 for the standard VGA driver, and takes about three quarters of them; our
+  store path is a few per cent [inferred]. Nothing of ours worth changing.
+* **Tearing between rows** (29.6): `[esp] double_buffer = 1` (Korvo-1 only), Ctrl+Alt+F9: a
+  second frame buffer, swapped at the panel's frame. Off by default: 752 KiB of the emulator's
+  memory, which on Plat's pool is 1M of the guest's [inferred], a frame's wait and a copy of each
+  changed row. Modelled on the harness, every picture right [verified]; the ESP-IDF side
+  [unknown].
+* **Pictures caught part way through drawing** (29.7): `[esp] pace_quiet`, Ctrl+Alt+F10: a picture
+  waits until the guest has not drawn for that many instructions, at most `pace_wait_ms`. Off by
+  default: in Plat's session it takes such pictures from 7, 4 and 4 per cent to 2, 0 and 1, but
+  T386MON's tests lose a third of their pictures and its sprite stays black in half of them
+  [verified: harness].
+* **Checks** (29.9 to 29.11): 52 host tests pass (seven new); every picture of v4.3's 28 flicker
+  harness runs equals the guest's screen, with v4.3's END lines; the standard Windows runs give
+  v4.3's results; the 8 wrong pictures of 28.3 (Windows' shut down from 16 colours) are gone;
+  both boards build with the old `i2s.c` warning only.
+
+### 29.1 The commits [verified: `git log esp32-s31..s31-v4.4` in WSL `~/fw/wt-v44`]
+
+| Commit | What |
+|-|-|
+| 4758608 | `vga.c`, `tests/host`: a text screen drawn whole when its font changes; `test_font.c`; `run.sh` finds the s31- tags (29.3) |
+| a1995d7 | `esp/main`: Ctrl+Alt+F11 also saves `vbe_blocks` (`ini_edit.c` new, `setup.c`, `speed.c`, `esp_main.c`); `test_ini_edit.c` (29.2) |
+| 64a45b3 | `vga.c`, `vga.h`: VBE rows converted only where written, blocks of 256 bytes (29.4) |
+| 63058e9 | `vga.c`, `pc.c`, `esp/main`: pictures at the guest's quiet moments, `[esp] pace_quiet`, Ctrl+Alt+F10 (`display.h` new); `test_pace.c` (29.7) |
+| d5848e2 | `esp/main`, `vga.c`: double buffering on the Korvo-1, `[esp] double_buffer`, Ctrl+Alt+F9; the card inis (29.6) |
+| 8c264e6 | `tests/host`: `vga_set_fb` renamed in the reference builds (d5848e2 alone did not link test 3c) |
+| 3398146 | `esp/version.txt`: `v4.4-display` |
+| 40b4513 | `vga.c`: the port's KiB found written counted as KiB (29.4); `test_vga_info.c` one check more |
+| this one | `s31/BUILD-NOTES.md` 29 and `s31/checks/` (29.14) |
+
+`git diff --stat esp32-s31 40b4513 -- . ':!s31'`: 26 files changed, 2,546 lines added, 64 taken
+out. `esp/dependencies.lock` stays out of every commit, as before; every commit's files were
+looked at, and none is a binary, a picture or anything of Windows'.
+
+### 29.2 Ctrl+Alt+F11 saves `vbe_blocks` in the ini [verified: code, `test_ini_edit.c`]
+
+* **The text** (`esp/main/ini_edit.c`, new, plain C): one setting changed and every other byte
+  kept. The lines are read as `ini.c` (inih, with `ini.h`'s settings) reads them: `;` and `#`
+  comments, an inline comment after a space, `=` or `:`, a line that begins with a space after a
+  setting continuing that setting, section names exactly as written (`[ esp ]` is not `[esp]`),
+  a byte order mark. Where the setting is, the value on each of its lines in `[esp]` is replaced
+  and the spaces, any inline comment and the line's end kept; lines continuing it go. Where it
+  is not, a line `vbe_blocks = N` goes into the last `[esp]`: after a comment line that names it
+  (`;vbe_blocks = 1`, as the package's `win95-800x480.ini` has), else after the section's last line
+  that is not blank, and never where it would take over a following continuation line. With no
+  `[esp]`, the section and the line go at the end. New lines end as the file's first line does
+  (CR LF or LF). Nothing is written when the value is there already.
+* **The file** (`setup.c`, `setup_ini_save()`): the new text into `NAME.ini.t386new`, flushed,
+  `fsync()`ed and read back; then the ini renamed to `NAME.ini.t386old`, the new one to its name,
+  and the old one removed. ESP-IDF's FAT `rename()` does not replace a file, so the three steps
+  are needed, and a cut in power between any two leaves one of four states;
+  `setup_ini_tidy()`, which `setup_find()` runs for each folder at start-up, puts each right
+  (`X` and `X.t386new`: the new one removed; `X.t386old` and `X.t386new`: the new one, whole and
+  read back, takes the name; `X` and `X.t386old`: the old one removed; `X.t386old` alone: back to
+  `X`). Only names with those two endings are touched; `X.t386new` alone is left. Inis up to
+  32 KiB; the two copies in PSRAM.
+* **When** (`speed.c`, `esp_main.c`): Ctrl+Alt+F11 changes the setting at once, as since v4.2,
+  and asks for the save; `run_pc()`, on the emulator's core between two steps, first puts the
+  guest's unflushed disk writes on the card (as at a quiet moment), then saves, so the save never
+  meets a flush of the guest's: both are on the same core, one after the other. The guest waits
+  meanwhile; that time is left out of the speed figures. The console says what was saved and
+  where ("vbe_blocks = 0 saved in /sdcard/tiny386/win95-800x480.ini (a line added to [esp])"),
+  that the ini had it already, or why not. Presses close together are saved once, with the
+  setting the last left. Ctrl+Alt+F10 and F9 (29.6, 29.7) save the same way.
+* **Tested** (`tests/host/test_ini_edit.c`, section 6b, 106 checks): 28 shapes of ini, each result
+  byte for byte and then read back with `ini.c` (`vbe_blocks` the new value, every other setting
+  as before and in order): present, LF and CR LF, inline comments and spaces, quoted, `:`, empty,
+  twice, in two `[esp]` sections, continuation lines, a last line without a line end, absent with
+  `;` and `#` comments, absent with and without blank lines and continuations, an empty `[esp]`,
+  a byte order mark, only in `[pc]`, names that only look alike, no `[esp]` (LF and CR LF),
+  `[ esp ]`, an empty file, and the package's own `win95-800x480.ini`. Then the file: saved,
+  changed, not written when the same (the same inode); a missing ini, one too large, a folder
+  that cannot be written (the ini as it was, nothing left beside it); and every state a cut can
+  leave, with a file of Plat's named `keep.ini.old` left alone and `setup_find()` listing an ini
+  put back. On the board: FatFs, the card's timing and a real cut are [unknown].
+
+### 29.3 The grey text screen at a restart from 16 colours [verified: harness, `test_font.c`]
+
+26.3 found it: a text cell is drawn again only when its character or attribute changes, the
+glyphs are in plane 2, and the VGA BIOS loads its font after the text mode's first picture, over
+what the 16-colour picture left there; so blank cells kept grey glyphs for up to a minute. Now:
+
+* a write of the map mask (SR02) that makes plane 2 writable or stops it, while the graphics
+  controller is not in a graphics mode (text, or a font being loaded; SeaVGABIOS's
+  `get_font_access()` and `release_font_access()` both qualify), counts a request on the
+  emulator's core, as the clears do (`vga_ask()`, release);
+* the text picture after a request (taken with acquire, so the font's stores, made before the
+  map mask went back, are seen), every text picture while plane 2 is writable, and the picture
+  after the character map select (SR03) changes, are drawn whole.
+
+No store into video memory pays anything; Windows' 16-colour drawing, which writes the map mask
+all the time in a graphics mode, pays a test. `test_font.c` (section 3e, both boards) holds
+each text picture against a whole redraw: a font loaded between two pictures, a picture half way
+through a load, another map B through SR03 (the cells' attributes pick B), nothing changed after
+(the cursor's row only), and SR02 written in a graphics mode; v4.3's `vga.c` fails five of its
+checks, v4.4's none.
+
+In the flicker harness: the install through Windows' dialogs (v4.3's run `c43-gi`, and `g43-gi`
+on my copy), which had 1,706 pictures unlike the guest's screen at the restart, has none, with
+v4.3's END line (`fc-gi`, `g44-gi`, `gc-gi`). And 28.3's find, Windows' shut down from 640x480
+in 16 colours after T386MON's tests: the review's run made again on my copy gives, for v4.3, its
+8 wrong pictures to the pixel (from picture 19,393, 719,640 pixels), and for v4.4 none, with the
+same END line; T386MON's whole session (keys `m1`) the same, and `C:\T386MON.LOG` the same bytes
+(`fbv-v43`, `fbv-fin`, `fbv-fin2`, `m1-v43-vga`, `m1-fin-vga`, `m1-fin2-vga`). The standard
+install run of the T386MON harness (`gi18`) had 1 picture of 35,845 unlike a full redraw on
+v4.3 and has none (29.10). So `TEST-PLAN.md` 15c's paragraph on the text area at shut down, and
+26.3's line, are out of date once v4.4 is packaged; part 2 should change them with the package.
+
+### 29.4 What a picture costs on core 0 [verified: harness; the board inferred]
+
+**Plat's figures** (`T386MON.LOG`, the board): `draw_ms` is 41.4 in 256 colours and 41.2 in 16
+bits in the full-copy test, where every row changes every picture (480 rows; the panel gets 14.2
+pictures a second, 6,827 rows a second), 19.4 in the 16-bit fill (about 300 rows of which 400
+pixels change), 1.3 to 1.7 in text and sprite (40 to 45 rows a picture). A full 16-bit row is
+about 86 us, a row with little changed 34 us. The 256-colour picture reads half the video memory
+and runs about twice the instructions of the 16-bit one (6.5 against 3 a pixel, 22.8) and takes
+the same time: the drawing waits on PSRAM, not on instructions [inferred]. Each converted pixel
+is read from video memory and from the frame buffer (for the store-only-where-it-differs test),
+and each changed word is written back: about 2.3 MB a full picture at 16 bits, so about 56 MB/s.
+
+**What changed: only the part of a row that was written** (64a45b3). A marked row was converted
+whole, though most drawing changes part of a row. `vga_take_marks()` now also gives each marked
+row of a 1:1 picture the pixels its blocks reach (`rowx0`, `rowx1`, multiples of 4, the union of
+its blocks; a block reaching only bytes past the pixels shown marks nothing), and
+`vga_vbe_refresh()` converts only those. The blocks are 256 bytes where they were 1 KiB, so that
+the part is close to what changed; the map is four times as large (3 KiB at 768K, in the device
+window, which has 40 KiB spare), and `vga_take_marks()` looks at four times as many bytes a
+picture (about 3,000 at 768K). A store costs the same. The shrunk pictures still convert whole
+rows. The information port's `VBE_BLOCKS` stays in KiB, so `perfport.h` is unchanged and still
+T386Mon's byte for byte: 64a45b3 divided the count of blocks by 4, which would wrap at 2^30 KiB
+rather than the port's 2^32 (a reader taking differences would see one wrong second, after
+about 1 TiB found written); 40b4513 counts KiB in the same one word, carrying the blocks of less
+than 1 KiB (a 64-bit count would be read in two halves while the drawing's core writes it). The
+values are the same until then: T386MON's log at 16 bits is the same bytes on both [verified:
+`m1-fin-p16`, `m1-fin2-p16`].
+
+Pixels converted a picture, T386MON 1.2's tests on the board model, VMDisp9x with the pointer's
+byte changed [verified: runs `x-h43-*` (a1995d7, v4.3's VBE drawing), `x-s10-*`, `x-s8-*` (what
+64a45b3 committed); `checks\drawing-v4.4-part1.txt`]:
+
+| Test | 16 bits: v4.3 | rows' parts, 1 KiB blocks | rows' parts, 256 bytes (v4.4) | 256 colours: v4.3 | v4.4 |
+|-|-|-|-|-|-|
+| fill 400x300 | 240,000 | 239,616 | 153,600 (64 %) | 241,600 | 191,488 (79 %) |
+| scroll 400x300 | 240,000 | 239,616 | 153,600 (64 %) | 241,600 | 191,488 (79 %) |
+| text 400x300 | 36,907 | 34,522 | 20,160 (55 %) | 45,445 | 31,933 (70 %) |
+| sprite 48x48 | 43,940 | 30,698 | 9,793 (22 %) | 47,365 | 18,272 (39 %) |
+| full copy 800x480 | 384,000 | 384,000 | 384,000 (100 %) | 384,000 | 384,000 (100 %) |
+| full picture | 13,473 | 12,723 | 12,003 (89 %) | 16,584 | 14,769 (89 %) |
+
+Every picture of those runs equals the guest's screen. On the board the reads fall by the same
+shares for those tests, and with them core 0's share of PSRAM, which the guest on core 1 shares
+[inferred]; how many milliseconds that is, and whether the panel then keeps 33 pictures a
+second in the fills (22 now), is [unknown]: T386MON's `draw_ms` will say. The whole-screen copy
+is unchanged: that needs the frame buffer filled without the CPU (the S31's 2D DMA or pixel
+processing accelerator), a larger piece of work that only a board can test.
+
+**Looked at and not changed** [inferred]:
+
+* **The per-row write-back**: `lcd_flush()` writes back bands of rows (rows less than 16 apart
+  are one band), and `esp_cache_msync()` writes back the dirty lines of the band; a row whose
+  part was not stored leaves its lines clean, so it costs a look, not a write. With the rows'
+  parts, fewer lines are dirty. The UART's `display:` line (every 10 s with `uart_log = 1`) gives
+  the write-back's own time on the board; Plat's log has none.
+* **The 8-bit palette lookup**: four table loads and two stores for four pixels, 6.5 instructions
+  a pixel; a two-pixel table would be 256 KiB, larger than the cache. The 8 and 16-bit pictures
+  taking the same time says the instructions are not what costs.
+* **Wider stores for 16-bit rows**: the row loop already moves two pixels a 32-bit word and
+  stores only the words that differ; RV32's integer registers are 32 bits; the S31's vector
+  unit (128-bit loads) cannot be tried on the PC, and the loop waits on PSRAM.
+* **The zero-copy panel mode**: left out, as asked: it brings back the tearing.
+
+### 29.5 Text in VBE modes: where the guest's time goes [verified: harness; the board inferred]
+
+T386MON's text test draws its 400x300 window in 23 lines of `ExtTextOut()` with an opaque
+background, every pixel of it every frame. On the harness (Windows at 2 million instructions a
+second, the board's drawing modelled), counted in the test's own seconds (`PCR_WIN`, the
+instruction pointer sampled at each step, `PCR_EIPHIST`):
+
+| | 640x480, 16 colours (VGA.DRV) | 800x480, 256 colours | 800x480, 16 bits |
+|-|-|-|-|
+| frames a second (harness; board) | 7.35; 6.64 | 4.47; 3.70 | 3.50; 2.90 |
+| guest instructions a frame | 272,000 | 447,000 | 571,000 |
+| stores into the frame buffer a frame | 15,500 bytes and 5,400 words through the VGA window, planar | 29,200 of 32 bits into the LFB | 60,000 of 32 bits into the LFB |
+| reads of the LFB a frame | (none) | 1,400 | 2,800 |
+| the guest's instructions in the display code | VGA.DRV, about 70 % | DIBENG.DLL, about 73 % | DIBENG.DLL, about 78 %: 41 % in one 256-byte routine |
+
+The hot code was found by its bytes in the image's own DLLs (`DIBENG.DLL`, `VGA.DRV`; read with
+mtools in WSL, never out of it). So at 16 bits Windows' DIB engine runs 2.1 times the guest's
+instructions of the standard VGA driver for the same text (the board's ratio of frames a second
+is 2.3), because VGA.DRV writes eight pixels a store through the planar hardware and the DIB
+engine writes two. That is Windows' work, not ours.
+
+Ours is the store path: each of the 60,000 32-bit stores a frame goes through `iomem_write32()`
+(36 instructions in v4.4's image, 32 in v4.3's) after `i386.c`'s own path; with the call, perhaps
+2.5 million instructions a frame of a frame's 110 million cycles at 320 MHz: about 2 to 3 per
+cent, plus what the `fence rw,w` of each mark costs on the S31, which is [unknown]. The board's
+own figures bound all of it: the guest runs 1.68 million instructions a second in the 16-bit
+text test and 1.81 at 640x480, 7 per cent apart, drawing included. Nothing of ours is worth
+changing for it; a faster guest (the JIT research) is what would help. The LFB's reads are
+1 to 2 per cent of the stores.
+
+No setting on the board shows the marks' and the fence's cost alone: `vbe_blocks = 0` stops the
+marks but redraws every picture whole, which loads core 0 and PSRAM, so it is not a clean
+comparison. (At 640x480 in 16 colours `vbe_blocks` changes nothing: the standard VGA driver
+never uses VBE, and T386MON shows `vbe_rows` 0 there [verified: harness].)
+
+### 29.6 Tearing between rows: double buffering (`[esp] double_buffer`, Ctrl+Alt+F9) [code verified; the board unknown]
+
+**Why**: one frame buffer, which the panel's DMA reads 35 times a second while core 0 rewrites
+it, up to 41 ms a picture in Plat's 16-bit colour bands. A panel frame then shows the new picture
+above the row being drawn and the old one below, or a band of rows written back in between: his
+photos [inferred: the band is rows of the two pictures].
+
+**How** (`lcd_korvo1.c`, `display.c`, `esp_main.c`, `vga.c`, `console.c`, `crash.c`):
+
+* `lcd_double_start()`, once after the ini is read and before the guest's memory is worked out
+  (`double_buffer_start()`): the first buffer is 752 KiB from the end of the emulator's pool,
+  with the console's picture copied in and written back; the panel is deleted (its driver frees
+  its own buffer) and started again with two user frame buffers, the second allocated in the
+  room the first one left; the panel goes dark for a moment. If anything fails, the panel is
+  started as before with the console's picture, the pool gets its 752 KiB back, and the console
+  says so. Done under the display lock, so no console line lands in a buffer while it goes.
+* After each picture that changed rows, `lcd_vga_present()` hands the back buffer to the driver
+  (`esp_lcd_panel_draw_bitmap()` with a pointer into it: the driver points every buffer's DMA
+  list at it, so the DMA takes it at the end of the frame it is sending, and asks for the link
+  switch event), waits for the driver's frame-buffer-complete event (at most 100 ms; a frame is
+  28 ms), swaps the two, and copies the rows that picture changed into the new back buffer, where
+  the next picture is drawn over it. The VGA code is told its buffer (`vga_set_fb()`).
+* The console and the crash screen draw into the front buffer (`console_set_fb()`); the crash
+  screen also into the other, for a crash between a swap asked for and made. After the speed
+  screen the picture is drawn whole into the back buffer, which the console did not touch, and
+  all of it copied over the console: no black, where one buffer still clears.
+* Ctrl+Alt+F9 turns the swapping off (the VGA code draws into the buffer on show, as with one;
+  both hold the last picture after each copy, so nothing is lost) and on (the back buffer made
+  the front one's copy first); without the second buffer it sets `double_buffer` for the next
+  start. Either way it is saved in the ini (29.2).
+* The UART's `display:` line every 10 s (with `uart_log = 1`): swaps, rows copied, the copy's and
+  the wait's average time, and swaps the panel did not report; the speed screen says whether it
+  is on.
+* The DOS board has one frame buffer (no `LCD_DOUBLE_BUFFER`); the key is ignored there with a
+  line.
+
+**What it costs**:
+
+* **Memory**: 752 KiB of the emulator's pool, `round4k(800 x 480 x 2)`. The guest gets the whole
+  megabytes of what is left after `round4k(vga_mem_size + 16K)` (23.9), so the buffer costs 1M
+  when (pool less that) is less than 752 KiB above a whole megabyte, and nothing otherwise. The
+  boot console's "Emulator memory" line gives the pool. For each `vga_mem_size`, the pool the
+  guest's memory needs (KiB) [arithmetic on `settle_memory()`]:
+
+  | `vga_mem_size` | 14M, one buffer | 14M, two | 13M, one | 13M, two | 12M, two |
+  |-|-|-|-|-|-|
+  | 256K | 14,608 | 15,360 | 13,584 | 14,336 | |
+  | 320K | 14,672 | 15,424 | 13,648 | 14,400 | |
+  | 768K | 15,120 | 15,872 | 14,096 | 14,848 | 13,824 |
+  | 1M | 15,376 | | 14,352 | 15,104 | 14,080 |
+  | 1152K | | | 14,480 | 15,232 | 14,208 |
+  | 1536K | | | 14,864 | 15,616 | 14,592 |
+
+  Plat has 13M at 320K and at 768K (Windows' 12,824 KB in his log), which puts his pool at 14,352
+  to 14,671 KiB [inferred]; then at 768K double buffering leaves him 12M.
+* **Time**: each changed row copied, 1,600 bytes read and written again, on top of its drawing:
+  for a whole-screen picture 750 KiB more, so the full copy's 41 ms becomes perhaps 55 to 65
+  [inferred]; and a picture reaches the panel at its next frame, up to 28 ms later than now.
+* **Not cured**: a picture caught while the guest is part way through its drawing (29.7) is
+  still shown, whole.
+
+**What the board will show** [inferred from the driver's code; nothing of it can run on the PC]:
+every panel frame one whole picture, no line or band between two pictures, in every mode, the
+16-colour standard VGA path included; motion in steps of the panel's frames, a little later;
+fewer pictures a second in full-screen changes; a black moment at start-up; 1M less memory in
+Windows on Plat's pool. If the driver's event never comes (the counts of swaps not reported
+rise and the picture stops changing) it is not working on this chip, and `double_buffer = 0`
+(or Ctrl+Alt+F9) goes back to one buffer.
+
+**On the harness** (`-double`, modelling `lcd_vga_present()`: the VGA code draws into the back
+buffer, the panel shows the whole front buffer from the swap, the rows noted copied)
+[verified: `checks\flicker-harness-v4.4-part1.txt`]: every picture equals the guest's screen in
+12 runs, Plat's session with the pointer's byte changed and as released, the standard VGA
+driver, the sweeps at 8, 24 and 32 bits and at 640x480 through the driver, the DOS box with VMDisp9x and with
+the standard VGA driver, the install through the dialogs (text, 16 colours and VBE, two
+restarts), 256 colours set live, and the session paced as well; and in T386MON's tests. Rows
+copied: Plat's session 71,260 in 2,533 swaps of 9,187 pictures (28 a swap); T386MON's tests at 16
+bits 191,090 in 2,082 swaps (92 a swap; 480 in the full copy). So the copy's work on the board is
+as large as the rows drawn: twice the frame buffer's writes [inferred].
+
+### 29.7 Pictures caught part way through drawing: pacing (`[esp] pace_quiet`, Ctrl+Alt+F10) [verified: harness; the board inferred]
+
+**How**: the flicker research's remedy (24, `research\FLICKER-REPRO.md` 4.1), made the board's.
+Every store into video memory sets `vga_wrote` (`pc.c`'s four stores into the LFB, `vga.c`'s four
+window paths, every mode); after each step (512 guest instructions) `run_pc()` calls
+`display_pace_step()`, which clears it and notes the guest's count at its last store
+(`vga_pace_after_step()`). When a picture is due and pacing is on, `vga_task` waits until the
+emulator's core finds the guest quiet (no store for `pace_quiet` instructions, or halted) and
+wakes it with a task notification, at most `pace_wait_ms`, counted in FreeRTOS's 10 ms ticks
+rounded up (15 ms is two ticks: 10 to 20 ms as the tick falls). A step pays a call more
+(`display_pace_step()`, 24 instructions, and `vga_pace_after_step()`, 21); a store pays 1 to 7
+instructions more for the flag (29.11). The UART and the speed screen
+give the pictures drawn at a quiet moment and late. The harness's `-pace Q:D` runs the same
+`vga_pace_after_step()` in its run loop.
+
+**Plat's session** (the image the driver's install leaves, its byte changed; pictures taken while
+an update of the guest's was under way, and the pictures in each segment) [verified:
+`summary-pace.txt`, `summary-pace2.txt`]:
+
+| Pacing (Q instructions, D ms) | typing: mid, pictures | scroll | move | late: typing's average, the most in any segment |
+|-|-|-|-|-|
+| off (v4.3, v4.4's default) | 7 %, 796 | 4 %, 630 | 4 %, 630 | 0.1, 0.3 ms |
+| 2,000, 15 | 1 %, 788 | 1 %, 627 | 2 %, 625 | 0.4, 15.1 ms |
+| 2,000, 30 | 1 %, 788 | 1 %, 627 | 2 %, 624 | 0.4, 30.2 ms |
+| 5,000, 15 | 2 %, 776 | 0 %, 622 | 1 %, 621 | 0.9, 15.3 ms |
+| 5,000, 30 | 0 %, 774 | 0 %, 622 | 1 %, 619 | 1.0, 30.2 ms |
+| 10,000, 30 | 0 %, 735 | 0 %, 601 | 0 %, 615 | 2.7, 30.2 ms |
+| 10,000, 60 | 0 %, 735 | 0 %, 601 | 0 %, 614 | 2.6, 60.2 ms |
+
+With the driver as released, 10,000 and 30 take the broken pointer in the sweep from 47 per cent
+to 2, and mid-update pictures from 57, 61 and 58 per cent to 36, 40 and 37, at 40 per cent fewer
+pictures; with the standard VGA driver, 5,000 and 30 take typing, scrolling and moving from 7, 7
+and 1 per cent to 0.
+
+**T386MON's tests** (16 bits, the byte changed; pictures a second of the board model, and the
+sprite as each picture shows it: whole, black, gone, part) [verified: runs `y-p16*`]:
+
+| Pacing | fill | text | sprite | full copy | the sprite: whole, black, gone, part |
+|-|-|-|-|-|-|
+| off | 33.3 | 33.1 | 33.2 | 33.3 | 16, 54, 16, 14 % |
+| 2,000, 15 | 29.4 | 30.8 | 25.4 | 27.3 | 27, 35, 32, 6 % |
+| 5,000, 15 | 22.4 | 29.4 | 22.5 | 22.7 | 18, 48, 18, 18 % |
+| 5,000, 30 | 17.9 | 29.4 | 18.2 | 17.0 | 16, 49, 28, 8 % |
+| 10,000, 30 | 17.6 | 18.1 | 16.8 | 17.3 | 17, 57, 17, 9 % |
+
+T386MON's sprite is erased, masked black and painted, frame after frame with no pause, and the
+black lasts most of each frame, so a picture at any moment is most likely black; Plat's
+"goes black, then coloured again" is the guest's own drawing, on any PC without a vertical blank
+to wait for, and pacing cannot find a quiet moment in it.
+
+**The default** is off: desktop use with the pointer's byte changed gains a few per cent of
+clean pictures, and anything that draws without a pause (T386MON's tests, a game, a video) loses
+a third of its pictures or more with no gain. Ctrl+Alt+F10 turns it on with 5,000 instructions
+and `pace_wait_ms` 15 (or the ini's own values), the best of the measured trade-offs for using
+Windows [verified: the tables]; Plat can judge on the panel.
+
+### 29.8 The settings and the keys
+
+| `[esp]` key | Default | Range | Key while the PC runs | Saved by the key |
+|-|-|-|-|-|
+| `vbe_blocks` | 1 | 0, 1 | Ctrl+Alt+F11 | yes (v4.4) |
+| `pace_quiet` | 0 (off) | 0 to 10,000,000 instructions | Ctrl+Alt+F10: 0, or the ini's, else 5,000 | yes |
+| `pace_wait_ms` | 15 | 1 to 200 | | |
+| `double_buffer` | 0 | 0, 1 (Korvo-1) | Ctrl+Alt+F9: at once if made at the start, else for the next start | yes |
+
+Ctrl+Alt+F12 (the speed screen) shows a line for each. `kbd_input.c` holds four Ctrl+Alt keys,
+now all used (F9 to F12). The card inis (`card\tiny386\win95-800x480.ini`, `win95-14m.ini`,
+`card-dosboard\tiny386\win95-800x600.ini`) have the new lines commented out, with what each does,
+so that a key's save lands beside its comment.
+
+### 29.9 Host tests [verified: `checks\host-tests-v4.4-part1.log`, at 40b4513]
+
+52 passed, 0 failed (v4.3's 45 and seven new): `test_font` on both boards and against v4.3's
+`vga.c` on both boards (which has to fail, and does), `test_ini_edit`, `test_pace` on both boards.
+`test_vga_info` now counts the port's KiB, and over three pictures, so that a part of a KiB one
+picture leaves is counted with the next; the clear test against v4.1's `vga.c` builds its own
+test and reference with v4.1's 1 KiB blocks; `vga_rename()` renames v4.4's five new symbols.
+`run.sh`'s `tagref()` finds an earlier release by its old name or its s31- name, so a clone of the
+fork, which has only the s31- tags, still runs the comparisons with v3, v3.1, v3.5, v3.9, v4.1
+and v4.3. `test_vbe` (pixel for pixel against the old loop, random stores, both boards) passes
+with the rows' parts and the 256-byte blocks.
+
+### 29.10 The PC harnesses [verified: `checks\flicker\harness-v4.4.diff` and the summaries named]
+
+My copy of the flicker harness (`~/v43/merge/fh`'s, WSL `~/org2/v44disp/fh`) with these
+additions: `PCR_WIN` (per window of virtual time: the guest's instructions, its LFB stores by size,
+LFB reads, window store calls, pictures, the drawing's host time, VBE rows and pixels converted),
+the drawing's host time of each picture in `frames.tsv`, the code bytes at the hottest places of
+`PCR_EIPHIST` (kept in WSL), the T386MON harness's `put_key()` (before, a dialog's Enter waited
+behind a key file's last key, so T386MON's runs could not use `-dialogs`), the cursor box's
+yellow pixels (T386MON's sprite), `-pace Q:D` (29.7) and `-double` (29.6).
+
+| Runs | Result |
+|-|-|
+| v4.3's 28 flicker runs (Plat's session, sweeps at every depth, 640x480, the DOS board, `vbe_blocks = 0`, the drawing in its own thread, DEBUG in MS-DOS mode, the DOS boxes, both installs, 256 colours set live), on 3398146 and again on 40b4513 | every picture of every run equals the guest's screen (v4.3: 1,706 wrong in each install, 29.3); the END lines of 28 of 28 v4.3's, both times |
+| MODE13X at 256K and 768K, BMODES (the review's DOS runs) | every picture right; the END lines and the screenshots v4.3's on the same harness, on both commits (against the review's own runs on its harness copy the END lines differ, for v4.3 as for v4.4: the harness, not the port) |
+| Windows' shut down after T386MON's tests, 16 colours (28.3) | v4.3 8 wrong pictures, v4.4 none, the same END line (29.3) |
+| T386MON's whole session (`m1`), v4.3 and v4.4 | 16 colours: the same END line and `T386MON.LOG` the same bytes; 16 bits: every picture right on both; the END lines and the logs differ a little, since T386MON prints the port's counts, which differ with the blocks (fill 487.7 and 477.1 frames a second, scroll 321.5 and 325.7, sprite 71.9 and 72.9, full copy 350.5 and 348.2, text 3.49 on both) |
+| the double-buffer model, 12 runs and T386MON's tests | every picture equals the guest's screen (29.6) |
+| pacing, 13 runs and T386MON's tests at five settings | 29.7's tables; every picture equals the guest's screen |
+
+The standard Windows 95 runs in my copy of the T386MON harness (`~/v43/merge/ph`'s), 3398146
+against v4.3's runs in the same harness [verified: `checks\win95-pc-runs-v4.4-part1.txt`]: the 27
+standard configurations at the desktop, each with v4.3's END line and final picture; the 11
+native ones (16, 24 and 32 bits, 13M and 14M, with the mouse, the DOS box) v4.3's, and the six
+audits 0 pictures of about 11,300 to 13,900 unlike a full redraw; BVBE480's 21 runs (both boards,
+768K to 2M, the drawing in its own thread, `vbe_blocks = 0`) every picture right and v4.3's END
+lines; BENCH 11 of 11 marks at v4.3's instruction counts and v4.3's END and picture; the install
+through the dialogs (`gi18`) v4.3's END line and picture, its audit 0 pictures of 35,845 unlike
+a full redraw (v4.3: 1). 40b4513 changes only what the port reports after 2^30 KiB found
+written, which none of these runs comes near.
+
+### 29.11 Builds, sizes, the store paths [verified: `checks\size-*-v4.4-part1.txt`, `checks\dis-v4.4-part1.txt`, `checks\warnings-wall-wextra-v4.4-part1.txt`]
+
+In-tree builds at 40b4513 (`idf.py`, ESP-IDF in a clean environment, `s31\dependencies.lock`, as
+`s31\build.sh` makes them), both exit 0, the only warning outside ESP-IDF v4.3's `i2s_task`
+defined but not used:
+
+| Board | Image, v4.3 | v4.4 part 1 | DIRAM used, v4.3 | v4.4 part 1 |
+|-|-|-|-|-|
+| Korvo-1 | 906,416 bytes | 920,062 (+13,646) | 250,644 | 251,354 (+710) |
+| DOS board | 938,090 | 946,620 (+8,530) | 253,642 | 253,816 (+174) |
+
+`-Wall -Wextra` on every file v4.4 changed that the boards compile, each board's own command, beside
+v4.3's copy compiled the same way: the counts and kinds of v4.3 (`vga.c` 3, the unused
+`scale_3_2`, `scale_3_3`, `scale_2_1`; `pc.c` 1, a `%x` for a `u32`; `console.c`, `crash.c`,
+`display.c`, `esp_main.c`, `lcd_korvo1.c`, `setup.c`, `speed.c` 0; `ini_edit.c`, new, 0).
+
+Instructions in the built Korvo-1 image, v4.3's release ELF against 40b4513's [verified: `dis44.sh`]:
+
+| Function | v4.3 | v4.4 part 1 | What the difference is |
+|-|-|-|-|
+| `iomem_write8`, `16`, `32` (the LFB's stores) | 23, 32, 32 | 30, 36, 36 | the `vga_wrote` flag (`lui`, `li`, `sb`) |
+| `iomem_write_string` | 55 | 57 | the flag |
+| `vga_mem_write`, `16`, `32`, `_string` (the VGA window) | 185, 81, 92, 82 | 187, 82, 93, 84 | the flag |
+| `pc_step`, `pc_vga_step` | 39, 39 | 39, 39 | the same instructions |
+| `vga_take_marks` | 171 | 213 | the rows' parts, the KiB carried |
+| `vga_graphic_refresh`, `vga_refresh` | 1,989, 835 | 2,030, 852 | the rows' parts; the font's test |
+| `vga_ioport_write` | 253 | 271 | the map mask's request (29.3) |
+| `vga_pace_after_step`, `display_pace_step`, `vga_set_fb` | | 21, 24, 3 | new |
+
+### 29.12 What only a board can say [unknown]
+
+* The drawing's time with the rows' parts (`draw_ms` in T386MON's fill, scroll, text and sprite
+  at 800x480), and whether the fills then keep 33 pictures a second.
+* Double buffering: that the panel comes back after the restart at start-up, that the driver's
+  frame-buffer-complete event comes for each swap (the `display:` line's swaps not reported stay
+  0), that no frame is torn (Plat's colour bands), the copy's and the wait's time, and the
+  pictures a second in the full copy.
+* Pacing: how it looks; the pictures drawn late and at a quiet moment (the `display:` line).
+* The save: on Plat's card, a save after Ctrl+Alt+F11, F10 and F9, the file afterwards, and the
+  boot console after a restart.
+* The grey text screen gone at a restart from 16 colours.
+
+### 29.13 For Plat to try and decide
+
+* **Try**: T386MON's tests at 800x480 again: the drawing's milliseconds should fall in fill,
+  scroll, text and sprite (29.4). Then Ctrl+Alt+F10 on and off while moving windows and typing;
+  and `double_buffer = 1` (or Ctrl+Alt+F9 and a restart) for the colour bands, with the boot
+  console's memory lines photographed (the pool and the guest's memory, 29.6).
+* **Decide**: whether double buffering is worth 1M of Windows' memory; whether pacing should be
+  on by default for Windows use.
+* **The hardware mouse pointer** (his "judge this based on the test numbers"): T386MON's text test
+  runs 3.79 frames a second with the pointer hidden against 3.50 with it over the text at 16 bits
+  on the harness, and 3.09 against 2.90 on the board: a pointer the guest never draws would win
+  about 7 per cent there and nothing where the pointer is still, for an emulated VMware SVGA II
+  (25.6). Not worth its size now [inferred].
+
+### 29.14 Where things are
+
+On the branch: this section, and `s31\checks\` (text only): `host-tests-v4.4-part1.log`,
+`flicker\harness-v4.4.diff`, `flicker-harness-v4.4-part1.txt` (the summaries and tables of the
+runs named here), `drawing-v4.4-part1.txt`, `win95-pc-runs-v4.4-part1.txt`, `dis-v4.4-part1.txt`,
+`size-korvo1-v4.4-part1.txt`, `size-dosboard-v4.4-part1.txt`,
+`warnings-wall-wextra-v4.4-part1.txt`.
+
+WSL `~/org2/v44disp/` (all made here, throw-away): `fh/` (the flicker harness copy, `harness-v44.diff`,
+`bin/`, `runs/`), `ph/` (the T386MON harness copy, the standard runs), `t-*` (`git archive` of each
+build), `bt-*` (the in-tree firmware builds), `ht*` (host test outputs), `w95files/` (Windows'
+DLLs read to find the hot code: never to leave WSL), the scripts (`mk.sh`, `fr.sh`, `tm.sh`,
+`tab.sh`, `seg.py`, `tl.py`, `sprite.py`, `sp2.py`, `winpics.py`, `std44.sh`, `finfh.sh`, `bld.sh`,
+`dis44.sh`, `wall.py`, the `hpatch*.py` and `ed*.py` that made the changes), and the numbered
+`s*.sh`, one step each (a look, a set of runs, a commit), with their outputs beside them.
+The harnesses delete each run's copy of the Windows image when the run ends, except where v4.3's
+list marks a run `@keep` (the installs) and the DOS fix runs: 9 copies of 400 MB are left in
+`fh/runs/` (`*-gi`, `*-gi-rel`, `*-dosfix` of the `f`, `g` and `s` sets), not deleted here; with
+them the folder is 11 GB, all of it throw-away. On Windows the session's scratch folder `v44d\`
+holds the scripts as written. Nothing started for this is still running.

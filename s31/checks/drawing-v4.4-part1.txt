@@ -1,0 +1,79 @@
+BUILD-NOTES 29.4: VBE pixels converted, T386MON 1.2's tests (keys m2) on the flicker harness's board model,
+VMDisp9x with the pointer's byte changed, 14M, 768K, 2026-10-24.  Windows 0 fill, 1 scroll, 2 text, 3 text
+aside, 4 text without the pointer, 5 sprite, 6 full copy, 7 full picture.  Builds: h43 = a1995d7 (v4.3's VBE
+drawing: whole rows, 1 KiB blocks), s10 = the rows' parts with 1 KiB blocks, s8 = the rows' parts with
+256-byte blocks (what 64a45b3 committed).  The END lines of s8 differ because T386MON reads the
+information port's counts, which differ with the blocks.
+
+== x-h43-p16: outcome: desktop (desktop seen at t=222 s)
+15600 pictures; 15600 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), fi
+[harness] END t=470.000 s insns=740410192 idle=198766208 stall=0.4 s cs:eip=00a8:0000850a 
+window 0: VBE rows converted 33000, pixels 26400000 (800 a row, 240000 a picture), video memory read 52800000 bytes
+window 1: VBE rows converted 27900, pixels 22320000 (800 a row, 240000 a picture), video memory read 44640000 bytes
+window 2: VBE rows converted 5536, pixels 4428800 (800 a row, 36907 a picture), video memory read 8857600 bytes
+window 3: VBE rows converted 5457, pixels 4365600 (800 a row, 36686 a picture), video memory read 8731200 bytes
+window 4: VBE rows converted 5398, pixels 4318400 (800 a row, 36289 a picture), video memory read 8636800 bytes
+window 5: VBE rows converted 5108, pixels 4086400 (800 a row, 43940 a picture), video memory read 8172800 bytes
+window 6: VBE rows converted 47520, pixels 38016000 (800 a row, 384000 a picture), video memory read 76032000 bytes
+window 7: VBE rows converted 2122, pixels 1697600 (800 a row, 13473 a picture), video memory read 3395200 bytes
+VBE rows converted in all: 206952, pixels 165561600, video memory read 331123200 bytes
+== x-s10-p16: outcome: desktop (desktop seen at t=222 s)
+15600 pictures; 15600 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), fi
+[harness] END t=470.000 s insns=740410192 idle=198766208 stall=0.4 s cs:eip=00a8:0000850a 
+window 0: VBE rows converted 33000, pixels 26357760 (799 a row, 239616 a picture), video memory read 52715520 bytes
+window 1: VBE rows converted 27900, pixels 22284288 (799 a row, 239616 a picture), video memory read 44568576 bytes
+window 2: VBE rows converted 5536, pixels 4142592 (748 a row, 34522 a picture), video memory read 8285184 bytes
+window 3: VBE rows converted 5457, pixels 4192256 (768 a row, 35229 a picture), video memory read 8384512 bytes
+window 4: VBE rows converted 5398, pixels 4145664 (768 a row, 34838 a picture), video memory read 8291328 bytes
+window 5: VBE rows converted 5108, pixels 2854912 (559 a row, 30698 a picture), video memory read 5709824 bytes
+window 6: VBE rows converted 47520, pixels 38016000 (800 a row, 384000 a picture), video memory read 76032000 bytes
+window 7: VBE rows converted 2122, pixels 1603072 (755 a row, 12723 a picture), video memory read 3206144 bytes
+VBE rows converted in all: 206952, pixels 160624128, video memory read 321248256 bytes
+== x-s8-p16: outcome: desktop (desktop seen at t=222 s)
+15600 pictures; 15600 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), fi
+[harness] END t=470.000 s insns=740515434 idle=198660960 stall=0.4 s cs:eip=00a8:0000850a 
+window 0: VBE rows converted 33000, pixels 16896000 (512 a row, 153600 a picture), video memory read 33792000 bytes
+window 1: VBE rows converted 27900, pixels 14284800 (512 a row, 153600 a picture), video memory read 28569600 bytes
+window 2: VBE rows converted 5541, pixels 2419200 (437 a row, 20160 a picture), video memory read 4838400 bytes
+window 3: VBE rows converted 5215, pixels 2466816 (473 a row, 20730 a picture), video memory read 4933632 bytes
+window 4: VBE rows converted 5363, pixels 2530944 (472 a row, 21091 a picture), video memory read 5061888 bytes
+window 5: VBE rows converted 5099, pixels 910720 (179 a row, 9793 a picture), video memory read 1821440 bytes
+window 6: VBE rows converted 47520, pixels 38016000 (800 a row, 384000 a picture), video memory read 76032000 bytes
+window 7: VBE rows converted 2028, pixels 1512320 (746 a row, 12003 a picture), video memory read 3024640 bytes
+VBE rows converted in all: 205664, pixels 123177216, video memory read 246354432 bytes
+== x-h43-p8: outcome: desktop (desktop seen at t=220 s)
+15600 pictures; 15600 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), fi
+[harness] END t=470.000 s insns=742541947 idle=196631856 stall=0.4 s cs:eip=00a8:0000850a 
+window 0: VBE rows converted 32918, pixels 26334400 (800 a row, 241600 a picture), video memory read 26334400 bytes
+window 1: VBE rows converted 27784, pixels 22227200 (800 a row, 241600 a picture), video memory read 22227200 bytes
+window 2: VBE rows converted 6760, pixels 5408000 (800 a row, 45445 a picture), video memory read 5408000 bytes
+window 3: VBE rows converted 6660, pixels 5328000 (800 a row, 44400 a picture), video memory read 5328000 bytes
+window 4: VBE rows converted 6049, pixels 4839200 (800 a row, 43993 a picture), video memory read 4839200 bytes
+window 5: VBE rows converted 5447, pixels 4357600 (800 a row, 47365 a picture), video memory read 4357600 bytes
+window 6: VBE rows converted 57120, pixels 45696000 (800 a row, 384000 a picture), video memory read 45696000 bytes
+window 7: VBE rows converted 2612, pixels 2089600 (800 a row, 16584 a picture), video memory read 2089600 bytes
+VBE rows converted in all: 213423, pixels 170738400, video memory read 170738400 bytes
+== x-s10-p8: outcome: desktop (desktop seen at t=220 s)
+15600 pictures; 15600 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), fi
+[harness] END t=470.000 s insns=742541947 idle=196631856 stall=0.4 s cs:eip=00a8:0000850a 
+window 0: VBE rows converted 32918, pixels 26229760 (797 a row, 240640 a picture), video memory read 26229760 bytes
+window 1: VBE rows converted 27784, pixels 22138880 (797 a row, 240640 a picture), video memory read 22138880 bytes
+window 2: VBE rows converted 6760, pixels 5300224 (784 a row, 44540 a picture), video memory read 5300224 bytes
+window 3: VBE rows converted 6660, pixels 5227520 (785 a row, 43563 a picture), video memory read 5227520 bytes
+window 4: VBE rows converted 6049, pixels 4751360 (785 a row, 43194 a picture), video memory read 4751360 bytes
+window 5: VBE rows converted 5447, pixels 4287488 (787 a row, 46603 a picture), video memory read 4287488 bytes
+window 6: VBE rows converted 57120, pixels 45696000 (800 a row, 384000 a picture), video memory read 45696000 bytes
+window 7: VBE rows converted 2612, pixels 1994752 (764 a row, 15831 a picture), video memory read 1994752 bytes
+VBE rows converted in all: 213423, pixels 169483264, video memory read 169483264 bytes
+== x-s8-p8: outcome: desktop (desktop seen at t=220 s)
+15600 pictures; 15600 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), fi
+[harness] END t=470.000 s insns=742549598 idle=196624192 stall=0.4 s cs:eip=00a8:0000850a 
+window 0: VBE rows converted 32700, pixels 20872192 (638 a row, 191488 a picture), video memory read 20872192 bytes
+window 1: VBE rows converted 27600, pixels 17616896 (638 a row, 191488 a picture), video memory read 17616896 bytes
+window 2: VBE rows converted 6549, pixels 3800064 (580 a row, 31933 a picture), video memory read 3800064 bytes
+window 3: VBE rows converted 6485, pixels 3966720 (612 a row, 33056 a picture), video memory read 3966720 bytes
+window 4: VBE rows converted 5862, pixels 3605248 (615 a row, 32775 a picture), video memory read 3605248 bytes
+window 5: VBE rows converted 5385, pixels 1699328 (316 a row, 18272 a picture), video memory read 1699328 bytes
+window 6: VBE rows converted 57120, pixels 45696000 (800 a row, 384000 a picture), video memory read 45696000 bytes
+window 7: VBE rows converted 2513, pixels 1860864 (740 a row, 14769 a picture), video memory read 1860864 bytes
+VBE rows converted in all: 212285, pixels 143642624, video memory read 143642624 bytes

@@ -1,0 +1,46 @@
+BUILD-NOTES 29.11: the files v4.4 part 1 changed that the boards compile, compiled again with each in-tree
+build's own command (compile_commands.json of ~/org2/v44disp/bt-fin2, 40b4513) plus -Wall -Wextra, -Werror
+taken out, to /dev/null, each beside the same file at v4.3 (esp32-s31) compiled the same way (wall.py),
+2026-10-24.  "new:" lists every warning of the v4.4 file whose text (with its line number) is not
+the v4.3 file's; the counts and kinds are v4.3's.
+The build logs of the same builds below.
+
+== korvo1
+vga.c                      v4.4   3 warnings, v4.3   3
+    new: /home/owner/org2/v44disp/bt-fin2/src/vga.c:585:13: warning: 'scale_3_2' defined but not used [-Wunused-function]
+    new: /home/owner/org2/v44disp/bt-fin2/src/vga.c:625:13: warning: 'scale_3_3' defined but not used [-Wunused-function]
+    new: /home/owner/org2/v44disp/bt-fin2/src/vga.c:647:13: warning: 'scale_2_1' defined but not used [-Wunused-function]
+pc.c                       v4.4   1 warnings, v4.3   1
+    new: /home/owner/org2/v44disp/bt-fin2/src/pc.c:609:42: warning: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'u32' {aka 'long unsigned int'} [-Wformat=]
+esp/main/console.c         v4.4   0 warnings, v4.3   0
+esp/main/crash.c           v4.4   0 warnings, v4.3   0
+esp/main/display.c         v4.4   0 warnings, v4.3   0
+esp/main/esp_main.c        v4.4   0 warnings, v4.3   0
+esp/main/ini_edit.c        v4.4   0 warnings, v4.3   -
+esp/main/lcd_korvo1.c      v4.4   0 warnings, v4.3   0
+esp/main/setup.c           v4.4   0 warnings, v4.3   0
+esp/main/speed.c           v4.4   0 warnings, v4.3   0
+== dosboard
+vga.c                      v4.4   3 warnings, v4.3   3
+    new: /home/owner/org2/v44disp/bt-fin2/src/vga.c:585:13: warning: 'scale_3_2' defined but not used [-Wunused-function]
+    new: /home/owner/org2/v44disp/bt-fin2/src/vga.c:625:13: warning: 'scale_3_3' defined but not used [-Wunused-function]
+    new: /home/owner/org2/v44disp/bt-fin2/src/vga.c:647:13: warning: 'scale_2_1' defined but not used [-Wunused-function]
+pc.c                       v4.4   1 warnings, v4.3   1
+    new: /home/owner/org2/v44disp/bt-fin2/src/pc.c:609:42: warning: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'u32' {aka 'long unsigned int'} [-Wformat=]
+esp/main/console.c         v4.4   0 warnings, v4.3   0
+esp/main/crash.c           v4.4   0 warnings, v4.3   0
+esp/main/display.c         v4.4   0 warnings, v4.3   0
+esp/main/esp_main.c        v4.4   0 warnings, v4.3   0
+esp/main/ini_edit.c        v4.4   0 warnings, v4.3   -
+esp/main/lcd_korvo1.c      v4.4   0 warnings, v4.3   0
+esp/main/setup.c           v4.4   0 warnings, v4.3   0
+esp/main/speed.c           v4.4   0 warnings, v4.3   0
+
+== compiler warnings in the in-tree builds of 40b4513, outside ESP-IDF and the managed components
+korvo1: exit 0, 58 s
+/home/owner/org2/v44disp/bt-fin2/src/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+│ DIRAM               │       251354 │     49.9 │         252390 │        503744 │
+Total image size: 920062 bytes (.bin may be padded larger)
+dosboard: exit 0, 55 s
+│ DIRAM               │       253816 │    50.39 │         249928 │        503744 │
+Total image size: 946620 bytes (.bin may be padded larger)
