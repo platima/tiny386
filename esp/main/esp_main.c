@@ -464,9 +464,9 @@ static void disk_errors(uint32_t now)
 
 /* v4.4: a setting a Ctrl+Alt key changed (F11: vbe_blocks, F10:
    pace_quiet) into the ini the PC was started from (setup_ini_save():
-   only that line changed or added, the new file made whole beside the old
-   one before they are swapped), and a line on the console to say what was
-   saved.  On the emulator's core between two steps, after the guest's disk
+   only that line changed or added, a whole copy of the new text made
+   beside the ini before the ini is rewritten in place; v4.5: no rename),
+   and a line on the console to say what was saved.  On the emulator's core between two steps, after the guest's disk
    writes are on the card, so that no FatFs work of the guest's is under
    way; the guest waits meanwhile. */
 static void save_setting(const char *name, unsigned long v)
@@ -1347,6 +1347,9 @@ static bool choose_ini(void)
 			      "disk images, as the Linux route has it; or a "
 			      "tiny386.ini in the top folder. Then press RESET.");
 	}
+	/* v4.5: leftovers of a save cut part way that are left as they are */
+	if (setup_tidy_warning()[0])
+		console_printf(CON_WARN, "%s.", setup_tidy_warning());
 	status_led_stage(STATUS_STAGE_INI);
 	char last[SETUP_NAME_MAX];
 	bool have_last = setup_last_read(inis->dir, last, sizeof(last));

@@ -350,13 +350,15 @@ result $? "setup.c: ini search, the menu's list and default, lastboot.txt, paths
 # own ini.c; setup_ini_save() and setup_ini_tidy() on files in OUT/inisave:
 # no write when nothing changes, errors leave the ini as it was, and every
 # state a cut in power can leave part way through a save is put right.
+# v4.5: no rename (a whole copy beside the ini, then the ini rewritten in
+# place), a cut at each step of a save (-DSETUP_TEST_CUT), v4.4's leftovers.
 echo
-$CC $CFLAGS -I"$TREE" -I"$TREE/esp/main" -o "$OUT/test_ini_edit" "$HERE/test_ini_edit.c" \
-    "$TREE/esp/main/setup.c" "$TREE/esp/main/ini_edit.c" "$TREE/ini.c" || exit 1
+$CC $CFLAGS -DSETUP_TEST_CUT -I"$TREE" -I"$TREE/esp/main" -o "$OUT/test_ini_edit" \
+    "$HERE/test_ini_edit.c" "$TREE/esp/main/setup.c" "$TREE/esp/main/ini_edit.c" "$TREE/ini.c" || exit 1
 "$OUT/test_ini_edit" "$OUT" "$TREE" > "$OUT/ini-edit.log" 2>&1
 st=$?
-grep "FAIL\|test_ini_edit:\|errors:" "$OUT/ini-edit.log" | head -20
-result $st "ini_edit.c, setup.c: vbe_blocks saved in the ini (present, absent, commented, CR LF and LF, and more), written safely, leftovers put right"
+grep "FAIL\|test_ini_edit:\|errors:\|refused:\|cut at step" "$OUT/ini-edit.log" | head -24
+result $st "ini_edit.c, setup.c: vbe_blocks saved in the ini (present, absent, commented, CR LF and LF, and more), written safely with no rename, a cut at each step, leftovers put right"
 
 # ==== 7. the boot menu's state machine ====
 echo

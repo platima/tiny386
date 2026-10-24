@@ -84,24 +84,59 @@ bool setup_is_path_key(const char *section, const char *name);
 #define SETUP_OLD_SUFFIX ".t386old"
 
 /* v4.4 (Ctrl+Alt+F11 saves vbe_blocks): [section] name = value in the ini
-   at path, every other byte of it kept (ini_edit.c), written so that a cut
-   in power leaves either the old ini or the new one: the new text into
-   path.t386new, flushed, synced and read back; then path renamed to
-   path.t386old, path.t386new to path, and path.t386old removed
-   (setup_ini_tidy() puts right what a cut part way leaves).  Nothing is
-   written when the ini has that value already.  Returns an INI_EDIT_ code
-   (ini_edit.h), or -1 with the reason in why. */
+   at path, every other byte of it kept (ini_edit.c).  v4.5: with no
+   rename, so that a cut in power can never leave two names on one chain of
+   the card's clusters (FatFs's f_rename() writes the new name before it
+   takes the old one away; the review of v4.4, F2):
+     1. the new text into path.t386new, followed by a line that gives its
+        length and CRC-32 (so a copy cut short is known as one), flushed,
+        synced and read back;
+     2. the ini itself rewritten in place with the new text, flushed,
+        synced and read back;
+     3. path.t386new removed.
+   A cut in any step leaves the ini whole (old or new), or a whole
+   path.t386new beside it that setup_ini_tidy() puts in place.  The save
+   first tidies path's own leftovers, and refuses while what v4.4 may have
+   left is there (setup_tidy_warning()).  Nothing is written when the ini
+   has that value already.  Returns an INI_EDIT_ code (ini_edit.h), or -1
+   with the reason in why; why may also be set with a code, for a step
+   after the ini was saved (the copy not removed). */
 int setup_ini_save(const char *path, const char *section, const char *name,
 		   const char *value, char *why, size_t whylen);
 
-/* What an interrupted setup_ini_save() left in dir, put right: X.t386new
-   beside X (the new text not yet in place) removed; X.t386old beside X
-   (the old one not yet removed) removed; X.t386new and X.t386old with no X
-   (cut between the two renames: the new text was whole, it was read back)
-   X.t386new renamed to X and X.t386old removed; X.t386old alone renamed
-   back to X.  Only names with these two endings are touched.  setup_find()
-   calls it for each folder it looks in.  Returns how many files it
-   renamed or removed. */
+/* What an interrupted save left in dir, put right (v4.5; both v4.5's
+   saves and v4.4's, which renamed):
+   - X.t386new whole (its last line checks) beside X: X made the same if it
+     is not, then X.t386new removed;
+   - X.t386new not whole, or not v4.5's (no such line), beside X: the cut
+     came before X was touched, or v4.4's new text was not yet in place:
+     X.t386new removed;
+   - X.t386new and X.t386old with no X (v4.4, cut between its two renames:
+     its new text was whole, it had been read back): X written with its
+     text, then both removed;
+   - X.t386old beside X: removed, unless it holds X's very bytes (a v4.4
+     rename cut part way may have left both names on one chain, and
+     removing one would free the clusters X still uses): then both are left
+     and setup_tidy_warning() says to check the card on a PC;
+   - all three: left as they are, with the same warning;
+   - X.t386old alone: X written with its bytes, then it is removed;
+   - X.t386new alone (X gone some other way): left as it is.
+   Files are only ever written whole and read back before anything is
+   removed.  Only names with these two endings are touched, and X only
+   from them.  setup_find() calls it for each folder it looks in.  Returns
+   how many files it wrote or removed. */
 int setup_ini_tidy(const char *dir);
+
+/* v4.5: what setup_ini_tidy() last left as it was and why, for the
+   console; "" if nothing */
+const char *setup_tidy_warning(void);
+
+#ifdef SETUP_TEST_CUT
+/* host tests only: setup_ini_save() stops at step n, as a cut in power
+   would (1: path.t386new half written; 2: it whole, the ini untouched; 3:
+   the ini emptied; 4: the ini half written; 5: the ini whole, path.t386new
+   not removed), and returns -2 */
+extern int setup_test_cut;
+#endif
 
 #endif /* SETUP_H */
