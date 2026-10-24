@@ -72,12 +72,15 @@ bool lcd_double_made(void);
 /* swapping on or off (Ctrl+Alt+F9); off, the VGA code draws into the front
    buffer as without double buffering.  Returns where it is to draw now. */
 void *lcd_double_set(bool on);
-/* the buffer the VGA code draws into: the back one, or the only one */
+/* the buffer the VGA code draws into: the back one, or the only one; NULL
+   when there is no panel */
 void *lcd_vga_fb(void);
 /* the VGA code's redraw(): rows y to y + h - 1 of its buffer drawn */
 void lcd_vga_flush(int x, int y, int w, int h);
 /* after a picture: if it changed rows, the swap and the copy; returns
-   where the VGA code is to draw the next picture */
+   where the VGA code is to draw the next picture.  v4.6: called only when
+   lcd_double_made(); without both buffers it is lcd_vga_fb(), which may be
+   NULL */
 void *lcd_vga_present(void);
 /* everything in the back buffer is to be copied at the next swap: the
    console has drawn over the front one */
