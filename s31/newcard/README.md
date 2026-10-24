@@ -1,6 +1,6 @@
 # A new card for the Korvo-1 💾
 
-From v4.4 Windows 95 can run from a partition of its own on the card instead of from `win95.img`, a file on a FAT32 partition (`hda = sd:3` in an ini). This folder moves you onto a new card laid out for that, with your Linux and your Windows as they are, and leaves the old card untouched as the fallback.
+From v4.4 Windows 95 can run from a partition of its own on the card instead of from `win95.img`, a file on a FAT32 partition (`hda = sd:3` in an ini). This folder moves you onto a new card laid out for that, with your Linux and your Windows as they are, and keeps the old card as the fallback. The old card's partition table, its Linux root and its `win95.img` are not changed; the only thing it gets is a few files added to its two FAT drives in step 1.
 
 - **`newcard.sh`** - run in WSL (or any Linux). Builds the new card as an image file: KORVO_SD, Linux's root, and the Windows volume taken out of `win95.img`, sector for sector. It never writes to a card or any other device.
 - **`export-root.sh`** - run on the board's Linux with the old card in. Copies Linux's root partition off the old card, so that `newcard.sh` can put it on the new one.
@@ -21,7 +21,7 @@ Windows' volume is the one from inside `win95.img`, unchanged but for one field 
 
 - **Check and fix it like any drive.** With tiny386 off, p3 is an ordinary FAT16 drive on Windows 10/11 and on the board's Linux: `chkdsk`, `fsck.fat`, copying files to and from it. A file inside a file can't be checked that way.
 - **Nothing between the guest and the card.** The guest's sectors are the card's sectors: no FAT chain, no directory entry to keep up to date, no file that can end up in pieces.
-- **Safe for the rest of the card.** The guest can write only inside p3. Its disk shows p3 alone; every other sector reads as zeros and refuses writes, the card's own partition table included. tiny386 refuses `sd:1` (where its inis are), Linux's root and anything that isn't FAT16 or FAT32, and it won't start if its own FatFs has p3 mounted.
+- **Safe for the rest of the card.** The guest can write only inside p3. Its disk shows p3 alone; every other sector reads as zeros and refuses writes, the card's own partition table included. tiny386 refuses `sd:1` (where its inis are), Linux's root, anything that isn't FAT16 or FAT32 and (v4.5) the old card's WIN9X drive, and it won't start if its own FatFs has p3 mounted.
 
 ## What you need 🧰
 
@@ -38,12 +38,14 @@ Windows' volume is the one from inside `win95.img`, unchanged but for one field 
    sh /mnt/sd/export-root.sh
    ```
 
-   (`/mnt/sd` is where the fork's Linux mounts KORVO_SD; use your own path if yours differs.) It mounts the WIN9X partition at `/mnt/win` if it isn't already, makes the root read-only for the few seconds it takes to copy (and read-write again after), and leaves `korvo-root.img`, `korvo-mbr.bin` and `korvo-export.txt` on the WIN9X drive. If it says the root couldn't be made read-only, stop whatever is writing to it, or skip to the note under step 3. Then `poweroff`, and wait for it to finish.
+   (`/mnt/sd` is where the fork's Linux mounts KORVO_SD; use your own path if yours differs.) It mounts the WIN9X partition at `/mnt/win` if it isn't already (making that folder on the root if it isn't there), makes the root read-only for the few seconds it takes to copy (and read-write again after), and leaves `korvo-root.img` (as big as the root, 192 MiB on your card), `korvo-mbr.bin` and `korvo-export.txt` on the WIN9X drive. Those three and `export-root.sh` itself are everything the old card gets: files added to its KORVO_SD and WIN9X drives, nothing else changed. If it says the root couldn't be made read-only, stop whatever is writing to it, or skip to the note under step 3. If it says it can't tell whether the root is p2 (v4.5: it finds the root by its device number, and stops rather than copy a root that may be in use), tell me what `cat /proc/self/mountinfo` prints. Then `poweroff`, and wait for it to finish.
 
 2. **Everything into WSL.** Card into the PC. In Explorer, make a folder `\\wsl$\Debian\home\owner\newcard` and copy in:
    - from the WIN9X drive: `korvo-root.img`, `korvo-mbr.bin` and `win95.img` (your Windows as it is now, drivers and all)
    - from the KORVO_SD drive: the whole `tiny386` folder, into `newcard\p1\`, so you have `newcard\p1\tiny386\...`
    - from this release's `card\tiny386\`: `win95-sd.ini`, into `newcard\p1\tiny386\`
+
+   `win95-sd.ini` is for the new card only: don't copy it onto the old card. (If it does end up there, v4.5 refuses it with a red line: on the old card partition 3 is the WIN9X drive with `win95.img` in it, and the guest would get it raw.)
 
    Eject the old card and put it away: it's your fallback.
 
@@ -57,15 +59,17 @@ Windows' volume is the one from inside `win95.img`, unchanged but for one field 
 
    It prints the layout, writes `new-card.img`, then checks it: the table read back, `fsck.fat -n` on p1, p3 against the volume in `win95.img` sector for sector, every file and folder of the volume as `mtools` lists it, p2 against the root sector for sector, and `e2fsck -fn` on p2. It ends with `new-card.img: ready` only if every check passed. `fsck.fat` says "Label '' stored in boot sector is not valid" about p3: Windows 95 leaves its volume label blank, `fsck.fat` doesn't like that, and it says the same about the volume inside `win95.img`, so `newcard.sh` only checks that p3 gets the same verdict.
 
+   p3's type in the table is `win95.img`'s own (0E for the pristine install). If yours says 06 or 04, `newcard.sh` writes 0E instead whenever p3 ends past the first 504 MiB (it does with the default p1), and says so: Windows 95's boot sector reads by LBA only for type 0E, and by CHS, which stops at 504 MiB, for the others (v4.5).
+
    Your Linux root is stock (nothing changed since you wrote the card)? Then `--root` can be the Linux release's own card image instead of `korvo-root.img`: `newcard.sh` takes the first ext4 partition of a whole-card image.
 
-4. **Write it to the new card** with your image writer: `new-card.img`, from `\\wsl$\Debian\home\owner\newcard\`, onto the new card. Eject it properly.
+4. **Write it to the new card** with your image writer: `new-card.img`, from `\\wsl$\Debian\home\owner\newcard\`, onto the new card. Before you press write, check the target by its size: it should be the new card's, not the old card's and not a backup drive. Have only one of the two cards in the PC at a time from here on: they carry the same disk signature (`newcard.sh` keeps the old one, so that anything naming a partition by PARTUUID still finds it), and Windows takes a second disk with the same signature offline, and writes a new signature onto it if you bring it online. Eject it properly.
 
 5. **Linux first.** New card into the board, start Linux as usual: it should come up exactly as before, with `/mnt/sd` holding the `tiny386` folder. `poweroff`.
 
 6. **Then Windows from p3.** Hold VOL+ through reset for tiny386, and choose `win95-sd.ini` in the boot menu. The boot console should show `Card partition 3: FAT16, 400 MiB, at /sdcard3.` when the card is mounted, then, after the ini's settings, `Card partition 3 unmounted from /sdcard3: the guest has it whole.` and `hda: card partition 3, FAT16, 400 MiB from sector 1056768, read and written raw: the guest's disk is 916 MiB, this partition alone in its table, nothing outside it writable.` (the numbers are the default layout's). Windows starts as it did from `win95.img`. A yellow line about the hidden-sectors field means p3 didn't come from `newcard.sh`; a red one says what's wrong and the PC doesn't start.
 
-7. **Going back** is putting the old card in. It was never written.
+7. **Going back** is putting the old card in. Its partitions, its Linux and its `win95.img` are as they were; only step 1's files were added.
 
 ## Afterwards ✅
 
@@ -73,12 +77,15 @@ Windows' volume is the one from inside `win95.img`, unchanged but for one field 
 - **Copying files** onto p3 from the PC is fine with tiny386 off. Windows 95 sees them at its next start.
 - **More room for Linux**: `--root-mib` grows p2 when the image is made (`resize2fs`). Growing p3 isn't offered: the volume stays the size it was in `win95.img`.
 - **The Linux route** (tiny386 under Linux) looked for `win95.img` on the WIN9X partition; on the new card there's no such file. Its own ini would need `hda` pointed elsewhere.
+- **`korvo-root.img` holds your Linux root's secrets**: Wi-Fi settings, SSH host keys, shell history. Once the new card has run Linux and Windows, delete it from the old card's WIN9X drive (that also gives back its 192 MiB) and from `\\wsl$\Debian\home\owner\newcard`, along with `new-card.img` if you don't want to keep it.
+- **One card in the PC at a time** (step 4): the two cards share a disk signature.
 
 ## What has been checked 🔍
 
 - [verified] `newcard.sh` with a copy of the pristine `win95.img`, a stand-in root and both p1 sizes (512 MiB and 64 MiB): every check passed (`BUILD-NOTES.md` 30.4).
 - [verified] Windows 95 from p3 of both images on the PC harness (the firmware's emulator and `sd_part.c` with a card image standing in for the card), to the desktop with the same writes as from `win95.img`, the card's table, p1 and p2 unchanged, and C: in protected mode, not "MS-DOS compatibility mode" (`BUILD-NOTES.md` 30.5).
-- [verified] `export-root.sh` on the PC in its test mode (`EXPORT_DEV`, files standing in for the card), under `dash` and `bash`, and `newcard.sh` taking its output.
+- [verified] `export-root.sh` on the PC in its test mode (`EXPORT_DEV`, files standing in for the card), under `dash` and `bash`, and `newcard.sh` taking its output. v4.5: how it finds the root (by name, by device number in a stand-in `mountinfo`, a root it can't tie to p2 refused) in the same test mode (`BUILD-NOTES.md` 31).
+- [verified] v4.5: `newcard.sh` with stand-in images of type 06, 0E and 0B (no Windows in them): 06 becomes 0E and 0B becomes 0C past 504 MiB, and stay as they are below it (`BUILD-NOTES.md` 31).
 - [unknown] `export-root.sh` on the board's Linux, writing the image with your image writer, and the new card on the board: none of these has been run.
 
 ## Licence 📄

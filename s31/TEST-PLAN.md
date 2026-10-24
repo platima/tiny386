@@ -1227,23 +1227,29 @@ wrong, Windows much slower with it open (its own cost on the PC: about 6 per cen
 the live view at 800x480, 4 at 640x480, less when compact or minimised).
 
 
-## 16. v4.4: settings saved, two cures for tearing, and Windows on a partition of its own
+## 16. v4.4 and v4.5: settings saved, two cures for tearing, and Windows on a partition of its own
 
 v4.4 answers your T386MON log and your notes on v4.3. Ctrl+Alt+F11 now saves `vbe_blocks` in the
 ini (and the two new keys save theirs); the grey screen at a restart from 16 colours is gone; VBE
 pictures cost core 0 less; two ways to stop the tearing you saw are there to try, both off unless
 you turn them on; and Windows can run from a partition of the card instead of `win95.img`, on a new
-card laid out for it, with the old card kept as it is. On the PC: all of it [verified:
-`BUILD-NOTES.md` 29 and 30]. On the board: none of it yet [unknown]; this section is what to try.
+card laid out for it, with the old card kept as it is. v4.5 is v4.4 with the fixes of its two
+reviews (`BUILD-NOTES.md` 31): the ini saved without renaming anything, the speed screen and
+Ctrl+Alt+F9 together, the swap counts on the speed screen, the old card's WIN9X partition refused
+for `sd:3`, and the new card's p3 type. Nothing of v4.4 has run on a board, so flash v4.5 and take
+this section with it. On the PC: all of it [verified: `BUILD-NOTES.md` 29, 30 and 31]. On the
+board: none of it yet [unknown]; this section is what to try.
 
 ### 16a. The app, and the card's files
 
 1. `flash-dualboot.bat COM10 app` (FLASH.txt 3), as for v4.3; its lines should say
-   `App version: v4.4`.
+   `App version: v4.5`.
 2. The card: `card\tiny386\win95-14m.ini` and `win95-800x480.ini` have new lines, all commented
    out (what each new setting does, so that a key's save lands beside its comment): copy them over
    your old ones if you have not changed those, or leave yours, which work as before.
-   `win95-sd.ini` is new, for 16e. No other card file changed.
+   `win95-sd.ini` is new, for 16e, and goes only onto the new card: on the old card its partition
+   3 is the WIN9X drive with `win95.img` in it, which v4.5 refuses to hand the guest raw (a red
+   line, and the PC does not start). No other card file changed.
 
 ### 16b. The Ctrl+Alt keys save their settings
 
@@ -1254,11 +1260,17 @@ goes straight under it. Press it again: `vbe_blocks = 1 saved in ... (its line i
 changed).` The same for Ctrl+Alt+F10 (`pace_quiet`) and Ctrl+Alt+F9 (`double_buffer`). A red line, `... could not be saved in ...`, says why, and the
 setting still holds until the PC starts again.
 
+Wait for the `saved in` line before you switch the board off.
+
 **Photo**: the log with the saved line. Then, after Windows is shut down, the ini on the PC: only
 that one line should differ, with its CRLF or LF kept [verified on the PC: `test_ini_edit.c`, 28
-shapes of ini, 106 checks; `BUILD-NOTES.md` 29.2]. The new file is made whole beside the old one
-before the two change places, and if the card loses power part way, the next start puts the files
-right [verified on the PC: the same].
+shapes of ini, 149 checks; `BUILD-NOTES.md` 29.2 and 31.2]. v4.5 makes a whole copy of the new
+text beside the ini (`NAME.ini.t386new`, with a check line at its end), then rewrites the ini in
+place, then removes the copy; nothing is renamed. If the card loses power part way, the next start
+finds the ini whole, as it was or saved, and puts the copy in place or removes it [verified on the
+PC: a cut at each step]. A yellow line at start-up about `.t386old` and `.t386new` files means a
+v4.4 save was cut inside a rename; then check the card on the PC (`chkdsk X: /f`) and delete those
+files (`BUILD-NOTES.md` 31.2).
 
 ### 16c. Tearing: two cures to compare
 
@@ -1275,10 +1287,15 @@ Both are off by default. Try each with the pointer change of 14c in:
   16-bit colour bands). Set `double_buffer = 1` in the ini (or press Ctrl+Alt+F9, which saves it, and
   restart). Expect a short black on the panel as the boot console starts again in its new buffer.
   **Photo** the boot console's memory lines: the second buffer takes 752 KiB of the emulator's
-  memory, which on your pool probably leaves Windows 1M less (13M rather than 14M at 768K)
-  [inferred: `BUILD-NOTES.md` 29.6]. Then T386MON's full-picture test at 16 bits: the band of mixed
-  rows should be gone. If Ctrl+Alt+F12's `display:` line shows its "swaps not reported" count going
-  up, set `double_buffer = 0` and tell me.
+  memory, which costs Windows 1M or nothing, depending on your pool, which is not known yet
+  [unknown]; the boot console's `Emulator memory` and `mem_size` lines in that photo decide it
+  (`BUILD-NOTES.md` 29.6 and 31.5). Then T386MON's full-picture test at 16 bits: the band of mixed
+  rows should be gone. Ctrl+Alt+F12's `double_buffer = 1` line counts the swaps since the start and
+  how many the panel did not report (v4.5); if that second count goes up and the picture stops
+  changing, set `double_buffer = 0` and tell me. (With `uart_log = 1` the UART's `display:` line
+  has the same every 10 s, with the copy's and the wait's time.) T386MON's `draw_ms` leaves out
+  that copy and that wait, so with double buffering on it shows less than core 0 spends on each
+  picture.
 
 Then T386MON's tests at 800x480 again, both cures off (**Photo** the table): the drawing's
 milliseconds should fall in fill, scroll, text and sprite, and stay in the full copy
@@ -1296,8 +1313,11 @@ PC: the install's 1,706 wrong pictures are none; `BUILD-NOTES.md` 29.3].
 ### 16e. The new card: Windows from partition 3
 
 `newcard\README.md` has the steps: Linux's root copied off the old card on the board's Linux
-(`export-root.sh`), everything into WSL, `newcard.sh` builds the new card as an image file, you
-write it with your image writer, and the old card is never written. What the new card holds: p1
+(`export-root.sh`), everything into WSL, `newcard.sh` builds the new card as an image file, and
+you write it with your image writer. The old card keeps its partition table, its Linux root and
+its `win95.img`; it only gets files added to its two FAT drives (`export-root.sh` itself on
+KORVO_SD; `korvo-root.img`, `korvo-mbr.bin` and `korvo-export.txt` on WIN9X), and its root is
+read-only for the few seconds of the copy. What the new card holds: p1
 `KORVO_SD` with the tiny386 folder (512 MiB), p3 Windows' own FAT16 volume straight after it,
 taken out of your `win95.img` sector for sector, and p2 your Linux root after that; the table
 lists them as p1, p2, p3, so Linux finds its root where it always has.
@@ -1320,19 +1340,26 @@ lists them as p1, p2, p3, so Linux finds its root where it always has.
 On the PC: Windows 95 reached the desktop from p3 of a card image made by `newcard.sh` from a copy
 of the pristine `win95.img`, with p3 at 516 MiB (the default) and at 68 MiB, writing what it writes
 from `win95.img`, with C: in protected mode, not "MS-DOS compatibility mode", and the card's table,
-p1 and p2 unchanged to the sector [verified: `BUILD-NOTES.md` 30.5]. What tiny386 refuses, each with
-a plain red line and the PC not started: `sd:1` (where the inis are), Linux's root, an empty slot,
-a partition that is not FAT16 or FAT32, one that overlaps another, and p3 mounted by its own FatFs
-[verified: host test `sdpart`, the harness].
+p1 and p2 unchanged to the sector [verified: `BUILD-NOTES.md` 30.5, and v4.5 again in 31.11]. What
+tiny386 refuses, each with a plain red line and the PC not started: `sd:1` (where the inis are),
+Linux's root, an empty slot, a partition that is not FAT16 or FAT32, one that overlaps another, p3
+mounted by its own FatFs, and (v4.5) the old card's WIN9X partition [verified: host test `sdpart`,
+the harness].
+
+5. Afterwards (`newcard\README.md`, "Afterwards"): only one of the two cards in the PC at a time
+   (they share a disk signature), and once the new card works, delete `korvo-root.img` from the old
+   card's WIN9X drive and from `\\wsl$\Debian\home\owner\newcard`: it holds your Linux root's Wi-Fi
+   settings, SSH host keys and shell history.
 
 The DOS board takes `hda = sd:3` too (commented in `win95-800x600.ini`) [inferred: the same
 `storage.c` and `sd_part.c`; not run on the PC for that board].
 
 ### 16f. What to send back
 
-The photos of 16b to 16e, the ini after a save, T386MON's log and tables with each cure, the two
-choices of 16c, and for the new card the console, the speed screen and `chkdsk`'s output; and
-anything that looked wrong.
+The photos of 16b to 16e, the ini after a save, T386MON's log and tables with each cure, the speed
+screen with double buffering on (its `double_buffer = 1` line has the swap counts), the boot
+console's memory lines with and without double buffering, the two choices of 16c, and for the new
+card the console, the speed screen and `chkdsk`'s output; and anything that looked wrong.
 
 
 ## Other ways to run it

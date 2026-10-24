@@ -1,0 +1,206 @@
+v4.5's release build: the stage, build.sh run twice from nothing in a clean environment, the two
+image trees compared, and build.sh's images against an in-tree build of the same code (WSL
+~/org2/v45/rel, rel45.sh; ~/org2/v45/bt-c1, b45.sh), 2026-10-24.
+
+the code at 6755352 (esp/version.txt: v4.5, v4.4 with the fixes of its two reviews)
+v4.5
+warning: refname 's31-v4.4' is ambiguous.
+== v4.4's patch made the same way from the branch's tag, against the package's: the same bytes
+dependencies.lock: the package's, unchanged
+build.sh parses
+2c2
+< # Builds tiny386 v4.4 (v3.9 merged with tiny386's master of 2026-10-22, and
+---
+> # Builds tiny386 v4.5 (v3.9 merged with tiny386's master of 2026-10-22, and
+9,10c9,10
+< # card as its whole disk), bare metal under ESP-IDF, for the
+< # ESP32-S31-Korvo-1
+---
+> # card as its whole disk; v4.5 takes in the two reviews of v4.4), bare
+> # metal under ESP-IDF, for the ESP32-S31-Korvo-1
+13c13
+< # esp32-s31 branch: git diff 4ce2e06 s31-v4.4 -- . ':(exclude)s31').  Until
+---
+> # esp32-s31 branch: git diff 4ce2e06 s31-v4.5 -- . ':(exclude)s31').  Until
+15c15
+< # whole of it against 9ed786b (now giving the v4.4 tree), for comparing
+---
+> # whole of it against 9ed786b (now giving the v4.5 tree), for comparing
+ 161 files changed, 35503 insertions(+), 723 deletions(-)
+1406121
+ 168 files changed, 36133 insertions(+), 738 deletions(-)
+1434228
+/home/owner/org2/v45/rel/stage/tiny386-idf-v3.patch:0
+/home/owner/org2/v45/rel/stage/tiny386-idf-v4.patch:0
+== rel1: exit 0, 170 s
+   d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346  partition-table.bin
+   35378fec69fcdf85354f13f35170d4c196900e99c7ac45a44036f46a85ef5c8d  tiny386.bin
+   5c127bdfc665e3817eb706b8c8905bd427fdc6f56e434b0ad5ea6abb84d41bf8  tiny386.elf
+== images/korvo1-dualboot-tiny386-default (esptool write-flash offsets: flash_args)
+   -fm keep -ff keep -fs keep
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0xe20000 tiny386.bin
+   6fc0ab4111fd630343b9fce8d41df17e6af26eeda1cfc2993742b8c2fde56518  flash_args
+   b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  bootloader.bin
+   5b90d4166afc39d72a1d6c7b16f3a2e4a5cc0193a3e0eb50990a4dbb9da58226  partition-table.bin
+   35378fec69fcdf85354f13f35170d4c196900e99c7ac45a44036f46a85ef5c8d  tiny386.bin
+== images/korvo1-standalone (esptool write-flash offsets: flash_args)
+   --flash-mode dio --flash-freq 80m --flash-size 16MB
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0x10000 tiny386.bin
+   48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  flash_args
+   ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  bootloader.bin
+   afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  partition-table.bin
+   78f68dfee86b14e59af3cb91f34985dbc119057be1e671b69640b70205b18afe  tiny386.bin
+   04bd023d71396381714a5bfed6ffbae2ed9bda81e78e8043e3fd699974d8ef80  tiny386.elf
+== images/dosboard (esptool write-flash offsets: flash_args)
+   --flash-mode dio --flash-freq 80m --flash-size 16MB
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0x10000 tiny386.bin
+   48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  flash_args
+   ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  bootloader.bin
+   afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  partition-table.bin
+   ef05ba38cbfc6b283f6ed73ac19c0f7a5613dd4f38e841f896e65788d8b9d252  tiny386.bin
+   47475b17489404565b6ae3e639055824d766c07ed7119fdae9e385fa6b23dc5e  tiny386.elf
+== rel2-second-run: exit 0, 174 s
+   d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346  partition-table.bin
+   35378fec69fcdf85354f13f35170d4c196900e99c7ac45a44036f46a85ef5c8d  tiny386.bin
+   5c127bdfc665e3817eb706b8c8905bd427fdc6f56e434b0ad5ea6abb84d41bf8  tiny386.elf
+== images/korvo1-dualboot-tiny386-default (esptool write-flash offsets: flash_args)
+   -fm keep -ff keep -fs keep
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0xe20000 tiny386.bin
+   6fc0ab4111fd630343b9fce8d41df17e6af26eeda1cfc2993742b8c2fde56518  flash_args
+   b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  bootloader.bin
+   5b90d4166afc39d72a1d6c7b16f3a2e4a5cc0193a3e0eb50990a4dbb9da58226  partition-table.bin
+   35378fec69fcdf85354f13f35170d4c196900e99c7ac45a44036f46a85ef5c8d  tiny386.bin
+== images/korvo1-standalone (esptool write-flash offsets: flash_args)
+   --flash-mode dio --flash-freq 80m --flash-size 16MB
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0x10000 tiny386.bin
+   48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  flash_args
+   ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  bootloader.bin
+   afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  partition-table.bin
+   78f68dfee86b14e59af3cb91f34985dbc119057be1e671b69640b70205b18afe  tiny386.bin
+   04bd023d71396381714a5bfed6ffbae2ed9bda81e78e8043e3fd699974d8ef80  tiny386.elf
+== images/dosboard (esptool write-flash offsets: flash_args)
+   --flash-mode dio --flash-freq 80m --flash-size 16MB
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0x10000 tiny386.bin
+   48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  flash_args
+   ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  bootloader.bin
+   afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  partition-table.bin
+   ef05ba38cbfc6b283f6ed73ac19c0f7a5613dd4f38e841f896e65788d8b9d252  tiny386.bin
+   47475b17489404565b6ae3e639055824d766c07ed7119fdae9e385fa6b23dc5e  tiny386.elf
+== the two runs' images
+every file of the two image trees the same (23 files)
+== build.sh's tiny386.bin against the in-tree builds at the same code (bt-c1)
+  korvo1-dualboot: the same bytes as build-korvo1
+  korvo1-standalone: the same bytes as build-korvo1-standalone
+  dosboard: the same bytes as build-dosboard
+  korvo1-standalone bootloader.bin: the same bytes
+  korvo1-standalone partition-table.bin: the same bytes
+  dosboard bootloader.bin: the same bytes
+  dosboard partition-table.bin: the same bytes
+/dev/sdd        251G  230G  8.7G  97% /
+
+== the in-tree builds (b45.sh c1)
+== korvo1 (korvo1 ) exit 0, 55 s
+1726:/home/owner/org2/v45/bt-c1/src/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+│ DIRAM               │       251922 │    50.01 │         251822 │        503744 │
+Total image size: 932096 bytes (.bin may be padded larger)
+v4.5
+35378fec69fcdf85
+== korvo1-standalone (korvo1 -DPARTITION_CSV=partitions.csv) exit 0, 51 s
+1717:/home/owner/org2/v45/bt-c1/src/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+│ DIRAM               │       251922 │    50.01 │         251822 │        503744 │
+Total image size: 932096 bytes (.bin may be padded larger)
+v4.5
+78f68dfee86b14e5
+== dosboard (dosboard ) exit 0, 52 s
+│ DIRAM               │       254360 │    50.49 │         249384 │        503744 │
+Total image size: 958160 bytes (.bin may be padded larger)
+v4.5
+ef05ba38cbfc6b28
+== kc (korvo1 -DCRASH_TEST=1) exit 0, 52 s
+1725:/home/owner/org2/v45/bt-c1/src/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+│ DIRAM               │       251922 │    50.01 │         251822 │        503744 │
+Total image size: 932674 bytes (.bin may be padded larger)
+v4.5
+7e5a0423735276a9
+== dc (dosboard -DCRASH_TEST=1) exit 0, 52 s
+│ DIRAM               │       254360 │    50.49 │         249384 │        503744 │
+Total image size: 958736 bytes (.bin may be padded larger)
+v4.5
+9fb3025dff14ee5d
+builds done
+
+== install45.sh: v4.4 into previous-v4.4, the v4.5 images into the package
+v4.4's SHA256SUMS verifies before anything is moved (180 files)
+previous-v4.4: 33 of 180 lines of its list check inside it
+images/korvo1-dualboot: its SHA256SUMS verifies
+  the same files as rel1's
+  bootloader.bin: v4.4's byte for byte
+  partition-table.bin: v4.4's byte for byte
+  flash_args: v4.4's byte for byte
+images/korvo1-dualboot-tiny386-default: its SHA256SUMS verifies
+  the same files as rel1's
+  bootloader.bin: v4.4's byte for byte
+  partition-table.bin: v4.4's byte for byte
+  flash_args: v4.4's byte for byte
+images/korvo1-standalone: its SHA256SUMS verifies
+  the same files as rel1's
+  bootloader.bin: v4.4's byte for byte
+  partition-table.bin: v4.4's byte for byte
+  flash_args: v4.4's byte for byte
+images/dosboard: its SHA256SUMS verifies
+  the same files as rel1's
+  bootloader.bin: v4.4's byte for byte
+  partition-table.bin: v4.4's byte for byte
+  flash_args: v4.4's byte for byte
+tiny386-idf-v3.patch: the stage's
+tiny386-idf-v4.patch: the stage's
+build.sh: the stage's
+card/tiny386/win95-sd.ini: the branch's
+newcard/README.md: the branch's
+newcard/newcard.sh: the branch's
+newcard/export-root.sh: the branch's
+card/tiny386/win95-14m.ini: the branch's already (unchanged by v4.5)
+card/tiny386/win95-800x480.ini: the branch's already (unchanged by v4.5)
+card/tiny386/tiny386.ini: the branch's already (unchanged by v4.5)
+card-dosboard/tiny386/win95-800x600.ini: the branch's already (unchanged by v4.5)
+images/korvo1-dualboot:
+total 12984
+drwxrwxrwx 1 owner owner      512 Oct 22 23:47 .
+drwxrwxrwx 1 owner owner      512 Oct 22 23:47 ..
+-rwxrwxrwx 1 owner owner    22352 Oct 24 15:05 bootloader.bin
+-rwxrwxrwx 1 owner owner       97 Oct 24 15:05 flash_args
+-rwxrwxrwx 1 owner owner     3072 Oct 24 15:05 partition-table.bin
+-rwxrwxrwx 1 owner owner      400 Oct 24 15:05 SHA256SUMS
+-rwxrwxrwx 1 owner owner   932272 Oct 24 15:05 tiny386.bin
+-rwxrwxrwx 1 owner owner 12330416 Oct 24 15:05 tiny386.elf
+
+/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/previous-v4.4:
+total 3468
+drwxrwxrwx 1 owner owner     512 Oct 24 15:05 .
+drwxrwxrwx 1 owner owner     512 Oct 24 15:05 ..
+-rwxrwxrwx 1 owner owner  438133 Oct 24 13:52 BUILD-NOTES.md
+-rwxrwxrwx 1 owner owner   12010 Oct 24 13:37 build.sh
+drwxrwxrwx 1 owner owner     512 Oct 24 15:05 card
+-rwxrwxrwx 1 owner owner   24338 Oct 24 13:49 FLASH.txt
+drwxrwxrwx 1 owner owner     512 Oct 24 15:05 images
+drwxrwxrwx 1 owner owner     512 Oct 24 15:05 newcard
+-rwxrwxrwx 1 owner owner   46873 Oct 24 13:52 README.md
+-rwxrwxrwx 1 owner owner   93039 Oct 24 13:49 REVIEW-RESOLUTION.md
+-rwxrwxrwx 1 owner owner   18912 Oct 24 13:52 SHA256SUMS
+-rwxrwxrwx 1 owner owner   97686 Oct 24 13:49 TEST-PLAN.md
+-rwxrwxrwx 1 owner owner   12859 Oct 24 13:37 tiny386-idf-v3.diffstat.txt
+-rwxrwxrwx 1 owner owner 1403183 Oct 24 13:37 tiny386-idf-v3.patch
+-rwxrwxrwx 1 owner owner   12428 Oct 24 13:37 tiny386-idf-v4.diffstat.txt
+-rwxrwxrwx 1 owner owner 1375076 Oct 24 13:37 tiny386-idf-v4.patch

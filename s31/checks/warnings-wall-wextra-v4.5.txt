@@ -1,0 +1,16 @@
+-Wall -Wextra on the files v4.5 changed, each compiled as each board's build compiles it (bt-c1's
+compile_commands.json, -Werror taken out), against v4.4's copies (git archive of s31-v4.4, WSL
+~/org2/v45/t-v44); v4.4's wall.py, 2026-10-24.
+
+== korvo1: -Wall -Wextra on the files v4.5 changed, against v4.4's (s31-v4.4) copies
+esp/main/speed.c           now   0 warnings, before   0
+esp/main/lcd_korvo1.c      now   0 warnings, before   0
+esp/main/esp_main.c        now   0 warnings, before   0
+esp/main/setup.c           now   0 warnings, before   0
+esp/main/sd_part.c         now   0 warnings, before   0
+== dosboard: -Wall -Wextra on the files v4.5 changed, against v4.4's (s31-v4.4) copies
+esp/main/speed.c           now   0 warnings, before   0
+esp/main/lcd_korvo1.c      now   0 warnings, before   0
+esp/main/esp_main.c        now   0 warnings, before   0
+esp/main/setup.c           now   0 warnings, before   0
+esp/main/sd_part.c         now   0 warnings, before   0
