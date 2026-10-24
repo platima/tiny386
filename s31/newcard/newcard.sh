@@ -7,7 +7,11 @@
 #       tiny386's /sdcard
 #   p3  FAT16 (type 0E) straight after p1: the volume from inside the
 #       Windows image (win95.img's partition 1), copied sector for sector,
-#       with its boot sector's hidden-sectors field set to where p3 starts
+#       with its boot sector's hidden-sectors field set to where p3 starts.
+#       Its type is the image's, but when p3 ends past the 504 MiB that CHS
+#       reaches in the guest (1024 x 16 x 63 sectors) a type Windows 95's
+#       boot sector reads by CHS (04 or 06; 0B for FAT32) becomes its LBA
+#       twin (0E; 0C), which has the boot sector read by LBA (v4.5)
 #   p2  Linux's root straight after p3: copied sector for sector from
 #       --root (an image of the old card's p2, or of a whole card, whose
 #       first Linux partition is taken), grown to ROOT_MIB if asked
@@ -156,12 +160,31 @@ printf '  p1 FAT32 KORVO_SD  from %10d, %10d sectors (%d MiB)\n' $P1 $P1N $((P1N
 printf '  p3 Windows (%s)    from %10d, %10d sectors (%d MiB)\n' "$WTYPE" $P3 $P3N $((P3N / 2048))
 printf '  p2 Linux root (83) from %10d, %10d sectors (%d MiB)\n' $P2 $P2N $((P2N / 2048))
 printf '  the image: %d sectors, %d MiB; the card must be at least that\n' $TOT $(( (TOT + 2047) / 2048 ))
-[ $((P3 + P3N)) -le $((1 << 28)) ] || { echo "newcard.sh: p3 would end past 128 GiB"; exit 2; }
+[ $((P3 + P3N)) -le $(( (1 << 28) - 1 )) ] || { echo "newcard.sh: p3 would end past 128 GiB"; exit 2; }
+# p3's type (v4.5; v4.4 copied the image's as it was and still said ready):
+# Windows 95 OSR2's boot sector reads by INT 13h's LBA calls only when its
+# partition's type is 0E (or 0C), and by CHS otherwise, which reaches the
+# guest disk's first 1024 x 16 x 63 sectors
+CHS_END=$((1024 * 16 * 63))
+TYPE3=$WTYPE
+if [ $((P3 + P3N)) -gt $CHS_END ]; then
+    case "$WTYPE" in
+    04|06) TYPE3=0e ;;
+    0b) TYPE3=0c ;;
+    esac
+fi
+if [ "$TYPE3" != "$WTYPE" ]; then
+    echo "  p3's type: $TYPE3, not the image's $WTYPE: p3 ends past the $((CHS_END / 2048)) MiB CHS reaches in the guest, and with type $WTYPE Windows 95's boot sector would read by CHS"
+fi
+OEM=$(dd if="$WIN" bs=1 skip=$((WSTART * 512 + 3)) count=8 status=none | tr -c '[:print:]' '?')
+if [ $((P3 + P3N)) -gt $CHS_END ] && [ "$OEM" != MSWIN4.1 ]; then
+    echo "  NOTE: the volume's boot sector says \"$OEM\", not Windows 95 OSR2's MSWIN4.1; a boot sector older than OSR2 reads by CHS only, and p3 ends past $((CHS_END / 2048)) MiB. If Windows does not start from p3, make the card again with --p1-mib 64, which puts p3 lower."
+fi
 
 truncate -s $((TOT * 512)) "$OUT"
 
 # ==== the table ====
-python3 -I - "$OUT" "${MBR:-}" $P1 $P1N $P2 $P2N $P3 $P3N "$WTYPE" <<'PY'
+python3 -I - "$OUT" "${MBR:-}" $P1 $P1N $P2 $P2N $P3 $P3N "$TYPE3" <<'PY'
 import os, struct, sys
 out, old = sys.argv[1], sys.argv[2]
 p1, p1n, p2, p2n, p3, p3n = map(int, sys.argv[3:9])
@@ -253,7 +276,7 @@ fi
 # ==== the checks ====
 echo "== checks"
 set +e
-python3 -I - "$OUT" $P1 $P1N $P2 $P2N $P3 $P3N "$WTYPE" <<'PY'
+python3 -I - "$OUT" $P1 $P1N $P2 $P2N $P3 $P3N "$TYPE3" <<'PY'
 import struct, sys
 out = sys.argv[1]
 p1, p1n, p2, p2n, p3, p3n = map(int, sys.argv[2:8])
