@@ -77,4 +77,31 @@ const char *setup_resolve(const char *dir, const char *value,
 /* true for the ini keys that name a file */
 bool setup_is_path_key(const char *section, const char *name);
 
+/* v4.4: the largest ini setup_ini_save() rewrites */
+#define SETUP_INI_MAX (32 * 1024)
+/* the names an ini's rewrite goes through beside it (path + suffix) */
+#define SETUP_NEW_SUFFIX ".t386new"
+#define SETUP_OLD_SUFFIX ".t386old"
+
+/* v4.4 (Ctrl+Alt+F11 saves vbe_blocks): [section] name = value in the ini
+   at path, every other byte of it kept (ini_edit.c), written so that a cut
+   in power leaves either the old ini or the new one: the new text into
+   path.t386new, flushed, synced and read back; then path renamed to
+   path.t386old, path.t386new to path, and path.t386old removed
+   (setup_ini_tidy() puts right what a cut part way leaves).  Nothing is
+   written when the ini has that value already.  Returns an INI_EDIT_ code
+   (ini_edit.h), or -1 with the reason in why. */
+int setup_ini_save(const char *path, const char *section, const char *name,
+		   const char *value, char *why, size_t whylen);
+
+/* What an interrupted setup_ini_save() left in dir, put right: X.t386new
+   beside X (the new text not yet in place) removed; X.t386old beside X
+   (the old one not yet removed) removed; X.t386new and X.t386old with no X
+   (cut between the two renames: the new text was whole, it was read back)
+   X.t386new renamed to X and X.t386old removed; X.t386old alone renamed
+   back to X.  Only names with these two endings are touched.  setup_find()
+   calls it for each folder it looks in.  Returns how many files it
+   renamed or removed. */
+int setup_ini_tidy(const char *dir);
+
 #endif /* SETUP_H */

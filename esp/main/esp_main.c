@@ -36,6 +36,7 @@
 #include "console.h"
 #include "disk_image.h"
 #include "kbd_input.h"
+#include "ini_edit.h"
 #include "setup.h"
 #include "storage.h"
 #include "bootmenu.h"
@@ -445,6 +446,30 @@ static void disk_errors(uint32_t now)
 	}
 }
 
+/* v4.4: Ctrl+Alt+F11's setting into the ini the PC was started from
+   (setup_ini_save(): only that line changed or added, the new file made
+   whole beside the old one before they are swapped), and a line on the
+   console to say what was saved.  On the emulator's core between two
+   steps, after the guest's disk writes are on the card, so that no FatFs
+   work of the guest's is under way; the guest waits meanwhile. */
+static void save_blocks(void)
+{
+	char why[200];
+	int v = vga_dirty_blocks;
+	int r = setup_ini_save(s_ini_path, "esp", "vbe_blocks", v ? "1" : "0", why, sizeof(why));
+	if (r < 0)
+		console_printf(CON_ERROR, "vbe_blocks = %d could not be saved in %s: %s. It "
+			       "holds until the PC starts again.", v, s_ini_path, why);
+	else if (r == INI_EDIT_SAME)
+		console_printf(CON_INFO, "vbe_blocks = %d: %s has it already, so nothing was "
+			       "written.", v, s_ini_path);
+	else
+		console_printf(why[0] ? CON_WARN : CON_GOOD, "vbe_blocks = %d saved in %s (%s)%s%s.",
+			       v, s_ini_path, r == INI_EDIT_CHANGED ? "its line in [esp] changed" :
+			       r == INI_EDIT_ADDED ? "a line added to [esp]" :
+			       "[esp] and the line added at the end", why[0] ? "; but " : "", why);
+}
+
 /* Runs the PC, and puts what the guest wrote to its disks on the card
    once it has been quiet for DISK_QUIET_US: until then FatFs may hold the
    last sectors and the directory entry. */
@@ -470,10 +495,22 @@ static void run_pc(PC *pc)
 			unflushed = false;
 			speed_run_aside(get_uticks());
 		}
+		if (speed_take_blocks_save()) {
+			/* the guest's writes first, as at a quiet moment */
+			if (unflushed) {
+				disk_flush(pc);
+				unflushed = false;
+				speed_run_aside(get_uticks());
+			}
+			save_blocks();
+			speed_run_pause(get_uticks());
+		}
 		disk_errors(now);
 	}
 	if (unflushed)
 		disk_flush(pc);
+	if (speed_take_blocks_save())
+		save_blocks();
 	disk_errors(get_uticks());
 }
 

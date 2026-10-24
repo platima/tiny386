@@ -193,6 +193,8 @@ static volatile uint32_t s_flushes;      /* disk flushes, for the log */
 static int s_req;
 /* Ctrl+Alt+F11 pressed: vbe_blocks to change, on core 0 between pictures */
 static int s_blocks_req;
+/* v4.4: and then to be saved in the ini, on the emulator's core */
+static int s_save_req;
 static bool s_shown;            /* core 0 only, as below */
 static const char *s_normal_title = "";
 static uint32_t s_last_title_s, s_last_log_s;
@@ -287,6 +289,15 @@ void speed_forget_requests(void)
 	   Ctrl+Alt+F11 */
 	__atomic_store_n(&s_req, 0, __ATOMIC_RELEASE);
 	__atomic_store_n(&s_blocks_req, 0, __ATOMIC_RELEASE);
+	__atomic_store_n(&s_save_req, 0, __ATOMIC_RELEASE);
+}
+
+bool speed_take_blocks_save(void)
+{
+	/* a plain load first: a step pays one load when nothing is asked */
+	if (!__atomic_load_n(&s_save_req, __ATOMIC_RELAXED))
+		return false;
+	return __atomic_exchange_n(&s_save_req, 0, __ATOMIC_ACQ_REL) != 0;
 }
 
 void speed_run_step(void *opaque, uint32_t now_us)
@@ -332,6 +343,11 @@ void speed_run_aside(uint32_t now_us)
 	s_flushes++;
 }
 
+void speed_run_pause(uint32_t now_us)
+{
+	s_speed.last_us = now_us;
+}
+
 void speed_hotkey(void)
 {
 	__atomic_store_n(&s_req, REQ_TOGGLE, __ATOMIC_RELEASE);
@@ -345,12 +361,13 @@ void speed_blocks_hotkey(void)
 /* the line that says what vbe_blocks is now */
 static void blocks_line(bool changed)
 {
-	console_printf(CON_INFO, "vbe_blocks = %d%s: %s Ctrl+Alt+F11 changes it until the PC "
-		       "starts again; the ini is not changed.", vga_dirty_blocks,
-		       changed ? " now" : "",
+	console_printf(CON_INFO, "vbe_blocks = %d%s: %s Ctrl+Alt+F11 changes it%s.",
+		       vga_dirty_blocks, changed ? " now" : "",
 		       vga_dirty_blocks ? "VBE pictures are drawn again only where the guest "
 		       "wrote." : "VBE pictures are drawn in full every time and no store is "
-		       "marked, as before v4.0.");
+		       "marked, as before v4.0.",
+		       changed ? "; it is saved in the ini once the guest's disk writes are on "
+		       "the card" : " and saves it in the ini");
 }
 
 void speed_set_title(const char *normal)
@@ -427,6 +444,9 @@ void speed_screen_poll(void *opaque, uint32_t pps)
 	if (__atomic_exchange_n(&s_blocks_req, 0, __ATOMIC_ACQ_REL)) {
 		vga_set_dirty_blocks(!vga_dirty_blocks);
 		blocks_line(true);
+		/* v4.4: saved by the emulator's core (run_pc()), which sees the
+		   new setting: stored before this release */
+		__atomic_store_n(&s_save_req, 1, __ATOMIC_RELEASE);
 	}
 	bool want = s_shown;
 	if (req == REQ_TOGGLE)

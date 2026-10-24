@@ -319,9 +319,22 @@ fi
 # the Linux route's ini files (tests/host/data/linux-route).
 echo
 $CC $CFLAGS -I"$TREE" -I"$TREE/esp/main" -o "$OUT/test_setup" "$HERE/test_setup.c" \
-    "$TREE/esp/main/setup.c" "$TREE/ini.c" || exit 1
+    "$TREE/esp/main/setup.c" "$TREE/esp/main/ini_edit.c" "$TREE/ini.c" || exit 1
 "$OUT/test_setup" "$OUT" "$HERE/data/linux-route"
 result $? "setup.c: ini search, the menu's list and default, lastboot.txt, paths of the Linux route's inis"
+
+# ==== 6b. a setting saved in the ini (v4.4: Ctrl+Alt+F11 saves vbe_blocks) ====
+# ini_edit.c on inis of every shape, each result read back with tiny386's
+# own ini.c; setup_ini_save() and setup_ini_tidy() on files in OUT/inisave:
+# no write when nothing changes, errors leave the ini as it was, and every
+# state a cut in power can leave part way through a save is put right.
+echo
+$CC $CFLAGS -I"$TREE" -I"$TREE/esp/main" -o "$OUT/test_ini_edit" "$HERE/test_ini_edit.c" \
+    "$TREE/esp/main/setup.c" "$TREE/esp/main/ini_edit.c" "$TREE/ini.c" || exit 1
+"$OUT/test_ini_edit" "$OUT" "$TREE" > "$OUT/ini-edit.log" 2>&1
+st=$?
+grep "FAIL\|test_ini_edit:\|errors:" "$OUT/ini-edit.log" | head -20
+result $st "ini_edit.c, setup.c: vbe_blocks saved in the ini (present, absent, commented, CR LF and LF, and more), written safely, leftovers put right"
 
 # ==== 7. the boot menu's state machine ====
 echo
