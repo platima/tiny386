@@ -11,7 +11,9 @@
  * checks and copies it while tiny386 is not running, and Windows 95's boot
  * sector, which finds its own partition entry by that field, boots from it.
  * Nothing outside the partition can be written through it, the card's
- * partition table included.
+ * partition table included: every sector of each transfer (at most four
+ * sectors, as ide.c passes them) is inside the partition, or none is
+ * written.
  *
  * Plain C over FatFs's disk functions (disk_read() and disk_write() of the
  * card's physical drive), so that the host tests and the PC harness run
@@ -28,8 +30,15 @@
    a track (ide.c), and SeaBIOS as tiny386 builds it uses no translation */
 #define SD_PART_HEADS 16
 #define SD_PART_SPT 63
-/* The highest sector the guest's IDE disk can reach: 28-bit LBA */
-#define SD_PART_LBA28 (1u << 28)
+/* The most sectors the guest's IDE disk can have: 28-bit LBA, whose
+   IDENTIFY words 60 and 61 hold at most 0FFFFFFFh (v4.5: the disk is capped
+   there, and a partition must end by then; v4.4 allowed 2^28 and rounded
+   the disk up past it) */
+#define SD_PART_LBA28 0x0FFFFFFFu
+/* What CHS reaches at the guest's 16 heads and 63 sectors: 1024 cylinders,
+   504 MiB (v4.5: a FAT16 type 04 or 06, or FAT32 0B, partition ending past
+   this gets a note: Windows 95's boot sector reads by CHS for those) */
+#define SD_PART_CHS_END (1024u * SD_PART_HEADS * SD_PART_SPT)
 /* A FAT16 volume is at most 4 GiB (64 KiB clusters), 2 GiB for Windows 95 */
 #define SD_PART_FAT16_MAX (8u << 20)
 /* Smaller than this is no disk worth having */
@@ -65,6 +74,21 @@ int sd_part_plan(const uint8_t *mbr, const uint8_t *vbr, uint64_t card_sectors,
    disk signature, the one entry, active, in slot 1, and 55AAh */
 void sd_part_make_mbr(const struct sd_part_plan *plan, const uint8_t *card_mbr,
 		      uint8_t *out);
+
+/* v4.5: the ini's side of key = sd:N (esp_main.c, before anything is let
+   go): path is the key's value; drive 0 to 3 is hda to hdd (iscd: cda to
+   cdd), 4 and 5 fda and fdb; others[] every other file the ini names, as
+   resolved (NULL entries skipped), none of which may be on /sdcardN.  The
+   partition's number, or -1 and why says why not in plain words.  Pure:
+   the host tests call it. */
+int sd_part_ini_check(const char *path, int drive, bool iscd,
+		      const char *const *others, int nothers, char *why, size_t size);
+
+/* v4.5: while FatFs still has the partition at /sdcardN, whether it holds
+   the Linux route's win95.img or korvo-root.img (then it is that route's
+   WIN9X partition): 0, or -1 and why.  exists() is the board's stat(); the
+   host tests give their own. */
+int sd_part_route_files(int part, bool (*exists)(const char *path), char *why, size_t size);
 
 /* An entry's CHS bytes for a sector, at the guest's 16 heads and 63
    sectors; 1023/15/63 past what CHS can reach */

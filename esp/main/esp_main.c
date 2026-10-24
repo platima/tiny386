@@ -1008,40 +1008,39 @@ static void default_roms(void)
    said here in plain words, rather than an abort later. */
 static int s_bios_bad;           /* how many of check_config()'s were a BIOS */
 
+static bool path_exists(const char *path)
+{
+	struct stat st;
+	return stat(path, &st) == 0;
+}
+
 /* v4.4: key = sd:N, card partition N as the guest's whole disk
    (sd_part.c).  Only for a hard disk; nothing else the ini names may be on
-   that partition; FatFs lets it go (never /sdcard); then the partition is
-   checked as the PC will open it.  Returns the problems found. */
+   that partition (v4.5: sd_part_ini_check(), which the host tests call,
+   and the kernel, initrd and linuxstart keys too); (v4.5) not the Linux
+   route's WIN9X partition; FatFs lets it go (never /sdcard); then the
+   partition is checked as the PC will open it.  Returns the problems
+   found. */
 static int check_card_partition(int i, const char *key, const char *path)
 {
-	char why[200];
-	int part = sd_part_name(path);
-	if (part < 0) {
-		console_printf(CON_ERROR, "[pc] %s = %s: write sd: and the partition's number in "
-			       "the card's table, 1 to 4 (hda = sd:3).", key, path);
-		return 1;
-	}
-	if (i >= 4 || conf.iscd[i]) {
-		console_printf(CON_ERROR, "[pc] %s = %s: a card partition can be a hard disk "
-			       "(hda to hdd), not a CD or a floppy.", key, path);
-		return 1;
-	}
-	char prefix[24];
-	snprintf(prefix, sizeof(prefix), "/sdcard%d/", part);
+	char why[240];
 	const char *others[] = { conf.disks[0], conf.disks[1], conf.disks[2], conf.disks[3],
-				 conf.fdd[0], conf.fdd[1], conf.bios, conf.vga_bios };
-	int bad = 0;
-	for (unsigned k = 0; k < sizeof(others) / sizeof(others[0]); k++) {
-		if (others[k] && !strncmp(others[k], prefix, strlen(prefix))) {
-			console_printf(CON_ERROR, "[pc] %s = %s gives the guest card partition %d "
-				       "whole, so nothing else can be read from it: %s is on it. "
-				       "Move that file to /sdcard.", key, path, part, others[k]);
-			bad++;
-		}
+				 conf.fdd[0], conf.fdd[1], conf.bios, conf.vga_bios,
+				 conf.kernel, conf.initrd, conf.linuxstart };
+	int part = sd_part_ini_check(path, i, i < 4 && conf.iscd[i], others,
+				     (int) (sizeof(others) / sizeof(others[0])), why, sizeof(why));
+	if (part < 0) {
+		console_printf(CON_ERROR, "[pc] %s = %s: %s.", key, path, why);
+		return 1;
 	}
-	if (bad)
-		return bad;
 	bool was = storage_part_mounted(part);
+	/* v4.5: while FatFs still has it, the Linux route's files on it say
+	   it is that route's WIN9X partition (the review of v4.4, storage
+	   finding 2; sd_part_plan() also refuses the label WIN9X) */
+	if (was && sd_part_route_files(part, path_exists, why, sizeof(why))) {
+		console_printf(CON_ERROR, "[pc] %s = %s: %s.", key, path, why);
+		return 1;
+	}
 	if (!storage_part_release(part, why, sizeof(why))) {
 		console_printf(CON_ERROR, "[pc] %s = %s: %s, so the guest cannot have it whole.",
 			       key, path, why);

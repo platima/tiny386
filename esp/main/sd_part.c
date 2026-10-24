@@ -10,15 +10,20 @@
  *   exFAT are refused, and so is a FAT16 partition over 4 GiB;
  * - it lies inside the card, after sector 0, below 128 GiB (28-bit LBA,
  *   the most the guest's IDE disk can reach), and overlaps no other entry
- *   of the table, so that a write through it can land in no other
- *   partition;
- * - a FAT volume in it is no bigger than the partition.
+ *   of the table that has a size, whatever its type (v4.5: an entry of type
+ *   00 with a size is a partition to Linux), so that a write through it can
+ *   land in no other partition;
+ * - a FAT volume in it is no bigger than the partition;
+ * - (v4.5) it is not the volume labelled WIN9X, the Linux route's partition
+ *   that holds win95.img.
  * Then, in sd_part_open(), the partition must not be mounted by tiny386's
  * own FatFs (esp_main.c lets /sdcardN go first, and never /sdcard).
  *
- * Writes: only inside the partition, every sector of the request, or none
- * of it.  Reads: LBA 0 is the record made here, the partition's sectors the
- * card's, everything else zeros.  A card error is tried once more, as
+ * Writes: only inside the partition: every sector of each transfer, or none
+ * of it.  (A transfer is what ide.c passes at once, at most four sectors;
+ * a guest command that runs across the partition's end has its sectors
+ * inside written and then fails.)  Reads: LBA 0 is the record made here,
+ * the partition's sectors the card's, everything else zeros.  A card error is tried once more, as
  * disk_image.c does, and counted in disk_image.c's figures (the speed
  * screen's Disk line, the information port).
  */
@@ -27,6 +32,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 #include "ff.h"
 #include "diskio.h"
@@ -190,7 +196,10 @@ int sd_part_plan(const uint8_t *mbr, const uint8_t *vbr, uint64_t card_sectors,
 	for (int i = 0; i < 4; i++) {
 		const uint8_t *o = mbr + 446 + 16 * i;
 		uint32_t os = le32(o + 8), on = le32(o + 12);
-		if (i == part - 1 || !o[4] || !on)
+		/* v4.5: only an entry with no size is passed over; Linux's
+		   own reading of the table skips only those (the review of
+		   v4.4, storage note 6) */
+		if (i == part - 1 || !on)
 			continue;
 		if (start < (uint64_t) os + on && os < end)
 			return refuse(why, size, "card partition %d (sectors %u to %llu) overlaps "
@@ -207,6 +216,11 @@ int sd_part_plan(const uint8_t *mbr, const uint8_t *vbr, uint64_t card_sectors,
 	plan->disk_sectors = (end + SDP_CYL - 1) / SDP_CYL * SDP_CYL;
 	if (plan->disk_sectors < 2 * SDP_CYL)
 		plan->disk_sectors = 2 * SDP_CYL;
+	/* v4.5: never more than 28-bit LBA can name; the partition ends by
+	   then (above), so only the last part cylinder is cut (the review of
+	   v4.4, storage note 7) */
+	if (plan->disk_sectors > SD_PART_LBA28)
+		plan->disk_sectors = SD_PART_LBA28;
 
 	if (!vbr) {
 		snprintf(plan->note, sizeof(plan->note), "its first sector could not be "
@@ -242,15 +256,77 @@ int sd_part_plan(const uint8_t *mbr, const uint8_t *vbr, uint64_t card_sectors,
 		return refuse(why, size, "the FAT volume in card partition %d is %u sectors, "
 			      "bigger than its partition (%u): its end would be past the "
 			      "partition's", part, (unsigned) total, (unsigned) count);
+	/* v4.5: the Linux route's WIN9X partition, which holds win95.img (the
+	   review of v4.4, storage finding 2) */
+	if (!strcasecmp(plan->label, "WIN9X"))
+		return refuse(why, size, "card partition %d is labelled WIN9X: on a card laid "
+			      "out for the Linux route it holds win95.img, which the guest would "
+			      "see raw and could overwrite; sd:%d is for a card made by newcard.sh",
+			      part, part);
 	if (plan->hidden != start)
 		snprintf(plan->note, sizeof(plan->note), "its boot sector's hidden-sectors "
 			 "field is %u, not %u where it starts: Windows 95's boot sector finds "
 			 "itself by it, so the guest may not start from this disk",
 			 (unsigned) plan->hidden, (unsigned) start);
+	else if ((type == 0x04 || type == 0x06 || type == 0x0B) && end > SD_PART_CHS_END)
+		/* v4.5: Windows 95's boot sector reads by CHS for these types,
+		   and CHS reaches only the guest disk's first 504 MiB (the
+		   review of v4.4, storage finding 4) */
+		snprintf(plan->note, sizeof(plan->note), "its type (%02X) has Windows 95's boot "
+			 "sector read by CHS, which reaches only the first 504 MiB, and it ends "
+			 "past that, so the guest may not start from it: make its type %s",
+			 type, type == 0x0B ? "0C" : "0E");
 	else if (plan->fat32 != fat32_type(type))
 		snprintf(plan->note, sizeof(plan->note), "its type (%02X) says FAT%s, its "
 			 "boot sector FAT%s", type, plan->fat32 ? "16" : "32",
 			 plan->fat32 ? "32" : "16");
+	return 0;
+}
+
+int sd_part_ini_check(const char *path, int drive, bool iscd,
+		      const char *const *others, int nothers, char *why, size_t size)
+{
+	int part = sd_part_name(path);
+	if (part <= 0)
+		return refuse(why, size, "write sd: and the partition's number in the card's "
+			      "table, 1 to 4 (hda = sd:3)");
+	if (drive < 0 || drive >= 4 || iscd)
+		return refuse(why, size, "a card partition can be a hard disk (hda to hdd), not a "
+			      "CD or a floppy");
+	char prefix[24];
+	snprintf(prefix, sizeof(prefix), "/sdcard%d/", part);
+	const char *first = NULL;
+	int on = 0;
+	for (int k = 0; k < nothers; k++)
+		if (others[k] && !strncmp(others[k], prefix, strlen(prefix))) {
+			if (!first)
+				first = others[k];
+			on++;
+		}
+	if (first) {
+		if (on > 1)
+			return refuse(why, size, "the guest gets card partition %d whole, so nothing "
+				      "else can be read from it: %s and %d more are on it. Move them to "
+				      "/sdcard", part, first, on - 1);
+		return refuse(why, size, "the guest gets card partition %d whole, so nothing else "
+			      "can be read from it: %s is on it. Move that file to /sdcard",
+			      part, first);
+	}
+	return part;
+}
+
+int sd_part_route_files(int part, bool (*exists)(const char *path), char *why, size_t size)
+{
+	static const char *const names[] = { "win95.img", "korvo-root.img" };
+	for (unsigned k = 0; k < sizeof(names) / sizeof(names[0]); k++) {
+		char p[40];
+		snprintf(p, sizeof(p), "/sdcard%d/%s", part, names[k]);
+		if (exists(p))
+			return refuse(why, size, "card partition %d holds %s: it is the Linux route's "
+				      "WIN9X partition, which the guest would see raw and could "
+				      "overwrite; sd:%d is for a card made by newcard.sh", part,
+				      names[k], part);
+	}
 	return 0;
 }
 
