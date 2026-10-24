@@ -285,6 +285,14 @@ struct VGAState {
     /* what the drawing has done, for vga_get_info(): the drawing writes
        them, a word each; last in the state, so that no other field moves */
     uint32_t n_vbe_pictures, n_vbe_whole, n_vbe_blocks, n_vbe_rows;
+
+    /* v4.4: the font in plane 2 (vga_text_refresh()).  font_req counts the
+       writes of the map mask (SR02) that let plane 2 be written or stop it,
+       on the emulator's core; font_seen is the count the drawing has dealt
+       with; last_sr03 the character map select it last drew with. */
+    uint32_t font_req;
+    uint32_t font_seen;
+    int last_sr03;
 };
 
 uint32_t get_uticks();
@@ -1077,6 +1085,32 @@ static void vga_text_refresh(VGAState *s,
 #else
     full_update = full_update || update_palette16(s, s->last_palette);
 #endif
+    /*
+     * v4.4: the glyphs are in plane 2, and a cell is drawn again only when
+     * its character or attribute changes (last_ch_attr), so a new font alone
+     * left the old glyphs on the screen: the grey text screen of a restart
+     * from Windows in 16 colours, where the VGA BIOS loads its font after
+     * the text mode's first picture, over what the 16-colour picture left in
+     * plane 2 (BUILD-NOTES 26.3).  Now all of the text is drawn while plane
+     * 2 can be written (SR02 bit 2: a font being loaded), and at the picture
+     * after each change of that (the count from the emulator's core, taken
+     * with acquire: the font's stores, made before the map mask went back,
+     * are seen), and when another font is selected (SR03).  No store into
+     * video memory pays for it.
+     */
+    {
+#ifdef VGA_TWO_CORES
+        uint32_t fr = __atomic_load_n(&s->font_req, __ATOMIC_ACQUIRE);
+#else
+        uint32_t fr = s->font_req;
+#endif
+        if (fr != s->font_seen || (s->sr[VGA_SEQ_PLANE_WRITE] & 4) ||
+            s->sr[VGA_SEQ_CHARACTER_MAP] != s->last_sr03) {
+            s->font_seen = fr;
+            s->last_sr03 = s->sr[VGA_SEQ_CHARACTER_MAP];
+            full_update = 1;
+        }
+    }
     /* AR10h bit 3: attribute bit 7 makes a character blink, and the
        background has only eight colours */
     int blink = s->ar[0x10] & 0x08;
@@ -2821,6 +2855,20 @@ void vga_ioport_write(VGAState *s, uint32_t addr, uint32_t val)
             ((s->sr[VGA_SEQ_MEMORY_MODE] ^ val) & VGA_SR04_CHN_4M))
             vga_vbe_whole(s);
 #endif
+        /* v4.4: plane 2, the font, made writable or not while the graphics
+           controller is not in a graphics mode (text, or a font being
+           loaded): the text picture after it is drawn whole
+           (vga_text_refresh()).  A graphics mode's planar drawing, which
+           writes the map mask all the time, pays only the test. */
+        if (s->sr_index == VGA_SEQ_PLANE_WRITE &&
+            ((s->sr[VGA_SEQ_PLANE_WRITE] ^ val) & 4) &&
+            !(s->gr[VGA_GFX_MISC] & VGA_GR06_GRAPHICS_MODE)) {
+#ifdef VGA_TWO_CORES
+            vga_ask(&s->font_req);
+#else
+            s->font_req++;
+#endif
+        }
         s->sr[s->sr_index] = val & sr_mask[s->sr_index];
         break;
     case 0x3c6:

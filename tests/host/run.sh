@@ -19,6 +19,18 @@ fail=0
 result() {
     if [ "$1" = 0 ]; then pass=$((pass + 1)); echo "PASS $2"; else fail=$((fail + 1)); echo "FAIL $2"; fi
 }
+# an earlier release's tag: its name in the firmware's scratch repository
+# (v4.1), or on Plat's fork, where the same commits carry s31-v4.1 (v4.4);
+# empty when the tree has neither
+tagref() {
+    local t
+    for t in "$1" "s31-$1"; do
+        if git -C "$TREE" rev-parse -q --verify "$t^{commit}" >/dev/null 2>&1; then
+            echo "$t"
+            return
+        fi
+    done
+}
 
 # ==== 1. the PS/2 queue's lock (FIRMWARE-PLAN 3.3.1) ====
 # i8042.c as it is now must pass; i8042.c as tiny386 released it (the
@@ -146,10 +158,11 @@ done
 # every picture right and fail the stores (exit status 2).
 echo
 CLEAR_V41=
-if git -C "$TREE" rev-parse -q --verify v4.1 >/dev/null; then
+V41=$(tagref v4.1)
+if [ -n "$V41" ]; then
     mkdir -p "$OUT/v41"
-    git -C "$TREE" show v4.1:vga.c > "$OUT/v41/vga.c"
-    git -C "$TREE" show v4.1:vga.h > "$OUT/v41/vga.h"
+    git -C "$TREE" show "$V41:vga.c" > "$OUT/v41/vga.c"
+    git -C "$TREE" show "$V41:vga.h" > "$OUT/v41/vga.h"
     CLEAR_V41=1
 fi
 for board in korvo1 dosboard; do
@@ -176,6 +189,46 @@ for board in korvo1 dosboard; do
         echo "    | ($(grep -c 'FAIL' "$OUT/clear-v41-$board.log") checks failed; exit status $st)"
         [ $st = 2 ]
         result $? "vga.c, $board: the clear test catches v4.1's memset() (pictures right, pages stored into for nothing)"
+    fi
+done
+
+# ==== 3e. the text screen when its font changes (v4.4, BUILD-NOTES 26.3) ====
+# vga.c as each board builds it (test 3c's objects): every text picture
+# after a font is loaded into plane 2, with and without a picture during the
+# loading, and after another character map is chosen, the same as a whole
+# redraw; a picture with nothing changed still draws only what changed.
+# v4.3's vga.c under the same test, when the tag is there, has to fail.
+echo
+FONT_V43=
+V43=$(tagref v4.3)
+if [ -n "$V43" ]; then
+    mkdir -p "$OUT/v43"
+    git -C "$TREE" show "$V43:vga.c" > "$OUT/v43/vga.c"
+    git -C "$TREE" show "$V43:vga.h" > "$OUT/v43/vga.h"
+    FONT_V43=1
+fi
+for board in korvo1 dosboard; do
+    hdr="$TREE/esp/main/board_$board.h"
+    $CC $CFLAGS -c -I"$HERE/shim" -I"$TREE" -include "$hdr" \
+        -o "$OUT/test_font-$board.o" "$HERE/test_font.c" || exit 1
+    $CC -o "$OUT/test_font-$board" "$OUT/test_font-$board.o" "$OUT/vbe-new-$board.o" \
+        "$OUT/vgafont.o" || exit 1
+    "$OUT/test_font-$board" > "$OUT/font-$board.log" 2>&1
+    st=$?
+    grep "FAIL\|test_font" "$OUT/font-$board.log" | head -12
+    result $st "vga.c, $board: a text picture after a new font or character map is a whole redraw's, and no more is drawn when nothing changed"
+    if [ -n "$FONT_V43" ]; then
+        $CC -O2 -g -w -c -I"$OUT/v43" -I"$HERE/shim" -I"$TREE" -include "$hdr" \
+            -o "$OUT/font-v43-$board.o" "$OUT/v43/vga.c" || exit 1
+        $CC -o "$OUT/test_font_v43-$board" "$OUT/test_font-$board.o" "$OUT/font-v43-$board.o" \
+            "$OUT/vgafont.o" || exit 1
+        echo "(the same test against vga.c at the v4.3 tag, which has to fail)"
+        "$OUT/test_font_v43-$board" > "$OUT/font-v43-$board.log" 2>&1
+        st=$?
+        grep "FAIL" "$OUT/font-v43-$board.log" | sed 's/^/    | /'
+        echo "    | (exit status $st)"
+        [ $st = 1 ]
+        result $? "vga.c, $board: the font test catches v4.3's text drawing (old glyphs left after a new font)"
     fi
 done
 
@@ -214,8 +267,9 @@ $CC $CFLAGS -Wno-unused-function -DBUILD_ESP32 -DPS2_KBD_HOOKS -DTWO_THREADS -DS
     "$HERE/test_ps2_mouse.c" "$TREE/i8042.c" -lpthread || exit 1
 "$OUT/test_ps2_mouse_stalls"
 result $? "PS/2 mouse: two threads, the emulator held up: every click through the ring's overflow"
-if git -C "$TREE" rev-parse -q --verify v3 >/dev/null; then
-    git -C "$TREE" show v3:i8042.c > "$OUT/i8042-v3.c"
+T_V3=$(tagref v3)
+if [ -n "$T_V3" ]; then
+    git -C "$TREE" show "$T_V3":i8042.c > "$OUT/i8042-v3.c"
     $CC -O1 -g -w -DPS2_KBD_HOOKS -I"$TREE" -c -o "$OUT/i8042-v3-hooks.o" "$OUT/i8042-v3.c" || exit 1
     $CC $CFLAGS -DKBD_INPUT_HOST -DPS2_KBD_HOOKS -I"$TREE" -I"$TREE/esp/main" \
         -o "$OUT/test_ps2_mouse_v3" "$HERE/test_ps2_mouse.c" "$TREE/esp/main/kbd_input.c" \
@@ -246,8 +300,9 @@ $CC $CFLAGS -Wno-unused-function -DUSB_INPUT_C="\"$TREE/esp/main/usb_input.c\"" 
 result $? "usb_input.c: interfaces given up, unplugged, queued behind others; lights after an unplug; unplugged while being set up"
 # the round 2 cases (unplugged while being set up) against usb_input.c at
 # the v3.1 tag, where they have to fail
-if git -C "$TREE" rev-parse -q --verify v3.1 >/dev/null; then
-    git -C "$TREE" show v3.1:esp/main/usb_input.c > "$OUT/usb_input-v3.1.c"
+T_V3_1=$(tagref v3.1)
+if [ -n "$T_V3_1" ]; then
+    git -C "$TREE" show "$T_V3_1":esp/main/usb_input.c > "$OUT/usb_input-v3.1.c"
     $CC $CFLAGS -w -DUSB_INPUT_C="\"$OUT/usb_input-v3.1.c\"" \
         -I"$HERE/usb/stubs" -I"$TREE/esp/main" -I"$TREE" -o "$OUT/test_usb_input_v3.1" \
         "$HERE/usb/test_usb_input.c" "$TREE/esp/main/hid_parse.c" || exit 1
@@ -467,8 +522,9 @@ $CC $BCFLAGS -include "$TREE/esp/main/board_dosboard.h" -o "$OUT/board_check_tes
     "$D/board_check_test.c" "$OUT/bc_dosboard.o" "$OUT/bc_ms7210.o" "$OUT/bc_ini.o" || exit 1
 "$OUT/board_check_test"
 result $? "dosboard.c board check: pins touched and when, Korvo-1s and DOS boards, J202 devices, GPIO46"
-if git -C "$TREE" rev-parse -q --verify v3.5 >/dev/null; then
-    git -C "$TREE" show v3.5:esp/main/dosboard.c > "$OUT/dosboard-v3.5.c"
+T_V3_5=$(tagref v3.5)
+if [ -n "$T_V3_5" ]; then
+    git -C "$TREE" show "$T_V3_5":esp/main/dosboard.c > "$OUT/dosboard-v3.5.c"
     $CC $BCFLAGS -w -include "$TREE/esp/main/board_dosboard.h" -c -o "$OUT/bc_dosboard_v35.o" \
         "$OUT/dosboard-v3.5.c" || exit 1
     $CC $BCFLAGS -DBOARD_CHECK_V35 -include "$TREE/esp/main/board_dosboard.h" \
@@ -506,8 +562,9 @@ if git -C "$TREE" rev-parse -q --verify pristine >/dev/null; then
 fi
 # v4.0-base: the one-shot modes came with upstream; v3.9's i8254.c has to
 # pass everything before them and then stop at mode 0 (abort())
-if git -C "$TREE" rev-parse -q --verify v3.9 >/dev/null; then
-    git -C "$TREE" show v3.9:i8254.c > "$OUT/i8254-v3.9.c"
+T_V3_9=$(tagref v3.9)
+if [ -n "$T_V3_9" ]; then
+    git -C "$TREE" show "$T_V3_9":i8254.c > "$OUT/i8254-v3.9.c"
     $CC -O1 -g -w -I"$TREE" -c -o "$OUT/pit_i8254_v39.o" "$OUT/i8254-v3.9.c" || exit 1
     $CC $CFLAGS -I"$TREE" -o "$OUT/test_pit_v39" "$HERE/test_pit.c" \
         "$OUT/pit_i8254_v39.o" "$OUT/pit_misc.o" || exit 1
