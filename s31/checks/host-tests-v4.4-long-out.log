@@ -1,0 +1,1656 @@
+keyboard queue: 256 bytes, then 44 more into the full queue
+mouse queue: 256 bytes, then 44 more into the full queue
+keyboard: 300 key presses with nothing reading
+test_ps2_queue: all checks passed
+PASS ps2 queue lock, i8042.c of this tree
+(the same test against i8042.c at the pristine tag, where it has to fail)
+    | keyboard queue: 256 bytes, then 44 more into the full queue
+    |   FAIL: mutex left held by ps2_queue() on a full queue
+    |   FAIL: the reader is still waiting after 3 s
+    | mouse queue: 256 bytes, then 44 more into the full queue
+    |   FAIL: mutex left held by ps2_queue() on a full queue
+    |   FAIL: the reader is still waiting after 3 s
+    | keyboard: 300 key presses with nothing reading
+    |   FAIL: mutex left held after typing into a full queue
+    |   FAIL: the reader is still waiting after 3 s
+    | test_ps2_queue: 9 checks FAILED
+    | (216 takes and 90 gives failed; exit status 1)
+PASS ps2 queue lock test catches the bug in pristine i8042.c
+
+previous run and start-up
+  wrote /home/owner/org2/v44sd/chk/ht-out-with-a-long-folder-name-for-the-setup-test-as-the-earlier-rounds-had-it-v44-round/console-1-boot.ppm
+scrolling
+  wrote /home/owner/org2/v44sd/chk/ht-out-with-a-long-folder-name-for-the-setup-test-as-the-earlier-rounds-had-it-v44-round/console-2-scrolled.ppm
+ring
+handing the panel over and back
+  wrote /home/owner/org2/v44sd/chk/ht-out-with-a-long-folder-name-for-the-setup-test-as-the-earlier-rounds-had-it-v44-round/console-3-taken-back.ppm
+crash screen
+  wrote /home/owner/org2/v44sd/chk/ht-out-with-a-long-folder-name-for-the-setup-test-as-the-earlier-rounds-had-it-v44-round/console-4-crash.ppm
+the UART quiet
+lines that repeat
+the UART's queue
+held error lines, held lines at a crash
+  wrote /home/owner/org2/v44sd/chk/ht-out-with-a-long-folder-name-for-the-setup-test-as-the-earlier-rounds-had-it-v44-round/console-5-crash-held.ppm
+test_console: all checks passed
+PASS boot console: text, colours, scrolling, ring, hand-over, crash screen, repeated lines, UART queue
+
+retrace in 80x25 text (as vga_init() leaves it: 28 MHz, 9 dots, 449 lines)
+  70 retraces in 1 s, each 1176 us, bit 0 set 28.4% of the time
+retrace in 640x480 (mode 12h registers: 25 MHz, 8 dots, 525 lines)
+  60 retraces in 1 s, each 1110 us, bit 0 set 26.6% of the time
+retrace with nonsense in the CRT controller
+  60 retraces in 1 s
+rows redrawn in 80x25 text (720x400 at 40,40)
+  first picture: 1 call(s), rows 0+480
+  cursor moved from row 0 to row 10: 1 call(s), rows 40+176
+  nothing changed (the cursor's row only): 1 call(s), rows 200+16
+  a letter on the cursor's row: 1 call(s), rows 200+16
+  a letter on row 20: 1 call(s), rows 200+176
+  every cell changed: 1 call(s), rows 40+400
+  wrote /home/owner/org2/v44sd/chk/ht-out-with-a-long-folder-name-for-the-setup-test-as-the-earlier-rounds-had-it-v44-round/vga-text-80x25.ppm
+rows redrawn in 640x480x16 (at 80,0)
+  into graphics: cleared, all of it: 1 call(s), rows 0+480
+  nothing changed: 0 call(s), rows -1+-1
+  eight pixels on line 100: 1 call(s), rows 100+1
+  eight more on line 300: 1 call(s), rows 300+1
+clears asked for by the emulator
+  CRT controller written, same picture: clear left out: 0 call(s), rows -1+-1
+  picture made narrower: cleared, all of it: 1 call(s), rows 0+480
+  and back to 640 wide: 1 call(s), rows 0+480
+  VBE 640x480x8 on: cleared by the drawing, all of it: 1 call(s), rows 0+480
+  VBE: 60 retraces in 1 s
+mode 13h (320x200x256) placement
+  into mode 13h: 1 call(s), rows 0+480
+  wrote /home/owner/org2/v44sd/chk/ht-out-with-a-long-folder-name-for-the-setup-test-as-the-earlier-rounds-had-it-v44-round/vga-13h-320x200.ppm
+VBE 800x600x16 on an 800x480 panel
+  VBE 800x600 on: 1 call(s), rows 0+480
+  wrote /home/owner/org2/v44sd/chk/ht-out-with-a-long-folder-name-for-the-setup-test-as-the-earlier-rounds-had-it-v44-round/vga-vbe-800x600-scaled.ppm
+  800x600, nothing changed: 0 call(s), rows -1+-1
+  800x600, one pixel changed: 1 call(s), rows 240+1
+VBE 640x480x16 shown from line 400 of 1 MiB: past the end
+  rows 0 to 418 drawn, row 419 half drawn, rows 420 to 479 black
+test_vga: all checks passed
+PASS vga.c: retrace against the clock, rows redrawn, clears from the other core, placement
+
+vga.c with board_dosboard.h: frame buffer 800x600
+  ok  : 80x25 text: drawn x 40..759, y 100..499 (want 40..759, 100..499)
+  ok  : 40x25 text: drawn x 40..759, y 100..499 (want 40..759, 100..499: each dot doubled)
+  ok  : 40x25 text: 70 retraces a second (want 70)
+  ok  : 640x480x16: drawn x 80..719, y 60..539 (want 80..719, 60..539)
+  ok  : 320x200x256: drawn x 80..719, y 100..499 (want 80..719, 100..499)
+  ok  : VBE 800x600x16: drawn x 0..799, y 0..599 (want 0..799, 0..599)
+  ok  : VBE 1024x768x16: drawn x 0..799, y 0..599 (want 0..799, 0..599, scaled)
+  ok  : VBE 640x480x8: drawn x 80..719, y 60..539 (want 80..719, 60..539)
+test_vga_dosboard: all passed
+PASS vga.c on the DOS board: text, 16 and 256 colours, VBE whole, scaled and 8-bit, at 800x600
+
+VBE pictures from the blocks written against every pixel every time, on a 800x480 screen
+  800x480x8 in 768K        the same in every picture
+  800x480x15 in 768K       the same in every picture
+  800x480x16 in 768K       the same in every picture
+  640x480x8 in 768K        the same in every picture
+  640x480x15 in 768K       the same in every picture
+  640x480x16 in 768K       the same in every picture
+  320x200x8 in 768K        the same in every picture
+  320x200x15 in 768K       the same in every picture
+  320x200x16 in 768K       the same in every picture
+  320x200x24 in 768K       the same in every picture
+  320x200x32 in 768K       the same in every picture
+  800x600x8 in 768K        the same in every picture
+  1024x768x8 in 768K       the same in every picture
+  512x384x8 in 768K        the same in every picture
+  512x384x15 in 768K       the same in every picture
+  512x384x16 in 768K       the same in every picture
+  512x384x24 in 768K       the same in every picture
+  512x384x32 in 768K       the same in every picture
+  800x480x8 in 1024K       the same in every picture
+  800x480x15 in 1024K      the same in every picture
+  800x480x16 in 1024K      the same in every picture
+  640x480x8 in 1024K       the same in every picture
+  640x480x15 in 1024K      the same in every picture
+  640x480x16 in 1024K      the same in every picture
+  640x480x24 in 1024K      the same in every picture
+  320x200x8 in 1024K       the same in every picture
+  320x200x15 in 1024K      the same in every picture
+  320x200x16 in 1024K      the same in every picture
+  320x200x24 in 1024K      the same in every picture
+  320x200x32 in 1024K      the same in every picture
+  800x600x8 in 1024K       the same in every picture
+  800x600x15 in 1024K      the same in every picture
+  800x600x16 in 1024K      the same in every picture
+  1024x768x8 in 1024K      the same in every picture
+  512x384x8 in 1024K       the same in every picture
+  512x384x15 in 1024K      the same in every picture
+  512x384x16 in 1024K      the same in every picture
+  512x384x24 in 1024K      the same in every picture
+  512x384x32 in 1024K      the same in every picture
+  wrote /home/owner/org2/v44sd/chk/ht-out-with-a-long-folder-name-for-the-setup-test-as-the-earlier-rounds-had-it-v44-round/vbe-800x480-last.ppm
+  800x480x8 in 1536K       the same in every picture
+  800x480x15 in 1536K      the same in every picture
+  800x480x16 in 1536K      the same in every picture
+  800x480x24 in 1536K      the same in every picture
+  800x480x32 in 1536K      the same in every picture
+  640x480x8 in 1536K       the same in every picture
+  640x480x15 in 1536K      the same in every picture
+  640x480x16 in 1536K      the same in every picture
+  640x480x24 in 1536K      the same in every picture
+  640x480x32 in 1536K      the same in every picture
+  320x200x8 in 1536K       the same in every picture
+  320x200x15 in 1536K      the same in every picture
+  320x200x16 in 1536K      the same in every picture
+  320x200x24 in 1536K      the same in every picture
+  320x200x32 in 1536K      the same in every picture
+  800x600x8 in 1536K       the same in every picture
+  800x600x15 in 1536K      the same in every picture
+  800x600x16 in 1536K      the same in every picture
+  800x600x24 in 1536K      the same in every picture
+  1024x768x8 in 1536K      the same in every picture
+  1024x768x15 in 1536K     the same in every picture
+  1024x768x16 in 1536K     the same in every picture
+  512x384x8 in 1536K       the same in every picture
+  512x384x15 in 1536K      the same in every picture
+  512x384x16 in 1536K      the same in every picture
+  512x384x24 in 1536K      the same in every picture
+  512x384x32 in 1536K      the same in every picture
+  800x480x8 in 2048K       the same in every picture
+  800x480x15 in 2048K      the same in every picture
+  800x480x16 in 2048K      the same in every picture
+  800x480x24 in 2048K      the same in every picture
+  800x480x32 in 2048K      the same in every picture
+  640x480x8 in 2048K       the same in every picture
+  640x480x15 in 2048K      the same in every picture
+  640x480x16 in 2048K      the same in every picture
+  640x480x24 in 2048K      the same in every picture
+  640x480x32 in 2048K      the same in every picture
+  320x200x8 in 2048K       the same in every picture
+  320x200x15 in 2048K      the same in every picture
+  320x200x16 in 2048K      the same in every picture
+  320x200x24 in 2048K      the same in every picture
+  320x200x32 in 2048K      the same in every picture
+  800x600x8 in 2048K       the same in every picture
+  800x600x15 in 2048K      the same in every picture
+  800x600x16 in 2048K      the same in every picture
+  800x600x24 in 2048K      the same in every picture
+  800x600x32 in 2048K      the same in every picture
+  1024x768x8 in 2048K      the same in every picture
+  1024x768x15 in 2048K     the same in every picture
+  1024x768x16 in 2048K     the same in every picture
+  512x384x8 in 2048K       the same in every picture
+  512x384x15 in 2048K      the same in every picture
+  512x384x16 in 2048K      the same in every picture
+  512x384x24 in 2048K      the same in every picture
+  512x384x32 in 2048K      the same in every picture
+  6768 pictures compared, 1537984 rows given to redraw() by the new drawing
+the bank window
+  new, 768K: 12 banks each in its place
+  base, 768K: 12 banks not each in its place
+  new, 1152K: 18 banks each in its place
+  base, 1152K: 18 banks not each in its place
+  new, 1536K: 24 banks each in its place
+  base, 1536K: 24 banks not each in its place
+  new, 1024K: 16 banks each in its place
+  base, 1024K: 16 banks each in its place
+  new, 2048K: 32 banks each in its place
+  base, 2048K: 32 banks each in its place
+marks only where a picture reads them (v4.1)
+  VBE off, chain 4 on, a picture drawn: 0 blocks marked by stores through the window
+  320x200x8, VBE on again with video memory kept (a picture while it was off) the same
+  VBE off, chain 4 on, no picture since VBE was on: 0 blocks marked by stores through the window
+  320x200x8, VBE on again with video memory kept (no picture while it was off) the same
+  vbe_blocks 0, VBE on: 0 blocks marked by stores through the window and the frame buffer
+  vbe_blocks 0, then 1 again: the same in every picture
+chain 4 switched under VBE (v4.1)
+  640x480x8, chain 4 off and on, no picture between    the same
+  640x480x8, chain 4 off and on, a picture between     the same
+  800x480x8, chain 4 off and on, no picture between    the same
+  800x480x8, chain 4 off and on, a picture between     the same
+  800x480x16, chain 4 off and on, no picture between   the same
+  800x480x16, chain 4 off and on, a picture between    the same
+  640x480x32, chain 4 off and on, no picture between   the same
+  640x480x32, chain 4 off and on, a picture between    the same
+  800x600x16, chain 4 off and on, no picture between   the same
+  800x600x16, chain 4 off and on, a picture between    the same
+  1024x768x8, chain 4 off and on, no picture between   the same
+  1024x768x8, chain 4 off and on, a picture between    the same
+vbe_blocks changed while the PC runs (v4.2)
+  800x480x8, vbe_blocks switched while drawing: the same in every picture
+  800x480x16, vbe_blocks switched while drawing: the same in every picture
+  800x480x32, vbe_blocks switched while drawing: the same in every picture
+two threads
+  800x480x8, 300 pictures while writing: 0 pixels differ from a full redraw
+  800x480x15, 300 pictures while writing: 0 pixels differ from a full redraw
+  800x480x16, 300 pictures while writing: 0 pixels differ from a full redraw
+  800x480x24, 300 pictures while writing: 0 pixels differ from a full redraw
+  800x480x32, 300 pictures while writing: 0 pixels differ from a full redraw
+  1024x768x16, 100 pictures while writing: 0 pixels differ from a full redraw
+test_vbe: all 6856 checks passed
+PASS vga.c, korvo1: VBE pictures from the blocks written are as the old loop and v4.0-base draws them, pixel for pixel; the bank window
+VBE pictures from the blocks written against every pixel every time, on a 800x600 screen
+  800x600x8 in 768K        the same in every picture
+  640x480x8 in 768K        the same in every picture
+  640x480x15 in 768K       the same in every picture
+  640x480x16 in 768K       the same in every picture
+  320x200x8 in 768K        the same in every picture
+  320x200x15 in 768K       the same in every picture
+  320x200x16 in 768K       the same in every picture
+  320x200x24 in 768K       the same in every picture
+  320x200x32 in 768K       the same in every picture
+  1024x768x8 in 768K       the same in every picture
+  800x480x8 in 768K        the same in every picture
+  800x480x15 in 768K       the same in every picture
+  800x480x16 in 768K       the same in every picture
+  512x384x8 in 768K        the same in every picture
+  512x384x15 in 768K       the same in every picture
+  512x384x16 in 768K       the same in every picture
+  512x384x24 in 768K       the same in every picture
+  512x384x32 in 768K       the same in every picture
+  800x600x8 in 1024K       the same in every picture
+  800x600x15 in 1024K      the same in every picture
+  800x600x16 in 1024K      the same in every picture
+  640x480x8 in 1024K       the same in every picture
+  640x480x15 in 1024K      the same in every picture
+  640x480x16 in 1024K      the same in every picture
+  640x480x24 in 1024K      the same in every picture
+  320x200x8 in 1024K       the same in every picture
+  320x200x15 in 1024K      the same in every picture
+  320x200x16 in 1024K      the same in every picture
+  320x200x24 in 1024K      the same in every picture
+  320x200x32 in 1024K      the same in every picture
+  1024x768x8 in 1024K      the same in every picture
+  800x480x8 in 1024K       the same in every picture
+  800x480x15 in 1024K      the same in every picture
+  800x480x16 in 1024K      the same in every picture
+  512x384x8 in 1024K       the same in every picture
+  512x384x15 in 1024K      the same in every picture
+  512x384x16 in 1024K      the same in every picture
+  512x384x24 in 1024K      the same in every picture
+  512x384x32 in 1024K      the same in every picture
+  wrote /home/owner/org2/v44sd/chk/ht-out-with-a-long-folder-name-for-the-setup-test-as-the-earlier-rounds-had-it-v44-round/vbe-800x600-last.ppm
+  800x600x8 in 1536K       the same in every picture
+  800x600x15 in 1536K      the same in every picture
+  800x600x16 in 1536K      the same in every picture
+  800x600x24 in 1536K      the same in every picture
+  640x480x8 in 1536K       the same in every picture
+  640x480x15 in 1536K      the same in every picture
+  640x480x16 in 1536K      the same in every picture
+  640x480x24 in 1536K      the same in every picture
+  640x480x32 in 1536K      the same in every picture
+  320x200x8 in 1536K       the same in every picture
+  320x200x15 in 1536K      the same in every picture
+  320x200x16 in 1536K      the same in every picture
+  320x200x24 in 1536K      the same in every picture
+  320x200x32 in 1536K      the same in every picture
+  1024x768x8 in 1536K      the same in every picture
+  1024x768x15 in 1536K     the same in every picture
+  1024x768x16 in 1536K     the same in every picture
+  800x480x8 in 1536K       the same in every picture
+  800x480x15 in 1536K      the same in every picture
+  800x480x16 in 1536K      the same in every picture
+  800x480x24 in 1536K      the same in every picture
+  800x480x32 in 1536K      the same in every picture
+  512x384x8 in 1536K       the same in every picture
+  512x384x15 in 1536K      the same in every picture
+  512x384x16 in 1536K      the same in every picture
+  512x384x24 in 1536K      the same in every picture
+  512x384x32 in 1536K      the same in every picture
+  800x600x8 in 2048K       the same in every picture
+  800x600x15 in 2048K      the same in every picture
+  800x600x16 in 2048K      the same in every picture
+  800x600x24 in 2048K      the same in every picture
+  800x600x32 in 2048K      the same in every picture
+  640x480x8 in 2048K       the same in every picture
+  640x480x15 in 2048K      the same in every picture
+  640x480x16 in 2048K      the same in every picture
+  640x480x24 in 2048K      the same in every picture
+  640x480x32 in 2048K      the same in every picture
+  320x200x8 in 2048K       the same in every picture
+  320x200x15 in 2048K      the same in every picture
+  320x200x16 in 2048K      the same in every picture
+  320x200x24 in 2048K      the same in every picture
+  320x200x32 in 2048K      the same in every picture
+  1024x768x8 in 2048K      the same in every picture
+  1024x768x15 in 2048K     the same in every picture
+  1024x768x16 in 2048K     the same in every picture
+  800x480x8 in 2048K       the same in every picture
+  800x480x15 in 2048K      the same in every picture
+  800x480x16 in 2048K      the same in every picture
+  800x480x24 in 2048K      the same in every picture
+  800x480x32 in 2048K      the same in every picture
+  512x384x8 in 2048K       the same in every picture
+  512x384x15 in 2048K      the same in every picture
+  512x384x16 in 2048K      the same in every picture
+  512x384x24 in 2048K      the same in every picture
+  512x384x32 in 2048K      the same in every picture
+  6768 pictures compared, 1654730 rows given to redraw() by the new drawing
+the bank window
+  new, 768K: 12 banks each in its place
+  base, 768K: 12 banks not each in its place
+  new, 1152K: 18 banks each in its place
+  base, 1152K: 18 banks not each in its place
+  new, 1536K: 24 banks each in its place
+  base, 1536K: 24 banks not each in its place
+  new, 1024K: 16 banks each in its place
+  base, 1024K: 16 banks each in its place
+  new, 2048K: 32 banks each in its place
+  base, 2048K: 32 banks each in its place
+marks only where a picture reads them (v4.1)
+  VBE off, chain 4 on, a picture drawn: 0 blocks marked by stores through the window
+  320x200x8, VBE on again with video memory kept (a picture while it was off) the same
+  VBE off, chain 4 on, no picture since VBE was on: 0 blocks marked by stores through the window
+  320x200x8, VBE on again with video memory kept (no picture while it was off) the same
+  vbe_blocks 0, VBE on: 0 blocks marked by stores through the window and the frame buffer
+  vbe_blocks 0, then 1 again: the same in every picture
+chain 4 switched under VBE (v4.1)
+  640x480x8, chain 4 off and on, no picture between    the same
+  640x480x8, chain 4 off and on, a picture between     the same
+  800x600x8, chain 4 off and on, no picture between    the same
+  800x600x8, chain 4 off and on, a picture between     the same
+  800x600x16, chain 4 off and on, no picture between   the same
+  800x600x16, chain 4 off and on, a picture between    the same
+  640x480x32, chain 4 off and on, no picture between   the same
+  640x480x32, chain 4 off and on, a picture between    the same
+  800x600x16, chain 4 off and on, no picture between   the same
+  800x600x16, chain 4 off and on, a picture between    the same
+  1024x768x8, chain 4 off and on, no picture between   the same
+  1024x768x8, chain 4 off and on, a picture between    the same
+vbe_blocks changed while the PC runs (v4.2)
+  800x600x8, vbe_blocks switched while drawing: the same in every picture
+  800x600x16, vbe_blocks switched while drawing: the same in every picture
+  800x600x32, vbe_blocks switched while drawing: the same in every picture
+two threads
+  800x600x8, 300 pictures while writing: 0 pixels differ from a full redraw
+  800x600x15, 300 pictures while writing: 0 pixels differ from a full redraw
+  800x600x16, 300 pictures while writing: 0 pixels differ from a full redraw
+  800x600x24, 300 pictures while writing: 0 pixels differ from a full redraw
+  800x600x32, 300 pictures while writing: 0 pixels differ from a full redraw
+  1024x768x16, 100 pictures while writing: 0 pixels differ from a full redraw
+test_vbe: all 6856 checks passed
+PASS vga.c, dosboard: VBE pictures from the blocks written are as the old loop and v4.0-base draws them, pixel for pixel; the bank window
+
+  117 pictures, 11168 pages stored into, 0 of them with nothing changed
+test_clear: all 163 checks passed
+PASS vga.c, korvo1: a clear is made by the picture after it, the same pictures as a memset(), no page stored into for nothing
+(the same test against vga.c at the v4.1 tag, which has to draw every picture right and fail the stores)
+    |   117 pictures, 16178 pages stored into, 5010 of them with nothing changed
+    | test_clear: 60 of 163 checks FAILED, every picture right but pages stored into with nothing changed
+    | (61 checks failed; exit status 2)
+PASS vga.c, korvo1: the clear test catches v4.1's memset() (pictures right, pages stored into for nothing)
+  117 pictures, 12907 pages stored into, 0 of them with nothing changed
+test_clear: all 163 checks passed
+PASS vga.c, dosboard: a clear is made by the picture after it, the same pictures as a memset(), no page stored into for nothing
+(the same test against vga.c at the v4.1 tag, which has to draw every picture right and fail the stores)
+    |   117 pictures, 20079 pages stored into, 7172 of them with nothing changed
+    | test_clear: 71 of 163 checks FAILED, every picture right but pages stored into with nothing changed
+    | (72 checks failed; exit status 2)
+PASS vga.c, dosboard: the clear test catches v4.1's memset() (pictures right, pages stored into for nothing)
+
+test_font: all checks passed
+PASS vga.c, korvo1: a text picture after a new font or character map is a whole redraw's, and no more is drawn when nothing changed
+(the same test against vga.c at the v4.3 tag, which has to fail)
+    |   FAIL: the picture after the font is the whole redraw's (88552 pixels differ, 16 rows drawn)
+    |   FAIL: the picture half way through is the whole redraw's (61795 pixels differ)
+    |   FAIL: the picture after the rest of the font is the whole redraw's (24963 pixels differ, 16 rows drawn)
+    |   FAIL: SR03 to map 1: the picture is the whole redraw's (63173 pixels differ, 16 rows drawn)
+    |   FAIL: SR03 back to map 0: the picture is the whole redraw's (63173 pixels differ)
+    | test_font: 5 checks FAILED
+    | (exit status 1)
+PASS vga.c, korvo1: the font test catches v4.3's text drawing (old glyphs left after a new font)
+test_font: all checks passed
+PASS vga.c, dosboard: a text picture after a new font or character map is a whole redraw's, and no more is drawn when nothing changed
+(the same test against vga.c at the v4.3 tag, which has to fail)
+    |   FAIL: the picture after the font is the whole redraw's (88552 pixels differ, 16 rows drawn)
+    |   FAIL: the picture half way through is the whole redraw's (61795 pixels differ)
+    |   FAIL: the picture after the rest of the font is the whole redraw's (24963 pixels differ, 16 rows drawn)
+    |   FAIL: SR03 to map 1: the picture is the whole redraw's (63173 pixels differ, 16 rows drawn)
+    |   FAIL: SR03 back to map 0: the picture is the whole redraw's (63173 pixels differ)
+    | test_font: 5 checks FAILED
+    | (exit status 1)
+PASS vga.c, dosboard: the font test catches v4.3's text drawing (old glyphs left after a new font)
+
+test_pace: all checks passed
+PASS vga.c, korvo1: quiet moments counted from the last store, every store through the window noted
+test_pace: all checks passed
+PASS vga.c, dosboard: quiet moments counted from the last store, every store through the window noted
+
+every key, press and release (scancode set 1):
+  104 keys, 0 wrong
+against v2's path (usb_hid.c's table into ps2_put_keycode()):
+  usage 32: now 2B AB; v2 56 D6
+  usage 46: now E0 2A E0 37 E0 B7 E0 AA; v2 (nothing)
+  usage 48: now E1 1D 45 E1 9D C5; v2 (nothing)
+  usage 64: now 56 D6; v2 (nothing)
+  usage 65: now E0 5D E0 DD; v2 (nothing)
+  101 usages the same as v2, 5 different (all known fixes)
+sequences:
+  Print Screen pressed                         E0 2A E0 37
+  Print Screen let go                          E0 B7 E0 AA
+  Left Alt                                     38
+  Alt+Print Screen (SysRq)                     54
+  both let go                                  D4 B8
+  Shift+Print Screen                           2A E0 37
+  both let go                                  E0 B7 AA
+  Pause pressed                                E1 1D 45 E1 9D C5
+  Pause let go                                 (nothing)
+  Ctrl+Pause (Break)                           1D E0 46 E0 C6
+  both let go                                  9D
+order within one report:
+  Shift and A in one report                    2A 1E
+  both let go in one                           9E AA
+  A and Shift up, B down, in one               9E AA 30
+  B let go                                     B0
+  A twice in one report: once                  1E
+  let go: once                                 9E
+  usage 3 (ErrorUndefined): not a key          (nothing)
+typematic repeat (fake clock, polled every millisecond):
+  default                        first repeat at 500 ms, then every 91.70 ms, 11 in 1500 ms (want 500 ms, 91.67 ms, 11)
+  0xF3 0x00 (fastest)            first repeat at 250 ms, then every 33.34 ms, 30 in 1250 ms (want 250 ms, 33.34 ms, 30)
+  0xF3 0x7F (slowest)            first repeat at 1000 ms, then every 501.00 ms, 2 in 2000 ms (want 1000 ms, 500.04 ms, 2)
+  0xF3 0x2B (the default)        first repeat at 500 ms, then every 91.70 ms, 11 in 1500 ms (want 500 ms, 91.67 ms, 11)
+  after reset (0xFF)             first repeat at 500 ms, then every 91.70 ms, 11 in 1500 ms (want 500 ms, 91.67 ms, 11)
+  only the last key pressed repeats; letting it go does not start the one before
+  modifiers and lock keys do not repeat
+  Right held 700 ms: E0 4D E0 4D E0 4D E0 4D
+  guest not reading for 3 s: 8 bytes waiting (at most 8)
+two keyboards:
+  A down on keyboard 1                         1E
+  A down on keyboard 2 as well                 (nothing)
+  keyboard 1 lets go: still held on 2          (nothing)
+  keyboard 2 lets go                           9E
+  keyboard 1: Shift and B                      2A 30
+  keyboard 2: C                                2E
+  keyboard 1 unplugged: its keys go up         B0 AA
+  keyboard 2 lets go of C                      AE
+  release all (C on 1, D on 2)                 AE A0
+  ErrorRollOver report: ignored                (nothing)
+  then all keys up: A goes up                  9E
+lights (0xED from the guest, handed on in USB order):
+  PS/2 0x02 (Num) -> USB 0x01
+  PS/2 0x04 (Caps) -> USB 0x02
+  PS/2 0x01 (Scroll) -> USB 0x04
+  PS/2 0x07 (all three) -> USB 0x07
+  PS/2 0x00 (none) -> USB 0x00
+Ctrl+Alt+F12 (the speed screen):
+  Ctrl and Alt down                            1D 38
+  F12 with them: not to the PC                 (nothing)
+  all let go: F12's release not sent either    9D B8
+  F12 alone goes to the PC                     58
+  and its release                              D8
+Ctrl+Alt+F11 beside it (vbe_blocks, v4.2):
+  Ctrl and Alt down                            1D 38
+  F11 with them: not to the PC                 (nothing)
+  F11 let go: its release not sent             (nothing)
+  F12 with them: still not to the PC           (nothing)
+  all let go                                   9D B8
+  F11 alone goes to the PC                     57
+  and its release                              D7
+  F11's hotkey taken away: Ctrl+Alt+F11 goes to the PC 1D 38 57
+  and its release                              D7 9D B8
+  only Ctrl and Alt reach the PC               1D 38 9D B8
+the boot menu's sink, and no PC yet:
+  Shift+2 while the menu has the keys          (nothing)
+  let go after the menu: nothing reaches the PC (nothing)
+  A pressed with no PC, let go with one: nothing (nothing)
+  A again                                      1E
+  let go                                       9E
+the mouse:
+  right 5, down 3, left button:  29 05 FD (PS/2 Y is up-positive)
+  IMPS/2, wheel away from user:  08 00 00 FF (PS/2 Z is negative that way)
+  1000 to the right, clamped:    5 packets, 512 in all
+kbd_input: 221 checks, 0 failed
+PASS kbd_input.c: scancodes, sequences, typematic, keyboards, lights, hotkey, mouse
+
+backlog, 3-byte packets:
+  270 bytes read, 90 packets, 10923 counts right in all
+  last packet: 28 00 FB (want 28 00 FB)
+backlog, 4-byte packets:
+  280 bytes read, 70 packets, 8423 counts right in all
+  last packet: 28 00 FB 00 (want 28 00 FB 00)
+a click faster than a sample:
+  read: 09 03 00 08 02 00 0A 00 00 08 00 00
+sample rate 40:
+  100 reports in 100 ms: 5 packets, 100 right, 100 down
+remote mode:
+  poll: FA 09 05 00
+reset and off:
+a click in the ring's overflow:
+  click in reports 10 to 19: 3 packets, 100 counts right, 1 press, left up at the end
+  click in reports 40 to 49: 3 packets, 100 counts right, 1 press, left up at the end
+  held, let go and pressed again, and a right click, all in the overflow: 4 packets, left down 2 up 1, right down 1, 100 counts
+reset with reports in the ring:
+double click at sample rate 20:
+  13 packets, 600 counts right, 2 presses
+test_ps2_mouse: 29 checks, 0 failed
+PASS PS/2 mouse: backlog, clicks, sample rate, remote mode, reset, mouse off
+two threads: a reporting task and the emulator:
+  4000 reports in, 291 packets out; 4000 right, 8000 down (sent 4000, 8000); 10 presses seen
+test_ps2_mouse (two threads): 6 checks, 0 failed
+PASS PS/2 mouse: a reporting thread and the emulator's thread
+two threads: a reporting task and the emulator:
+  4000 reports in, 155 packets out; 3739 right, 5948 down (sent 4000, 8000); 10 presses seen
+  6 stalls of 120 ms
+test_ps2_mouse (two threads): 7 checks, 0 failed
+PASS PS/2 mouse: two threads, the emulator held up: every click through the ring's overflow
+(the same test against i8042.c at the v3 tag, where it has to fail)
+    |   271 bytes read, 90 packets, 9183 counts right in all
+    |   last packet: 28 00 FB (want 28 00 FB)
+    |   FAIL line 157: the stream is not whole 3-byte packets with no buttons
+    |   276 bytes read, 69 packets, 7016 counts right in all
+    |   last packet: 28 00 FB 00 (want 28 00 FB 00)
+    |   FAIL line 185: packets closer than the 10 ms of 100 samples a second
+    |   FAIL line 214: movement kept whole
+    |   FAIL line 215: 85 packets in 100 ms at 40 a second
+PASS PS/2 mouse test catches the backlog fault in v3's i8042.c
+
+descriptors:
+  boot keyboard  keyboard; keyboard id 0: mods bit 0, keys 6x8 at bit 16, bitmap 0 from 00 at bit 0
+  wheel mouse    mouse; mouse id 0: 3 buttons at bit 0, X 8 bits at 8, Y 8 at 16, wheel 8 at 24
+    01 FB 07 FF -> buttons 1, dx -5, dy 7, wheel -1
+  receiver       keyboard and mouse, report IDs; keyboard id 1: mods bit 0, keys 6x8 at bit 16, bitmap 0 from 00 at bit 0; mouse id 2: 8 buttons at bit 0, X 12 bits at 16, Y 12 at 28, wheel 8 at 40
+    02 05 00 FD AF 00 01 00 -> buttons 5, dx -3, dy 10, wheel 1
+  NKRO bitmap    keyboard, report IDs; keyboard id 4: mods bit 0, keys 0x0 at bit 0, bitmap 120 from 00 at bit 8
+    Right Shift, A, Z, 1 -> 20 00 04 1D 1E 00 00 00
+  vendor         nothing to use, report IDs
+  tablet         nothing to use
+hid_parse: 21 checks, 0 failed
+PASS hid_parse.c: boot keyboard, wheel mouse, receiver with report IDs, NKRO, vendor, tablet
+
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c: In function 'main':
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:473:24: warning: missing initializer for field 'start_fails' of 'struct model_iface' [-Wmissing-field-initializers]
+  473 |                 struct model_iface v = { "if0 vendor", 0, 0, 0, vendor_desc, sizeof(vendor_desc) };
+      |                        ^~~~~~~~~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:147:13: note: 'start_fails' declared here
+  147 |         int start_fails;
+      |             ^~~~~~~~~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:475:42: warning: missing initializer for field 'desc' of 'struct model_iface' [-Wmissing-field-initializers]
+  475 |                                          HID_PROTOCOL_KEYBOARD };
+      |                                          ^~~~~~~~~~~~~~~~~~~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:145:24: note: 'desc' declared here
+  145 |         const uint8_t *desc;
+      |                        ^~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:488:42: warning: missing initializer for field 'desc' of 'struct model_iface' [-Wmissing-field-initializers]
+  488 |                                          HID_PROTOCOL_KEYBOARD };
+      |                                          ^~~~~~~~~~~~~~~~~~~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:145:24: note: 'desc' declared here
+  145 |         const uint8_t *desc;
+      |                        ^~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:489:24: warning: missing initializer for field 'start_fails' of 'struct model_iface' [-Wmissing-field-initializers]
+  489 |                 struct model_iface v = { "if1 vendor", 1, 0, 0, vendor_desc, sizeof(vendor_desc) };
+      |                        ^~~~~~~~~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:147:13: note: 'start_fails' declared here
+  147 |         int start_fails;
+      |             ^~~~~~~~~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:510:42: warning: missing initializer for field 'desc' of 'struct model_iface' [-Wmissing-field-initializers]
+  510 |                                          HID_PROTOCOL_KEYBOARD };
+      |                                          ^~~~~~~~~~~~~~~~~~~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:145:24: note: 'desc' declared here
+  145 |         const uint8_t *desc;
+      |                        ^~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:511:24: warning: missing initializer for field 'start_fails' of 'struct model_iface' [-Wmissing-field-initializers]
+  511 |                 struct model_iface v = { "kbd if1 vendor", 1, 0, 0, vendor_desc, sizeof(vendor_desc) };
+      |                        ^~~~~~~~~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:147:13: note: 'start_fails' declared here
+  147 |         int start_fails;
+      |             ^~~~~~~~~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:513:42: warning: missing initializer for field 'desc' of 'struct model_iface' [-Wmissing-field-initializers]
+  513 |                                          HID_PROTOCOL_MOUSE };
+      |                                          ^~~~~~~~~~~~~~~~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:145:24: note: 'desc' declared here
+  145 |         const uint8_t *desc;
+      |                        ^~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:527:42: warning: missing initializer for field 'desc' of 'struct model_iface' [-Wmissing-field-initializers]
+  527 |                                          HID_PROTOCOL_KEYBOARD };
+      |                                          ^~~~~~~~~~~~~~~~~~~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:145:24: note: 'desc' declared here
+  145 |         const uint8_t *desc;
+      |                        ^~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:545:42: warning: missing initializer for field 'desc' of 'struct model_iface' [-Wmissing-field-initializers]
+  545 |                                          HID_SUBCLASS_BOOT_INTERFACE, HID_PROTOCOL_MOUSE };
+      |                                          ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:145:24: note: 'desc' declared here
+  145 |         const uint8_t *desc;
+      |                        ^~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:548:42: warning: missing initializer for field 'desc' of 'struct model_iface' [-Wmissing-field-initializers]
+  548 |                                          HID_PROTOCOL_KEYBOARD };
+      |                                          ^~~~~~~~~~~~~~~~~~~~~
+/home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:145:24: note: 'desc' declared here
+  145 |         const uint8_t *desc;
+      |                        ^~~~
+In file included from /home/owner/fw/wt-v44/tests/host/usb/test_usb_input.c:41:
+In function 'handle_report',
+    inlined from 'if_callback' at /home/owner/fw/wt-v44/esp/main/usb_input.c:141:4:
+/home/owner/fw/wt-v44/esp/main/usb_input.c:120:21: warning: 'data' may be used uninitialized [-Wmaybe-uninitialized]
+  120 |                 if (hid_report_keyboard(&hif->layout, d, n, boot))
+      |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /home/owner/fw/wt-v44/esp/main/usb_input.c:45:
+/home/owner/fw/wt-v44/esp/main/hid_parse.h: In function 'if_callback':
+/home/owner/fw/wt-v44/esp/main/hid_parse.h:47:6: note: by argument 2 of type 'const uint8_t *' {aka 'const unsigned char *'} to 'hid_report_keyboard' declared here
+   47 | bool hid_report_keyboard(const struct hid_layout *l, const uint8_t *r, size_t n,
+      |      ^~~~~~~~~~~~~~~~~~~
+/home/owner/fw/wt-v44/esp/main/usb_input.c:134:17: note: 'data' declared here
+  134 |         uint8_t data[64];
+      |                 ^~~~
+    console: USB host started (full and low speed, hubs allowed): plug in a keyboard and a mouse, or a receiver for both.
+A. one device: interface 0 vendor-defined (left alone), interface 1 boot keyboard
+    console: USB: 1234:5600 , interface 0 (subclass 0, protocol 0): not a keyboard or mouse, left alone.
+    console: USB: keyboard: 1234:5601 , interface 1 (subclass 1, protocol 1), boot protocol.
+  after the run:
+    if0 vendor                   driver state removed              slot -1   ok (want removed)
+    if1 boot keyboard            driver state ACTIVE               slot  0   ok (want ACTIVE)
+  A: passes
+
+B. one device: interface 0 boot keyboard, interface 1 vendor-defined
+    console: USB: keyboard: 1234:5600 , interface 0 (subclass 1, protocol 1), boot protocol.
+    console: USB: 1234:5601 , interface 1 (subclass 0, protocol 0): not a keyboard or mouse, left alone.
+  after the run:
+    if0 boot keyboard            driver state ACTIVE               slot  0   ok (want ACTIVE)
+    if1 vendor                   driver state removed              slot -1   ok (want removed)
+  B: passes
+
+B2. then the keyboard is unplugged
+    console: USB: keyboard on interface 0 unplugged (0 transfer errors).
+  after the run:
+    if0 boot keyboard            driver state removed              slot -1   ok (want removed)
+  B2: passes
+
+C. keyboard [boot keyboard, vendor] and a boot mouse, the mouse's CONNECTED queued
+   before usb_task reaches the keyboard's second interface
+    console: USB: keyboard: 1234:5600 , interface 0 (subclass 1, protocol 1), boot protocol.
+    console: USB: 1234:5601 , interface 1 (subclass 0, protocol 0): not a keyboard or mouse, left alone.
+    console: USB: mouse: 1234:5600 , interface 0 (subclass 1, protocol 2), boot protocol.
+  after the run:
+    kbd if0 boot keyboard        driver state ACTIVE               slot  0   ok (want ACTIVE)
+    kbd if1 vendor               driver state removed              slot -1   ok (want removed)
+    mouse if0 boot mouse         driver state ACTIVE               slot  1   ok (want ACTIVE)
+  C: passes
+
+D. the guest changes the lights just before the keyboard is unplugged
+    console: USB: keyboard: 1234:5600 , interface 0 (subclass 1, protocol 1), boot protocol.
+    console: USB: keyboard on interface 0 unplugged (0 transfer errors).
+  after the run:
+    if0 boot keyboard            driver state removed              slot -1   ok (want removed)
+  D: passes
+
+  SET_REPORTs: 1 when it came, 0 after the unplug
+
+E. one device: interface 0 a boot mouse that will not start, interface 1 boot keyboard
+    console: USB: interface 0 of 1234:5600 could not be started (err).
+    console: USB: keyboard: 1234:5601 , interface 1 (subclass 1, protocol 1), boot protocol.
+  after the run:
+    if0 boot mouse, start fails  driver state removed              slot -1   ok (want removed)
+    if1 boot keyboard            driver state ACTIVE               slot  0   ok (want ACTIVE)
+  E: passes
+
+F. unplugged while SET_PROTOCOL is in flight
+    (unplugged while set_protocol is in flight: the driver's task closes the
+     interface once and frees the device; the request fails)
+    console: USB: interface 0 of 1234:5600 was unplugged while it was being set up.
+    console: USB: device on interface 0 unplugged (0 transfer errors).
+  after the run:
+    if0 boot keyboard            driver state removed              slot -1   ok (want removed)
+  driver state and slot: passes
+
+  F. unplugged while SET_PROTOCOL is in flight: passes
+
+G. unplugged while SET_IDLE is in flight
+    (unplugged while set_idle is in flight: the driver's task closes the
+     interface once and frees the device; the request fails)
+    console: USB: interface 0 of 1234:5600 was unplugged while it was being set up.
+    console: USB: device on interface 0 unplugged (0 transfer errors).
+  after the run:
+    if0 boot keyboard            driver state removed              slot -1   ok (want removed)
+  driver state and slot: passes
+
+  G. unplugged while SET_IDLE is in flight: passes
+
+H. unplugged while the first SET_REPORT (the lights) is in flight
+    (unplugged while set_report is in flight: the driver's task closes the
+     interface once and frees the device; the request fails)
+    console: USB: keyboard: 1234:5600 , interface 0 (subclass 1, protocol 1), boot protocol.
+    console: USB: keyboard on interface 0 unplugged (0 transfer errors).
+  after the run:
+    if0 boot keyboard            driver state removed              slot -1   ok (want removed)
+  driver state and slot: passes
+
+  H. unplugged while the first SET_REPORT (the lights) is in flight: passes
+
+J. unplugged just after hid_host_device_open() returned
+    (unplugged just after hid_host_device_open() returned)
+    console: USB: interface 0 of 1234:5600 was unplugged while it was being set up.
+    console: USB: device on interface 0 unplugged (0 transfer errors).
+  after the run:
+    if0 boot keyboard            driver state removed              slot -1   ok (want removed)
+  driver state and slot: passes
+
+  J. unplugged just after hid_host_device_open() returned: passes
+
+K. unplugged just after SET_PROTOCOL returned
+    (unplugged just after set_protocol returned)
+    console: USB: interface 0 of 1234:5600 was unplugged while it was being set up.
+    console: USB: device on interface 0 unplugged (0 transfer errors).
+  after the run:
+    if0 boot keyboard            driver state removed              slot -1   ok (want removed)
+  driver state and slot: passes
+
+  K. unplugged just after SET_PROTOCOL returned: passes
+
+L. unplugged just after SET_IDLE returned
+    (unplugged just after set_idle returned)
+    console: USB: interface 0 of 1234:5600 was unplugged while it was being set up.
+    console: USB: device on interface 0 unplugged (0 transfer errors).
+  after the run:
+    if0 boot keyboard            driver state removed              slot -1   ok (want removed)
+  driver state and slot: passes
+
+  L. unplugged just after SET_IDLE returned: passes
+
+M. a report-protocol mouse, unplugged just after its report descriptor was fetched
+    (unplugged just after the report descriptor was fetched)
+    console: USB: interface 0 of 1234:5600 was unplugged while it was being set up.
+    console: USB: device on interface 0 unplugged (0 transfer errors).
+  after the run:
+    if0 report-protocol mouse    driver state removed              slot -1   ok (want removed)
+  driver state and slot: passes
+
+  M. a report-protocol mouse, unplugged just after its report descriptor was fetched: passes
+
+test_usb_input: 0 checks wrong
+PASS usb_input.c: interfaces given up, unplugged, queued behind others; lights after an unplug; unplugged while being set up
+(the same test against usb_input.c at the v3.1 tag, where it has to fail)
+    |   G. unplugged while SET_IDLE is in flight: FAILS
+    |   J. unplugged just after hid_host_device_open() returned: FAILS
+    |   K. unplugged just after SET_PROTOCOL returned: FAILS
+    |   L. unplugged just after SET_IDLE returned: FAILS
+    |   M. a report-protocol mouse, unplugged just after its report descriptor was fetched: FAILS
+    | test_usb_input: 5 checks wrong
+PASS usb_input.c test catches requests to a freed device in v3.1's usb_input.c
+
+(OUT is too long a path for the card's folder: the card is in /tmp/t386setup-aWEYE8)
+top folder only: /tmp/t386setup-aWEYE8/sdcard/tiny386.ini (other.ini there is not listed)
+the Linux route's folder (/tmp/t386setup-aWEYE8/sdcard/tiny386):
+  1  bench.ini    FreeDOS with 4M, for BENCH.COM on the FreeDOS image, which wants 4 MB:
+  2  freedos.ini  FreeDOS from the hard disk image: the first thing to try on the board.
+  3  win95.ini    Windows 95 on the board, from an image made on the PC (DISK-IMAGES.txt)
+default: freedos.ini; after win95.ini is chosen: win95.ini (lastboot.txt; not rewritten when the same)
+files named in the Linux route's inis (/mnt/sd -> /tmp/t386setup-aWEYE8/sdcard, /mnt/win -> /tmp/t386setup-aWEYE8/sdcard3):
+  freedos.ini:
+    bios      bios.bin                 -> /tmp/t386setup-aWEYE8/sdcard/tiny386/bios.bin
+    vga_bios  vgabios.bin              -> /tmp/t386setup-aWEYE8/sdcard/tiny386/vgabios.bin
+    hda       freedos-hd.img           -> /tmp/t386setup-aWEYE8/sdcard/tiny386/freedos-hd.img
+  bench.ini:
+    bios      bios.bin                 -> /tmp/t386setup-aWEYE8/sdcard/tiny386/bios.bin
+    vga_bios  vgabios.bin              -> /tmp/t386setup-aWEYE8/sdcard/tiny386/vgabios.bin
+    hda       freedos-hd.img           -> /tmp/t386setup-aWEYE8/sdcard/tiny386/freedos-hd.img
+  win95.ini:
+    bios      bios.bin                 -> /tmp/t386setup-aWEYE8/sdcard/tiny386/bios.bin
+    vga_bios  vgabios.bin              -> /tmp/t386setup-aWEYE8/sdcard/tiny386/vgabios.bin
+    hda       /mnt/win/win95.img       -> /tmp/t386setup-aWEYE8/sdcard3/win95.img
+and with no WIN9X partition on the card:
+  win95.ini:
+    bios      bios.bin                 -> /tmp/t386setup-aWEYE8/sdcard/tiny386/bios.bin
+    vga_bios  vgabios.bin              -> /tmp/t386setup-aWEYE8/sdcard/tiny386/vgabios.bin
+    hda       /mnt/win/win95.img       -> /mnt/win/win95.img  (no WIN9X partition: flagged)
+setup: 31 checks, 0 failed
+PASS setup.c: ini search, the menu's list and default, lastboot.txt, paths of the Linux route's inis
+
+  ok: errors: /tmp/t386inisave-LHoSNI/b.ini.t386new cannot be made (Permission denied)
+test_ini_edit: 106 checks, 0 failed
+PASS ini_edit.c, setup.c: vbe_blocks saved in the ini (present, absent, commented, CR LF and LF, and more), written safely, leftovers put right
+
+  no key: entry 2 (the default) after 6 s, across the clock's wrap
+  Down, Down (wraps), Up (wraps), Left, Right, Enter: entry 3
+  3 starts entry 3, keypad 2 entry 2; 6 of 3 only stops the countdown
+  Shift alone changes nothing; Esc stops the countdown
+bootmenu: 22 checks, 0 failed
+PASS bootmenu.c: countdown, keys, wrap, digits
+
+each second:
+  400 instructions a millisecond: 400 thousand a second, 0 % halted
+  a quarter of the second halted: 400 thousand a second of running, 25 % halted
+BENCH.COM's marks (milliseconds of running each, 400 a ms, with halted time between):
+  tiny386: a1 16-bit arithmetic in registers       2097200 instructions in    5.24 s:   400 thousand a second
+  tiny386: a2 16-bit loads and stores               600000 instructions in    1.50 s:   400 thousand a second
+  tiny386: a3 16-bit calls and stack                800000 instructions in    2.00 s:   400 thousand a second
+  tiny386: a4 rep movsw and stosw, 32 MB          32768000 bytes        in    1.23 s: 26554 thousand a second
+  tiny386: a5 DOS calls (int 21h)                   360000 instructions in    0.90 s:   400 thousand a second
+  tiny386: a6 32-bit arithmetic, paging on         1200000 instructions in    3.00 s:   400 thousand a second
+  tiny386: a7 32-bit loads and stores, paging on   1000000 instructions in    2.50 s:   400 thousand a second
+  tiny386: a8 32-bit calls and stack, paging on     680000 instructions in    1.70 s:   400 thousand a second
+  tiny386: a9 translation cache miss every time    1640000 instructions in    4.10 s:   400 thousand a second
+  tiny386: 11214800 instructions in 28.0 s of running: 0.400 million a second
+  BENCH run again: a new table (2 pieces)
+marks from a program that is not BENCH:
+  a lone 0xAF, and 0xA5 then 0xAF: no table, nothing shown
+  BENCH stopped part way, then run again: the second run's 3 pieces
+speed: 29 checks, 0 failed
+PASS speed.c: instructions a second, BENCH marks, lines as the Linux route prints them
+
+perfport: 291 checks, 0 failed
+PASS perfport: found, snapshots, in and out of every width, the front end's values, the drawing's figures, two threads
+vga_get_info: 16 checks, 0 failed
+PASS vga_get_info(), korvo1: text, 16 and 256 colours, VBE, blank; VBE pictures, blocks and rows counted
+vga_get_info: 16 checks, 0 failed
+PASS vga_get_info(), dosboard: text, 16 and 256 colours, VBE, blank; VBE pictures, blocks and rows counted
+perfport and Ctrl+Alt+F11: 18 checks, 0 failed
+PASS perfport and Ctrl+Alt+F11, korvo1: vbe_blocks read as it is, the whole pictures after a change counted
+perfport and Ctrl+Alt+F11: 18 checks, 0 failed
+PASS perfport and Ctrl+Alt+F11, dosboard: vbe_blocks read as it is, the whole pictures after a change counted
+PASS perfport.h in C89 with nothing else, as a guest program includes it
+
+infoframes: AVI 45 12 18 ..., audio 70 01 ...
+timing rows D1 to D12: 12 of 12 match the VESA arithmetic
+  frame rate 60.317 Hz
+EDID parser: done
+scenario hdmi:
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": HDMI, basic audio, 800x600 at 60 Hz listed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+  InfoFrame type 82 version 2 length 13, checksum 45: sum 0, right
+  InfoFrame type 84 version 1 length 10, checksum 70: sum 0, right
+scenario dvi:
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": DVI (no HDMI vendor block), basic audio, 800x600 at 60 Hz listed
+    ms7210: DVI, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+scenario hotplug:
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor not attached, PCLK meter now 6068 (about 39.99 MHz)
+    ms7210: monitor plugged in
+    ms7210: monitor TST 1234 "DOS TEST": HDMI, basic audio, 800x600 at 60 Hz listed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+    ms7210: monitor unplugged
+    ms7210: monitor plugged in
+    ms7210: monitor TST 1234 "DOS TEST": DVI (no HDMI vendor block), basic audio, 800x600 at 60 Hz listed
+    ms7210: DVI, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+scenario pll3:
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: PLL not locked after pass 1, again from E7
+    ms7210: PLL not locked after pass 2, again from E7
+    ms7210: HDMI with sound, PLL locked after 3 passes, input stable, monitor not attached, PCLK meter now 6068 (about 39.99 MHz)
+scenario pllnever:
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: PLL not locked after pass 1, again from E7
+    ms7210: PLL not locked after pass 2, again from E7
+    ms7210: PLL not locked after pass 3, again from E7
+    ms7210: PLL not locked after pass 4, again from E7
+    ms7210: PLL not locked after pass 5, again from E7
+    ms7210: PLL not locked after pass 6, again from E7
+    ms7210: PLL not locked after pass 7, again from E7
+    ms7210: HDMI with sound, PLL NOT locked after 8 passes, input stable, monitor not attached, PCLK meter now 6068 (about 39.99 MHz)
+scenario edidnak:
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: no EDID (DDC did not answer)
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+scenario edidext:
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": extension block unreadable, no audio, 800x600 at 60 Hz listed
+    ms7210: EDID extension unreadable or not CEA-861: HDMI assumed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+  extension does not answer: HDMI
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": extension block unreadable, no audio, 800x600 at 60 Hz listed
+    ms7210: EDID extension unreadable or not CEA-861: HDMI assumed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+  extension checksum wrong: HDMI
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": DVI (extension block not CEA-861), no audio, 800x600 at 60 Hz listed
+    ms7210: EDID extension is not CEA-861 (tag F0): DVI
+    ms7210: DVI, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+  block map in block 1, one extension: DVI
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": DVI (extension block not CEA-861), no audio, 800x600 at 60 Hz listed
+    ms7210: EDID extension is not CEA-861 (tag 70): DVI
+    ms7210: DVI, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+  DisplayID in block 1, one extension: DVI
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": extension block unreadable, no audio, 800x600 at 60 Hz listed
+    ms7210: EDID extension unreadable or not CEA-861: HDMI assumed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+  block map in block 1, two extensions: HDMI
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": DVI (no HDMI vendor block), no audio, 800x600 at 60 Hz listed
+    ms7210: DVI, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+scenario chipreset:
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": HDMI, basic audio, 800x600 at 60 Hz listed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+    ms7210: register 0x120C reads 0x16, not 0x20: the chip was reset; set up again
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": HDMI, basic audio, 800x600 at 60 Hz listed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+scenario 120c-no-readback:
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: register 0x120C reads 0x00 just after 0x20 was written: no watch for a reset chip
+    ms7210: monitor TST 1234 "DOS TEST": HDMI, basic audio, 800x600 at 60 Hz listed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+scenario 120c-lost-every-time:
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": HDMI, basic audio, 800x600 at 60 Hz listed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+    ms7210: register 0x120C reads 0x00, not 0x20: the chip was reset; set up again
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": HDMI, basic audio, 800x600 at 60 Hz listed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+    ms7210: register 0x120C reads 0x00, not 0x20: the chip was reset; set up again
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": HDMI, basic audio, 800x600 at 60 Hz listed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+    ms7210: register 0x120C reads 0x00, not 0x20: the chip was reset; set up again
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": HDMI, basic audio, 800x600 at 60 Hz listed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+    ms7210: register 0x120C lost its value 4 times in a row: no more watch for a reset chip
+scenario options:
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": HDMI, basic audio, 800x600 at 60 Hz listed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": HDMI, basic audio, 800x600 at 60 Hz listed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: DVI, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+    ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": HDMI, basic audio, 800x600 at 60 Hz listed
+    ms7210: HDMI, no sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+scenario wrongboard:
+    ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    ms7210: register 0x0000 reads 0x55, expected 0xA2
+    ms7210: chip ID 55 00 00 at I2C 0x59 (not found)
+    ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    ms7210: chip ID A2 20 0A at I2C 0x2B (found)
+    ms7210: PCLK meter 6068, about 39.99 MHz (40.00 expected)
+    ms7210: monitor TST 1234 "DOS TEST": HDMI, basic audio, 800x600 at 60 Hz listed
+    ms7210: HDMI with sound, PLL locked after 1 pass, input stable, monitor attached, PCLK meter now 6068 (about 39.99 MHz)
+ms7210_test: 85 checks, 0 failed
+PASS ms7210.c: sequence, wire format, PLL retry, hot plug, EDID, DVI, InfoFrames
+
+encoder.md 8.4: 114 rows read (A 4, B 22, C 1, D 15, E 72)
+order: the log runs all 114 rows in the table order, each once
+ok   A1   RSTN low 20000 us, then 50000 us
+ok   A2   read 0x0000 = 0xA2 (expect 0xA2)
+ok   A3   read 0x0001 = 0x20 (expect 0x20)
+ok   A4   read 0x0002 = 0x0A (expect 0x0A)  + section 8.6: SPEED 100000
+ok   B1   RMW 0x0009 mask 0x01: 0xA7 -> 0xA6 (expect 0xA6)
+ok   B2   RMW 0x0016 mask 0x04: 0x88 -> 0x88 (expect 0x88)
+ok   B3   write 0x0060 = 81
+ok   B4   write 0x0061 = 54
+ok   B5   RMW 0x0080 mask 0x03: 0xDA -> 0xD8 (expect 0xD8)
+ok   B6   RMW 0x1202 mask 0x07: 0xA4 -> 0xA0 (expect 0xA0)
+ok   B7   RMW 0x1201 mask 0x10: 0x7F -> 0x6F (expect 0x6F)
+ok   B8   RMW 0x1202 mask 0x08: 0xA0 -> 0xA0 (expect 0xA0)
+ok   B9   RMW 0x00C0 mask 0x03: 0x1A -> 0x18 (expect 0x18)
+ok   B10  RMW 0x1200 mask 0x0C: 0x5A -> 0x56 (expect 0x56)
+ok   B11  RMW 0x1202 mask 0xE0: 0xA0 -> 0x00 (expect 0x00)
+ok   B12  RMW 0x1265 mask 0x01: 0xF3 -> 0xF2 (expect 0xF2)
+ok   B13  RMW 0x1262 mask 0x01: 0x84 -> 0x84 (expect 0x84)
+ok   B14  RMW 0x120B mask 0x01: 0xF1 -> 0xF0 (expect 0xF0)
+ok   B15  RMW 0x0079 mask 0x30: 0xD7 -> 0xD7 (expect 0xD7)  (departs from 8.4 on purpose: pull-ups, not 8.4's pull-downs: the GPIO36 strap)
+ok   B16  RMW 0x0008 mask 0x03: 0x82 -> 0x80 (expect 0x80)
+ok   B17  RMW 0x00A5 mask 0x18: 0x33 -> 0x23 (expect 0x23)
+ok   B18  RMW 0x0530 mask 0x01: 0x4A -> 0x4A (expect 0x4A)
+ok   B19  write 0x0019 = 07
+ok   B20  RMW 0x0016 mask 0x04: 0x88 -> 0x8C (expect 0x8C)
+ok   B21  RMW 0x0009 mask 0x01: 0xA6 -> 0xA7 (expect 0xA7)
+ok   B22  RMW 0x1281 mask 0x07: 0xFF -> 0xF8 (expect 0xF8)
+ok   C1   read 0x001E=0xB4 0x001F=0x17
+ok   D1   write 0x120C/0x120D = 20 04
+ok   D2   write 0x120E/0x120F = 74 02
+ok   D3   write 0x1210/0x1211 = DB 00
+ok   D4   write 0x1212/0x1213 = 02 00
+ok   D5   write 0x1214/0x1215 = 80 00
+ok   D6   write 0x1216/0x1217 = 04 00
+ok   D7   write 0x1218/0x1219 = D8 00
+ok   D8   write 0x121A/0x121B = F8 03
+ok   D9   write 0x121C/0x121D = 1B 00
+ok   D10  write 0x121E/0x121F = 73 02
+ok   D11  write 0x1220/0x1221 = 56 01
+ok   D12  write 0x1222/0x1223 = 82 02
+ok   D13  RMW 0x1206 mask 0x03: 0x38 -> 0x38 (expect 0x38)
+ok   D14  RMW 0x120B mask 0x34: 0xF0 -> 0xC4 (expect 0xC4)
+ok   D15  RMW 0x092A mask 0x44: 0x6C -> 0x28 (expect 0x28)  + section 8.6: R 0x120C, R 0x0502, W 0x0013, W 0x0012, SPEED 20000, EDID read, EDID read, W 0x0012, SPEED 100000
+ok   E1   RMW 0x0920 mask 0x04: 0xFA -> 0xFA (expect 0xFA)
+ok   E2   RMW 0x091F mask 0x07: 0xD5 -> 0xD0 (expect 0xD0)
+ok   E3   write 0x0581 = 04
+ok   E4   write 0x0581 = 00
+ok   E5   RMW 0x050E mask 0x80: 0x60 -> 0x60 (expect 0x60)
+ok   E6   RMW 0x0080 mask 0x0C: 0xD8 -> 0xD0 (expect 0xD0)
+ok   E7   RMW 0x0007 mask 0x0D: 0x5D -> 0x59 (expect 0x59)
+ok   E8   RMW 0x0901 mask 0x18: 0x7F -> 0x67 (expect 0x67)
+ok   E9   RMW 0x090F mask 0x07: 0x85 -> 0x80 (expect 0x80)
+ok   E10  RMW 0x0901 mask 0x01: 0x67 -> 0x67 (expect 0x67)
+ok   E11  RMW 0x0904 mask 0x08: 0xEE -> 0xEE (expect 0xEE)
+ok   E12  RMW 0x0008 mask 0xF0: 0x80 -> 0xF0 (expect 0xF0)
+ok   E13  RMW 0x000A mask 0xF0: 0xCC -> 0xFC (expect 0xFC)
+ok   E14  RMW 0x0925 mask 0x70: 0xB3 -> 0xC3 (expect 0xC3)
+ok   E15  RMW 0x0927 mask 0xF0: 0xFD -> 0x2D (expect 0x2D)
+ok   E16  RMW 0x0924 mask 0x07: 0x8E -> 0x8C (expect 0x8C)
+ok   E17  RMW 0x0926 mask 0x0F: 0xD8 -> 0xD4 (expect 0xD4)
+ok   E18  RMW 0x0923 mask 0x01: 0x69 -> 0x69 (expect 0x69)
+ok   E19  RMW 0x0928 mask 0x0F: 0x22 -> 0x27 (expect 0x27)
+ok   E20  RMW 0x0924 mask 0x70: 0x8C -> 0xCC (expect 0xCC)
+ok   E21  RMW 0x0926 mask 0xF0: 0xD4 -> 0x44 (expect 0x44)
+ok   E22  RMW 0x0923 mask 0x02: 0x69 -> 0x6B (expect 0x6B)
+ok   E23  RMW 0x0928 mask 0xF0: 0x27 -> 0x77 (expect 0x77)
+ok   E24  RMW 0x0925 mask 0x07: 0xC3 -> 0xC4 (expect 0xC4)
+ok   E25  RMW 0x0927 mask 0x0F: 0x2D -> 0x24 (expect 0x24)
+ok   E26  RMW 0x0923 mask 0x04: 0x6B -> 0x6F (expect 0x6F)
+ok   E27  RMW 0x0929 mask 0x0F: 0x47 -> 0x47 (expect 0x47)
+ok   E28  write 0x0900 = 20
+ok   E29  RMW 0x0906 mask 0x04: 0x38 -> 0x38 (expect 0x38)
+ok   E30  RMW 0x0920 mask 0x40: 0xFA -> 0xBA (expect 0xBA)
+ok   E31  write 0x0926 = 11
+ok   E32  write 0x0927 = 01
+ok   E33  write 0x0928 = 11
+ok   E34  write 0x0929 = 01
+ok   E35  RMW 0x0905 mask 0x03: 0x13 -> 0x12 (expect 0x12)
+ok   E36  RMW 0x0900 mask 0x07: 0x20 -> 0x20 (expect 0x20)
+ok   E37  RMW 0x0920 mask 0x2A: 0xBA -> 0x9A (expect 0x9A)
+ok   E38  waited 10000 us (at least 10000)
+ok   E39  write 0x0910 = 01
+ok   E40  waited 10000 us (at least 10000)  + section 8.6: R 0x091C
+ok   E41  RMW 0x000B mask 0x11: 0xF1 -> 0xE0 (expect 0xE0)
+ok   E42  RMW 0x0570 mask 0x01: 0x8A -> 0x8B (expect 0x8B)
+ok   E43  RMW 0x0006 mask 0x11: 0x38 -> 0x39 (expect 0x39)
+ok   E44  RMW 0x0048 mask 0x0F: 0xC2 -> 0xC0 (expect 0xC0)
+ok   E45  RMW 0x0531 mask 0x80: 0x6F -> 0xEF (expect 0xEF)
+ok   E46  RMW 0x0503 mask 0x01: 0xC9 -> 0xC8 (expect 0xC8)
+ok   E47  RMW 0x0508 mask 0x30: 0x82 -> 0x82 (expect 0x82)
+ok   E48  RMW 0x0508 mask 0xC0: 0x82 -> 0x02 (expect 0x02)
+ok   E49  RMW 0x0508 mask 0x07: 0x02 -> 0x00 (expect 0x00)
+ok   E50  RMW 0x0531 mask 0x7F: 0xEF -> 0x84 (expect 0x84)
+ok   E51  RMW 0x0535 mask 0x30: 0x03 -> 0x13 (expect 0x13)
+ok   E52  RMW 0x0532 mask 0x0F: 0x94 -> 0x91 (expect 0x91)
+ok   E53  RMW 0x000B mask 0x11: 0xE0 -> 0xF1 (expect 0xF1)
+ok   E54  RMW 0x050E mask 0x40: 0x60 -> 0x20 (expect 0x20)
+ok   E55  write 0x050A = 82
+ok   E56  write 0x0509 = 02
+ok   E57  write 0x050B = 0D
+ok   E58  write 0x050D = 45 12 18 00 00 00 00 00 00 00 00 00 00 00
+ok   E59  RMW 0x050E mask 0x40: 0x20 -> 0x60 (expect 0x60)
+ok   E60  RMW 0x050E mask 0x20: 0x60 -> 0x40 (expect 0x40)
+ok   E61  write 0x050A = 84
+ok   E62  write 0x0509 = 01
+ok   E63  write 0x050B = 0A
+ok   E64  write 0x050D = 70 01 00 00 00 00 00 00 00 00 00
+ok   E65  RMW 0x050E mask 0x20: 0x40 -> 0x60 (expect 0x60)
+ok   E66  RMW 0x0506 mask 0x06: 0x38 -> 0x3E (expect 0x3E)
+ok   E67  RMW 0x0506 mask 0x04: 0x3E -> 0x3A (expect 0x3A)
+ok   E68  waited 100 us (at least 100)
+ok   E69  RMW 0x0506 mask 0x02: 0x3A -> 0x38 (expect 0x38)
+ok   E70  RMW 0x0507 mask 0x06: 0x5D -> 0x59 (expect 0x59)
+ok   E71  RMW 0x091F mask 0x07: 0xD0 -> 0xD7 (expect 0xD7)
+ok   E72  RMW 0x0920 mask 0x04: 0x9A -> 0x9E (expect 0x9E)  + section 8.6: R 0x091C, R 0x051D, R 0x0502, R 0x001E, R 0x001F
+Loongson and Meyesemi values quoted in the table:
+  ok   B20  0x0016: table 0x04, ours 0x8C, compared on bits 0x04
+  ok   B21  0x0009: table 0x01, ours 0xA7, compared on bits 0x01
+  ok   E7   0x0007: table 0x09, ours 0x59, compared on bits 0x0D
+  ok   E9   0x090F: table 0x80, ours 0x80, compared on bits 0x07
+  ok   E10  0x0901: table 0x47, ours 0x67, compared on bits 0x19
+  ok   E11  0x0904: table 0x09, ours 0xEE, compared on bits 0x08
+  ok   E12  0x0008: table 0xF0, ours 0xF0, compared on bits 0xF3
+  ok   E13  0x000A: table 0xF0, ours 0xFC, compared on bits 0xF0
+  ok   E24  0x0924: table 0x44, ours 0xCC, compared on bits 0x77
+  ok   E24  0x0925: table 0x44, ours 0xC4, compared on bits 0x77
+  ok   E26  0x0923: table 0x07, ours 0x6F, compared on bits 0x07
+  ok   E28  0x0900: table 0x20, ours 0x20, compared on bits 0xFF
+  ok   E29  0x0906: table 0x00, ours 0x38, compared on bits 0x04
+  ok   E39  0x0910: table 0x01, ours 0x01, compared on bits 0xFF
+  ok   E41  0x000B: table 0x00, ours 0xE0, compared on bits 0x11
+  ok   E43  0x0006: table 0x11, ours 0x39, compared on bits 0x11
+  ok   E50  0x0531: table 0x84, ours 0x84, compared on bits 0xFF
+  ok   E53  0x000B: table 0x11, ours 0xF1, compared on bits 0x11
+  ok   E59  0x050E: table 0x40, ours 0x60, compared on bits 0xC0
+  ok   E65  0x050E: table 0x60, ours 0x60, compared on bits 0xE0
+  ok   E70  0x0507: table 0x00, ours 0x59, compared on bits 0x06
+  ok   E71  0x091F: table 0x07, ours 0xD7, compared on bits 0x07
+  ok   E72  0x0920: table 0x1E, ours 0x9E, compared on bits 0x6E
+wire: 144 register writes, 0 not three bytes
+RESULT: PASS (0 problems)
+PASS ms7210.c: the bus log against encoder.md 8.4, every row in order
+
+state 2, keyboard:
+  DS26 example: space pressed                          39
+  DS26 example: all keys released                      B9
+  'a' down, frame sent four times                      1E
+  'a' up, three times                                  9E
+  left shift and 'a' in one frame: shift first         2A 1E
+  both let go: 'a' then shift                          9E AA
+  right arrow (0xE0 prefix)                            E0 4D
+  right arrow up                                       E0 CD
+  'a' and 'b'                                          1E 30
+  ErrorRollOver report ignored, keys stay down         (nothing)
+  'a' up, 'b' still down                               9E
+  0x86: 'b' released                                   B0
+state 2, split and noisy input:
+  frame fed one byte at a time                         39
+  frame split over two reads 3 ms apart                B9
+  junk, then a doubled 57, then a frame                1E
+  unknown opcode 33: resync on the next 57 AB          9E
+  cut-short frame, 200 ms gap, next frame              1E
+  release                                              9E
+  cut-short frame, no gap: nothing pressed             (nothing)
+  parser back in step (all up, nothing was down)       (nothing)
+  reserved byte not zero: thrown away                  (nothing)
+state 2, mouse:
+  guest enables the mouse                              mFA
+  mouse dx +87 dy -85 (57 AB as data), then 'a'        1E m08 m57 m55
+  left button, dx +5, dy -5 (up): PS/2 dy +5           m09 m05 m05
+  button up                                            m08 m00 m00
+  right button down, then 0x86 lets it go              m0A m00 m00 m08 m00 m00
+  guest switches to IMPS/2                             mFA mFA mFA mFA mFA mFA
+  wheel +1 (up) is PS/2 z -1, as sdl/main.c            m08 m00 m00 mFF
+  wheel -2 (down) is PS/2 z +2                         m08 m00 m00 m02
+state 2, attach sequence and the zero-frame guard:
+  'w' down                                             11
+  guard on: zero frame 1 ms after mouse motion ignored m08 m03 m00 m00
+  a zero frame 20 ms later is taken: 'w' up            91
+state 0 frames (fallback):
+  label 11 (keyboard, port 2): 'a'                     1E
+  same with a bad sum: dropped                         (nothing)
+  release                                              9E
+  label 13 (HID, report ID first)                      1E
+  release                                              9E
+  label 20 mouse, dx +16 (IMPS/2 still on)             m08 m10 m00 m00
+  label 22 mouse with report ID, dx -16                m18 mF0 m00 m00
+  in step after the 0x81 frames                        1E
+LED frames:
+  Caps Lock frame: 57 AB 12 00 00 00 00 02 07 AC 20 
+noise:
+  after 1 MiB of noise and a pause: space              39
+  and up                                               B9
+  noise counts: frames 5, resyncs 17, junk 1048517, unknown 14, bad 0
+ch9350_test: 55 checks, 0 failed
+PASS ch9350.c: frames into kbd_input.c, as a DOS program reads them from ports 60h and 64h
+
+AUDIO_RATE 44100
+  PC speaker, count 1193 (Hz)                      999.50 (expect 1000.15 +- 2.00) ok
+  AdLib, F-number 580, block 4 (Hz)                440.00 (expect 439.99 +- 2.00) ok
+  SB16 guest at AUDIO_RATE / 2, samples a second   22050.00 (expect 22050.00 +- 1.00) ok
+  SB16 accuracy, 16-bit mono, input taken per second of output:
+    guest Hz   64-frame chunks          1024-frame chunks
+        8000      7579.7 ( -5.25 %)       8010.4 ( +0.13 %)
+       11025     11025.0 ( +0.00 %)      11025.0 ( +0.00 %)
+       22050     22050.0 ( +0.00 %)      22050.0 ( +0.00 %)
+       22222     22050.0 ( -0.77 %)      22050.0 ( -0.77 %)
+       32000     31696.9 ( -0.95 %)      32041.4 ( +0.13 %)
+       44100     44100.0 ( +0.00 %)      44100.0 ( +0.00 %)
+       45454     44100.0 ( -2.98 %)      44100.0 ( -2.98 %)
+audio_rate_test 44100: PASS
+PASS AUDIO_RATE 44100: PC speaker, AdLib and SB16 pitch
+
+AUDIO_RATE 48000
+  PC speaker, count 1193 (Hz)                      999.50 (expect 1000.15 +- 2.00) ok
+  AdLib, F-number 580, block 4 (Hz)                440.00 (expect 439.99 +- 2.00) ok
+  SB16 guest at AUDIO_RATE / 2, samples a second   24000.00 (expect 24000.00 +- 1.00) ok
+  SB16 accuracy, 16-bit mono, input taken per second of output:
+    guest Hz   64-frame chunks          1024-frame chunks
+        8000      7500.0 ( -6.25 %)       7968.8 ( -0.39 %)
+       11025     10500.0 ( -4.76 %)      11062.5 ( +0.34 %)
+       22050     21750.0 ( -1.36 %)      22125.0 ( +0.34 %)
+       22222     21750.0 ( -2.12 %)      22125.0 ( -0.44 %)
+       32000     31500.0 ( -1.56 %)      31968.8 ( -0.10 %)
+       44100     48000.0 ( +8.84 %)      48000.0 ( +8.84 %)
+       45454     48000.0 ( +5.60 %)      48000.0 ( +5.60 %)
+audio_rate_test 48000: PASS
+PASS AUDIO_RATE 48000: PC speaker, AdLib and SB16 pitch
+
+storage: 30 passed, 0 failed
+PASS storage.c: the card's partitions with ESP-IDF's FatFs, on images laid out as Plat's card
+
+disk: 13 passed, 0 failed
+PASS ide.c: disk images through ESP-IDF's FatFs, nothing read or written past their end
+
+sdpart: 12 passed, 0 failed
+PASS sd_part.c: a card partition as the guest's whole disk, nothing outside it written
+
+  ok: a 1.44 MB image attached as drive 0
+  ok: read, drive 2: refused
+  ok: write, drive 7: refused
+  ok: data for a refused write: an error
+  ok: read, cylinder 80 of 80: refused
+  ok: write, the last sector and one more: refused
+  ok: write, cylinder 200: refused
+  ok: its data: an error
+  ok: read, sector 0 (there is none): refused
+  ok: the image is still 1474560 bytes (1474560)
+  ok: read, the last sector: accepted
+  ok: its data: sector 2879 (3F)
+  ok: write, the first two sectors: accepted
+  ok: their data written
+  ok: no errors counted (0)
+  ok: on the medium
+  ok: the image is still 1474560 bytes (1474560)
+  ok: a read and a write: the disk light's count 2 more (2 wanted)
+  ok: a read refused before the image: the count unchanged (0 more)
+  ok: /dev/full is no floppy size: the attach says so
+  ok: a write to drive 1 (/dev/full) begins
+  ok: its data, taken by the C library but refused at the flush: an error
+  ok: and counted (1, was 0)
+test_floppy: 23 checks, 0 failed
+PASS misc.c: floppy drives 0 and 1 only, nothing past the image's end, refused writes counted
+
+rmt: 25 symbols a frame, 1945 checks so far; least margin to a window edge 12 ns
+bit-bang:  80 MHz: 26545 cycles a frame (331.8 us), 26398 reads of the counter
+bit-bang: 160 MHz: 53089 cycles a frame (331.8 us), 52942 reads of the counter
+bit-bang: 320 MHz: 106177 cycles a frame (331.8 us), 106030 reads of the counter
+bit-bang: 128 frames, 2 instructions charged before a rise and 2 before a fall, every edge checked; least margin to a window edge 12.5 ns
+bit-bang: v3.3's layout and times at 80 MHz: T1H 562.5 ns as sent, under the WS2812B-2020's 580 (the v3.3 review's finding, seen)
+bit-bang: cycles at 80 MHz: T0H 27, T0 104, T1H 56, T1 106, reset 24000; at 320 MHz four times as many
+brightness: every channel value at every level 0 to 255 as the model has it (0 levels wrong), and never darker one level up
+brightness: the default, 9 of 255: white 050505 (0.125 of v3.6's) blue 000008 (0.133 of v3.6's) cyan 000606 (0.133 of v3.6's) magenta 060006 (0.120 of v3.6's) green 000600 (0.120 of v3.6's) red 090000 (0.129 of v3.6's) yellow 080500 (0.137 of v3.6's)
+brightness: at every level 1 to 255 each colour keeps its lit channels and differs from the others; from 9 up its channels' ratios are within 14.1% of the table's (the most off: yellow at 11; yellow at the default 8:5, the table's 219:128)
+brightness: 40 frames of the crash patterns, bit-banged and RMT, at 5 levels: the same scaled bits
+brightness: status_led.c makes its 1 RMT and 2 bit-banged frames through status_frame_grb() and calls status_grb() nowhere; status_code.c has the scale, status_frame_grb() and the level in internal RAM, the scale in 32 bits
+disk light: a look every 20 ms; one access lights one look, a burst lights it all through, accesses 50 ms apart flicker, a stopped emulator still gives yellow 5 after 10 s
+disk light: led_task() looks at the count; bf_read_async(), bf_write_async() and the floppy's read and write count each access with one store; esp_main.c gives the LED the count before the PC runs
+status LED: 48908 checks, 0 failed
+PASS status LED: RMT and bit-banged timing for both LEDs, patterns, state machine, replay, beat watch, record, brightness, disk light
+
+audio_mix_test: AUDIO_RATE 48000, AUDIO_MIX_MAX 128
+  1. corners: 10752 cases (shifts -2 to 18), model and no wrap
+  2. against v3.4's path: 3096 the same where v3.4 did not hold; 1512 where it held
+     random: 2605664 values in 40,000 blocks of 2 to 128, shifts 0 to 8
+  3. the default level, 2: the largest and smallest sums the devices can make come out 17399 and -17408 (-5.5 and -5.5 dB of full scale), nothing held
+     one step louder, 1, the same sums are held at full scale: the default is the loudest level that cannot clip
+     two sources at 30,000: v3.4 at level 2 gave 8191 (held before the level), now 15000; at level 0 now 32767 (a 16-bit sum would give -5536)
+  4. a lone source at level 2: exactly v / 4 for all 65,536 values, 4 times v3.4's v / 16 give or take 3 (rounding): 12.0 dB louder
+  5. the devices at their loudest, 2 s at 48000 Hz for each level:
+  SB16 alone: full-scale 16-bit stereo square:
+    shift   new: min    max   held   v3.4: min    max  holds  differ where v3.4 did not hold
+        0     -32768  32767      0      -32768  32767      0  0
+        1     -16384  16383      0      -16384  16383      0  0
+        2      -8192   8191      0       -8192   8191      0  0
+        3      -4096   4095      0       -4096   4095      0  0
+        4      -2048   2047      0       -2048   2047      0  0
+  AdLib alone: nine channels in step, full volume:
+    shift   new: min    max   held   v3.4: min    max  holds  differ where v3.4 did not hold
+        0     -32768  32767      0      -32768  32767      0  0
+        1     -16384  16383      0      -16384  16383      0  0
+        2      -8192   8191      0       -8192   8191      0  0
+        3      -4096   4095      0       -4096   4095      0  0
+        4      -2048   2047      0       -2048   2047      0  0
+    (the AdLib's own largest value, as fmopl.c gives it, already held to 16 bits there: 32768)
+  SB16, AdLib and PC speaker together:
+    shift   new: min    max   held   v3.4: min    max  holds  differ where v3.4 did not hold
+        0     -32768  32767  47986      -32768  32767  72626  0
+        1     -32768  32767  17548      -16384  16383  72626  0
+        2     -17152  17151      0       -8192   8191  72626  0
+        3      -8576   8575      0       -4096   4095  72626  0
+        4      -4288   4287      0       -2048   2047  72626  0
+    (the AdLib's own largest value, as fmopl.c gives it, already held to 16 bits there: 32768)
+  6. n of 1, 0, -1, -2, -128, -129 and INT_MIN: nothing made, nothing asked, 0 returned; n of 2 still asks the devices
+audio_mix_test: 7753038 checks, 0 failed: PASS
+PASS audio_mix.c: 32-bit mix, held at full scale and never wrapped, default level 2, the devices at their loudest
+
+board_dosboard.h against /mnt/d/Repos/esp32-s31-linux-release/tiny386-hdmi-board/dosboard/out/dosboard.net (54 module GPIOs on nets)
+  ok    HDMI_I2C_SDA      GPIO0  module pad 8   net I2C_SDA       (want I2C_SDA)
+  ok    HDMI_I2C_SCL      GPIO1  module pad 9   net I2C_SCL       (want I2C_SCL)
+  ok    HDMI_RSTN_GPIO    GPIO49 module pad 59  net HDMI_RSTN     (want HDMI_RSTN)
+  ok    HDMI_INT_GPIO     GPIO54 module pad 64  net HDMI_INT      (want HDMI_INT)
+  ok    I2S_BCLK          GPIO51 module pad 61  net I2S_BCLK      (want I2S_BCLK)
+  ok    I2S_WS            GPIO52 module pad 62  net I2S_WS        (want I2S_WS)
+  ok    I2S_DOUT          GPIO53 module pad 63  net I2S_DOUT      (want I2S_DOUT)
+  ok    AUDIO_MUTE_GPIO   GPIO48 module pad 58  net AUD_XSMT      (want AUD_XSMT)
+  ok    KM_RX_GPIO        GPIO47 module pad 57  net KM_RX         (want KM_RX)
+  ok    KM_TX_GPIO        GPIO55 module pad 65  net KM_TX         (want KM_TX)
+  ok    KM_RST_GPIO       GPIO56 module pad 66  net KM_RST        (want KM_RST)
+  ok    KM_S0_GPIO        GPIO46 module pad 56  net KM_S0         (want KM_S0)
+  ok    USB_VBUS_EN_GPIO  GPIO38 module pad 49  net USB_VBUS_EN   (want USB_VBUS_EN)
+  ok    STATUS_LED_GPIO   GPIO37 module pad 46  net LED_STATUS    (want LED_STATUS)
+  ok    USER_KEY_GPIO     GPIO42 module pad 52  net USER_BTN      (want USER_BTN)
+  ok    SD_PWR_EN_GPIO    GPIO39 module pad 50  net SD_PWR_EN_N   (want SD_PWR_EN_N)
+  ok    SD_CD_GPIO        GPIO50 module pad 60  net SD_CD_N       (want SD_CD_N)
+  ok    SD_CLK            GPIO24 module pad 31  net SD_CLK        (want SD_CLK)
+  ok    SD_CMD            GPIO25 module pad 32  net SD_CMD        (want SD_CMD)
+  ok    SD_D0             GPIO20 module pad 27  net SD_D0         (want SD_D0)
+  ok    SD_D1             GPIO21 module pad 28  net SD_D1         (want SD_D1)
+  ok    SD_D2             GPIO22 module pad 29  net SD_D2         (want SD_D2)
+  ok    SD_D3             GPIO23 module pad 30  net SD_D3         (want SD_D3)
+  ok    LCD_PCLK_GPIO     GPIO40 module pad 51  net LCD_PCLK_PAD  (want LCD_PCLK_PAD)
+  ok    LCD_DE_GPIO       GPIO43 module pad 53  net LCD_DE        (want LCD_DE)
+  ok    LCD_HSYNC_GPIO    GPIO44 module pad 54  net LCD_HSYNC     (want LCD_HSYNC)
+  ok    LCD_VSYNC_GPIO    GPIO45 module pad 55  net LCD_VSYNC     (want LCD_VSYNC)
+  ok    LCD_DATA_GPIOS: 16 pins
+  ok    LCD_DATA_GPIOS[0 ] GPIO8  module pad 14  net LCD_D0        (want LCD_D0)
+  ok    LCD_DATA_GPIOS[1 ] GPIO9  module pad 15  net LCD_D1        (want LCD_D1)
+  ok    LCD_DATA_GPIOS[2 ] GPIO10 module pad 16  net LCD_D2        (want LCD_D2)
+  ok    LCD_DATA_GPIOS[3 ] GPIO11 module pad 17  net LCD_D3        (want LCD_D3)
+  ok    LCD_DATA_GPIOS[4 ] GPIO12 module pad 18  net LCD_D4        (want LCD_D4)
+  ok    LCD_DATA_GPIOS[5 ] GPIO13 module pad 19  net LCD_D5        (want LCD_D5)
+  ok    LCD_DATA_GPIOS[6 ] GPIO14 module pad 20  net LCD_D6        (want LCD_D6)
+  ok    LCD_DATA_GPIOS[7 ] GPIO15 module pad 21  net LCD_D7        (want LCD_D7)
+  ok    LCD_DATA_GPIOS[8 ] GPIO16 module pad 22  net LCD_D8        (want LCD_D8)
+  ok    LCD_DATA_GPIOS[9 ] GPIO17 module pad 23  net LCD_D9        (want LCD_D9)
+  ok    LCD_DATA_GPIOS[10] GPIO18 module pad 24  net LCD_D10       (want LCD_D10)
+  ok    LCD_DATA_GPIOS[11] GPIO19 module pad 25  net LCD_D11       (want LCD_D11)
+  ok    LCD_DATA_GPIOS[12] GPIO33 module pad 42  net LCD_D12       (want LCD_D12)
+  ok    LCD_DATA_GPIOS[13] GPIO34 module pad 43  net LCD_D13       (want LCD_D13)
+  ok    LCD_DATA_GPIOS[14] GPIO35 module pad 44  net LCD_D14       (want LCD_D14)
+  ok    LCD_DATA_GPIOS[15] GPIO36 module pad 45  net LCD_D15       (want LCD_D15)
+  ok    GPIO0 named once (HDMI_I2C_SDA)
+  ok    GPIO1 named once (HDMI_I2C_SCL)
+  ok    GPIO8 named once (LCD_DATA_GPIOS[0])
+  ok    GPIO9 named once (LCD_DATA_GPIOS[1])
+  ok    GPIO10 named once (LCD_DATA_GPIOS[2])
+  ok    GPIO11 named once (LCD_DATA_GPIOS[3])
+  ok    GPIO12 named once (LCD_DATA_GPIOS[4])
+  ok    GPIO13 named once (LCD_DATA_GPIOS[5])
+  ok    GPIO14 named once (LCD_DATA_GPIOS[6])
+  ok    GPIO15 named once (LCD_DATA_GPIOS[7])
+  ok    GPIO16 named once (LCD_DATA_GPIOS[8])
+  ok    GPIO17 named once (LCD_DATA_GPIOS[9])
+  ok    GPIO18 named once (LCD_DATA_GPIOS[10])
+  ok    GPIO19 named once (LCD_DATA_GPIOS[11])
+  ok    GPIO20 named once (SD_D0)
+  ok    GPIO21 named once (SD_D1)
+  ok    GPIO22 named once (SD_D2)
+  ok    GPIO23 named once (SD_D3)
+  ok    GPIO24 named once (SD_CLK)
+  ok    GPIO25 named once (SD_CMD)
+  ok    GPIO33 named once (LCD_DATA_GPIOS[12])
+  ok    GPIO34 named once (LCD_DATA_GPIOS[13])
+  ok    GPIO35 named once (LCD_DATA_GPIOS[14])
+  ok    GPIO36 named once (LCD_DATA_GPIOS[15])
+  ok    GPIO37 named once (STATUS_LED_GPIO)
+  ok    GPIO38 named once (USB_VBUS_EN_GPIO)
+  ok    GPIO39 named once (SD_PWR_EN_GPIO)
+  ok    GPIO40 named once (LCD_PCLK_GPIO)
+  ok    GPIO42 named once (USER_KEY_GPIO)
+  ok    GPIO43 named once (LCD_DE_GPIO)
+  ok    GPIO44 named once (LCD_HSYNC_GPIO)
+  ok    GPIO45 named once (LCD_VSYNC_GPIO)
+  ok    GPIO46 named once (KM_S0_GPIO)
+  ok    GPIO47 named once (KM_RX_GPIO)
+  ok    GPIO48 named once (AUDIO_MUTE_GPIO)
+  ok    GPIO49 named once (HDMI_RSTN_GPIO)
+  ok    GPIO50 named once (SD_CD_GPIO)
+  ok    GPIO51 named once (I2S_BCLK)
+  ok    GPIO52 named once (I2S_WS)
+  ok    GPIO53 named once (I2S_DOUT)
+  ok    GPIO54 named once (HDMI_INT_GPIO)
+  ok    GPIO55 named once (KM_TX_GPIO)
+  ok    GPIO56 named once (KM_RST_GPIO)
+  J202 carries GPIO 0, 1, 2, 3, 4, 5, 6, 7, 57, 60
+  ok    GPIO0  J202 pin 5 net I2C_SDA: the shared I2C bus, the firmware's (HDMI_I2C_SDA)
+  ok    GPIO1  J202 pin 6 net I2C_SCL: the shared I2C bus, the firmware's (HDMI_I2C_SCL)
+  ok    GPIO2  J202 pin 7 net GPIO2: left to the header user, the firmware names it nowhere
+  ok    GPIO3  J202 pin 8 net GPIO3: left to the header user, the firmware names it nowhere
+  ok    GPIO4  J202 pin 9 net GPIO4: left to the header user, the firmware names it nowhere
+  ok    GPIO5  J202 pin 10 net GPIO5: left to the header user, the firmware names it nowhere
+  ok    GPIO6  J202 pin 11 net GPIO6: left to the header user, the firmware names it nowhere
+  ok    GPIO7  J202 pin 12 net GPIO7: left to the header user, the firmware names it nowhere
+  ok    GPIO57 J202 pin 13 net GPIO57: left to the header user, the firmware names it nowhere
+  ok    GPIO60 J202 pin 14 net GPIO60: left to the header user, the firmware names it nowhere
+  ok    GPIO2 (an LP core pin) on J202 and free
+  ok    GPIO3 (an LP core pin) on J202 and free
+  ok    GPIO4 (an LP core pin) on J202 and free
+  ok    GPIO5 (an LP core pin) on J202 and free
+  ok    GPIO6 (an LP core pin) on J202 and free
+  ok    GPIO7 (an LP core pin) on J202 and free
+check_pins: 0 failed
+PASS board_dosboard.h against the DOS board's netlist: every pin on its net, the header's GPIOs left free
+
+board_check_test: board_early_init() in 17 cases
+  K1 Korvo-1: its codec at 0x10, the camera idle
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | *** tiny386 for the DOS board: no MS7210 HDMI transmitter on I2C (nothing at 0x59 or 0x2B; GPIO46 high (no R302) and a device at 0x10, as on a Korvo-1).
+    | *** This image is only for the DOS board. On an ESP32-S31-Korvo-1 flash the Korvo-1 image.
+    | *** On a DOS board: check the MS7210's 1.2 V and 3.3 V, RSTN (GPIO49, R603 holds it high) and the I2C pull-ups.
+    | *** Halted; nothing else was started.
+    K1: stopped; GPIO46 read high; GPIO49 never driven; 7 GPIO calls; as expected
+  K2 Korvo-1: codec at 0x10 and the panel kit's touch controller at 0x5D
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | *** tiny386 for the DOS board: no MS7210 HDMI transmitter on I2C (nothing at 0x59 or 0x2B; GPIO46 high (no R302) and a device at 0x10, as on a Korvo-1).
+    | *** This image is only for the DOS board. On an ESP32-S31-Korvo-1 flash the Korvo-1 image.
+    | *** On a DOS board: check the MS7210's 1.2 V and 3.3 V, RSTN (GPIO49, R603 holds it high) and the I2C pull-ups.
+    | *** Halted; nothing else was started.
+    K2: stopped; GPIO46 read high; GPIO49 never driven; 7 GPIO calls; as expected
+  K3 Korvo-1: nothing at all on its bus (v3.5 pulsed GPIO49 here)
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | *** tiny386 for the DOS board: no MS7210 HDMI transmitter on I2C (nothing at 0x59 or 0x2B, and GPIO46 high: no R302, so not a DOS board).
+    | *** This image is only for the DOS board. On an ESP32-S31-Korvo-1 flash the Korvo-1 image.
+    | *** On a DOS board: check the MS7210's 1.2 V and 3.3 V, RSTN (GPIO49, R603 holds it high) and the I2C pull-ups.
+    | *** Halted; nothing else was started.
+    K3: stopped; GPIO46 read high; GPIO49 never driven; 7 GPIO calls; as expected
+  K4 Korvo-1: codec at 0x10, a camera holding D0 low (the case the strap cannot tell)
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | dosboard: no MS7210 without a reset; GPIO46 low (R302), and a device at I2C 0x10, taken to be on J202: trying again with the reset
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | *** tiny386 for the DOS board: no MS7210 HDMI transmitter on I2C (nothing at 0x59 or 0x2B, before or after its reset; a device at 0x10).
+    | *** This image is only for the DOS board. On an ESP32-S31-Korvo-1 flash the Korvo-1 image.
+    | *** On a DOS board: check the MS7210's 1.2 V and 3.3 V, RSTN (GPIO49, R603 holds it high) and the I2C pull-ups.
+    | *** Halted; nothing else was started.
+    K4: stopped; GPIO46 read low; GPIO49 driven; 14 GPIO calls; as expected
+  K5 Korvo-1: nothing on its bus, a camera holding D0 high
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | *** tiny386 for the DOS board: no MS7210 HDMI transmitter on I2C (nothing at 0x59 or 0x2B, and GPIO46 high: no R302, so not a DOS board).
+    | *** This image is only for the DOS board. On an ESP32-S31-Korvo-1 flash the Korvo-1 image.
+    | *** On a DOS board: check the MS7210's 1.2 V and 3.3 V, RSTN (GPIO49, R603 holds it high) and the I2C pull-ups.
+    | *** Halted; nothing else was started.
+    K5: stopped; GPIO46 read high; GPIO49 never driven; 7 GPIO calls; as expected
+  K6 Korvo-1: nothing on its bus, a camera D0 that changes while it is read
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | *** tiny386 for the DOS board: no MS7210 HDMI transmitter on I2C (nothing at 0x59 or 0x2B, and GPIO46 high: no R302, so not a DOS board).
+    | *** This image is only for the DOS board. On an ESP32-S31-Korvo-1 flash the Korvo-1 image.
+    | *** On a DOS board: check the MS7210's 1.2 V and 3.3 V, RSTN (GPIO49, R603 holds it high) and the I2C pull-ups.
+    | *** Halted; nothing else was started.
+    K6: stopped; GPIO46 read high; GPIO49 never driven; 7 GPIO calls; as expected
+  D1 DOS board: the MS7210 at 0x59 before and after its reset
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    | ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    | dosboard: MS7210 found at I2C 0x59, before and after its reset (RSTN, GPIO49); card detect says the card is out.
+    D1: taken; GPIO46 not read; GPIO49 driven; 14 GPIO calls; as expected
+  D2 DOS board: the MS7210 at 0x59 only after its reset
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | dosboard: no MS7210 without a reset; GPIO46 low (R302): trying again with the reset
+    | ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    | dosboard: MS7210 found at I2C 0x59, only after its reset (RSTN, GPIO49); card detect says the card is out.
+    D2: taken; GPIO46 read low; GPIO49 driven; 20 GPIO calls; as expected
+  D3 DOS board: the MS7210 at 0x2B (SA low) only after its reset
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | dosboard: no MS7210 without a reset; GPIO46 low (R302): trying again with the reset
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID A2 20 0A at I2C 0x2B (found)
+    | dosboard: MS7210 found at I2C 0x2B (SA low, not as the board is drawn), only after its reset (RSTN, GPIO49); card detect says the card is out.
+    D3: taken; GPIO46 read low; GPIO49 driven; 22 GPIO calls; as expected
+  D4 DOS board: MS7210 only after its reset, a pressure sensor at 0x5D on J202 (v3.5 stopped)
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | dosboard: no MS7210 without a reset; GPIO46 low (R302), and a device at I2C 0x5D, taken to be on J202: trying again with the reset
+    | ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    | dosboard: MS7210 found at I2C 0x59, only after its reset (RSTN, GPIO49); card detect says the card is out.
+    | dosboard: a device at I2C 0x5D too, an address a Korvo-1 uses; GPIO46 low (R302) said this is a DOS board, so it is taken to be on J202.
+    D4: taken; GPIO46 read low; GPIO49 driven; 20 GPIO calls; as expected
+  D5 DOS board: MS7210 only after its reset, something at 0x10 on J202 (v3.5 stopped)
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | dosboard: no MS7210 without a reset; GPIO46 low (R302), and a device at I2C 0x10, taken to be on J202: trying again with the reset
+    | ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    | dosboard: MS7210 found at I2C 0x59, only after its reset (RSTN, GPIO49); card detect says the card is out.
+    | dosboard: a device at I2C 0x10 too, an address a Korvo-1 uses; GPIO46 low (R302) said this is a DOS board, so it is taken to be on J202.
+    D5: taken; GPIO46 read low; GPIO49 driven; 20 GPIO calls; as expected
+  D6 DOS board without R302, MS7210 only after its reset
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | *** tiny386 for the DOS board: no MS7210 HDMI transmitter on I2C (nothing at 0x59 or 0x2B, and GPIO46 high: no R302, so not a DOS board).
+    | *** This image is only for the DOS board. On an ESP32-S31-Korvo-1 flash the Korvo-1 image.
+    | *** On a DOS board: check the MS7210's 1.2 V and 3.3 V, RSTN (GPIO49, R603 holds it high) and the I2C pull-ups.
+    | *** Halted; nothing else was started.
+    D6: stopped; GPIO46 read high; GPIO49 never driven; 7 GPIO calls; as expected
+  D7 DOS board without R302, MS7210 before and after its reset
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    | ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    | dosboard: MS7210 found at I2C 0x59, before and after its reset (RSTN, GPIO49); card detect says the card is out.
+    D7: taken; GPIO46 not read; GPIO49 driven; 14 GPIO calls; as expected
+  D8 something that is not an MS7210 at 0x59
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: register 0x0000 reads 0x12, expected 0xA2
+    | ms7210: chip ID 12 00 00 at I2C 0x59 (not found)
+    | *** tiny386 for the DOS board: no MS7210 HDMI transmitter on I2C (chip ID at 0x59 read 12 00 00, expected A2 20 0A).
+    | *** This image is only for the DOS board. On an ESP32-S31-Korvo-1 flash the Korvo-1 image.
+    | *** On a DOS board: check the MS7210's 1.2 V and 3.3 V, RSTN (GPIO49, R603 holds it high) and the I2C pull-ups.
+    | *** Halted; nothing else was started.
+    D8: stopped; GPIO46 not read; GPIO49 never driven; 1 GPIO calls; as expected
+  D9 an I2C bus that cannot be set up
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | *** tiny386 for the DOS board: no MS7210 HDMI transmitter on I2C (the I2C bus could not be set up).
+    | *** This image is only for the DOS board. On an ESP32-S31-Korvo-1 flash the Korvo-1 image.
+    | *** On a DOS board: check the MS7210's 1.2 V and 3.3 V, RSTN (GPIO49, R603 holds it high) and the I2C pull-ups.
+    | *** Halted; nothing else was started.
+    D9: stopped; GPIO46 not read; GPIO49 never driven; 1 GPIO calls; as expected
+  D10 DOS board: an MS7210 that answers before its reset, not after
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID A2 20 0A at I2C 0x59 (found)
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | *** tiny386 for the DOS board: no MS7210 HDMI transmitter on I2C (found before its reset, not after it: look at RSTN, GPIO49).
+    | *** This image is only for the DOS board. On an ESP32-S31-Korvo-1 flash the Korvo-1 image.
+    | *** On a DOS board: check the MS7210's 1.2 V and 3.3 V, RSTN (GPIO49, R603 holds it high) and the I2C pull-ups.
+    | *** Halted; nothing else was started.
+    D10: stopped; GPIO46 not read; GPIO49 driven; 9 GPIO calls; as expected
+  D11 DOS board with R302 and no MS7210 answering at all
+    | dosboard: looking for the MS7210 at I2C 0x59
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | dosboard: no MS7210 without a reset; GPIO46 low (R302): trying again with the reset
+    | ms7210: chip ID 00 00 00 at I2C 0x59 (not found)
+    | dosboard: nothing at I2C 0x59; trying 0x2B
+    | ms7210: chip ID 00 00 00 at I2C 0x2B (not found)
+    | *** tiny386 for the DOS board: no MS7210 HDMI transmitter on I2C (nothing answered at 0x59 or 0x2B).
+    | *** This image is only for the DOS board. On an ESP32-S31-Korvo-1 flash the Korvo-1 image.
+    | *** On a DOS board: check the MS7210's 1.2 V and 3.3 V, RSTN (GPIO49, R603 holds it high) and the I2C pull-ups.
+    | *** Halted; nothing else was started.
+    D11: stopped; GPIO46 read low; GPIO49 driven; 14 GPIO calls; as expected
+board_check_test: 17 of 17 cases as expected: PASS
+PASS dosboard.c board check: pins touched and when, Korvo-1s and DOS boards, J202 devices, GPIO46
+(the same cases against dosboard.c at the v3.5 tag, where it has to fail)
+    | K1: stopped; GPIO46 not read; GPIO49 never driven; 1 GPIO calls; FAIL
+    | K2: stopped; GPIO46 not read; GPIO49 never driven; 1 GPIO calls; FAIL
+    | K3: stopped; GPIO46 not read; GPIO49 driven; 8 GPIO calls; FAIL
+    | K4: stopped; GPIO46 not read; GPIO49 never driven; 1 GPIO calls; FAIL
+    | K5: stopped; GPIO46 not read; GPIO49 driven; 8 GPIO calls; FAIL
+    | K6: stopped; GPIO46 not read; GPIO49 driven; 8 GPIO calls; FAIL
+    | D1: taken; GPIO46 not read; GPIO49 driven; 14 GPIO calls; as expected
+    | D2: taken; GPIO46 not read; GPIO49 driven; 14 GPIO calls; FAIL
+    | D3: taken; GPIO46 not read; GPIO49 driven; 16 GPIO calls; FAIL
+    | D4: stopped; GPIO46 not read; GPIO49 never driven; 1 GPIO calls; FAIL
+    | D5: stopped; GPIO46 not read; GPIO49 never driven; 1 GPIO calls; FAIL
+    | D6: taken; GPIO46 not read; GPIO49 driven; 14 GPIO calls; FAIL
+    | D7: taken; GPIO46 not read; GPIO49 driven; 14 GPIO calls; as expected
+    | D8: stopped; GPIO46 not read; GPIO49 never driven; 1 GPIO calls; as expected
+    | D9: stopped; GPIO46 not read; GPIO49 never driven; 1 GPIO calls; as expected
+    | D10: stopped; GPIO46 not read; GPIO49 driven; 9 GPIO calls; as expected
+    | D11: stopped; GPIO46 not read; GPIO49 driven; 8 GPIO calls; FAIL
+    | board_check_test: 5 of 17 cases as expected: FAIL
+PASS board check test catches v3.5's GPIO49 pulse on a bare Korvo-1 and its stop on a J202 device
+
+== channel 0 at its reset count, 18.2 Hz
+  ok: 1 s in 232 us steps: 18 ticks (18.2 a second)
+  after a hold of 100 periods, 1,000 steps with no time passing: 1 ticks
+  ok: one tick raised, not a burst (1)
+  ok: the most owed at once: 100
+  ok: ticks dropped: 99
+  ok: the next tick within a period and a half (1)
+  ok: on the counter's phase: 0.0005 periods after a wrap (within one step)
+  ok: then 1 s as usual: 18 ticks
+  ok: 20 holds of 0.6 periods: 12 ticks (12 periods went by), none dropped
+  ok: i8254_max_owed 4, a hold of 3 periods: 3 ticks made up (3)
+  ok: i8254_max_owed 4, a hold of 40 periods: 1 tick (1)
+  ok: i8254_max_owed 0: a hold of 30 periods gives 30 ticks back to back, as before v3.8
+  ok: 1 kHz for 100 ms in 232 us steps: 100 ticks
+  ok: 1 kHz, held up 200 ms: 1 tick (1, not 200)
+== the one-shot modes beside the cap (upstream's, merged in v4.0-base)
+  ok: mode 0, a count of 1 ms: 1 interrupt within 2 ms (1)
+  ok: mode 0: no more in the next 100 ms (0)
+  ok: mode 0 loaded again and held up 50 ms: 1 interrupt (1), none counted as dropped (0)
+  ok: and none after it in 100 ms (0)
+  ok: mode 4, a count of 1 ms: 1 interrupt in 100 ms (1)
+  ok: mode 1: 0 interrupts in 100 ms (none), and no abort()
+  ok: mode 5: 0 interrupts in 100 ms (none)
+  ok: mode 6 (as 2), 1 kHz for 100 ms: 100 ticks
+  ok: mode 6 held up 200 ms: 1 tick (1), 199 dropped (199 or so): the cap
+  ok: mode 6 with i8254_max_owed 0 (timer_catchup = 0), held up 30 ms: 30 ticks back to back, as before v3.8
+  ok: mode 7 (as 3), 1 kHz for 100 ms: 100 ticks
+  ok: mode 2 at the reset count again: 18 ticks in 1 s
+== the CMOS periodic interrupt (misc.c)
+  ok: 100 ms at 1024 Hz, steps of 232 us: 103 interrupts (about 102)
+  ok: after a 500 ms hold, 1,000 steps with no time passing: 1 interrupt (1 wanted, not 512)
+  ok: and then 100 ms at the usual rate: 102
+test_pit: 28 checks, 0 failed
+PASS i8254.c and the CMOS: missed timer ticks dropped after a hold, one raised, on the counter's phase
+(the same hold against i8254.c at the pristine tag, where the burst has to be there)
+    | == channel 0 at its reset count, 18.2 Hz
+    |   ok: 1 s in 232 us steps: 18 ticks (18.2 a second)
+    |   after a hold of 100 periods, 1,000 steps with no time passing: 100 ticks
+    |   ok: pristine i8254.c: the burst is there (100 ticks back to back)
+    | test_pit (pristine): 2 checks, 0 failed
+PASS the PIT test sees the burst in pristine i8254.c
+(the same test against v3.9's i8254.c, which has to stop at mode 0)
+    | == the one-shot modes beside the cap (upstream's, merged in v4.0-base)
+    | abort() called
+    | (13 checks passed, 0 failed; exit status 134)
+PASS the PIT test sees v3.9's i8254.c stop at mode 0
+
+  ok: i386.c as the Korvo-1 builds it: double faults delivered, the shutdown clean
+  ok: TRY1's way out: the front end's note before its "@ file function line" (read in i386.c)
+  ok: i386.c without the board header: the same
+  ok: v3.7's i386.c: the double fault stops the emulator (the test sees the fault)
+  ok: v3.8's i386.c: the note after the cause, and nothing else wrong (the test sees it)
+cpu: 5 passed, 0 failed
+PASS i386.c: double faults delivered through the task gate, the ring 3 stack put back, shutdown and a bad CR3 stop cleanly, LLDT checked
+
+host tests: 53 passed, 0 failed

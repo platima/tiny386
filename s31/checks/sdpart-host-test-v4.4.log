@@ -1,0 +1,153 @@
+== the guest's boot code: sd_part_mbr.s against sd_part_mbr.h
+    | 356 bytes assembled, 356 in the header
+  ok: sd_part_mbr.h holds the bytes GNU as makes of sd_part_mbr.s
+== sd_part_plan(), sd_part_name(), the CHS bytes
+    | == sd_part_name()
+    |   ok: sd:1, sd:3, sd:4 are partitions 1, 3, 4
+    |   ok: sd:0, sd:5, sd:, sd:33, "sd:3 ", sd:p3 are malformed (-1)
+    |   ok: file names and SD:3 are not partitions (0)
+    | == the CHS bytes, at 16 heads and 63 sectors
+    |   ok: sector 63: head 1, sector 1, cylinder 0 (01 01 00), as win95.img's own table has it
+    |   ok: sector 818495: cylinder 811, head 15, sector 63 (0f ff 2b)
+    |   ok: sector 139264: cylinder 138, head 2, sector 35 (02 23 8a)
+    |   ok: sector 1032191, the last CHS reaches: 1023/15/63 (0f ff ff)
+    |   ok: sector 1032192, past CHS: 1023/15/63 (0f ff ff)
+    | == partitions the guest may have
+    |   ok: the new card's p3, FAT16 type 0E after p1: accepted ()
+    |   ok:   plan: start 139264, 818433 sectors, type 0E, FAT16, label WIN95, no note ()
+    |   ok:   the guest's disk: 958608 sectors (951 cylinders of 16 x 63), the partition's end rounded up
+    |   ok:   the guest's MBR: the boot code, slot 1 active, type 0E, start 139264, 55AA
+    |   ok:   slots 2 to 4 empty: the guest sees this partition alone
+    |   ok: a volume whose hidden sectors is still win95.img's 63: accepted, with a note (its boot sector's hidden-sectors field is 63, not 139264 where it starts: Windows 95's boot sector finds itself by it, so the guest may not start from this disk)
+    |   ok: its first sector unreadable: accepted, with a note
+    |   ok: no FAT volume in it yet: accepted, with a note (it holds no FAT file system yet: the guest sees an empty disk (FORMAT C: in the guest))
+    |   ok: a FAT32 p3 of 2 GiB (type 0C): accepted
+    |   ok: a FAT16 p3 of type 06: accepted, its type kept
+    |   ok: a partition ending exactly at 128 GiB: accepted ()
+    | == partitions the guest may not have
+    |   ok: p2, Linux's root (type 83): refused (card partition 2 is a Linux partition (Linux's root is one) (type 83): only a FAT16 partition (type 04, 06 or 0E) or a FAT32 one (0B or 0C) can be the guest's disk)
+    |   ok: p4, an empty slot: refused (the card has no partition 4)
+    |   ok: partition 0: refused (partition 0: give a partition of the card's table, 1 to 4 (sd:3))
+    |   ok: partition 5: refused (partition 5: give a partition of the card's table, 1 to 4 (sd:3))
+    |   ok: an extended partition (05): refused (card partition 4 is an extended partition (type 05): only a FAT16 partition (type 04, 06 or 0E) or a FAT32 one (0B or 0C) can be the guest's disk)
+    |   ok: an exFAT partition (07): refused (card partition 4 is an NTFS or exFAT partition (type 07): only a FAT16 partition (type 04, 06 or 0E) or a FAT32 one (0B or 0C) can be the guest's disk)
+    |   ok: a FAT12 partition (01): refused (card partition 4 is a FAT12 partition (type 01): only a FAT16 partition (type 04, 06 or 0E) or a FAT32 one (0B or 0C) can be the guest's disk)
+    |   ok: a partition of another type (DA): refused (card partition 4 is of type DA: only a FAT16 partition (type 04, 06 or 0E) or a FAT32 one (0B or 0C) can be the guest's disk)
+    |   ok: p3 running into p2: refused (card partition 3 (sectors 139264 to 1039263) overlaps partition 2 (958464 to 5152767): a write to one could land in the other, so neither is given to the guest)
+    |   ok: p3 starting inside p1: refused (card partition 3 (sectors 100000 to 918432) overlaps partition 1 (8192 to 139263): a write to one could land in the other, so neither is given to the guest)
+    |   ok: p3 the same sectors as p1: refused (card partition 3 (sectors 8192 to 139263) overlaps partition 1 (8192 to 139263): a write to one could land in the other, so neither is given to the guest)
+    |   ok: p3 starting at sector 0, over the table: refused (card partition 3 starts at sector 0, over the partition table itself)
+    |   ok: p3 running past the card's end: refused (card partition 3 runs to sector 62818433, past the card's end (62333952 sectors): the table is wrong)
+    |   ok: p3 ending past 128 GiB on a big card: refused (card partition 3 ends 131072 MiB into the card, past the 128 GiB the guest's IDE disk can reach (28-bit LBA): move it nearer the card's start)
+    |   ok: p3 of 1000 sectors: refused (card partition 3 is 1000 sectors, too small to be a disk (1 MiB at least))
+    |   ok: a FAT16 partition over 4 GiB: refused (card partition 3 is a FAT16 partition of 4097 MiB: FAT16 holds 4 GiB at most (2 GiB for Windows 95); make it FAT32 (type 0C) or smaller)
+    |   ok: a FAT volume bigger than its partition: refused (the FAT volume in card partition 3 is 818533 sectors, bigger than its partition (818433): its end would be past the partition's)
+    |   ok: a FAT volume of 4096-byte sectors: refused (the FAT volume in card partition 3 has 4096-byte sectors; the guest's disk has 512)
+    |   ok: a card with a GPT (protective entry EE): refused (the card has a GPT partition table, which tiny386 does not read: lay the card out with an MBR (s31/newcard))
+    |   ok: a card that is one FAT volume, no table: refused (the card is one FAT volume with no partition table, so it has no partition 1)
+    |   ok: a card with no 55AA in sector 0: refused (the card has no partition table (no MBR in its first sector))
+    | test_sd_part unit: 40 checks, 0 failed
+  ok: the partitions the guest may and may not have, on made-up sectors
+== the new card: p1 FAT32 at 8192, p3 FAT16 at 139264 (straight after p1), p2 at 270336
+    | == the card's partitions, as the board mounts them
+    |   ok: p1 mounted at /sdcard
+    |     partition 1: type 0C, 64 MiB, FAT, at /sdcard
+    |     partition 2: type 83, 64 MiB, not FAT
+    |     partition 3: type 0E, 64 MiB, FAT, at /sdcard3
+    |   ok: p1 and p3 (FAT16) mounted by FatFs, p2 (ext4) not
+    |   ok: the card: FatFs drive 0, 401408 sectors
+    | == refused while FatFs has it, and p1 never let go
+    |   ok: p3 while mounted at /sdcard3: sd_part_open refuses (card partition 3 is mounted by tiny386's own FatFs, so the guest cannot have it whole as well)
+    |   ok: p1 (/sdcard) is not let go: card partition 1 is /sdcard, where tiny386's own files are (the inis, the BIOS)
+    |   ok:   p1 still mounted
+    |   ok: p1: sd_part_open refuses (card partition 1 is mounted by tiny386's own FatFs, so the guest cannot have it whole as well)
+    |   ok: p2, Linux's root: sd_part_open refuses (card partition 2 is a Linux partition (Linux's root is one) (type 83): only a FAT16 partition (type 04, 06 or 0E) or a FAT32 one (0B or 0C) can be the guest's disk)
+    |   ok: p4, an empty slot: sd_part_open refuses (the card has no partition 4)
+    | == p3 let go, then given to the guest
+    |   ok: p3 let go
+    |   ok:   p3 no longer mounted, p1 still
+    |   ok:   letting it go again: nothing to do
+    |   ok:   /sdcard still reads (0:/tiny386/win95-sd.ini)
+    |   ok: sd_part_check(3): FAT16, start 139264, 131072 sectors, hidden 139264, label "WIN95" ()
+    |   ok: the IDE disk: 271152 sectors, 269 cylinders, 16 heads, 63 sectors a track
+    |   ok: IDENTIFY: 271152 LBA sectors, 269 cylinders, 16 heads, 63 sectors, LBA supported
+    | == what the guest reads
+    |   ok: LBA 0 (READ SECTORS through the ports): the record made for the guest, status 58
+    |   ok:   with the card's disk signature
+    |   ok:   not the card's own sector 0
+    |   ok: LBA 139264: p3's boot sector, the card's own
+    |   ok:   (the card's sector 8192, p1's boot sector, is not zeros)
+    |   ok: LBA 8192 (p1's boot sector on the card): zeros
+    |   ok: p2's sectors are past the guest's disk, or zeros
+    |   ok: a read past the guest's disk: refused
+    |   ok: 4 sectors across p3's start: two zeros, then the card's
+    |   ok: 2 sectors across p3's end: the card's, then zeros
+    | == what the guest writes
+    |   ok: p3's last sector written (WRITE SECTORS through the ports): on the card at the same number, status 50
+    |   ok: 4 sectors inside p3 written
+    |   ok:   on the card
+    | sd:3: the guest wrote 1 sector at 0, outside card partition 3 (139264 to 270335); refused, as every write outside it is.
+    |   ok: write LBA 0, the guest's partition table: refused
+    | sd:3: the guest wrote 1 sector at 8192, outside card partition 3 (139264 to 270335); refused, as every write outside it is.
+    |   ok: write p1's boot sector: refused
+    | sd:3: the guest wrote 4 sectors at 8292, outside card partition 3 (139264 to 270335); refused, as every write outside it is.
+    |   ok: write inside p1: refused
+    | sd:3: the guest wrote 1 sector at 139263, outside card partition 3 (139264 to 270335); refused, as every write outside it is.
+    |   ok: write the sector before p3: refused
+    |   ok: write across p3's start: refused
+    |   ok: write across p3's end: refused
+    |   ok: write the sector after p3: refused
+    |   ok: write p2, Linux's root: refused
+    |   ok: write the guest disk's last sector: refused
+    |   ok: WRITE SECTORS to LBA 0 through the ports: the guest is told of an error (status 41)
+    |   ok:   not one of them reached the card (0 writes)
+    |   ok:   none counted as a card error (0)
+    | == a card that refuses once
+    | E diskio_sdmmc: sdmmc_read_blocks failed (0x107)
+    |   ok: one read refused by the card: tried again, the data right
+    | E diskio_sdmmc: sdmmc_write_blocks failed (0x107)
+    |   ok: one write refused by the card: tried again, on the card
+    |   ok:   in disk_image.c's figures: 2 errors, 2 got over, 1 sector each way
+    | E diskio_sdmmc: sdmmc_read_blocks failed (0x107)
+    | E diskio_sdmmc: sdmmc_read_blocks failed (0x107)
+    |   ok: a card that refuses everything: the read fails, counted as a card error
+    |   ok:   and works again after
+    | == the guest's own view: FatFs finds C: from the guest's LBA 0
+    |   the guest's view mounted on FatFs drive 1:: FatFs error 0, volume at sector 139264
+    |   ok: partition 1 of the guest's table mounted: FAT16 at sector 139264
+    |   ok: P3.TXT, put on p3 by mtools, read through the guest's disk
+    |   ok: GUEST.TXT written through the guest's disk
+    |   ok: BIG.BIN (64 KiB) written through the guest's disk
+    |   ok: ide_flush(): no card error
+    |   ok: every sector written on the card was inside p3 (0 outside, the first 0)
+    | == a second sd:3, and sd:3 as a CD (refused by esp_main.c before this)
+    |   tiny386_fatal: sd:3: card partition 3 is mounted by tiny386's own FatFs, so the guest cannot have it whole as well.
+    |   ok: ide_attach(sd:3) with p3 mounted again: stops with "sd:3: card partition 3 is mounted by tiny386's own FatFs, so the guest cannot have it whole as well."
+    | test_sd_part new: 53 checks, 0 failed
+  ok: new card: refusals, p3 let go and given whole, reads, writes fenced to p3, a card error got over, the guest's view
+  ok: new card: sector 0 to p1's start (the card's table) as it was, every sector
+  ok: new card: p1 as it was, every sector
+  ok: new card: p2 as it was, every sector
+  ok: new card: fsck.fat -n finds p3 clean (/home/owner/org2/v44sd/chk/ht-tree/sdpart/new-p3.img: 4 files, 34/32695 clusters)
+  ok: new card: fsck.fat -n finds p1 clean (/home/owner/org2/v44sd/chk/ht-tree/sdpart/new-p1.img: 3 files, 3/129022 clusters)
+  ok: new card: GUEST.TXT on p3 as mtools reads it
+  ok: new card: BIG.BIN on p3 as mtools reads it, every byte
+== Plat's card as it is: p1 FAT32, p2 ext4, p3 FAT32 WIN9X at 532480
+    | == Plat's card as it is: p1 FAT32, p2 ext4, p3 FAT32 WIN9X
+    |   ok: p1 mounted at /sdcard
+    |     partition 1: type 0C, 64 MiB, FAT, at /sdcard
+    |     partition 2: type 83, 192 MiB, not FAT
+    |     partition 3: type 0C, 512 MiB, FAT, at /sdcard3
+    |   ok: p2, Linux's root: sd_part_open refuses (card partition 2 is a Linux partition (Linux's root is one) (type 83): only a FAT16 partition (type 04, 06 or 0E) or a FAT32 one (0B or 0C) can be the guest's disk)
+    |   ok: p4: sd_part_open refuses (the card has no partition 4)
+    |   ok: p1 not let go: card partition 1 is /sdcard, where tiny386's own files are (the inis, the BIOS)
+    |   ok: p3 let go
+    |   ok: sd:3: FAT32 "WIN9X", type 0C, from sector 532480
+    |   the guest's view mounted on FatFs drive 1:: FatFs error 0, volume at sector 532480
+    |   ok: the guest's view: FAT32 at sector 532480
+    |   ok: P3.TXT read through the guest's disk
+    |   ok: nothing written outside p3 (0)
+    | test_sd_part old: 9 checks, 0 failed
+  ok: Plat's card: p2 and p4 refused, p1 kept, p3 (FAT32) given whole and read
+  ok: Plat's card: p2 as it was, every sector
+sdpart: 12 passed, 0 failed

@@ -1,5 +1,5 @@
 tiny386 v3 bare metal on the ESP32-S31-Korvo-1, beside Linux (dual boot),
-and on the DOS board.  App version v4.3: v3 with six review rounds' fixes
+and on the DOS board.  App version v4.4: v3 with six review rounds' fixes
 (REVIEW-RESOLUTION.md), the status LED (STATUS-LED.md), and for the DOS
 board rev A2c its new pins, its line out and speakers and a louder default
 sound (LINE-OUT.md).  v3.7 made the status LED much dimmer and added
@@ -27,16 +27,24 @@ tiny386 also makes a clear of the screen with no black flash, and
 Ctrl+Alt+F11 changes vbe_blocks while the PC runs.  v4.3 (BUILD-NOTES.md
 27, TEST-PLAN.md 15) is v4.2 with the information port at 0F1F8h that the
 Windows 95 monitor T386MON reads (..\t386mon\): nothing else changes for
-the guest.  The writes and the ways back are the same as v3.2's to v4.2's.
+the guest.  v4.4 (BUILD-NOTES.md 29 and 30, TEST-PLAN.md 16) saves the
+Ctrl+Alt keys' settings in the ini, fixes the grey screen at Windows'
+restart from 16 colours, adds two cures for tearing (both off unless
+turned on), and can give the guest a partition of the card as its whole
+disk (hda = sd:3) on a new card laid out by newcard\newcard.sh.  The
+writes and the ways back are the same as v3.2's to v4.3's.
 
-From v3.6 to v4.2 (the dual boot already in): only the app changed, so
-section 3, flash-dualboot.bat COM10 app, is all v4.3 needs.
+From v3.6 to v4.3 (the dual boot already in): only the app changed, so
+section 3, flash-dualboot.bat COM10 app, is all v4.4 needs.
 The dual-boot bootloader and partition table are v3.7's byte for byte,
 and the tiny386-default table is the one added after v3.7.  From v3.6 or
 v3.7, copy the card's two inis again too (card\tiny386\): they list
 v3.8's new settings, commented out.  v3.9 and v4.0 did not change them;
 v4.1 added a comment to win95-14m.ini and win95-800x480.ini; v4.2 and
-v4.3 changed no card file.
+v4.3 changed no card file; v4.4 adds commented lines to both and to the
+DOS board's win95-800x600.ini, and win95-sd.ini, new, for Windows on the
+new card's partition 3 (newcard\README.md, TEST-PLAN.md 16e).  No card
+layout changes unless you make a new card: the old one works as before.
 For Windows at 800x480, v4.0 adds three files to card\tiny386\: a new
 vgabios.bin (the 800x480 modes added; v3.9's still works for everything
 else), win95-800x480.ini and vbe-reg.img; v4.1 adds
@@ -58,8 +66,8 @@ your Linux install.  dualboot\DUALBOOT.md has the dual-boot evidence.  Plat
 has written v3.6 to his Korvo-1: FreeDOS and BENCH ran, the status LED was
 far too bright (v3.7) and Windows 95 failed (v3.8).  He then had Windows
 95 at its desktop on v3.9, and on v4.1 at 800x480, where the pointer
-flickered (v4.2).  Nothing of v4.2 or v4.3 has run on a board yet;
-TEST-PLAN.md 14 is the pointer at 800x480, and 15 (v4.3) T386MON's tests.
+flickered (v4.2), and v4.3 with T386MON's tests.  Nothing of v4.4 has
+run on a board yet; TEST-PLAN.md 16 is what to try.
 
 
 What you need
@@ -248,7 +256,7 @@ Use the scripts or the commands below.
   flash-paths.cmd) with esptool image-info and prints its App version line,
   writes that one file at 0xE20000 after Y, and resets the board.  It takes
   no backup and touches nothing else: not the bootloader, not the table (so
-  the default stays as it is), nothing of Linux.  For v3.6 to v4.2 to v4.3
+  the default stays as it is), nothing of Linux.  For v3.6 to v4.3 to v4.4
   this is the whole update.  The same tiny386.bin serves both tables.
   Since v3.9 it also reads the bootloader at 0x2000 first and stops,
   naming "all", if it is not the dual-boot one (then the key does nothing,

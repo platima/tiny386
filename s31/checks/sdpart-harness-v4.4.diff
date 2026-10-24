@@ -1,0 +1,187 @@
+# v4.4 part 2: the PC harnesses taught sd_part.c (hda = sd:N on a card image).
+# The T386MON harness copy (ph): part 1's ~/org2/v44disp/ph/harness against ~/org2/v44sd/ph/harness;
+# the flicker harness copy (fh): build.sh and diskfat.c the same change.
+diff -ru v44disp/ph/harness/build.sh v44sd/ph/harness/build.sh
+--- v44disp/ph/harness/build.sh	2026-10-24 10:15:56.404645607 +0800
++++ v44sd/ph/harness/build.sh	2026-10-24 12:56:47.706122952 +0800
+@@ -122,6 +122,15 @@
+     cp "$TREE/esp/main/disk_image.h" "$OUT/src/esp/main/"
+     DISKIMG=1
+ fi
++# v4.4: a card partition as the guest's whole disk (ide.c includes its
++# header; diskfat.c answers its questions about the card)
++SDPART=""
++if [ -n "$DISKIMG" ] && [ -f "$TREE/esp/main/sd_part.c" ]; then
++    cp "$TREE/esp/main/sd_part.c" "$TREE/esp/main/sd_part.h" "$TREE/esp/main/sd_part_mbr.h" \
++       "$TREE/esp/main/storage.h" "$OUT/src/"
++    cp "$TREE/esp/main/sd_part.h" "$OUT/src/esp/main/"
++    SDPART=1
++fi
+ cp "$TREE"/*.def "$OUT/src/" 2>/dev/null || true
+ cp "$TREE"/*.inc "$OUT/src/" 2>/dev/null || true
+ for v in VGA:vga I386:i386 IDE:ide PC:pc I8042:i8042 I8254:i8254 MISC:misc; do
+@@ -168,6 +177,10 @@
+     echo "cd $OUT/src && gcc $MARCH -O2 -g -Wall -Wextra -Wno-unused-parameter -I. $FFINC $EXTRA -c $OUT/src/disk_image.c -o $OUT/obj/disk_image.o" >> "$OUT/commands.txt"
+     objs="$objs $OUT/obj/disk_image.o"
+ fi
++if [ -n "$SDPART" ]; then
++    echo "cd $OUT/src && gcc $MARCH -O2 -g -Wall -Wextra -Wno-unused-parameter -I. $FFINC $EXTRA -c $OUT/src/sd_part.c -o $OUT/obj/sd_part.o" >> "$OUT/commands.txt"
++    objs="$objs $OUT/obj/sd_part.o"
++fi
+ 
+ xargs -P 16 -d '\n' -n 1 sh -c < "$OUT/commands.txt" > "$OUT/compile.log" 2>&1 || {
+     cat "$OUT/compile.log"; echo "compile failed"; exit 1; }
+diff -ru v44disp/ph/harness/diskfat.c v44sd/ph/harness/diskfat.c
+--- v44disp/ph/harness/diskfat.c	2026-10-24 10:15:56.402839429 +0800
++++ v44sd/ph/harness/diskfat.c	2026-10-24 12:56:47.714897852 +0800
+@@ -313,6 +313,25 @@
+ 	return w > 0 && (size_t) w < size;
+ }
+ 
++/* v4.4 harness: storage.c's answers for sd_part.c (hda = sd:N): the card
++   image is FatFs's drive 0; the partition -card mounted is the one FatFs
++   has (run.sh mounts p1 there, as the board mounts /sdcard) */
++#include <stdint.h>
++int storage_card_pdrv(void)
++{
++	return card_fd >= 0 ? 0 : -1;
++}
++
++uint64_t storage_card_sectors(void)
++{
++	return card_sectors;
++}
++
++bool storage_part_mounted(int part)
++{
++	return mounted && VolToPart[0].pt == part;
++}
++
+ int pcr_card_fsync(int fd)
+ {
+ 	int i = fd - PCR_CARD_FD0;
+diff -ru v44disp/ph/harness/run.sh v44sd/ph/harness/run.sh
+--- v44disp/ph/harness/run.sh	2026-10-24 10:15:56.404188561 +0800
++++ v44sd/ph/harness/run.sh	2026-10-24 12:56:47.723280273 +0800
+@@ -34,7 +34,13 @@
+ rm -rf "$RUN"
+ mkdir -p "$RUN"
+ CARDOPT=()
+-if [ -n "${CARD:-}" ]; then
++if [ -n "${CARD:-}" ] && [ -n "${SDPART:-}" ]; then
++    # v4.4: the card's partition SDPART as the guest's whole disk (hda =
++    # sd:N), p1 mounted by FatFs as the board mounts /sdcard
++    cp --sparse=always "$CARD" "$RUN/card.img"
++    HDA=sd:$SDPART
++    CARDOPT=(-card "$RUN/card.img:1")
++elif [ -n "${CARD:-}" ]; then
+     cp --sparse=always "$CARD" "$RUN/card.img"
+     HDA=/card/win95.img
+     CARDOPT=(-card "$RUN/card.img:3")
+@@ -72,7 +78,46 @@
+     | python3 -I "$H/logfilter.py" > "$RUN/log.txt"
+ rc=${PIPESTATUS[0]}
+ echo "exit status $rc" >> "$RUN/cmd.txt"
+-if [ -n "${CARD:-}" ]; then
++if [ -n "${CARD:-}" ] && [ -n "${SDPART:-}" ]; then
++    # v4.4: the partition as the card holds it now, put back into the shape
++    # of the image it came from (the image's first 63 sectors, then the
++    # volume, its hidden-sectors field 63 again) so that diskcheck.py can
++    # set it against the pristine image; and fsck.fat -n of the partition
++    python3 -I - "$RUN/card.img" "$SDPART" "$IMG" "$RUN/win95.img" > "$RUN/cardcheck.txt" 2>&1 <<'PY'
++import struct, sys
++card, part, ref, out = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
++c = open(card, 'rb')
++m = c.read(512)
++ps, pn = struct.unpack('<II', m[446 + 16 * (part - 1) + 8:446 + 16 * part])
++r = open(ref, 'rb')
++rm = r.read(512)
++rs, rn = struct.unpack('<II', rm[454:462])
++r.seek(0)
++head = r.read(rs * 512)
++c.seek(ps * 512)
++o = open(out, 'wb')
++o.write(head)
++left = rn
++first = True
++while left:
++    k = min(left, 2048)
++    d = bytearray(c.read(k * 512))
++    if first:
++        print('card p%d from %d, %d sectors; its hidden-sectors field %d, put back to %d' % (
++            part, ps, pn, struct.unpack('<I', d[28:32])[0], rs))
++        d[28:32] = struct.pack('<I', rs)
++        first = False
++    o.write(d)
++    left -= k
++PY
++    p3s=$(python3 -I -c "import struct,sys; m=open(sys.argv[1],'rb').read(512); print(struct.unpack('<I', m[446+16*($SDPART-1)+8:446+16*($SDPART-1)+12])[0])" "$RUN/card.img")
++    p3n=$(python3 -I -c "import struct,sys; m=open(sys.argv[1],'rb').read(512); print(struct.unpack('<I', m[446+16*($SDPART-1)+12:446+16*$SDPART])[0])" "$RUN/card.img")
++    dd if="$RUN/card.img" of="$RUN/p3.img" bs=512 skip=$p3s count=$p3n conv=sparse status=none
++    /sbin/fsck.fat -n "$RUN/p3.img" >> "$RUN/cardcheck.txt" 2>&1
++    echo "fsck.fat -n of the card's p$SDPART: exit $?" >> "$RUN/cardcheck.txt"
++    rm -f "$RUN/p3.img"
++    [ -n "${KEEP:-}" ] || rm -f "$RUN/card.img"
++elif [ -n "${CARD:-}" ]; then
+     # the image as the card holds it now, and the partition's state
+     MTOOLS_SKIP_CHECK=1 mcopy -n -o -i "$RUN/card.img@@$((532480 * 512))" ::/WIN95.IMG "$RUN/win95.img" \
+         > "$RUN/cardcheck.txt" 2>&1
+diff -ru v44disp/fh/harness/build.sh v44sd/fh/harness/build.sh
+--- v44disp/fh/harness/build.sh	2026-10-24 10:47:45.264487023 +0800
++++ v44sd/fh/harness/build.sh	2026-10-24 13:04:40.768628053 +0800
+@@ -124,6 +124,15 @@
+     cp "$TREE/esp/main/disk_image.h" "$OUT/src/esp/main/"
+     DISKIMG=1
+ fi
++# v4.4: a card partition as the guest's whole disk (ide.c includes its
++# header; diskfat.c answers its questions about the card)
++SDPART=""
++if [ -n "$DISKIMG" ] && [ -f "$TREE/esp/main/sd_part.c" ]; then
++    cp "$TREE/esp/main/sd_part.c" "$TREE/esp/main/sd_part.h" "$TREE/esp/main/sd_part_mbr.h" \
++       "$TREE/esp/main/storage.h" "$OUT/src/"
++    cp "$TREE/esp/main/sd_part.h" "$OUT/src/esp/main/"
++    SDPART=1
++fi
+ cp "$TREE"/*.def "$OUT/src/" 2>/dev/null || true
+ cp "$TREE"/*.inc "$OUT/src/" 2>/dev/null || true
+ for v in VGA:vga I386:i386 IDE:ide PC:pc I8042:i8042 I8254:i8254 MISC:misc; do
+@@ -174,6 +183,10 @@
+     echo "cd $OUT/src && gcc $MARCH -O2 -g -Wall -Wextra -Wno-unused-parameter -I. $FFINC $EXTRA -c $OUT/src/disk_image.c -o $OUT/obj/disk_image.o" >> "$OUT/commands.txt"
+     objs="$objs $OUT/obj/disk_image.o"
+ fi
++if [ -n "$SDPART" ]; then
++    echo "cd $OUT/src && gcc $MARCH -O2 -g -Wall -Wextra -Wno-unused-parameter -I. $FFINC $EXTRA -c $OUT/src/sd_part.c -o $OUT/obj/sd_part.o" >> "$OUT/commands.txt"
++    objs="$objs $OUT/obj/sd_part.o"
++fi
+ 
+ xargs -P 16 -d '\n' -n 1 sh -c < "$OUT/commands.txt" > "$OUT/compile.log" 2>&1 || {
+     cat "$OUT/compile.log"; echo "compile failed"; exit 1; }
+diff -ru v44disp/fh/harness/diskfat.c v44sd/fh/harness/diskfat.c
+--- v44disp/fh/harness/diskfat.c	2026-10-24 10:15:56.389284159 +0800
++++ v44sd/fh/harness/diskfat.c	2026-10-24 13:04:40.799709635 +0800
+@@ -313,6 +313,25 @@
+ 	return w > 0 && (size_t) w < size;
+ }
+ 
++/* v4.4 harness: storage.c's answers for sd_part.c (hda = sd:N): the card
++   image is FatFs's drive 0; the partition -card mounted is the one FatFs
++   has (run.sh mounts p1 there, as the board mounts /sdcard) */
++#include <stdint.h>
++int storage_card_pdrv(void)
++{
++	return card_fd >= 0 ? 0 : -1;
++}
++
++uint64_t storage_card_sectors(void)
++{
++	return card_sectors;
++}
++
++bool storage_part_mounted(int part)
++{
++	return mounted && VolToPart[0].pt == part;
++}
++
+ int pcr_card_fsync(int fd)
+ {
+ 	int i = fd - PCR_CARD_FD0;
