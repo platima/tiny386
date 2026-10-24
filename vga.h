@@ -35,9 +35,11 @@ bool vga_mem_write_string(VGAState *s, uint32_t addr, uint8_t *buf, int len);
 
 /*
  * VGA_DIRTY_BLOCKS (a board header turns it on): what the guest writes into
- * video memory is noted a block of 1 KiB at a time, a byte for each block,
- * and a VBE picture of 8, 15, 16, 24 or 32 bits a pixel is drawn again only
- * in the rows that the blocks written lie in (see vga_refresh()).  The
+ * video memory is noted a block of 256 bytes at a time (1 KiB before v4.4),
+ * a byte for each block, and a VBE picture of 8, 15, 16, 24 or 32 bits a
+ * pixel is drawn again only in the rows that the blocks written lie in,
+ * and (v4.4) drawn 1:1, only in the part of each row they reach (see
+ * vga_refresh()).  The
  * stores that such a picture can show say so: the chain-4 stores of
  * vga_mem_write*() in vga.c while VBE is on, and the linear frame buffer
  * in pc.c, which stores straight into video memory and then marks the map
@@ -55,7 +57,14 @@ bool vga_mem_write_string(VGAState *s, uint32_t addr, uint8_t *buf, int len);
  * a store that lands after the drawing has read its block leaves the byte
  * set for the next picture.
  */
-#define VGA_DIRTY_SHIFT 10
+/* v4.4: 256 bytes, where it was 1 KiB: with the part of each row drawn,
+   a quarter of the pixels converted for the sprite of T386MON's tests, a
+   little over half for its text and two thirds for its fills, on the PC
+   harness (BUILD-NOTES 29); the map is four times as large (3 KiB at 768K
+   of video memory) */
+#ifndef VGA_DIRTY_SHIFT
+#define VGA_DIRTY_SHIFT 8
+#endif
 uint8_t *vga_dirty_map(VGAState *s);
 void vga_dirty(VGAState *s, uint32_t addr, uint32_t len);
 /* With VGA_DIRTY_BLOCKS: 1 (which it starts as) draws VBE pictures from the

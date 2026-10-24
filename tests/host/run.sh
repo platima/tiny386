@@ -178,10 +178,16 @@ for board in korvo1 dosboard; do
     grep "FAIL\|pictures,\|test_clear" "$OUT/clear-$board.log" | head -12
     result $st "vga.c, $board: a clear is made by the picture after it, the same pictures as a memset(), no page stored into for nothing"
     if [ -n "$CLEAR_V41" ]; then
+        # v4.1's blocks were 1 KiB (v4.4's 256 bytes): the test and the
+        # reference that mark its map are built with that size too
         $CC -O2 -g -w -c -I"$OUT/v41" -I"$HERE/shim" -I"$TREE" -include "$hdr" \
             -o "$OUT/clear-v41-$board.o" "$OUT/v41/vga.c" || exit 1
-        $CC -o "$OUT/test_clear_v41-$board" "$OUT/test_clear-$board.o" "$OUT/clear-v41-$board.o" \
-            "$OUT/clear-ref-$board.o" "$OUT/vgafont.o" || exit 1
+        $CC $CFLAGS -c -DVGA_DIRTY_SHIFT=10 -I"$HERE/shim" -I"$TREE" -include "$hdr" \
+            -o "$OUT/test_clear-s10-$board.o" "$HERE/test_clear.c" || exit 1
+        $CC -O2 -g -w -c -DVGA_DIRTY_SHIFT=10 -I"$HERE/shim" -I"$TREE" -include "$hdr" \
+            -DVGA_NO_CLEAR_AROUND $(vga_rename ref_) -o "$OUT/clear-ref-s10-$board.o" "$TREE/vga.c" || exit 1
+        $CC -o "$OUT/test_clear_v41-$board" "$OUT/test_clear-s10-$board.o" "$OUT/clear-v41-$board.o" \
+            "$OUT/clear-ref-s10-$board.o" "$OUT/vgafont.o" || exit 1
         echo "(the same test against vga.c at the v4.1 tag, which has to draw every picture right and fail the stores)"
         "$OUT/test_clear_v41-$board" > "$OUT/clear-v41-$board.log" 2>&1
         st=$?

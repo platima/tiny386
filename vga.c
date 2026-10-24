@@ -263,7 +263,7 @@ struct VGAState {
 #ifdef VGA_DIRTY_BLOCKS
     /* VBE pictures drawn from the blocks of video memory written (vga.h,
        vga_vbe_refresh()) */
-    uint8_t *dirty;         /* a byte for each 1 KiB of video memory */
+    uint8_t *dirty;         /* a byte for each block of video memory (vga.h) */
     uint32_t dirty_n;       /* how many: video memory and its slack */
     uint8_t *rowmark;       /* the screen's rows to draw again, this picture */
     bool vbe_drawn;         /* the screen shows the picture the rest says */
@@ -273,6 +273,9 @@ struct VGAState {
     uint16_t vbe_pal[256];  /* 8 bits a pixel: the colours it was drawn in */
     uint32_t blocks_changes_seen;   /* vga_dirty_blocks_changes, as dealt with */
     int vbe_whole_left;     /* VBE pictures still to draw whole after it */
+    /* v4.4: in a picture drawn 1:1, the pixels x0 to x1 - 1 of a marked
+       row are the part its blocks reach (vga_take_marks()) */
+    uint16_t *rowx0, *rowx1;
 #endif
 
 #if defined(SCALE_3_2) || defined(SCALE_2_1) || defined(SWAPXY)
@@ -1489,9 +1492,16 @@ void vga_dirty(VGAState *s, uint32_t addr, uint32_t len)
  * shows line dy * h / sh.  A fence then puts the clearing before every
  * read of video memory that follows: a store the guest makes after the
  * drawing has read its block sets the block's byte again.
+ *
+ * v4.4: drawn 1:1 (sh is h) with bpb bytes a pixel and w pixels shown of
+ * each line, a row is also given the part of it its blocks reach, in
+ * s->rowx0 and s->rowx1: pixels x0 to x1 - 1, both multiples of 4, the
+ * union over its blocks.  A block that reaches only the bytes after the
+ * w pixels shown (a line longer than the picture) marks nothing there.
+ * bpb 0 marks whole rows.
  */
 static void vga_take_marks(VGAState *s, uint32_t addr1, uint32_t line_offset,
-                           int h, int sh, bool all)
+                           int h, int sh, bool all, int bpb, int w)
 {
     uint8_t *map = s->dirty;
     uint64_t end64 = (uint64_t) addr1 + (uint64_t) h * line_offset;
@@ -1523,7 +1533,33 @@ static void vga_take_marks(VGAState *s, uint32_t addr1, uint32_t line_offset,
                 if (ya > yb)
                     continue;
             }
-            memset(s->rowmark + ya, 1, yb - ya + 1);
+            if (sh != h || bpb <= 0) {
+                memset(s->rowmark + ya, 1, yb - ya + 1);
+                continue;
+            }
+            /* the bytes lo to hi of each line ya to yb, as pixels */
+            uint32_t vis = (uint32_t) w * (uint32_t) bpb;
+            for (uint32_t y = ya; y <= yb; y++) {
+                uint32_t r0 = addr1 + y * line_offset;
+                uint32_t a = lo > r0 ? lo - r0 : 0;
+                uint32_t z = hi - r0;
+                if (a >= vis)
+                    continue;
+                if (z >= vis)
+                    z = vis - 1;
+                uint32_t x0 = (a / (uint32_t) bpb) & ~3u;
+                uint32_t x1 = ((z / (uint32_t) bpb) | 3u) + 1;
+                if (!s->rowmark[y]) {
+                    s->rowmark[y] = 1;
+                    s->rowx0[y] = x0;
+                    s->rowx1[y] = x1;
+                } else {
+                    if (x0 < s->rowx0[y])
+                        s->rowx0[y] = x0;
+                    if (x1 > s->rowx1[y])
+                        s->rowx1[y] = x1;
+                }
+            }
         }
     }
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
@@ -1600,12 +1636,13 @@ static bool vbe_row(uint32_t *d, const uint32_t *p, int n, int bpp,
  * A VBE picture of 8, 15, 16, 24 or 32 bits a pixel no larger than the
  * screen, drawn 1:1 (centred if it is smaller: i0 is where its top left
  * is): only the rows that blocks of video memory written since the last
- * picture lie in, each converted with vbe_row().  All of it is drawn when
+ * picture lie in, each converted with vbe_row(), and (v4.4) of each only
+ * the part those blocks reach (vga_take_marks()).  All of it is drawn when
  * anything that decides where a pixel is or what colour it is has changed
  * since the last picture: the size, the depth, the start, the line length,
  * the place on the screen, the palette (8 bits), a clear of the screen,
  * another kind of picture in between, or the caller's full_update.  A
- * still picture then costs a look at a byte for each 1 KiB it shows.
+ * still picture then costs a look at a byte for each block it shows.
  */
 static void vga_vbe_refresh(VGAState *s, SimpleFBDrawFunc *redraw_func,
                             void *opaque, int full_update, int w, int h,
@@ -1631,7 +1668,8 @@ static void vga_vbe_refresh(VGAState *s, SimpleFBDrawFunc *redraw_func,
     s->vbe_i0 = i0;
     s->vbe_addr = addr1;
     s->vbe_line = line_offset;
-    vga_take_marks(s, addr1, line_offset, h, h, all);
+    int bpb = bpp == 15 ? 2 : bpp / 8;  /* bytes a pixel */
+    vga_take_marks(s, addr1, line_offset, h, h, all, bpb, w);
     s->n_vbe_pictures++;
     s->n_vbe_whole += all;
 
@@ -1639,10 +1677,14 @@ static void vga_vbe_refresh(VGAState *s, SimpleFBDrawFunc *redraw_func,
     bool all_dirty = s->fb_all_dirty;   /* redraw() of every row anyway */
     int b0 = -1, b1 = -1;               /* the rows drawn not yet redrawn */
     for (int y = 0; y < h; y++) {
+        /* v4.4: of a row from the blocks, only the part they reach */
+        int x0 = 0, x1 = w;
         if (!all) {
             if (!s->rowmark[y])
                 continue;
             s->rowmark[y] = 0;
+            x0 = s->rowx0[y];
+            x1 = s->rowx1[y];
         }
         /* a line that begins past the end of video memory shows the
            slack, as in vga_graphic_refresh() (zeros, unless a store ran
@@ -1650,10 +1692,10 @@ static void vga_vbe_refresh(VGAState *s, SimpleFBDrawFunc *redraw_func,
         uint64_t a = addr1 + (uint64_t) y * line_offset;
         if (a > (uint64_t) s->vga_ram_size)
             a = s->vga_ram_size;
-        const uint32_t *p = (const uint32_t *) (s->vga_ram + a);
-        uint32_t *d = (uint32_t *) (fb_dev->fb_data + i0 + y * fb_dev->stride);
+        const uint32_t *p = (const uint32_t *) (s->vga_ram + a + (uint32_t) x0 * bpb);
+        uint32_t *d = (uint32_t *) (fb_dev->fb_data + i0 + y * fb_dev->stride + x0 * 2);
         s->n_vbe_rows++;
-        if (vbe_row(d, p, w, bpp, palette)) {
+        if (vbe_row(d, p, x1 - x0, bpp, palette)) {
             int r = y + yoff;
             if (b0 >= 0 && r - b1 > VGA_BAND_GAP) {
                 if (!all_dirty)
@@ -1829,7 +1871,7 @@ static void vga_graphic_refresh_shrunk(VGAState *s,
         s->vbe_i0 = i0;
         s->vbe_addr = addr1;
         s->vbe_line = line_offset;
-        vga_take_marks(s, addr1, line_offset, h, sh, all);
+        vga_take_marks(s, addr1, line_offset, h, sh, all, 0, 0);
         s->n_vbe_pictures++;
         s->n_vbe_whole += all;
         s->vbe_drawn = true;
@@ -3592,9 +3634,9 @@ VGAState *vga_init(char *vga_ram, int vga_ram_size,
 #endif
 #ifdef VGA_DIRTY_BLOCKS
     {
-        /* a byte for each 1 KiB that vga_mem_write*() and the linear frame
-           buffer can store into: video memory and its slack, or the 128 KiB
-           window at A0000h with less */
+        /* a byte for each block (256 bytes, vga.h) that vga_mem_write*()
+           and the linear frame buffer can store into: video memory and its
+           slack, or the 128 KiB window at A0000h with less */
         uint32_t span = (uint32_t) vga_ram_size + VGA_MEM_SLACK;
         if (span < 0x20000 + 4)
             span = 0x20000 + 4;
@@ -3603,6 +3645,9 @@ VGAState *vga_init(char *vga_ram, int vga_ram_size,
         memset(s->dirty, 0, s->dirty_n);
         s->rowmark = pcmalloc(height);
         memset(s->rowmark, 0, height);
+        /* v4.4: the part of each marked row to convert (vga_take_marks()) */
+        s->rowx0 = pcmalloc(height * sizeof(uint16_t));
+        s->rowx1 = pcmalloc(height * sizeof(uint16_t));
     }
 #endif
 
@@ -3726,7 +3771,10 @@ void vga_get_info(VGAState *s, struct vga_info *info)
     info->screen_h = s->fb_dev->height;
     info->vbe_pictures = s->n_vbe_pictures;
     info->vbe_whole = s->n_vbe_whole;
-    info->vbe_blocks = s->n_vbe_blocks;
+    /* the port counts KiB found written (perfport.h), whatever the
+       blocks' size */
+    info->vbe_blocks = VGA_DIRTY_SHIFT < 10 ?
+        s->n_vbe_blocks >> (10 - VGA_DIRTY_SHIFT) : s->n_vbe_blocks;
     info->vbe_rows = s->n_vbe_rows;
     if (!(s->ar_index & 0x20))
         return;                         /* blank */

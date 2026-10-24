@@ -79,10 +79,11 @@
 // at (80,0), 320x200 doubled to 640x400 at (80,40).
 #define VGA_SHRINK_LARGE
 // vga.c, pc.c (v4.0): what the guest writes into video memory is noted a
-// block of 1 KiB at a time, and a VBE picture of 8, 15, 16, 24 or 32 bits a
-// pixel (Windows at 800x480 through a VBE display driver, the BIOS's VBE
-// modes) is drawn again only in the rows written, each converted to RGB565
-// with no division; a still picture costs a look at a byte for each 1 KiB.
-// Since v4.1 a store through the VGA window is noted only while VBE is on
-// (not in mode 13h), and none at all with [esp] vbe_blocks = 0.
+// block at a time (256 bytes since v4.4, 1 KiB before), and a VBE picture of
+// 8, 15, 16, 24 or 32 bits a pixel (Windows at 800x480 through a VBE display
+// driver, the BIOS's VBE modes) is drawn again only in the rows written,
+// and since v4.4 only in the part of each row the blocks reach, converted to
+// RGB565 with no division; a still picture costs a look at a byte for each
+// block.  Since v4.1 a store through the VGA window is noted only while VBE
+// is on (not in mode 13h), and none at all with [esp] vbe_blocks = 0.
 #define VGA_DIRTY_BLOCKS

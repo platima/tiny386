@@ -164,8 +164,9 @@ int main(void)
     CHECK(vi.vbe_pictures == 1 && vi.vbe_whole == 1 && vi.vbe_rows == LCD_HEIGHT,
           "first VBE picture whole: %u %u %u", vi.vbe_pictures, vi.vbe_whole, vi.vbe_rows);
     uint32_t blocks0 = vi.vbe_blocks;
+    CHECK(blocks0 == 0, "no block found written before: %u", blocks0);
     /* line 100 of the picture (the start is 10 lines in): 1600 bytes, in
-       two or three blocks of 1 KiB */
+       two or three blocks of 1 KiB, or (v4.4) seven or eight of 256 bytes */
     uint32_t a = (10 + 100) * LCD_WIDTH * 2;
     memset(vram + a, 0x5a, LCD_WIDTH * 2);
     vga_dirty_mark(vga_dirty_map(s), a, LCD_WIDTH * 2);
@@ -173,9 +174,13 @@ int main(void)
     vga_refresh(s, redraw, NULL, 0);
     vga_get_info(s, &vi);
     uint32_t nb = ((a + LCD_WIDTH * 2 - 1) >> VGA_DIRTY_SHIFT) - (a >> VGA_DIRTY_SHIFT) + 1;
+    /* the port counts KiB found written (perfport.h), whole KiB of the
+       running total */
+    uint32_t want = (nb << VGA_DIRTY_SHIFT) >> 10;
     CHECK(vi.vbe_pictures == 2 && vi.vbe_whole == 1, "second picture from blocks: %u %u",
           vi.vbe_pictures, vi.vbe_whole);
-    CHECK(vi.vbe_blocks - blocks0 == nb, "blocks %u, %u wanted", vi.vbe_blocks - blocks0, nb);
+    CHECK(vi.vbe_blocks - blocks0 == want, "blocks %u KiB, %u wanted (%u blocks of %u bytes)",
+          vi.vbe_blocks - blocks0, want, nb, 1u << VGA_DIRTY_SHIFT);
     CHECK(vi.vbe_rows - LCD_HEIGHT >= 1 && vi.vbe_rows - LCD_HEIGHT <= 3,
           "rows converted %u", vi.vbe_rows - LCD_HEIGHT);
     CHECK(bands == 1 && rows >= 1, "one band to redraw(): %d bands, %d rows", bands, rows);
