@@ -486,6 +486,25 @@ else
     grep -E "FAILED|^disk:" "$OUT/disk.log"
     result $st "ide.c: disk images through ESP-IDF's FatFs, nothing read or written past their end"
 fi
+
+# ==== 14b. a card partition as the guest's whole disk (v4.4): tests/host/sdpart ====
+# sd_part.c with ESP-IDF's own FatFs, storage.c's partition code and ide.c
+# as the board builds them: the guest's boot code against its source, the
+# partitions refused and taken, and on card images laid out as s31/newcard
+# makes them and as Plat's card is, the guest's reads and writes (nothing
+# written outside the partition, the volume clean after).
+echo
+if bash "$HERE/sdpart/run_sdpart.sh" "$OUT/sdpart" > "$OUT/sdpart.log" 2>&1; then
+    st=0
+else
+    st=1
+fi
+if grep -q "^SKIP" "$OUT/sdpart.log"; then
+    grep "^SKIP" "$OUT/sdpart.log"
+else
+    grep -E "FAILED|^sdpart:" "$OUT/sdpart.log"
+    result $st "sd_part.c: a card partition as the guest's whole disk, nothing outside it written"
+fi
 echo
 $CC -O1 -g -w -DEMULINK_CHECKED -I"$TREE" -c -o "$OUT/misc-checked.o" "$TREE/misc.c" || exit 1
 $CC $CFLAGS -DEMULINK_CHECKED -I"$TREE" -o "$OUT/test_floppy" "$HERE/test_floppy.c" \

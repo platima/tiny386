@@ -46,11 +46,15 @@ $CC -O1 -g -w $INC -c -o "$OUT/host_glue.o" "$S/host_glue.c" || exit 1
 # disk_image.c as the board's main component builds it: warnings are errors
 $CC -O1 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Werror $INC \
     -c -o "$OUT/disk_image.o" "$TREE/esp/main/disk_image.c" || exit 1
+# v4.4: ide.c also reaches a card partition the guest has whole (sd_part.c;
+# its own test is tests/host/sdpart); linked here, never opened
+$CC -O1 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Werror $INC \
+    -c -o "$OUT/sd_part.o" "$TREE/esp/main/sd_part.c" || exit 1
 build() {       # name ide.c
     # ide.c's own warnings are not this test's business (-w after -Wall)
     $CC -O1 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -w \
         -DIDE_C="\"$2\"" $INC -o "$OUT/test_ide_fatfs-$1" "$HERE/test_ide_fatfs.c" \
-        "$OUT/host_glue.o" "$OUT/disk_image.o" "$OUT"/idf_ff.o "$OUT"/idf_ffunicode.o \
+        "$OUT/host_glue.o" "$OUT/disk_image.o" "$OUT/sd_part.o" "$OUT"/idf_ff.o "$OUT"/idf_ffunicode.o \
         "$OUT"/idf_diskio.o "$OUT"/idf_diskio_sdmmc.o || exit 1
 }
 build now "$TREE/ide.c"

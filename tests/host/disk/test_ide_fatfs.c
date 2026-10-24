@@ -182,6 +182,24 @@ bool storage_fatfs_path(const char *path, char *out, size_t size)
 	return true;
 }
 
+/* v4.4: what sd_part.c wants from storage.c (ide.c links it for hda =
+   sd:3; tests/host/sdpart tests it, and this test opens no partition) */
+int storage_card_pdrv(void)
+{
+	return -1;
+}
+
+uint64_t storage_card_sectors(void)
+{
+	return 0;
+}
+
+bool storage_part_mounted(int part)
+{
+	(void) part;
+	return false;
+}
+
 /* ==== ide.c, as the board builds it ==== */
 
 #include "pci.h"
