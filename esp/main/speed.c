@@ -398,17 +398,23 @@ static void double_line(bool changed)
 {
 #ifdef LCD_DOUBLE_BUFFER
 	if (lcd_double_made()) {
-		struct lcd_stats st;
-		lcd_get_stats(&st, false);
+		/* v4.5: the swaps since the start, and those the panel did not
+		   report (the UART's display: line has them every 10 s too) */
+		uint32_t swaps, unreported;
+		lcd_double_totals(&swaps, &unreported);
 		if (lcd_double_on())
 			console_printf(CON_INFO, "double_buffer = 1%s: a picture is drawn into the second "
-				       "frame buffer and goes to the panel at its next frame. Ctrl+Alt+F9 "
-				       "changes it%s.", changed ? " now" : "", changed ?
+				       "frame buffer and goes to the panel at its next frame (so far %u "
+				       "swaps, %u of them not reported by the panel). Ctrl+Alt+F9 "
+				       "changes it%s.", changed ? " now" : "", (unsigned) swaps,
+				       (unsigned) unreported, changed ?
 				       "; it is saved in the ini" : " and saves it in the ini");
 		else
 			console_printf(CON_INFO, "double_buffer = 0%s: pictures are drawn into the frame "
 				       "buffer on show, as with one (the second one is kept until the PC "
-				       "starts again). Ctrl+Alt+F9 changes it%s.", changed ? " now" : "",
+				       "starts again; so far %u swaps, %u of them not reported by the "
+				       "panel). Ctrl+Alt+F9 changes it%s.", changed ? " now" : "",
+				       (unsigned) swaps, (unsigned) unreported,
 				       changed ? "; it is saved in the ini" : " and saves it in the ini");
 	} else {
 		console_printf(CON_INFO, "double_buffer = %d%s: %s Ctrl+Alt+F9 changes it for the next "
@@ -508,8 +514,15 @@ static void give_back(PC *pc)
 #ifdef LCD_DOUBLE_BUFFER
 	if (lcd_double_on()) {
 		/* v4.4: no black: the picture is drawn whole into the back
-		   buffer, which the console did not touch, and shown at the
-		   panel's frame; all of it is then copied over the console */
+		   buffer and shown at the panel's frame; all of it is then
+		   copied over the console.  v4.5: the back buffer is cleared
+		   first, as one buffer is: Ctrl+Alt+F9 turning double buffering
+		   on while this screen was up copied the console's text into
+		   it, and a full update repaints only the picture, not the
+		   border round one narrower than the panel (the review of v4.4,
+		   F1).  It is not on show, so the panel never goes black. */
+		memset(lcd_vga_fb(), 0, LCD_WIDTH * LCD_HEIGHT * 2);
+		lcd_vga_flush(0, 0, LCD_WIDTH, LCD_HEIGHT);
 		lcd_vga_copy_all();
 	} else
 #endif
