@@ -302,11 +302,27 @@ static void clean(void)
 	}
 }
 
+static bool s_made_tmp;          /* dir is a short one in TMPDIR, removed at the end */
+
 static void test_files(const char *out)
 {
 	char p[700], why[200];
-	snprintf(dir, sizeof(dir), "%s/inisave", out);
-	mkdir(dir, 0755);
+	/* under OUT if the folder fits in setup_list.dir from there (the
+	   setup_find() check below), else a short one made in TMPDIR (default
+	   /tmp), as test_setup.c does */
+	if (strlen(out) + strlen("/inisave") < sizeof(((struct setup_list *) 0)->dir)) {
+		snprintf(dir, sizeof(dir), "%s/inisave", out);
+		mkdir(dir, 0755);
+	} else {
+		const char *tmp = getenv("TMPDIR");
+		snprintf(dir, sizeof(dir), "%s/t386inisave-XXXXXX", tmp && tmp[0] ? tmp : "/tmp");
+		if (!mkdtemp(dir)) {
+			perror(dir);
+			exit(2);
+		}
+		s_made_tmp = true;
+		printf("(OUT is too long a path for setup_find(): the files are in %s)\n", dir);
+	}
 	chmod(dir, 0755);
 	clean();
 
@@ -395,6 +411,8 @@ static void test_files(const char *out)
 	      "setup_find() lists b.ini put back from its .t386new (%d inis)", n);
 	free(l);
 	clean();
+	if (s_made_tmp)
+		rmdir(dir);
 	printf("  ok: every state put right, other files left alone\n");
 }
 
