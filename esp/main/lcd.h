@@ -35,8 +35,52 @@ struct lcd_stats {
 	uint32_t rows;          /* rows written back */
 	uint64_t cycles;        /* in esp_cache_msync() */
 	uint32_t cycles_max;    /* the longest call */
+	/* v4.4, double buffering: frame buffers swapped at the panel's
+	   frame, the rows copied into the new back buffer, the cycles of the
+	   copy and of the wait for the swap */
+	uint32_t flips, copied_rows;
+	uint64_t copy_cycles, wait_cycles;
+	uint32_t flip_timeouts;
 };
 /* Copies the counts, and starts them again from zero if reset is set. */
 void lcd_get_stats(struct lcd_stats *st, bool reset);
+
+/*
+ * v4.4: double buffering ([esp] double_buffer, Ctrl+Alt+F9), on a board
+ * whose panel file has it (LCD_DOUBLE_BUFFER in the board header: the
+ * Korvo-1).  The VGA code draws into a second frame buffer, the back one,
+ * while the panel shows the front one; after a picture that changed rows,
+ * the panel's DMA is told to take the back buffer from its next frame on,
+ * and once it has (ESP-IDF's frame-buffer-complete event) the two change
+ * places and the rows the picture changed are copied into the new back
+ * buffer, so that both hold the picture and the next one is drawn over it.
+ * The panel never shows a frame buffer being written: no tearing between
+ * rows.  The console and the crash screen draw into the front buffer.
+ * Every function but lcd_double_start() is called with the display lock
+ * held, on core 0.
+ */
+/* Made once, before the PC is built: fb (LCD_WIDTH x LCD_HEIGHT x 2
+   bytes, from the emulator's pool) becomes the front buffer with the
+   console's picture copied into it, the panel is started again with two
+   frame buffers (a moment of black), and the second one is allocated where
+   the first one was.  false (and the panel as it was) if it cannot be. */
+bool lcd_double_start(void *fb);
+/* true while pictures are drawn into the back buffer and swapped */
+bool lcd_double_on(void);
+/* both buffers exist (lcd_double_start() worked) */
+bool lcd_double_made(void);
+/* swapping on or off (Ctrl+Alt+F9); off, the VGA code draws into the front
+   buffer as without double buffering.  Returns where it is to draw now. */
+void *lcd_double_set(bool on);
+/* the buffer the VGA code draws into: the back one, or the only one */
+void *lcd_vga_fb(void);
+/* the VGA code's redraw(): rows y to y + h - 1 of its buffer drawn */
+void lcd_vga_flush(int x, int y, int w, int h);
+/* after a picture: if it changed rows, the swap and the copy; returns
+   where the VGA code is to draw the next picture */
+void *lcd_vga_present(void);
+/* everything in the back buffer is to be copied at the next swap: the
+   console has drawn over the front one */
+void lcd_vga_copy_all(void);
 
 #endif /* LCD_H */

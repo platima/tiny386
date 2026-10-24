@@ -18,6 +18,9 @@
 // The VGA code draws straight into the panel's frame buffer, and redraw()
 // only writes the cache back (see lcd_korvo1.c).
 #define LCD_ZERO_COPY
+// v4.4: [esp] double_buffer and Ctrl+Alt+F9: a second frame buffer, swapped
+// at the panel's frame (lcd.h, lcd_korvo1.c)
+#define LCD_DOUBLE_BUFFER
 // Most pictures a second the VGA code draws: one every LCD_FRAME_MS.  The
 // panel shows about 35 a second (18 MHz, 928 x 548 clocks).
 #define LCD_FRAME_MS 30

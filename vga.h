@@ -13,6 +13,10 @@ typedef struct VGAState VGAState;
 VGAState *vga_init(char *vga_ram, int vga_ram_size,
                    uint8_t *fb, int width, int height);
 void vga_set_force_8dm(VGAState *s, int v);
+/* v4.4: the screen the pictures are drawn into from now on (the board's
+   double buffering): the same size, holding what the last picture left
+   (lcd.h's copy makes it so); between pictures only */
+void vga_set_fb(VGAState *s, uint8_t *fb);
 
 int vga_step(VGAState *vga);
 void vga_refresh(VGAState *s,

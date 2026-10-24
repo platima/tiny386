@@ -144,6 +144,12 @@ void vga_task(void *arg)
 		display_lock();
 		if (!console_owns_display()) {
 			pc_vga_step(globals.pc);
+#ifdef LCD_DOUBLE_BUFFER
+			/* v4.4: a picture that changed rows goes to the panel at
+			   its next frame, and is copied into the new back buffer,
+			   where the next one is drawn */
+			vga_set_fb(((PC *) globals.pc)->vga, lcd_vga_present());
+#endif
 			pictures++;
 			pps_count++;
 		}
@@ -167,6 +173,16 @@ void vga_task(void *arg)
 				pictures, DISPLAY_STATS_S, st.flushes, st.rows,
 				st.flushes ? (uint32_t) (st.cycles / st.flushes / mhz) : 0,
 				st.cycles_max / mhz);
+#ifdef LCD_DOUBLE_BUFFER
+			if (lcd_double_made())
+				console_uart_printf("display: double buffering %s: %" PRIu32 " swaps, %" PRIu32
+					" rows copied, %" PRIu32 " us copying and %" PRIu32 " us waiting for the "
+					"panel on average, %" PRIu32 " swaps the panel did not report",
+					lcd_double_on() ? "on" : "off", st.flips, st.copied_rows,
+					st.flips ? (uint32_t) (st.copy_cycles / st.flips / mhz) : 0,
+					st.flips ? (uint32_t) (st.wait_cycles / st.flips / mhz) : 0,
+					st.flip_timeouts);
+#endif
 			if (vga_pace_quiet)
 				console_uart_printf("display: paced (pace_quiet %" PRIu32 ", wait %d ms): "
 					"%" PRIu32 " pictures at a quiet moment, %" PRIu32 " late, %" PRIu32

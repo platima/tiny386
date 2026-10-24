@@ -99,7 +99,16 @@ void speed_set_pace_on(uint32_t quiet);
    core, after a step */
 #define SPEED_SAVE_BLOCKS 1     /* [esp] vbe_blocks, Ctrl+Alt+F11 */
 #define SPEED_SAVE_PACE   2     /* [esp] pace_quiet, Ctrl+Alt+F10 */
+#define SPEED_SAVE_DOUBLE 4     /* [esp] double_buffer, Ctrl+Alt+F9 */
 unsigned speed_take_saves(void);
+/* v4.4: Ctrl+Alt+F9, from the USB task: double buffering on or off at once
+   where both frame buffers were made at the start, else the setting for
+   the next start; a line on the console, and saved in the ini */
+void speed_double_hotkey(void);
+/* the ini's double_buffer as the start left it, and what F9 has made of
+   it: what is saved */
+void speed_set_double(int on);
+int speed_double_value(void);
 void speed_forget_requests(void);       /* before vga_task starts drawing */
 void speed_set_title(const char *normal);       /* the console's usual title */
 void speed_screen_poll(void *pc, uint32_t pictures_per_s);     /* vga_task */

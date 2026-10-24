@@ -3682,6 +3682,11 @@ void vga_set_force_8dm(VGAState *s, int v)
     s->force_8dm = v;
 }
 
+void vga_set_fb(VGAState *s, uint8_t *fb)
+{
+    s->fb_dev->fb_data = fb;
+}
+
 PCIDevice *vga_pci_init(VGAState *s, PCIBus *bus,
                         void *o, void (*set_bar)(void *, int, uint32_t, bool))
 {

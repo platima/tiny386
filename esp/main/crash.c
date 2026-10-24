@@ -66,6 +66,13 @@ static bool is_stack(uint32_t a)
 
 static struct crash_report s_report;
 
+/* v4.4: the board's second frame buffer with double buffering (lcd_korvo1.c),
+   which the panel may be about to show: the report is drawn there too */
+__attribute__((weak)) void *lcd_crash_second_fb(void)
+{
+	return NULL;
+}
+
 static void crash_screen(panic_info_t *info)
 {
 	struct crash_report *r = &s_report;
@@ -110,6 +117,9 @@ static void crash_screen(panic_info_t *info)
 		cache_ll_writeback_all(CACHE_LL_LEVEL_ALL, CACHE_TYPE_DATA, CACHE_LL_ID_ALL);
 		base = (uint16_t *) ((uint32_t) fb + SOC_NON_CACHEABLE_OFFSET_PSRAM);
 	}
+	uint16_t *fb2 = lcd_crash_second_fb();
+	if (base && fb2 && (uint32_t) fb2 >= SOC_EXTRAM_LOW && (uint32_t) fb2 < SOC_EXTRAM_HIGH)
+		console_draw_crash((uint16_t *) ((uint32_t) fb2 + SOC_NON_CACHEABLE_OFFSET_PSRAM), w, h, r);
 	console_draw_crash(base, w, h, r);
 }
 

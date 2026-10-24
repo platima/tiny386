@@ -196,6 +196,9 @@ static int s_req;
 static int s_blocks_req;
 /* v4.4: Ctrl+Alt+F10 pressed: the pacing on or off, on core 0 */
 static int s_pace_req;
+/* v4.4: Ctrl+Alt+F9 pressed: double buffering, on core 0; the setting */
+static int s_db_req;
+static int s_db_value;
 static uint32_t s_pace_on = 10000;      /* what F10 turns it on with */
 /* v4.4: settings to be saved in the ini (SPEED_SAVE_*), on the emulator's
    core */
@@ -296,6 +299,7 @@ void speed_forget_requests(void)
 	__atomic_store_n(&s_blocks_req, 0, __ATOMIC_RELEASE);
 	__atomic_store_n(&s_save_req, 0, __ATOMIC_RELEASE);
 	__atomic_store_n(&s_pace_req, 0, __ATOMIC_RELEASE);
+	__atomic_store_n(&s_db_req, 0, __ATOMIC_RELEASE);
 }
 
 unsigned speed_take_saves(void)
@@ -309,6 +313,16 @@ unsigned speed_take_saves(void)
 void speed_set_pace_on(uint32_t quiet)
 {
 	s_pace_on = quiet;
+}
+
+void speed_set_double(int on)
+{
+	s_db_value = on ? 1 : 0;
+}
+
+int speed_double_value(void)
+{
+	return s_db_value;
 }
 
 void speed_run_step(void *opaque, uint32_t now_us)
@@ -372,6 +386,40 @@ void speed_blocks_hotkey(void)
 void speed_pace_hotkey(void)
 {
 	__atomic_store_n(&s_pace_req, 1, __ATOMIC_RELEASE);
+}
+
+void speed_double_hotkey(void)
+{
+	__atomic_store_n(&s_db_req, 1, __ATOMIC_RELEASE);
+}
+
+/* v4.4: the line that says what double buffering does */
+static void double_line(bool changed)
+{
+#ifdef LCD_DOUBLE_BUFFER
+	if (lcd_double_made()) {
+		struct lcd_stats st;
+		lcd_get_stats(&st, false);
+		if (lcd_double_on())
+			console_printf(CON_INFO, "double_buffer = 1%s: a picture is drawn into the second "
+				       "frame buffer and goes to the panel at its next frame. Ctrl+Alt+F9 "
+				       "changes it%s.", changed ? " now" : "", changed ?
+				       "; it is saved in the ini" : " and saves it in the ini");
+		else
+			console_printf(CON_INFO, "double_buffer = 0%s: pictures are drawn into the frame "
+				       "buffer on show, as with one (the second one is kept until the PC "
+				       "starts again). Ctrl+Alt+F9 changes it%s.", changed ? " now" : "",
+				       changed ? "; it is saved in the ini" : " and saves it in the ini");
+	} else {
+		console_printf(CON_INFO, "double_buffer = %d%s: %s Ctrl+Alt+F9 changes it for the next "
+			       "start%s.", s_db_value, changed ? " for the next start" : "",
+			       s_db_value ? "the second frame buffer is made when the PC starts (750 "
+			       "KiB of the emulator's memory)." : "one frame buffer.",
+			       changed ? "; it is saved in the ini" : " and saves it in the ini");
+	}
+#else
+	(void) changed;
+#endif
 }
 
 /* the line that says what vbe_blocks is now */
@@ -457,6 +505,14 @@ static void give_back(PC *pc)
 	console_release_display();
 #ifdef LCD_ZERO_COPY
 	display_lock();
+#ifdef LCD_DOUBLE_BUFFER
+	if (lcd_double_on()) {
+		/* v4.4: no black: the picture is drawn whole into the back
+		   buffer, which the console did not touch, and shown at the
+		   panel's frame; all of it is then copied over the console */
+		lcd_vga_copy_all();
+	} else
+#endif
 	if (globals.panel_fb) {
 		memset(globals.panel_fb, 0, LCD_WIDTH * LCD_HEIGHT * 2);
 		lcd_flush(0, 0, LCD_WIDTH, LCD_HEIGHT);
@@ -485,6 +541,25 @@ void speed_screen_poll(void *opaque, uint32_t pps)
 		/* v4.4: saved by the emulator's core (run_pc()), which sees the
 		   new setting: stored before this release */
 		__atomic_or_fetch(&s_save_req, SPEED_SAVE_BLOCKS, __ATOMIC_RELEASE);
+	}
+	/* v4.4, Ctrl+Alt+F9: double buffering the other way, at once if both
+	   frame buffers were made, else for the next start */
+	if (__atomic_exchange_n(&s_db_req, 0, __ATOMIC_ACQ_REL)) {
+#ifdef LCD_DOUBLE_BUFFER
+		if (lcd_double_made()) {
+			display_lock();
+			bool on = !lcd_double_on();
+			void *fb = lcd_double_set(on);
+			if (pc)
+				vga_set_fb(pc->vga, fb);
+			display_unlock();
+			s_db_value = on;
+		} else {
+			s_db_value = !s_db_value;
+		}
+		double_line(true);
+		__atomic_or_fetch(&s_save_req, SPEED_SAVE_DOUBLE, __ATOMIC_RELEASE);
+#endif
 	}
 	/* v4.4, Ctrl+Alt+F10: the pacing the other way */
 	if (__atomic_exchange_n(&s_pace_req, 0, __ATOMIC_ACQ_REL)) {
@@ -533,6 +608,7 @@ void speed_screen_poll(void *opaque, uint32_t pps)
 			       "UART's queue", held, dropped);
 		blocks_line(false);
 		pace_line(false);
+		double_line(false);
 		show_title(pps);
 		s_last_title_s = secs;
 	} else if (!want && s_shown) {

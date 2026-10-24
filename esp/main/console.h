@@ -127,6 +127,11 @@ struct crash_report {
 
 /* The frame buffer the console was given, and its size. */
 uint16_t *console_fb(int *width, int *height);
+/* v4.4: the frame buffer the console (and the crash screen) draws into
+   from now on, the same size (the front one of the board's double
+   buffering).  Drawn whole the next time the console draws, if it has the
+   panel.  Never draws itself: the caller may hold the display lock. */
+void console_set_fb(uint16_t *fb);
 
 /* Draws the crash screen into base (width x height, stride width): with
    the frame buffer's cache-bypass address, every store goes straight to

@@ -1069,6 +1069,18 @@ void console_init(uint16_t *fb, int width, int height, console_flush_fn *flush)
 	render();
 }
 
+void console_set_fb(uint16_t *fb)
+{
+	con_lock();
+	s_fb = fb;
+	if (s_shown && s_owner_console) {
+		for (int i = 0; i < s_rows * s_cols; i++)
+			s_shown[i] = CELL_NONE;
+		s_card_dirty = true;
+	}
+	con_unlock();
+}
+
 uint16_t *console_fb(int *width, int *height)
 {
 	if (width)

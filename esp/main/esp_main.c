@@ -225,6 +225,10 @@ static PCScreen *screen_init(int width, int height)
 	if (globals.panel_fb) {
 		/* Zero-copy: VGA renders directly into the RGB DMA frame buffer */
 		c->fb = globals.panel_fb;
+#ifdef LCD_DOUBLE_BUFFER
+		/* v4.4: into the back buffer with double buffering */
+		c->fb = lcd_vga_fb();
+#endif
 	} else {
 		c->fb = bigmalloc(LCD_WIDTH * LCD_HEIGHT * 2);
 	}
@@ -236,7 +240,11 @@ static void redraw(void *opaque,
 		   int x, int y, int w, int h)
 {
 	(void) opaque;
+#ifdef LCD_DOUBLE_BUFFER
+	lcd_vga_flush(x, y, w, h);      /* v4.4: the back buffer's rows */
+#else
 	lcd_flush(x, y, w, h);
+#endif
 }
 #else
 void lcd_draw(int x_start, int y_start, int x_end, int y_end, void *src);
@@ -304,6 +312,7 @@ struct esp_ini_config {
 	int vbe_blocks;         /* vga_dirty_blocks: VBE pictures from the blocks written */
 	int pace_quiet;         /* v4.4: vga_pace_quiet, guest instructions; 0 off */
 	int pace_wait_ms;       /* v4.4: the most a picture waits for a quiet moment */
+	int double_buffer;      /* v4.4: a second frame buffer, swapped at the panel's frame */
 };
 
 #ifdef TINY386_CRASH_TEST
@@ -360,6 +369,7 @@ static struct esp_ini_config config = {
 	.vbe_blocks = 1,        /* v4.0: only what the guest wrote is drawn again */
 	.pace_quiet = 0,        /* v4.4: pictures when they are due (BUILD-NOTES 29) */
 	.pace_wait_ms = 15,     /* DISPLAY_PACE_WAIT_MS */
+	.double_buffer = 0,     /* v4.4: one frame buffer, as before (BUILD-NOTES 29) */
 };
 static PCConfig conf;
 
@@ -483,6 +493,8 @@ static void save_settings(unsigned what)
 		save_setting("vbe_blocks", vga_dirty_blocks ? 1 : 0);
 	if (what & SPEED_SAVE_PACE)
 		save_setting("pace_quiet", vga_pace_quiet);
+	if (what & SPEED_SAVE_DOUBLE)
+		save_setting("double_buffer", speed_double_value());
 }
 
 /* Runs the PC, and puts what the guest wrote to its disks on the card
@@ -644,6 +656,7 @@ static const char *const known_keys[] = {
 	"esp:lcd_invalidate", "esp:led_brightness",
 	"esp:uart_log", "esp:fast_seek", "esp:timer_catchup", "esp:memtest",
 	"esp:verbose_log", "esp:vbe_blocks", "esp:pace_quiet", "esp:pace_wait_ms",
+	"esp:double_buffer",
 #ifdef TINY386_CRASH_TEST
 	"esp:crash_test",
 #endif
@@ -758,6 +771,8 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		ini_whole(name, value, 0, 10000000, &conf->pace_quiet);
 	} else if (NAME("pace_wait_ms")) {
 		ini_whole(name, value, 1, 200, &conf->pace_wait_ms);
+	} else if (NAME("double_buffer")) {
+		ini_whole(name, value, 0, 1, &conf->double_buffer);
 	} else if (NAME("crash_test")) {
 		conf->crash_test = atoi(value);
 	}
@@ -918,6 +933,43 @@ static void settle_memory(void)
 			       psram_len / 1024, fit / (1024 * 1024));
 		conf.mem_size = fit;
 	}
+}
+
+/* v4.4: [esp] double_buffer = 1: the second frame buffer, taken from the
+   end of the emulator's pool before the guest's memory is worked out from
+   what is left (lcd.h).  750 KiB: whole megabytes of the guest's memory
+   come out of what is left, so it costs the guest 1M or nothing, as the
+   pool falls (BUILD-NOTES 29). */
+static void double_buffer_start(void)
+{
+	speed_set_double(config.double_buffer);
+	if (!config.double_buffer)
+		return;
+#ifdef LCD_DOUBLE_BUFFER
+	long take = round4k((long) LCD_WIDTH * LCD_HEIGHT * 2);
+	if (!globals.panel_fb || psram_len - take < 2 * 1024 * 1024) {
+		console_printf(CON_WARN, "double_buffer = 1: no room for a second frame buffer; "
+			       "one is used.");
+		speed_set_double(0);
+		return;
+	}
+	psram_len -= take;
+	if (lcd_double_start(psram + psram_len)) {
+		/* the console again, in its new frame buffer */
+		console_take_display();
+		console_printf(CON_INFO, "double_buffer = 1: a second frame buffer of %ld KiB, "
+			       "from the emulator's memory (%ld KiB now); pictures go to the panel "
+			       "at its frame.", take / 1024, psram_len / 1024);
+	} else {
+		psram_len += take;
+		console_printf(CON_WARN, "double_buffer = 1: the panel could not be started with "
+			       "two frame buffers; one is used.");
+		speed_set_double(0);
+	}
+#else
+	console_puts(CON_INFO, "double_buffer is ignored: this board has one frame buffer.");
+	speed_set_double(0);
+#endif
 }
 
 /* A BIOS the ini does not name: bios.bin and vgabios.bin beside the ini,
@@ -1271,6 +1323,10 @@ void app_main(void)
 	/* v4.4: pictures at the guest's quiet moments, on or off */
 	kbd_input_set_hotkey(HID_KEY_F10, speed_pace_hotkey);
 #endif
+#ifdef LCD_DOUBLE_BUFFER
+	/* v4.4: double buffering, on or off (or for the next start) */
+	kbd_input_set_hotkey(HID_KEY_F9, speed_double_hotkey);
+#endif
 
 #ifdef ESPDEBUG
 	uart_config_t uart_config = {
@@ -1341,6 +1397,7 @@ void app_main(void)
 			       "[section], name = value, or a comment after ;",
 			       s_ini_name, err);
 	default_roms();
+	double_buffer_start();
 	settle_memory();
 
 	if (conf.width != LCD_WIDTH || conf.height != LCD_HEIGHT) {
