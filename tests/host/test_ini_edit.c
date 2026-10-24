@@ -12,18 +12,27 @@
  *     Each result is held against the text it should be, byte for byte,
  *     and then read with tiny386's own ini.c: [esp] vbe_blocks must come
  *     out as the new value and every other setting as it was, in order.
- *  2. setup_ini_save(): the file afterwards, nothing left beside it, and no
- *     write at all when the ini has the value already (the file is the same
- *     file); an ini that cannot be read, one too large, a folder that
- *     cannot be written: an error, the ini as it was, nothing left beside.
+ *  2. setup_ini_save(): the file afterwards, nothing left beside it, the
+ *     ini rewritten in place (v4.5: the same file, never renamed), and no
+ *     write at all when the ini has the value already; leftovers beside it
+ *     tidied first, and a refusal while v4.4's may share its clusters; an
+ *     ini that cannot be read, one too large, a folder that cannot be
+ *     written: an error, the ini as it was, nothing left beside.
+ *  2b. (v4.5) a cut in power at each of the five steps of a save
+ *     (setup_test_cut, -DSETUP_TEST_CUT), then the next start's tidy: the
+ *     ini whole, as it was or saved, nothing beside it, and listed.
  *  3. setup_ini_tidy(): each state a cut in power can leave part way
- *     through a save, put right; other files left alone; setup_find()
- *     lists an ini that a cut had left only as its .t386new.
+ *     through a save, v4.5's (no rename: a copy with a check line) and
+ *     v4.4's (two renames), put right; what may be two names on one chain
+ *     (v4.4, a cut inside a rename) left, with a warning; other files left
+ *     alone; setup_find() lists an ini that a cut had left only as its
+ *     .t386new.
  *
  *   test_ini_edit OUT TREE
  */
 #include <errno.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -292,8 +301,9 @@ static void clean(void)
 {
 	static const char *const names[] = {
 		"a.ini", "a.ini.t386new", "a.ini.t386old", "b.ini", "b.ini.t386new",
-		"b.ini.t386old", "c.ini", "c.ini.t386old", "d.ini", "d.ini.t386new",
-		"keep.ini.old", "big.ini", NULL
+		"b.ini.t386old", "c.ini", "c.ini.t386new", "c.ini.t386old", "d.ini",
+		"d.ini.t386new", "d.ini.t386old", "e.ini", "e.ini.t386old", "h.ini",
+		"h.ini.t386old", "i.ini", "i.ini.t386new", "keep.ini.old", "big.ini", NULL
 	};
 	for (int i = 0; names[i]; i++) {
 		char p[700];
@@ -302,11 +312,38 @@ static void clean(void)
 	}
 }
 
+/* v4.5: a whole path.t386new as setup.c writes it, made here with a CRC-32
+   of the test's own: the text, then "\r\n;t386new LLLLLLLL CCCCCCCC\r\n" */
+static uint32_t crc32_test(const char *p, size_t n)
+{
+	static uint32_t table[256];
+	if (!table[1])
+		for (uint32_t i = 0; i < 256; i++) {
+			uint32_t c = i;
+			for (int k = 0; k < 8; k++)
+				c = c & 1 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+			table[i] = c;
+		}
+	uint32_t c = 0xFFFFFFFFu;
+	for (size_t i = 0; i < n; i++)
+		c = table[(c ^ (uint8_t) p[i]) & 0xFF] ^ (c >> 8);
+	return ~c;
+}
+
+static void put_whole_new(const char *name, const char *text)
+{
+	char buf[4096];
+	size_t n = strlen(text);
+	snprintf(buf, sizeof(buf), "%s\r\n;t386new %08x %08x\r\n", text, (unsigned) n,
+		 (unsigned) crc32_test(text, n));
+	put(name, buf);
+}
+
 static bool s_made_tmp;          /* dir is a short one in TMPDIR, removed at the end */
 
 static void test_files(const char *out)
 {
-	char p[700], why[200];
+	char p[700], why[400];
 	/* under OUT if the folder fits in setup_list.dir from there (the
 	   setup_find() check below), else a short one made in TMPDIR (default
 	   /tmp), as test_setup.c does */
@@ -329,24 +366,52 @@ static void test_files(const char *out)
 	printf("2. setup_ini_save()\n");
 	put("a.ini", "[esp]\nconsole = 2\n;vbe_blocks = 1\n\n[pc]\nhda = x.img\n");
 	snprintf(p, sizeof(p), "%s/a.ini", dir);
+	ino_t i0 = inode("a.ini");
 	int r = setup_ini_save(p, "esp", "vbe_blocks", "0", why, sizeof(why));
 	CHECK(r == INI_EDIT_ADDED && !why[0], "save: code %d, why \"%s\"", r, why);
 	CHECK(is("a.ini", "[esp]\nconsole = 2\n;vbe_blocks = 1\nvbe_blocks = 0\n\n[pc]\nhda = x.img\n"),
 	      "save: the line added after the comment");
 	CHECK(!has("a.ini.t386new") && !has("a.ini.t386old"), "save: nothing left beside the ini");
+	/* v4.5: rewritten in place, never renamed: the same file */
+	CHECK(inode("a.ini") == i0, "save: the ini rewritten in place (the same file), not renamed");
 	r = setup_ini_save(p, "esp", "vbe_blocks", "1", why, sizeof(why));
 	CHECK(r == INI_EDIT_CHANGED, "save again: code %d", r);
 	CHECK(is("a.ini", "[esp]\nconsole = 2\n;vbe_blocks = 1\nvbe_blocks = 1\n\n[pc]\nhda = x.img\n"),
 	      "save again: the line changed");
-	ino_t i0 = inode("a.ini");
+	CHECK(inode("a.ini") == i0, "save again: the same file");
 	r = setup_ini_save(p, "esp", "vbe_blocks", "1", why, sizeof(why));
 	CHECK(r == INI_EDIT_SAME && inode("a.ini") == i0 && !has("a.ini.t386new"),
 	      "the same value: code %d, the same file (nothing written)", r);
-	printf("  ok: saved, changed, and not written when it was there already\n");
+	printf("  ok: saved, changed, in place, and not written when it was there already\n");
+
+	/* v4.5: what an earlier save left beside the ini, tidied first */
+	put("a.ini.t386new", "half of a c");
+	r = setup_ini_save(p, "esp", "vbe_blocks", "0", why, sizeof(why));
+	CHECK(r == INI_EDIT_CHANGED && !has("a.ini.t386new") &&
+	      is("a.ini", "[esp]\nconsole = 2\n;vbe_blocks = 1\nvbe_blocks = 0\n\n[pc]\nhda = x.img\n"),
+	      "a copy cut short beside it: removed, then the save: %d \"%s\"", r, why);
+	put_whole_new("a.ini.t386new", "[esp]\nvbe_blocks = 1\npace_quiet = 7\n");
+	r = setup_ini_save(p, "esp", "vbe_blocks", "0", why, sizeof(why));
+	CHECK(r == INI_EDIT_CHANGED && !has("a.ini.t386new") &&
+	      is("a.ini", "[esp]\nvbe_blocks = 0\npace_quiet = 7\n"),
+	      "a whole copy beside it: put in place first, then the save from it: %d \"%s\"", r, why);
+	put("a.ini.t386old", "[esp]\nvbe_blocks = 9\n");
+	r = setup_ini_save(p, "esp", "vbe_blocks", "1", why, sizeof(why));
+	CHECK(r == INI_EDIT_CHANGED && !has("a.ini.t386old") &&
+	      is("a.ini", "[esp]\nvbe_blocks = 1\npace_quiet = 7\n"),
+	      "v4.4's old copy with other bytes beside it: removed, then the save: %d \"%s\"", r, why);
+	put("a.ini.t386old", "[esp]\nvbe_blocks = 1\npace_quiet = 7\n");
+	r = setup_ini_save(p, "esp", "vbe_blocks", "0", why, sizeof(why));
+	CHECK(r < 0 && strstr(why, "chkdsk") && has("a.ini.t386old") &&
+	      is("a.ini", "[esp]\nvbe_blocks = 1\npace_quiet = 7\n"),
+	      "v4.4's old copy with the ini's very bytes: refused, both left: %d \"%s\"", r, why);
+	printf("  ok: leftovers tidied first; refused: %s\n", why);
+	clean();
 
 	snprintf(p, sizeof(p), "%s/none.ini", dir);
 	r = setup_ini_save(p, "esp", "vbe_blocks", "0", why, sizeof(why));
 	CHECK(r < 0 && strstr(why, "cannot be opened"), "no such ini: %d, \"%s\"", r, why);
+	CHECK(!has("none.ini"), "no such ini: none made");
 	char big[SETUP_INI_MAX + 64];
 	memset(big, ';', sizeof(big) - 1);
 	big[sizeof(big) - 1] = 0;
@@ -370,33 +435,112 @@ static void test_files(const char *out)
 	}
 	clean();
 
+	/* v4.5: a cut in power at each step of a save (setup_test_cut), then
+	   the next start's tidy: the ini whole, old or new, and nothing left
+	   beside it; setup_find() lists it */
+	printf("2b. a cut at each step of a save, then the next start\n");
+	static const char *const t0 = "; cut test\n[esp]\nconsole = 2\nvbe_blocks = 1\n\n[pc]\nhda = x.img\n";
+	static const char *const t1 = "; cut test\n[esp]\nconsole = 2\nvbe_blocks = 0\n\n[pc]\nhda = x.img\n";
+	for (int step = 1; step <= 5; step++) {
+		put("c.ini", t0);
+		snprintf(p, sizeof(p), "%s/c.ini", dir);
+		setup_test_cut = step;
+		r = setup_ini_save(p, "esp", "vbe_blocks", "0", why, sizeof(why));
+		setup_test_cut = 0;
+		CHECK(r == -2, "cut at step %d: the save stopped (%d)", step, r);
+		/* what the card holds after the cut */
+		bool before = is("c.ini", t0), after = is("c.ini", t1);
+		bool copy = has("c.ini.t386new");
+		CHECK(copy, "cut at step %d: the copy is beside the ini", step);
+		if (step <= 2)
+			CHECK(before, "cut at step %d: the ini not yet touched", step);
+		if (step == 5)
+			CHECK(after, "cut at step 5: the ini already new");
+		if (step == 3 || step == 4)
+			CHECK(!before && !after, "cut at step %d: the ini neither (emptied or half written)", step);
+		int acts = setup_ini_tidy(dir);
+		const char *want = step == 1 ? t0 : t1;
+		CHECK(is("c.ini", want) && !has("c.ini.t386new") && !has("c.ini.t386old"),
+		      "cut at step %d, then the tidy: the ini %s, nothing beside it (%d acts)",
+		      step, step == 1 ? "old" : "new", acts);
+		CHECK(!setup_tidy_warning()[0], "cut at step %d: no warning", step);
+		struct setup_place places[] = { { dir, NULL }, { NULL, NULL } };
+		struct setup_list *l = malloc(sizeof(*l));
+		int n = setup_find(places, l);
+		CHECK(n == 1 && !strcmp(l->ini[0].name, "c.ini") && !strcmp(l->ini[0].desc, "cut test"),
+		      "cut at step %d: setup_find() lists c.ini (%d inis)", step, n);
+		free(l);
+		printf("  ok: cut at step %d: the ini %s after the next start\n", step,
+		       step == 1 ? "as it was" : "saved");
+	}
+	clean();
+
 	printf("3. setup_ini_tidy()\n");
-	/* cut while the new text was written: X and X.t386new */
+	/* v4.5 cut while the copy was written, or v4.4 before its first
+	   rename: X and a copy that is not whole */
 	put("a.ini", "old a\n");
 	put("a.ini.t386new", "half of the n");
-	/* cut between the two renames: X.t386old and X.t386new */
-	put("b.ini.t386old", "old b\n");
-	put("b.ini.t386new", "new b\n");
-	/* cut before the old one was removed: X and X.t386old */
+	/* v4.5 cut while the ini was rewritten: X (not yet new) and a whole
+	   copy */
+	put("b.ini", "old b, or half of the new one");
+	put_whole_new("b.ini.t386new", "new b\n");
+	/* v4.5 cut before the copy was removed: X new, and the whole copy */
 	put("c.ini", "new c\n");
-	put("c.ini.t386old", "old c\n");
+	put_whole_new("c.ini.t386new", "new c\n");
+	/* v4.4 cut between its two renames: X.t386old and X.t386new */
+	put("d.ini.t386old", "old d\n");
+	put("d.ini.t386new", "new d\n");
+	/* v4.4 cut before the old one was removed: X and X.t386old, other
+	   bytes */
+	put("e.ini", "new e\n");
+	put("e.ini.t386old", "old e\n");
+	/* v4.4: X.t386old alone */
+	put("h.ini.t386old", "old h\n");
 	/* X.t386new alone: left */
-	put("d.ini.t386new", "who knows\n");
+	put("i.ini.t386new", "who knows\n");
 	/* a file of Plat's own with a name like it */
 	put("keep.ini.old", "mine\n");
 	int acts = setup_ini_tidy(dir);
-	CHECK(is("a.ini", "old a\n") && !has("a.ini.t386new"), "X + X.t386new: the new one removed");
-	CHECK(is("b.ini", "new b\n") && !has("b.ini.t386new") && !has("b.ini.t386old"),
-	      "X.t386old + X.t386new: the new one in place, the old one removed");
-	CHECK(is("c.ini", "new c\n") && !has("c.ini.t386old"), "X + X.t386old: the old one removed");
-	CHECK(is("d.ini.t386new", "who knows\n") && !has("d.ini"), "X.t386new alone: left");
+	CHECK(is("a.ini", "old a\n") && !has("a.ini.t386new"), "X + a copy not whole: the copy removed");
+	CHECK(is("b.ini", "new b\n") && !has("b.ini.t386new"),
+	      "X + a whole copy: X made the copy's text, the copy removed");
+	CHECK(is("c.ini", "new c\n") && !has("c.ini.t386new"), "X already new + a whole copy: the copy removed");
+	CHECK(is("d.ini", "new d\n") && !has("d.ini.t386new") && !has("d.ini.t386old"),
+	      "v4.4's X.t386old + X.t386new: X written with the new text, both removed");
+	CHECK(is("e.ini", "new e\n") && !has("e.ini.t386old"), "v4.4's X + X.t386old: the old one removed");
+	CHECK(is("h.ini", "old h\n") && !has("h.ini.t386old"), "v4.4's X.t386old alone: its bytes back as X");
+	CHECK(is("i.ini.t386new", "who knows\n") && !has("i.ini"), "X.t386new alone: left");
 	CHECK(is("keep.ini.old", "mine\n"), "another file left alone");
-	CHECK(acts == 4, "4 files renamed or removed (%d)", acts);
+	CHECK(acts == 10, "10 files written or removed (%d)", acts);
+	CHECK(!setup_tidy_warning()[0], "no warning (\"%s\")", setup_tidy_warning());
 	CHECK(setup_ini_tidy(dir) == 0, "a second tidy does nothing");
+	clean();
+
+	/* v4.4, a cut inside a rename: what may be two names on one chain is
+	   never removed */
+	put("a.ini", "the same\n");
+	put("a.ini.t386old", "the same\n");
+	struct setup_place places[] = { { dir, NULL }, { NULL, NULL } };
+	struct setup_list *l = malloc(sizeof(*l));
+	int n = setup_find(places, l);
+	CHECK(n == 1 && is("a.ini", "the same\n") && is("a.ini.t386old", "the same\n") &&
+	      strstr(setup_tidy_warning(), "chkdsk") && strstr(setup_tidy_warning(), "a.ini"),
+	      "X + X.t386old with the same bytes: both left, a warning (\"%s\")", setup_tidy_warning());
+	printf("  ok: the same bytes: %s\n", setup_tidy_warning());
+	clean();
+	put("b.ini", "x\n");
+	put("b.ini.t386old", "o\n");
+	put_whole_new("b.ini.t386new", "n\n");
+	n = setup_find(places, l);
+	CHECK(n == 1 && is("b.ini", "x\n") && is("b.ini.t386old", "o\n") && has("b.ini.t386new") &&
+	      strstr(setup_tidy_warning(), "chkdsk") && strstr(setup_tidy_warning(), "b.ini"),
+	      "all three: left, a warning (\"%s\")", setup_tidy_warning());
+	printf("  ok: all three: %s\n", setup_tidy_warning());
 	clean();
 	put("b.ini.t386old", "old b\n");
 	acts = setup_ini_tidy(dir);
-	CHECK(is("b.ini", "old b\n") && acts == 1, "X.t386old alone: back to X");
+	CHECK(is("b.ini", "old b\n") && !has("b.ini.t386old") && acts == 2,
+	      "X.t386old alone: back to X (%d)", acts);
 	clean();
 
 	/* setup_find() tidies first: an ini a cut left as X.t386new and
@@ -404,10 +548,9 @@ static void test_files(const char *out)
 	put("a.ini", "; first\n[pc]\n");
 	put("b.ini.t386old", "; old b\n[pc]\n");
 	put("b.ini.t386new", "; new b\n[pc]\n");
-	struct setup_place places[] = { { dir, NULL }, { NULL, NULL } };
-	struct setup_list *l = malloc(sizeof(*l));
-	int n = setup_find(places, l);
-	CHECK(n == 2 && !strcmp(l->ini[1].name, "b.ini") && !strcmp(l->ini[1].desc, "new b"),
+	n = setup_find(places, l);
+	CHECK(n == 2 && !strcmp(l->ini[1].name, "b.ini") && !strcmp(l->ini[1].desc, "new b") &&
+	      !setup_tidy_warning()[0],
 	      "setup_find() lists b.ini put back from its .t386new (%d inis)", n);
 	free(l);
 	clean();
