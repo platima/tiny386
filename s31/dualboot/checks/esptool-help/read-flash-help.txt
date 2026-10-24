@@ -1,0 +1,28 @@
+esptool v5.4.0
+                                                                                
+ Usage: esptool read-flash [OPTIONS] ADDRESS SIZE OUTPUT                        
+                                                                                
+ Read SPI flash memory content.                                                 
+                                                                                
+╭─ Flash options ──────────────────────────────────────────────────────────────╮
+│ --flash-size      -fs  [detect|keep|256KB|512KB|  SPI flash memory size.     │
+│                        1MB|2MB|2MB-c1|4MB|4MB-c1  ESP8266-only sizes: 256KB, │
+│                        |8MB|16MB|32MB|64MB|128MB  512KB, 2MB-c1, 4MB-c1.     │
+│                        ]                                                     │
+│ --spi-connection  -sc  SPI-CONNECTION             Override default SPI flash │
+│                                                   memory connection. Value   │
+│                                                   can be SPI, HSPI or a      │
+│                                                   comma-separated list of 5  │
+│                                                   I/O numbers to use for SPI │
+│                                                   flash (CLK,Q,D,HD,CS). Not │
+│                                                   supported with ESP8266.    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *  ADDRESS  INTEGER  [required]                                              │
+│ *  SIZE     INTEGER  [required]                                              │
+│ *  OUTPUT   PATH     [required]                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --no-progress  -p  Suppress progress output.                                 │
+│ --help         -h  Show this message and exit.                               │
+╰──────────────────────────────────────────────────────────────────────────────╯

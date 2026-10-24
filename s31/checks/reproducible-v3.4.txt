@@ -1,0 +1,41 @@
+Two runs of build.sh from nothing, with the v3.4 patch: rel1 and rel2-second-run, different
+folders (WSL ~/v34-fw), 2026-10-22.
+same  dosboard/flash_args
+same  korvo1-dualboot/flash_args
+same  korvo1-standalone/flash_args
+same  dosboard/bootloader.bin
+same  korvo1-dualboot/bootloader.bin
+same  korvo1-standalone/bootloader.bin
+same  dosboard/partition-table.bin
+same  korvo1-dualboot/partition-table.bin
+same  korvo1-standalone/partition-table.bin
+same  dosboard/tiny386.bin
+same  korvo1-dualboot/tiny386.bin
+same  korvo1-standalone/tiny386.bin
+same  dosboard/tiny386.elf
+same  korvo1-dualboot/tiny386.elf
+same  korvo1-standalone/tiny386.elf
+same  dosboard/SHA256SUMS
+same  korvo1-dualboot/SHA256SUMS
+same  korvo1-standalone/SHA256SUMS
+
+The patch applied to a fresh clone (git apply, index and files) gives the v3.4 tree:
+  rel1 index tree  420d2ffb409977267c41a3a21bbcf5ed9342d924
+  rel2 index tree  420d2ffb409977267c41a3a21bbcf5ed9342d924
+  v3.4 tag tree    420d2ffb409977267c41a3a21bbcf5ed9342d924
+  the patch: git diff pristine v3.4, 796779 bytes, sha256 ceeec1a3a51c73a9
+  (byte for byte git diff pristine v3.4 in the scratch tree)
+
+Against v3.3 (previous-v3.3\images): the bootloaders and tables are the same files:
+  korvo1-dualboot/bootloader.bin  b57469cd1542fe83  same
+  korvo1-dualboot/partition-table.bin  d41cba3cf33bedee  same
+  korvo1-dualboot/flash_args  6fc0ab4111fd6303  same
+  korvo1-dualboot/tiny386.bin  v3.3 885552 bytes, v3.4 885616 bytes
+  korvo1-standalone/bootloader.bin  ec0a396b5bd96406  same
+  korvo1-standalone/partition-table.bin  afbe6410c2040c5e  same
+  korvo1-standalone/flash_args  48e461784c407bbc  same
+  korvo1-standalone/tiny386.bin  v3.3 885552 bytes, v3.4 885616 bytes
+  dosboard/bootloader.bin  ec0a396b5bd96406  same
+  dosboard/partition-table.bin  afbe6410c2040c5e  same
+  dosboard/flash_args  48e461784c407bbc  same
+  dosboard/tiny386.bin  v3.3 914624 bytes, v3.4 914688 bytes

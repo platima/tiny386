@@ -1,0 +1,355 @@
+--- /home/owner/v4-work/merge/pc/harness/headless.c	2026-10-23 08:07:45.235134240 +0800
++++ /home/owner/v4-work/v41/h/harness/headless.c	2026-10-23 11:40:35.691796632 +0800
+@@ -81,8 +81,11 @@
+ static double opt_mouse_ms = 0;         /* a mouse report every this many ms */
+ static int opt_mousethread = 0;         /* ... from a second thread */
+ static int opt_marks = 0;               /* BENCH.COM's marks at 0000:04F0 (v4 merge) */
++static int opt_audit = 0;               /* v4.0: every Nth picture held against a full redraw */
++static int opt_vbe_blocks = -1;         /* v4.0: vga_dirty_blocks, where the tree has it */
++extern int vga_dirty_blocks __attribute__((weak));
+ struct key_ev { double t; int sc; int down; };
+-static struct key_ev keys[64];
++static struct key_ev keys[2048];  /* v4.0: 64 was too few for a guest test's keys */
+ static int nkeys, next_key;
+ 
+ /* the board's slow parts, charged as guest time (iohook.c, diskfat.c) */
+@@ -155,23 +158,76 @@
+    The harness's own lines go to hout, which costs nothing. */
+ FILE *pcr_hout;
+ #define hout pcr_hout
+-static ssize_t count_write(void *cookie, const char *buf, size_t n)
++/* v4.0: a guest test program's "@shot NAME" and "@done" lines on the
++   BIOS's debug port (0x402, a byte at a time through stdout), as
++   tests/guest/bios.inc says them: seen here, acted on by the run loop */
++static char guest_line[256];
++static int guest_line_n;
++static char shot_pending[128];
++static int done_pending;
++static void guest_char(char c)
++{
++	if (c != '\n') {
++		if (guest_line_n < (int) sizeof(guest_line) - 1)
++			guest_line[guest_line_n++] = c;
++		return;
++	}
++	guest_line[guest_line_n] = 0;
++	if (!strncmp(guest_line, "@shot ", 6))
++		snprintf(shot_pending, sizeof(shot_pending), "%s", guest_line + 6);
++	else if (!strcmp(guest_line, "@done"))
++		done_pending = 1;
++	guest_line_n = 0;
++}
++/* v4.1: the emulator's output reaches fd 2 a whole line at a time.  pc.c
++   flushes the BIOS's debug port after every byte, so a harness line (hout)
++   could land inside a guest's line and split it (the v4.0 review's N1).
++   Each thread keeps its own line; what is left is written at exit. */
++static __thread char out_buf[4096];
++static __thread size_t out_n;
++static void out_write(const char *p, size_t n)
+ {
+-	(void) cookie;
+-	log_bytes += n;
+-	if (opt_uart_baud && pthread_equal(pthread_self(), main_thread))
+-		pcr_charge_us((double) n * 10.0 * 1e6 / opt_uart_baud, PCR_CHARGE_UART);
+ 	size_t done = 0;
+ 	while (done < n) {
+-		ssize_t w = write(2, buf + done, n - done);
++		ssize_t w = write(2, p + done, n - done);
+ 		if (w <= 0)
+ 			break;
+ 		done += w;
+ 	}
++}
++static void out_add(const char *buf, size_t n)
++{
++	for (size_t i = 0; i < n; i++) {
++		out_buf[out_n++] = buf[i];
++		if (buf[i] == '\n' || out_n == sizeof(out_buf)) {
++			out_write(out_buf, out_n);
++			out_n = 0;
++		}
++	}
++}
++static ssize_t count_write(void *cookie, const char *buf, size_t n)
++{
++	(void) cookie;
++	if (pthread_equal(pthread_self(), main_thread))
++		for (size_t i = 0; i < n; i++)
++			guest_char(buf[i]);
++	log_bytes += n;
++	if (opt_uart_baud && pthread_equal(pthread_self(), main_thread))
++		pcr_charge_us((double) n * 10.0 * 1e6 / opt_uart_baud, PCR_CHARGE_UART);
++	out_add(buf, n);
+ 	return n;
+ }
++static void out_at_exit(void)
++{
++	fflush(stdout);
++	if (out_n) {
++		out_write(out_buf, out_n);
++		out_n = 0;
++	}
++}
+ static void streams_init(void)
+ {
++	atexit(out_at_exit);
+ 	hout = fdopen(dup(2), "w");
+ 	setvbuf(hout, NULL, _IOLBF, 0);
+ 	cookie_io_functions_t io = { .write = count_write };
+@@ -367,9 +423,22 @@
+ static int snap_no;
+ static pthread_mutex_t vga_lock = PTHREAD_MUTEX_INITIALIZER;
+ 
++/* rows changed per periodic picture (pcr_rows_*), snapshots left out */
++static int in_snapshot;
++static uint64_t rows_pics, rows_total, rows_hist[6], rows_cur;
+ static void redraw(void *opaque, int x, int y, int w, int h)
+ {
+-	(void) opaque; (void) x; (void) y; (void) w; (void) h;
++	(void) opaque; (void) x; (void) y; (void) w;
++	if (!in_snapshot && h > 0)
++		rows_cur += (uint64_t) h;
++}
++static void rows_picture_done(void)
++{
++	uint64_t h = rows_cur;
++	rows_cur = 0;
++	rows_pics++;
++	rows_total += h;
++	rows_hist[h == 0 ? 0 : h <= 8 ? 1 : h <= 32 ? 2 : h <= 128 ? 3 : h < 480 ? 4 : 5]++;
+ }
+ 
+ static void save_ppm(const char *name)
+@@ -445,7 +514,7 @@
+ 
+ static void add_key(double t, int sc)
+ {
+-	if (nkeys + 2 > 64)
++	if (nkeys + 2 > 2048)
+ 		return;
+ 	keys[nkeys++] = (struct key_ev) { t, sc, 1 };
+ 	keys[nkeys++] = (struct key_ev) { t + 0.1, sc, 0 };
+@@ -531,7 +600,7 @@
+ static int taskbar_seen(void)
+ {
+ 	int mode = ((const uint8_t *) g_pc->phys_mem)[0x449];
+-	if (mode == 3 || mode == 2 || mode == 7)
++	if (getenv("PCR_IGNORE_MODE") == NULL && (mode == 3 || mode == 2 || mode == 7))
+ 		return 0;
+ 	int x0 = fb_w >= 720 ? (fb_w - 640) / 2 : 0;
+ 	int grey = 0, n = 0, teal = 0, tn = 0;
+@@ -570,7 +639,7 @@
+ 	if (dialogs_done >= opt_dialogs || now_s < dialog_quiet_until)
+ 		return;
+ 	int mode = ((const uint8_t *) g_pc->phys_mem)[0x449];
+-	if (mode == 3 || mode == 2 || mode == 7)
++	if (getenv("PCR_IGNORE_MODE") == NULL && (mode == 3 || mode == 2 || mode == 7))
+ 		return;
+ 	int y = find_title_bar();
+ 	if (y < 0) {
+@@ -594,12 +663,65 @@
+ 	if (!g_pc)
+ 		return;
+ 	pthread_mutex_lock(&vga_lock);
++	in_snapshot = 1;
+ 	vga_refresh(g_pc->vga, redraw, NULL, 1);
++	in_snapshot = 0;
+ 	pthread_mutex_unlock(&vga_lock);
+ 	save_ppm(name);
+ 	save_text(name);
+ }
+ 
++/* v4.0: the screen as the periodic drawing has left it, held against every
++   pixel worked out again (full_update 1).  A difference is a store into
++   video memory that the drawing was not told of (VGA_DIRTY_BLOCKS: a
++   block not marked).  The screen is left as the full redraw leaves it,
++   which is what it should have been.  The caller holds vga_lock. */
++static uint64_t audit_pics, audit_bad, audit_worst;
++static uint64_t draw_us;                /* host time in the periodic pc_vga_step() */
++static long audit_screen(void)
++{
++	static uint8_t *copy;
++	size_t bytes = (size_t) fb_w * fb_h * (BPP / 8);
++	if (!copy)
++		copy = malloc(bytes);
++	memcpy(copy, fb, bytes);
++	in_snapshot = 1;
++	vga_refresh(g_pc->vga, redraw, NULL, 1);
++	in_snapshot = 0;
++	long diff = 0;
++	for (size_t i = 0; i < bytes; i += BPP / 8)
++		diff += memcmp(copy + i, fb + i, BPP / 8) != 0;
++	audit_pics++;
++	if (diff) {
++		audit_bad++;
++		if ((uint64_t) diff > audit_worst)
++			audit_worst = diff;
++	}
++	return diff;
++}
++
++/* "@shot NAME" from a guest test program: one more picture drawn as the
++   periodic drawing draws it (full_update 0, not snapshot()'s redraw of
++   everything, which would hide a block not marked), saved as shot-NAME,
++   then held against a full redraw; then the key the program waits for */
++static void guest_shot(const char *name, double now_s)
++{
++	char file[160];
++	pthread_mutex_lock(&vga_lock);
++	vga_refresh(g_pc->vga, redraw, NULL, 0);
++	snprintf(file, sizeof(file), "shot-%s", name);
++	save_ppm(file);
++	long diff = audit_screen();
++	pthread_mutex_unlock(&vga_lock);
++	fprintf(hout, "[harness] shot %s at t=%.3f: %ld pixels differ from a full redraw\n",
++		name, now_s, diff);
++	if (diff) {
++		snprintf(file, sizeof(file), "shot-%s-full", name);
++		save_ppm(file);
++	}
++	add_key(now_s + 0.05, 0x39);    /* space */
++}
++
+ /* ==== the board's other core ==== */
+ static volatile int threads_stop;
+ static uint64_t vga_thread_steps;
+@@ -760,10 +882,14 @@
+ 		"  -pit-owed N   i8254_max_owed = N (v3.8 on; 0: every missed tick raised)\n"
+ 		"  -img-stdio    the card's image through ide.c's stdio path, not disk_image.c\n"
+ 		"  -img-nofast   disk_image.c without its cluster map (disk_image_fast_seek 0)\n"
++		"  -dialogs N    Enter on a dialog (a navy title bar seen twice, 1 s apart),\n"
++		"                at most N times; each one's picture kept as dialogK\n"
+ 		"  -marks        each change of the byte at 0000:04F0 (BENCH.COM's marks)\n"
+ 		"                with the instruction count and the host time\n"
+-		"  -dialogs N    Enter on a dialog (a navy title bar seen twice, 1 s apart),\n"
+-		"                at most N times; each one's picture kept as dialogK\n");
++		"  -audit N      every Nth periodic picture held against a full redraw\n"
++		"                (not with -vgathread); a guest's \"@shot NAME\" on port\n"
++		"                402h always is, and is saved as shot-NAME; \"@done\" stops\n"
++		"  -vbe-blocks N vga_dirty_blocks = N (v4.0: 0 draws VBE pictures in full)\n");
+ 	exit(1);
+ }
+ 
+@@ -823,10 +949,23 @@
+ 		else if (!strcmp(a, "-mouse")) opt_mouse_ms = atof(ARG());
+ 		else if (!strcmp(a, "-mousethread")) opt_mousethread = 1;
+ 		else if (!strcmp(a, "-marks")) opt_marks = 1;
++		else if (!strcmp(a, "-audit")) opt_audit = atoi(ARG());
++		else if (!strcmp(a, "-vbe-blocks")) opt_vbe_blocks = atoi(ARG());
++		else if (!strcmp(a, "-keyfile")) {
++			/* v4.0: lines "T SC D": scancode SC (hex, set 1) down (D 1) or
++			   up (0) at T virtual seconds, in time order */
++			FILE *kf = fopen(ARG(), "r");
++			double t; unsigned sc; int d;
++			if (!kf)
++				usage();
++			while (fscanf(kf, "%lf %x %d", &t, &sc, &d) == 3 && nkeys < 2048)
++				keys[nkeys++] = (struct key_ev) { t, (int) sc, d };
++			fclose(kf);
++		}
+ 		else if (!strcmp(a, "-key")) {
+ 			const char *v = ARG();
+ 			double t; unsigned sc;
+-			if (sscanf(v, "%lf:%x", &t, &sc) != 2 || nkeys + 2 > 64)
++			if (sscanf(v, "%lf:%x", &t, &sc) != 2 || nkeys + 2 > 2048)
+ 				usage();
+ 			keys[nkeys++] = (struct key_ev) { t, (int) sc, 1 };
+ 			keys[nkeys++] = (struct key_ev) { t + 0.1, (int) sc, 0 };
+@@ -840,6 +979,8 @@
+ 
+ 	if (opt_pit_owed >= 0 && &i8254_max_owed)
+ 		i8254_max_owed = opt_pit_owed;
++	if (opt_vbe_blocks >= 0 && &vga_dirty_blocks)
++		vga_dirty_blocks = opt_vbe_blocks;
+ #ifdef PCR_HAVE_DISK_IMAGE
+ 	if (opt_img_nofast && &disk_image_fast_seek)
+ 		disk_image_fast_seek = 0;
+@@ -865,8 +1006,8 @@
+ 	}
+ #ifdef FLAV_ESP
+ 	/* the board draws 800x480 whatever the ini says (esp_main.c) */
+-	conf.width = 800;
+-	conf.height = 480;
++	conf.width = LCD_WIDTH;
++	conf.height = LCD_HEIGHT;
+ 	pool_init(conf.mem_size, conf.vga_mem_size);
+ #endif
+ 	fb_w = conf.width;
+@@ -951,6 +1092,14 @@
+ 				last_mark = mk;
+ 			}
+ 		}
++		if (shot_pending[0]) {
++			guest_shot(shot_pending, t / 1e6);
++			shot_pending[0] = 0;
++		}
++		if (done_pending) {
++			why = "guest-done";
++			break;
++		}
+ 		if (pcr_pit_backlog_max > pit_reported && pcr_pit_backlog_max >= 4) {
+ 			/* with pit-count.patch: a new record of missed timer ticks */
+ 			CPUI386_State st;
+@@ -971,8 +1120,21 @@
+ 		}
+ 
+ 		if (!opt_vgathread && (vga_period == 0 || t >= next_vga)) {
++			uint64_t d0 = real_us();
+ 			pc_vga_step(pc);
++			draw_us += real_us() - d0;
++			rows_picture_done();
+ 			next_vga = t + vga_period;
++			if (opt_audit > 0 && rows_pics % opt_audit == 0) {
++				long d = audit_screen();
++				if (d && audit_bad <= 20)
++					fprintf(hout, "[harness] audit: picture %llu at t=%.3f: %ld pixels "
++						"differ from a full redraw\n",
++						(unsigned long long) rows_pics, t / 1e6, d);
++				if (d && audit_bad == 1) {
++					save_ppm("audit-first-full");
++				}
++			}
+ 		}
+ 		if (mouse_period && !opt_mousethread && t >= next_mouse) {
+ 			mouse_report();
+@@ -1060,6 +1222,21 @@
+ 			emulink_flush(pc->emulink);
+ 	}
+ 	state_line("END");
++	fprintf(hout, "[harness] rows changed a picture: %llu pictures, %llu rows in all (%.1f a picture); "
++		"none %llu, 1-8 %llu, 9-32 %llu, 33-128 %llu, 129-479 %llu, 480 or more %llu\n",
++		(unsigned long long) rows_pics, (unsigned long long) rows_total,
++		rows_pics ? (double) rows_total / rows_pics : 0.0,
++		(unsigned long long) rows_hist[0], (unsigned long long) rows_hist[1],
++		(unsigned long long) rows_hist[2], (unsigned long long) rows_hist[3],
++		(unsigned long long) rows_hist[4], (unsigned long long) rows_hist[5]);
++	fprintf(hout, "[harness] drawing: %llu pictures, %.1f ms of host time in all, %.1f us a picture\n",
++		(unsigned long long) rows_pics, draw_us / 1000.0,
++		rows_pics ? (double) draw_us / rows_pics : 0.0);
++	if (audit_pics)
++		fprintf(hout, "[harness] audit: %llu pictures held against a full redraw, %llu "
++			"with a difference, at most %llu pixels\n",
++			(unsigned long long) audit_pics, (unsigned long long) audit_bad,
++			(unsigned long long) audit_worst);
+ 	snapshot("final");
+ 	io_line();
+ 	if (opt_vgathread)
+--- /home/owner/v4-work/merge/pc/harness/run.sh	2026-10-23 07:59:11.345195362 +0800
++++ /home/owner/v4-work/v41/h/harness/run.sh	2026-10-23 10:25:40.979575044 +0800
+@@ -45,12 +45,14 @@
+ fi
+ cat > "$RUN/run.ini" <<EOF
+ [pc]
+-bios = $W/img/bios.bin
+-vga_bios = $W/img/vgabios.bin
++bios = ${BIOS:-$W/img/bios.bin}
++vga_bios = ${VGABIOS:-$W/img/vgabios.bin}
+ mem_size = $MEM
+ vga_mem_size = $VGA
+ hda = $HDA
+ fill_cmos = 1
++${FDA:+fda = $FDA}
++${FDB:+fdb = $FDB}
+ 
+ [display]
+ width = 800

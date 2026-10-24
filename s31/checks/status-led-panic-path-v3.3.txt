@@ -1,0 +1,380 @@
+The status LED's panic path in the built images (final-rel1, build.sh with the v3.3 patch),
+read with riscv32-esp-elf-objdump from esp-16.1.0_20260609.
+
+== korvo1-dualboot
+-- calls of esp_system_reset_modules_on_exit and its wrap, and the function each is in:
+   2f000e9e: jal 2f030992 <esp_system_reset_modules_on_exit>   in <esp_restart_noos_inner>:
+   2f003464: jal 2f030992 <esp_system_reset_modules_on_exit>   in <__wrap_esp_system_reset_modules_on_exit>:
+   40063dbc: jalr 1704(ra) # 2f003460 <__wrap_esp_system_reset_modules_on_exit>   in <esp_panic_handler>:
+-- the instruction after the wrap's call in esp_panic_handler (ESP-IDF's own halt loop, now not reached):
+40063dc0: j 40063dc0 <esp_panic_handler+0x154>
+-- where the panic path's code and data are (internal RAM is 0x2f000000 up; flash 0x40000000 up):
+   2e002010 b s_rec
+   2f000322 A _iram_text_start
+   2f0032a4 T __wrap_esp_panic_handler
+   2f003460 T __wrap_esp_system_reset_modules_on_exit
+   2f003474 W audio_panic_quiet
+   2f003476 T status_led_panicking
+   2f003480 T status_led_panic
+   2f00361a T status_led_halt
+   2f026afa T status_error_pattern
+   2f026b6a T status_panic_pattern
+   2f026bae T status_record_put
+   2f026be8 T status_bb_timing
+   2f034c80 A _iram_text_end
+   2f036020 d s_cpu_us
+   2f036024 d s_bb
+   2f036038 d s_panicking
+   2f03643c d err_look
+   2f03649c d stage_rgb
+-- status_led_halt, whole (its waiting loops: rdcycle, sub, bltu back to the rdcycle, three instructions a pass):
+   2f00361a <status_led_halt>:
+   2f00361a: addi sp,sp,-80
+   2f00361c: lui a5,0x2f036
+   2f003620: sw s6,48(sp)
+   2f003622: lw s6,32(a5) # 2f036020 <s_cpu_us>
+   2f003626: lui a5,0x2f036
+   2f00362a: sw s1,68(sp)
+   2f00362c: lbu s1,57(a5) # 2f036039 <s_started>
+   2f003630: lui a5,0x2f036
+   2f003634: lw a4,28(a5) # 2f03601c <s_panic_cycles>
+   2f003638: xori a0,s1,1
+   2f00363c: li a1,0
+   2f00363e: sw s0,72(sp)
+   2f003640: sw s2,64(sp)
+   2f003642: sw s3,60(sp)
+   2f003644: sw s4,56(sp)
+   2f003646: sw s5,52(sp)
+   2f003648: sw s7,44(sp)
+   2f00364a: sw s8,40(sp)
+   2f00364c: sw s9,36(sp)
+   2f00364e: sw s11,28(sp)
+   2f003650: sw a4,12(sp)
+   2f003652: sw ra,76(sp)
+   2f003654: sw s10,32(sp)
+   2f003656: sh2add s6,s6,s6
+   2f00365a: sw a0,8(sp)
+   2f00365c: jal 2f026b6a <status_panic_pattern>
+   2f003660: sh2add s6,s6,s6
+   2f003664: lw a4,12(sp)
+   2f003666: sh2add s6,s6,s6
+   2f00366a: lui s0,0x20583
+   2f00366e: lui s9,0x2f036
+   2f003672: slli s6,s6,0x3
+   2f003674: mv s1,a0
+   2f003676: mv s0,s0
+   2f00367a: addi s9,s9,36 # 2f036024 <s_bb>
+   2f00367e: li s11,0
+   2f003680: li s7,0
+   2f003682: li s5,0
+   2f003684: lui s2,0xff0
+   2f003688: li s4,32
+   2f00368c: li s8,-1
+   2f00368e: li s3,999
+   2f003692: rdcycle s10
+   2f003696: add s5,s5,s10
+   2f003698: sub s5,s5,a4
+   2f00369c: bltu s5,s6,2f0036aa <status_led_halt+0x90>
+   2f0036a0: sub s5,s5,s6
+   2f0036a4: addi s7,s7,1
+   2f0036a6: bgeu s5,s6,2f0036a0 <status_led_halt+0x86>
+   2f0036aa: lw a0,8(sp)
+   2f0036ac: mv a1,s7
+   2f0036ae: jal 2f026b6a <status_panic_pattern>
+   2f0036b2: bne s1,a0,2f0036be <status_led_halt+0xa4>
+   2f0036b6: sub a5,s7,s11
+   2f0036ba: bgeu s3,a5,2f003736 <status_led_halt+0x11c>
+   2f0036be: srli a5,a0,0x10
+   2f0036c2: slli a7,a0,0x8
+   2f0036c6: slli a5,a5,0x8
+   2f0036c8: zext.h a5,a5
+   2f0036ca: and a7,a7,s2
+   2f0036ce: or a7,a7,a5
+   2f0036d2: zext.b a5,a0
+   2f0036d6: or a7,a7,a5
+   2f0036da: rdcycle a3
+   2f0036de: lw a4,16(s9)
+   2f0036e2: sw s4,24(s0) # 20583018 <GPIO+0x18>
+   2f0036e6: rdcycle a5
+   2f0036ea: sub a5,a5,a3
+   2f0036ec: bltu a5,a4,2f0036e6 <status_led_halt+0xcc>
+   2f0036f0: rdcycle a4
+   2f0036f4: lw t4,0(s9)
+   2f0036f8: lw t3,4(s9)
+   2f0036fc: lw t1,8(s9)
+   2f003700: lw a1,12(s9)
+   2f003704: li a6,23
+   2f003706: bext a5,a7,a6
+   2f00370a: bnez a5,2f00373c <status_led_halt+0x122>
+   2f00370c: mv a3,t3
+   2f00370e: mv a2,t4
+   2f003710: sw s4,20(s0)
+   2f003714: rdcycle a5
+   2f003718: sub a5,a5,a4
+   2f00371a: bltu a5,a2,2f003714 <status_led_halt+0xfa>
+   2f00371e: sw s4,24(s0)
+   2f003722: rdcycle a5
+   2f003726: sub a5,a5,a4
+   2f003728: bltu a5,a3,2f003722 <status_led_halt+0x108>
+   2f00372c: addi a6,a6,-1
+   2f00372e: add a4,a4,a3
+   2f003730: bne a6,s8,2f003706 <status_led_halt+0xec>
+   2f003734: mv s11,s7
+   2f003736: mv s1,a0
+   2f003738: mv a4,s10
+   2f00373a: j 2f003692 <status_led_halt+0x78>
+   2f00373c: mv a3,a1
+   2f00373e: mv a2,t1
+   2f003740: j 2f003710 <status_led_halt+0xf6>
+
+== korvo1-standalone
+-- calls of esp_system_reset_modules_on_exit and its wrap, and the function each is in:
+   2f000e9e: jal 2f030992 <esp_system_reset_modules_on_exit>   in <esp_restart_noos_inner>:
+   2f003464: jal 2f030992 <esp_system_reset_modules_on_exit>   in <__wrap_esp_system_reset_modules_on_exit>:
+   40063dbc: jalr 1704(ra) # 2f003460 <__wrap_esp_system_reset_modules_on_exit>   in <esp_panic_handler>:
+-- the instruction after the wrap's call in esp_panic_handler (ESP-IDF's own halt loop, now not reached):
+40063dc0: j 40063dc0 <esp_panic_handler+0x154>
+-- where the panic path's code and data are (internal RAM is 0x2f000000 up; flash 0x40000000 up):
+   2e002010 b s_rec
+   2f000322 A _iram_text_start
+   2f0032a4 T __wrap_esp_panic_handler
+   2f003460 T __wrap_esp_system_reset_modules_on_exit
+   2f003474 W audio_panic_quiet
+   2f003476 T status_led_panicking
+   2f003480 T status_led_panic
+   2f00361a T status_led_halt
+   2f026afa T status_error_pattern
+   2f026b6a T status_panic_pattern
+   2f026bae T status_record_put
+   2f026be8 T status_bb_timing
+   2f034c80 A _iram_text_end
+   2f036020 d s_cpu_us
+   2f036024 d s_bb
+   2f036038 d s_panicking
+   2f03643c d err_look
+   2f03649c d stage_rgb
+-- status_led_halt, whole (its waiting loops: rdcycle, sub, bltu back to the rdcycle, three instructions a pass):
+   2f00361a <status_led_halt>:
+   2f00361a: addi sp,sp,-80
+   2f00361c: lui a5,0x2f036
+   2f003620: sw s6,48(sp)
+   2f003622: lw s6,32(a5) # 2f036020 <s_cpu_us>
+   2f003626: lui a5,0x2f036
+   2f00362a: sw s1,68(sp)
+   2f00362c: lbu s1,57(a5) # 2f036039 <s_started>
+   2f003630: lui a5,0x2f036
+   2f003634: lw a4,28(a5) # 2f03601c <s_panic_cycles>
+   2f003638: xori a0,s1,1
+   2f00363c: li a1,0
+   2f00363e: sw s0,72(sp)
+   2f003640: sw s2,64(sp)
+   2f003642: sw s3,60(sp)
+   2f003644: sw s4,56(sp)
+   2f003646: sw s5,52(sp)
+   2f003648: sw s7,44(sp)
+   2f00364a: sw s8,40(sp)
+   2f00364c: sw s9,36(sp)
+   2f00364e: sw s11,28(sp)
+   2f003650: sw a4,12(sp)
+   2f003652: sw ra,76(sp)
+   2f003654: sw s10,32(sp)
+   2f003656: sh2add s6,s6,s6
+   2f00365a: sw a0,8(sp)
+   2f00365c: jal 2f026b6a <status_panic_pattern>
+   2f003660: sh2add s6,s6,s6
+   2f003664: lw a4,12(sp)
+   2f003666: sh2add s6,s6,s6
+   2f00366a: lui s0,0x20583
+   2f00366e: lui s9,0x2f036
+   2f003672: slli s6,s6,0x3
+   2f003674: mv s1,a0
+   2f003676: mv s0,s0
+   2f00367a: addi s9,s9,36 # 2f036024 <s_bb>
+   2f00367e: li s11,0
+   2f003680: li s7,0
+   2f003682: li s5,0
+   2f003684: lui s2,0xff0
+   2f003688: li s4,32
+   2f00368c: li s8,-1
+   2f00368e: li s3,999
+   2f003692: rdcycle s10
+   2f003696: add s5,s5,s10
+   2f003698: sub s5,s5,a4
+   2f00369c: bltu s5,s6,2f0036aa <status_led_halt+0x90>
+   2f0036a0: sub s5,s5,s6
+   2f0036a4: addi s7,s7,1
+   2f0036a6: bgeu s5,s6,2f0036a0 <status_led_halt+0x86>
+   2f0036aa: lw a0,8(sp)
+   2f0036ac: mv a1,s7
+   2f0036ae: jal 2f026b6a <status_panic_pattern>
+   2f0036b2: bne s1,a0,2f0036be <status_led_halt+0xa4>
+   2f0036b6: sub a5,s7,s11
+   2f0036ba: bgeu s3,a5,2f003736 <status_led_halt+0x11c>
+   2f0036be: srli a5,a0,0x10
+   2f0036c2: slli a7,a0,0x8
+   2f0036c6: slli a5,a5,0x8
+   2f0036c8: zext.h a5,a5
+   2f0036ca: and a7,a7,s2
+   2f0036ce: or a7,a7,a5
+   2f0036d2: zext.b a5,a0
+   2f0036d6: or a7,a7,a5
+   2f0036da: rdcycle a3
+   2f0036de: lw a4,16(s9)
+   2f0036e2: sw s4,24(s0) # 20583018 <GPIO+0x18>
+   2f0036e6: rdcycle a5
+   2f0036ea: sub a5,a5,a3
+   2f0036ec: bltu a5,a4,2f0036e6 <status_led_halt+0xcc>
+   2f0036f0: rdcycle a4
+   2f0036f4: lw t4,0(s9)
+   2f0036f8: lw t3,4(s9)
+   2f0036fc: lw t1,8(s9)
+   2f003700: lw a1,12(s9)
+   2f003704: li a6,23
+   2f003706: bext a5,a7,a6
+   2f00370a: bnez a5,2f00373c <status_led_halt+0x122>
+   2f00370c: mv a3,t3
+   2f00370e: mv a2,t4
+   2f003710: sw s4,20(s0)
+   2f003714: rdcycle a5
+   2f003718: sub a5,a5,a4
+   2f00371a: bltu a5,a2,2f003714 <status_led_halt+0xfa>
+   2f00371e: sw s4,24(s0)
+   2f003722: rdcycle a5
+   2f003726: sub a5,a5,a4
+   2f003728: bltu a5,a3,2f003722 <status_led_halt+0x108>
+   2f00372c: addi a6,a6,-1
+   2f00372e: add a4,a4,a3
+   2f003730: bne a6,s8,2f003706 <status_led_halt+0xec>
+   2f003734: mv s11,s7
+   2f003736: mv s1,a0
+   2f003738: mv a4,s10
+   2f00373a: j 2f003692 <status_led_halt+0x78>
+   2f00373c: mv a3,a1
+   2f00373e: mv a2,t1
+   2f003740: j 2f003710 <status_led_halt+0xf6>
+
+== dosboard
+-- calls of esp_system_reset_modules_on_exit and its wrap, and the function each is in:
+   2f000e9e: jal 2f03169e <esp_system_reset_modules_on_exit>   in <esp_restart_noos_inner>:
+   2f0034b2: jal 2f03169e <esp_system_reset_modules_on_exit>   in <__wrap_esp_system_reset_modules_on_exit>:
+   400631ee: jalr 708(ra) # 2f0034ae <__wrap_esp_system_reset_modules_on_exit>   in <esp_panic_handler>:
+-- the instruction after the wrap's call in esp_panic_handler (ESP-IDF's own halt loop, now not reached):
+400631f2: j 400631f2 <esp_panic_handler+0x154>
+-- where the panic path's code and data are (internal RAM is 0x2f000000 up; flash 0x40000000 up):
+   2e002010 b s_rec
+   2f000322 A _iram_text_start
+   2f0032ae T audio_panic_quiet
+   2f0032f2 T __wrap_esp_panic_handler
+   2f0034ae T __wrap_esp_system_reset_modules_on_exit
+   2f0034c2 T status_led_panicking
+   2f0034cc T status_led_panic
+   2f003666 T status_led_halt
+   2f026b46 T status_error_pattern
+   2f026bb6 T status_panic_pattern
+   2f026bfa T status_record_put
+   2f026c34 T status_bb_timing
+   2f035900 A _iram_text_end
+   2f036ca8 d s_cpu_us
+   2f036cac d s_bb
+   2f036cc0 d s_panicking
+   2f0370c4 d err_look
+   2f037124 d stage_rgb
+-- status_led_halt, whole (its waiting loops: rdcycle, sub, bltu back to the rdcycle, three instructions a pass):
+   2f003666 <status_led_halt>:
+   2f003666: addi sp,sp,-80
+   2f003668: lui a5,0x2f037
+   2f00366c: sw s6,48(sp)
+   2f00366e: lw s6,-856(a5) # 2f036ca8 <s_cpu_us>
+   2f003672: lui a5,0x2f037
+   2f003676: sw s1,68(sp)
+   2f003678: lbu s1,-831(a5) # 2f036cc1 <s_started>
+   2f00367c: lui a5,0x2f037
+   2f003680: lw a4,-860(a5) # 2f036ca4 <s_panic_cycles>
+   2f003684: xori a0,s1,1
+   2f003688: li a1,0
+   2f00368a: sw s0,72(sp)
+   2f00368c: sw s2,64(sp)
+   2f00368e: sw s3,60(sp)
+   2f003690: sw s4,56(sp)
+   2f003692: sw s5,52(sp)
+   2f003694: sw s7,44(sp)
+   2f003696: sw s8,40(sp)
+   2f003698: sw s9,36(sp)
+   2f00369a: sw s11,28(sp)
+   2f00369c: sw a4,12(sp)
+   2f00369e: sw ra,76(sp)
+   2f0036a0: sw s10,32(sp)
+   2f0036a2: sh2add s6,s6,s6
+   2f0036a6: sw a0,8(sp)
+   2f0036a8: jal 2f026bb6 <status_panic_pattern>
+   2f0036ac: sh2add s6,s6,s6
+   2f0036b0: lw a4,12(sp)
+   2f0036b2: sh2add s6,s6,s6
+   2f0036b6: lui s0,0x20583
+   2f0036ba: lui s9,0x2f037
+   2f0036be: slli s6,s6,0x3
+   2f0036c0: mv s1,a0
+   2f0036c2: mv s0,s0
+   2f0036c6: addi s9,s9,-852 # 2f036cac <s_bb>
+   2f0036ca: li s11,0
+   2f0036cc: li s7,0
+   2f0036ce: li s5,0
+   2f0036d0: lui s2,0xff0
+   2f0036d4: li s4,32
+   2f0036d8: li s8,-1
+   2f0036da: li s3,999
+   2f0036de: rdcycle s10
+   2f0036e2: add s5,s5,s10
+   2f0036e4: sub s5,s5,a4
+   2f0036e8: bltu s5,s6,2f0036f6 <status_led_halt+0x90>
+   2f0036ec: sub s5,s5,s6
+   2f0036f0: addi s7,s7,1
+   2f0036f2: bgeu s5,s6,2f0036ec <status_led_halt+0x86>
+   2f0036f6: lw a0,8(sp)
+   2f0036f8: mv a1,s7
+   2f0036fa: jal 2f026bb6 <status_panic_pattern>
+   2f0036fe: bne s1,a0,2f00370a <status_led_halt+0xa4>
+   2f003702: sub a5,s7,s11
+   2f003706: bgeu s3,a5,2f003782 <status_led_halt+0x11c>
+   2f00370a: srli a5,a0,0x10
+   2f00370e: slli a7,a0,0x8
+   2f003712: slli a5,a5,0x8
+   2f003714: zext.h a5,a5
+   2f003716: and a7,a7,s2
+   2f00371a: or a7,a7,a5
+   2f00371e: zext.b a5,a0
+   2f003722: or a7,a7,a5
+   2f003726: rdcycle a3
+   2f00372a: lw a4,16(s9)
+   2f00372e: sw s4,24(s0) # 20583018 <GPIO+0x18>
+   2f003732: rdcycle a5
+   2f003736: sub a5,a5,a3
+   2f003738: bltu a5,a4,2f003732 <status_led_halt+0xcc>
+   2f00373c: rdcycle a4
+   2f003740: lw t4,0(s9)
+   2f003744: lw t3,4(s9)
+   2f003748: lw t1,8(s9)
+   2f00374c: lw a1,12(s9)
+   2f003750: li a6,23
+   2f003752: bext a5,a7,a6
+   2f003756: bnez a5,2f003788 <status_led_halt+0x122>
+   2f003758: mv a3,t3
+   2f00375a: mv a2,t4
+   2f00375c: sw s4,20(s0)
+   2f003760: rdcycle a5
+   2f003764: sub a5,a5,a4
+   2f003766: bltu a5,a2,2f003760 <status_led_halt+0xfa>
+   2f00376a: sw s4,24(s0)
+   2f00376e: rdcycle a5
+   2f003772: sub a5,a5,a4
+   2f003774: bltu a5,a3,2f00376e <status_led_halt+0x108>
+   2f003778: addi a6,a6,-1
+   2f00377a: add a4,a4,a3
+   2f00377c: bne a6,s8,2f003752 <status_led_halt+0xec>
+   2f003780: mv s11,s7
+   2f003782: mv s1,a0
+   2f003784: mv a4,s10
+   2f003786: j 2f0036de <status_led_halt+0x78>
+   2f003788: mv a3,a1
+   2f00378a: mv a2,t1
+   2f00378c: j 2f00375c <status_led_halt+0xf6>

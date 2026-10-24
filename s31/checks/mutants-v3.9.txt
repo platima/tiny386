@@ -1,0 +1,21 @@
+v3.9's new checks (test 2 part 9, test 15's stall line, test 20's note order and run_cpu.sh's
+TRY1 read) against faults put one at a time into copies of an export of the v3.9 tag
+(mutants-v3.9.py beside this file), 2026-10-22.
+
+unchanged files:
+  test 2: pass
+  test 15: pass
+  test 20: pass
+crash-no-say               esp/main/console.c     test 2   caught: FAIL (4): FAIL: at the crash: the count and the newest line held, into the ring; FAIL: the count before the crash report's own lines; FAIL: the count on the crash screen, among the log's last lines; test_console: 3 checks FAILED
+count-grey                 esp/main/console.c     test 2   caught: FAIL (2): FAIL: held errors: the count line at the errors' level (red), not grey; test_console: 1 checks FAILED
+level-not-kept             esp/main/console.c     test 2   caught: FAIL (2): FAIL: held errors: the count line at the errors' level (red), not grey; test_console: 1 checks FAILED
+held-not-cleared           esp/main/console.c     test 2   caught: FAIL (2): FAIL: said once; test_console: 1 checks FAILED
+crash-oldest-not-newest    esp/main/console.c     test 2   caught: FAIL (7): FAIL: at 5 s: one line with the count and the last line held back; FAIL: at 5 s: a count for each of the four kinds; FAIL: the lines held back since boot, counted; FAIL: held errors: their count said; FAIL: at the crash: the count and the newest line held, into the ring; FAIL: the count on the crash
+shutdown-note-after        i386.c                 test 20  caught: FAIL: FAILED: i386.c as the Korvo-1 builds it: double faults delivered, the shutdown clean; FAILED: i386.c without the board header: the same | FAIL line 246: CR3 past memory: the front end's note once, before "shutdown: ", the abort line after it; FAIL line 246: vector 8 an interrupt gate: the front end's note once, before "shutdown: ", the 
+note-twice                 i386.c                 test 20  caught: FAIL: FAILED: i386.c as the Korvo-1 builds it: double faults delivered, the shutdown clean; FAILED: i386.c without the board header: the same | FAIL line 246: CR3 past memory: the front end's note once, before "shutdown: ", the abort line after it; FAIL line 246: vector 8 an interrupt gate: the front end's note once, before "shutdown: ", the 
+try1-note-after            i386.c                 test 20  caught: FAIL: FAILED: TRY1's way out: the front end's note before its "@ file function line" (read in i386.c) 
+try1-old-macro             i386.c                 test 20  caught: FAIL: FAILED: TRY1's way out: the front end's note before its "@ file function line" (read in i386.c) 
+stall-uart-only            esp/main/status_led.c  test 15  caught: FAIL (1): FAIL /home/owner/win95-debug/fix-v39/mut/out/tree-stall-uart-only/tests/host/test_status.c:1193: led_task(): the stall line and its end to the ring and the panel, not the UART alone
+stall-grey                 esp/main/status_led.c  test 15  caught: FAIL (1): FAIL /home/owner/win95-debug/fix-v39/mut/out/tree-stall-grey/tests/host/test_status.c:1193: led_task(): the stall line and its end to the ring and the panel, not the UART alone
+goes-on-uart-only          esp/main/status_led.c  test 15  caught: FAIL (1): FAIL /home/owner/win95-debug/fix-v39/mut/out/tree-goes-on-uart-only/tests/host/test_status.c:1193: led_task(): the stall line and its end to the ring and the panel, not the UART alone
+12 of 12 faults caught

@@ -1,0 +1,586 @@
+The status LED's panic path in the built images (rel1, build.sh with the v3.4 patch), read with
+riscv32-esp-elf-objdump from esp-16.1.0_20260609, 2026-10-22.
+
+1. The bit-bang's layout, as build.sh checks it (its bb_layout()): in status_led_panic() and
+status_led_halt() each wait on the cycle counter (rdcycle, sub, bltu back to the rdcycle) and
+the instruction after it.  The store to GPIO+0x14 (out1_w1ts) raises GPIO37, the one to
+GPIO+0x18 (out1_w1tc) lowers it.
+== korvo1-dualboot (build.sh's own check, rel1/bb-layout-korvo1-dualboot.txt)
+  status_led_panic: a wait at 2f0035c4, then sw a7,20(a6)
+  status_led_panic: a wait at 2f0035d4, then sw a7,24(a6)
+  status_led_panic: a wait at 2f0035f6, then rdcycle a4
+  status_led_panic: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+  status_led_halt: a wait at 2f003706, then sw s4,20(s3)
+  status_led_halt: a wait at 2f003716, then sw s4,24(s3)
+  status_led_halt: a wait at 2f003738, then mv s11,s7
+  status_led_halt: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+== korvo1-standalone (build.sh's own check, rel1/bb-layout-korvo1-standalone.txt)
+  status_led_panic: a wait at 2f0035c4, then sw a7,20(a6)
+  status_led_panic: a wait at 2f0035d4, then sw a7,24(a6)
+  status_led_panic: a wait at 2f0035f6, then rdcycle a4
+  status_led_panic: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+  status_led_halt: a wait at 2f003706, then sw s4,20(s3)
+  status_led_halt: a wait at 2f003716, then sw s4,24(s3)
+  status_led_halt: a wait at 2f003738, then mv s11,s7
+  status_led_halt: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+== dosboard (build.sh's own check, rel1/bb-layout-dosboard.txt)
+  status_led_panic: a wait at 2f003610, then sw a7,20(a6)
+  status_led_panic: a wait at 2f003620, then sw a7,24(a6)
+  status_led_panic: a wait at 2f003642, then rdcycle a4
+  status_led_panic: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+  status_led_halt: a wait at 2f003752, then sw s4,20(s3)
+  status_led_halt: a wait at 2f003762, then sw s4,24(s3)
+  status_led_halt: a wait at 2f003784, then mv s11,s7
+  status_led_halt: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+
+The same check on the v3.3 images (previous-v3.3\images), which the v3.3 review found short:
+== v3.3 korvo1-dualboot
+  status_led_panic: a wait at 2f0035a2, then rdcycle a4
+  status_led_panic: a wait at 2f0035d6, then sw a0,24(a6)
+  status_led_panic: a wait at 2f0035e4, then addi a1,a1,-1
+  status_led_panic: 0 wait(s) straight before the rising store, 1 before the falling one, 2 before anything else: NOT as status_bb.h has it
+   (exit 1: build.sh would stop)
+  status_led_halt: a wait at 2f0036e6, then rdcycle a4
+  status_led_halt: a wait at 2f003714, then sw s4,24(s0)
+  status_led_halt: a wait at 2f003722, then addi a6,a6,-1
+  status_led_halt: 0 wait(s) straight before the rising store, 1 before the falling one, 2 before anything else: NOT as status_bb.h has it
+   (exit 1: build.sh would stop)
+== v3.3 dosboard
+  status_led_panic: a wait at 2f0035ee, then rdcycle a4
+  status_led_panic: a wait at 2f003622, then sw a0,24(a6)
+  status_led_panic: a wait at 2f003630, then addi a1,a1,-1
+  status_led_panic: 0 wait(s) straight before the rising store, 1 before the falling one, 2 before anything else: NOT as status_bb.h has it
+   (exit 1: build.sh would stop)
+  status_led_halt: a wait at 2f003732, then rdcycle a4
+  status_led_halt: a wait at 2f003760, then sw s4,24(s0)
+  status_led_halt: a wait at 2f00376e, then addi a6,a6,-1
+  status_led_halt: 0 wait(s) straight before the rising store, 1 before the falling one, 2 before anything else: NOT as status_bb.h has it
+   (exit 1: build.sh would stop)
+
+And on the crash-test builds (in-tree build-v34kc and build-v34dc, -DCRASH_TEST=1):
+  v34kc  status_led_panic: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+  v34kc  status_led_halt: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+  v34dc  status_led_panic: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+  v34dc  status_led_halt: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+
+2. korvo1-dualboot
+-- calls of esp_system_reset_modules_on_exit and its wrap, and the function each is in:
+   2f000e9e: jal 2f0309ac <esp_system_reset_modules_on_exit>   in <esp_restart_noos_inner>:
+   2f003464: jal 2f0309ac <esp_system_reset_modules_on_exit>   in <__wrap_esp_system_reset_modules_on_exit>:
+   40063dc8: jalr 1692(ra) # 2f003460 <__wrap_esp_system_reset_modules_on_exit>   in <esp_panic_handler>:
+-- where the panic path's code and data are (internal RAM is 0x2f000000 up; flash 0x40000000 up):
+   2e002010 b s_rec
+   2f0032a4 T __wrap_esp_panic_handler
+   2f003460 T __wrap_esp_system_reset_modules_on_exit
+   2f003474 W audio_panic_quiet
+   2f003476 T status_led_panicking
+   2f003480 T status_led_panic
+   2f00361e T status_led_halt
+   2f026b02 T status_error_pattern
+   2f026b72 T status_panic_pattern
+   2f026bb6 T status_record_put
+   2f026bf0 T status_bb_timing
+   2f036020 d s_cpu_us
+   2f036024 d s_bb
+   2f036038 d s_panicking
+   2f03643c d err_look
+   2f03649c d stage_rgb
+-- status_led_panic, from the frame's start to its end:
+   2f003588: rdcycle a4
+   2f00358c: lui a3,0x2f036
+   2f003590: addi a5,a3,36 # 2f036024 <s_bb>
+   2f003594: lui a3,0x20583
+   2f003598: mv a6,a3
+   2f00359c: li a7,32
+   2f0035a0: li a1,23
+   2f0035a2: lw a3,16(a5)
+   2f0035a4: lw t0,0(a5)
+   2f0035a8: lw t6,4(a5)
+   2f0035ac: lw t5,8(a5)
+   2f0035b0: lw t4,12(a5)
+   2f0035b4: sw a7,24(a6)
+   2f0035b8: bext a5,t1,a1
+   2f0035bc: li t3,-1
+   2f0035be: bnez a5,2f0035f0 <status_led_panic+0x170>
+   2f0035c0: mv a0,t6
+   2f0035c2: mv a2,t0
+   2f0035c4: rdcycle a5
+   2f0035c8: sub a5,a5,a4
+   2f0035ca: bltu a5,a3,2f0035c4 <status_led_panic+0x144>
+   2f0035ce: sw a7,20(a6)
+   2f0035d2: add a4,a4,a3
+   2f0035d4: rdcycle a5
+   2f0035d8: sub a5,a5,a4
+   2f0035da: bltu a5,a2,2f0035d4 <status_led_panic+0x154>
+   2f0035de: sw a7,24(a6)
+   2f0035e2: addi a1,a1,-1
+   2f0035e4: beq a1,t3,2f0035f6 <status_led_panic+0x176>
+   2f0035e8: bext a5,t1,a1
+   2f0035ec: mv a3,a0
+   2f0035ee: beqz a5,2f0035c0 <status_led_panic+0x140>
+   2f0035f0: mv a0,t4
+   2f0035f2: mv a2,t5
+   2f0035f4: j 2f0035c4 <status_led_panic+0x144>
+   2f0035f6: rdcycle a5
+   2f0035fa: sub a5,a5,a4
+   2f0035fc: bltu a5,a0,2f0035f6 <status_led_panic+0x176>
+   2f003600: rdcycle a4
+   2f003604: lw s0,8(sp)
+   2f003606: lw ra,12(sp)
+   2f003608: lui a5,0x2f036
+   2f00360c: sw a4,28(a5) # 2f03601c <s_panic_cycles>
+   2f003610: addi sp,sp,16
+   2f003612: j 2f003474 <audio_panic_quiet>
+   2f003614: li a5,40
+   2f003618: mv a1,a5
+   2f00361a: j 2f0034de <status_led_panic+0x5e>
+   2f00361c: ret
+-- status_led_halt, whole:
+   2f00361e <status_led_halt>:
+   2f00361e: addi sp,sp,-80
+   2f003620: lui a5,0x2f036
+   2f003624: sw s6,48(sp)
+   2f003626: lw s6,32(a5) # 2f036020 <s_cpu_us>
+   2f00362a: lui a5,0x2f036
+   2f00362e: sw s0,72(sp)
+   2f003630: lbu s0,57(a5) # 2f036039 <s_started>
+   2f003634: lui a5,0x2f036
+   2f003638: lw a4,28(a5) # 2f03601c <s_panic_cycles>
+   2f00363c: xori a0,s0,1
+   2f003640: li a1,0
+   2f003642: sw s1,68(sp)
+   2f003644: sw s2,64(sp)
+   2f003646: sw s3,60(sp)
+   2f003648: sw s4,56(sp)
+   2f00364a: sw s5,52(sp)
+   2f00364c: sw s7,44(sp)
+   2f00364e: sw s8,40(sp)
+   2f003650: sw s9,36(sp)
+   2f003652: sw s11,28(sp)
+   2f003654: sw a4,12(sp)
+   2f003656: sw ra,76(sp)
+   2f003658: sw s10,32(sp)
+   2f00365a: sh2add s6,s6,s6
+   2f00365e: sw a0,8(sp)
+   2f003660: jal 2f026b72 <status_panic_pattern>
+   2f003664: sh2add s6,s6,s6
+   2f003668: lw a4,12(sp)
+   2f00366a: sh2add s6,s6,s6
+   2f00366e: lui s9,0x2f036
+   2f003672: lui s3,0x20583
+   2f003676: slli s6,s6,0x3
+   2f003678: mv s0,a0
+   2f00367a: addi s9,s9,36 # 2f036024 <s_bb>
+   2f00367e: mv s3,s3
+   2f003682: li s11,0
+   2f003684: li s7,0
+   2f003686: li s5,0
+   2f003688: lui s1,0xff0
+   2f00368c: li s4,32
+   2f003690: li s8,-1
+   2f003692: li s2,999
+   2f003696: rdcycle s10
+   2f00369a: add s5,s5,s10
+   2f00369c: sub s5,s5,a4
+   2f0036a0: bltu s5,s6,2f0036ae <status_led_halt+0x90>
+   2f0036a4: sub s5,s5,s6
+   2f0036a8: addi s7,s7,1
+   2f0036aa: bgeu s5,s6,2f0036a4 <status_led_halt+0x86>
+   2f0036ae: lw a0,8(sp)
+   2f0036b0: mv a1,s7
+   2f0036b2: jal 2f026b72 <status_panic_pattern>
+   2f0036b6: bne s0,a0,2f0036c2 <status_led_halt+0xa4>
+   2f0036ba: sub a5,s7,s11
+   2f0036be: bgeu s2,a5,2f003744 <status_led_halt+0x126>
+   2f0036c2: srli a5,a0,0x10
+   2f0036c6: slli t1,a0,0x8
+   2f0036ca: slli a5,a5,0x8
+   2f0036cc: zext.h a5,a5
+   2f0036ce: and t1,t1,s1
+   2f0036d2: or t1,t1,a5
+   2f0036d6: zext.b a5,a0
+   2f0036da: or t1,t1,a5
+   2f0036de: rdcycle a4
+   2f0036e2: li a6,23
+   2f0036e4: sw s4,24(s3) # 20583018 <GPIO+0x18>
+   2f0036e8: bext a5,t1,a6
+   2f0036ec: lw a3,16(s9)
+   2f0036f0: lw t5,0(s9)
+   2f0036f4: lw t4,4(s9)
+   2f0036f8: lw t3,8(s9)
+   2f0036fc: lw a1,12(s9)
+   2f003700: bnez a5,2f003732 <status_led_halt+0x114>
+   2f003702: mv a7,t4
+   2f003704: mv a2,t5
+   2f003706: rdcycle a5
+   2f00370a: sub a5,a5,a4
+   2f00370c: bltu a5,a3,2f003706 <status_led_halt+0xe8>
+   2f003710: sw s4,20(s3)
+   2f003714: add a4,a4,a3
+   2f003716: rdcycle a5
+   2f00371a: sub a5,a5,a4
+   2f00371c: bltu a5,a2,2f003716 <status_led_halt+0xf8>
+   2f003720: sw s4,24(s3)
+   2f003724: addi a6,a6,-1
+   2f003726: beq a6,s8,2f003738 <status_led_halt+0x11a>
+   2f00372a: bext a5,t1,a6
+   2f00372e: mv a3,a7
+   2f003730: beqz a5,2f003702 <status_led_halt+0xe4>
+   2f003732: mv a7,a1
+   2f003734: mv a2,t3
+   2f003736: j 2f003706 <status_led_halt+0xe8>
+   2f003738: rdcycle a5
+   2f00373c: sub a5,a5,a4
+   2f00373e: bltu a5,a7,2f003738 <status_led_halt+0x11a>
+   2f003742: mv s11,s7
+   2f003744: mv s0,a0
+   2f003746: mv a4,s10
+   2f003748: j 2f003696 <status_led_halt+0x78>
+
+2. korvo1-standalone
+-- calls of esp_system_reset_modules_on_exit and its wrap, and the function each is in:
+   2f000e9e: jal 2f0309ac <esp_system_reset_modules_on_exit>   in <esp_restart_noos_inner>:
+   2f003464: jal 2f0309ac <esp_system_reset_modules_on_exit>   in <__wrap_esp_system_reset_modules_on_exit>:
+   40063dc8: jalr 1692(ra) # 2f003460 <__wrap_esp_system_reset_modules_on_exit>   in <esp_panic_handler>:
+-- where the panic path's code and data are (internal RAM is 0x2f000000 up; flash 0x40000000 up):
+   2e002010 b s_rec
+   2f0032a4 T __wrap_esp_panic_handler
+   2f003460 T __wrap_esp_system_reset_modules_on_exit
+   2f003474 W audio_panic_quiet
+   2f003476 T status_led_panicking
+   2f003480 T status_led_panic
+   2f00361e T status_led_halt
+   2f026b02 T status_error_pattern
+   2f026b72 T status_panic_pattern
+   2f026bb6 T status_record_put
+   2f026bf0 T status_bb_timing
+   2f036020 d s_cpu_us
+   2f036024 d s_bb
+   2f036038 d s_panicking
+   2f03643c d err_look
+   2f03649c d stage_rgb
+-- status_led_panic, from the frame's start to its end:
+   2f003588: rdcycle a4
+   2f00358c: lui a3,0x2f036
+   2f003590: addi a5,a3,36 # 2f036024 <s_bb>
+   2f003594: lui a3,0x20583
+   2f003598: mv a6,a3
+   2f00359c: li a7,32
+   2f0035a0: li a1,23
+   2f0035a2: lw a3,16(a5)
+   2f0035a4: lw t0,0(a5)
+   2f0035a8: lw t6,4(a5)
+   2f0035ac: lw t5,8(a5)
+   2f0035b0: lw t4,12(a5)
+   2f0035b4: sw a7,24(a6)
+   2f0035b8: bext a5,t1,a1
+   2f0035bc: li t3,-1
+   2f0035be: bnez a5,2f0035f0 <status_led_panic+0x170>
+   2f0035c0: mv a0,t6
+   2f0035c2: mv a2,t0
+   2f0035c4: rdcycle a5
+   2f0035c8: sub a5,a5,a4
+   2f0035ca: bltu a5,a3,2f0035c4 <status_led_panic+0x144>
+   2f0035ce: sw a7,20(a6)
+   2f0035d2: add a4,a4,a3
+   2f0035d4: rdcycle a5
+   2f0035d8: sub a5,a5,a4
+   2f0035da: bltu a5,a2,2f0035d4 <status_led_panic+0x154>
+   2f0035de: sw a7,24(a6)
+   2f0035e2: addi a1,a1,-1
+   2f0035e4: beq a1,t3,2f0035f6 <status_led_panic+0x176>
+   2f0035e8: bext a5,t1,a1
+   2f0035ec: mv a3,a0
+   2f0035ee: beqz a5,2f0035c0 <status_led_panic+0x140>
+   2f0035f0: mv a0,t4
+   2f0035f2: mv a2,t5
+   2f0035f4: j 2f0035c4 <status_led_panic+0x144>
+   2f0035f6: rdcycle a5
+   2f0035fa: sub a5,a5,a4
+   2f0035fc: bltu a5,a0,2f0035f6 <status_led_panic+0x176>
+   2f003600: rdcycle a4
+   2f003604: lw s0,8(sp)
+   2f003606: lw ra,12(sp)
+   2f003608: lui a5,0x2f036
+   2f00360c: sw a4,28(a5) # 2f03601c <s_panic_cycles>
+   2f003610: addi sp,sp,16
+   2f003612: j 2f003474 <audio_panic_quiet>
+   2f003614: li a5,40
+   2f003618: mv a1,a5
+   2f00361a: j 2f0034de <status_led_panic+0x5e>
+   2f00361c: ret
+-- status_led_halt, whole:
+   2f00361e <status_led_halt>:
+   2f00361e: addi sp,sp,-80
+   2f003620: lui a5,0x2f036
+   2f003624: sw s6,48(sp)
+   2f003626: lw s6,32(a5) # 2f036020 <s_cpu_us>
+   2f00362a: lui a5,0x2f036
+   2f00362e: sw s0,72(sp)
+   2f003630: lbu s0,57(a5) # 2f036039 <s_started>
+   2f003634: lui a5,0x2f036
+   2f003638: lw a4,28(a5) # 2f03601c <s_panic_cycles>
+   2f00363c: xori a0,s0,1
+   2f003640: li a1,0
+   2f003642: sw s1,68(sp)
+   2f003644: sw s2,64(sp)
+   2f003646: sw s3,60(sp)
+   2f003648: sw s4,56(sp)
+   2f00364a: sw s5,52(sp)
+   2f00364c: sw s7,44(sp)
+   2f00364e: sw s8,40(sp)
+   2f003650: sw s9,36(sp)
+   2f003652: sw s11,28(sp)
+   2f003654: sw a4,12(sp)
+   2f003656: sw ra,76(sp)
+   2f003658: sw s10,32(sp)
+   2f00365a: sh2add s6,s6,s6
+   2f00365e: sw a0,8(sp)
+   2f003660: jal 2f026b72 <status_panic_pattern>
+   2f003664: sh2add s6,s6,s6
+   2f003668: lw a4,12(sp)
+   2f00366a: sh2add s6,s6,s6
+   2f00366e: lui s9,0x2f036
+   2f003672: lui s3,0x20583
+   2f003676: slli s6,s6,0x3
+   2f003678: mv s0,a0
+   2f00367a: addi s9,s9,36 # 2f036024 <s_bb>
+   2f00367e: mv s3,s3
+   2f003682: li s11,0
+   2f003684: li s7,0
+   2f003686: li s5,0
+   2f003688: lui s1,0xff0
+   2f00368c: li s4,32
+   2f003690: li s8,-1
+   2f003692: li s2,999
+   2f003696: rdcycle s10
+   2f00369a: add s5,s5,s10
+   2f00369c: sub s5,s5,a4
+   2f0036a0: bltu s5,s6,2f0036ae <status_led_halt+0x90>
+   2f0036a4: sub s5,s5,s6
+   2f0036a8: addi s7,s7,1
+   2f0036aa: bgeu s5,s6,2f0036a4 <status_led_halt+0x86>
+   2f0036ae: lw a0,8(sp)
+   2f0036b0: mv a1,s7
+   2f0036b2: jal 2f026b72 <status_panic_pattern>
+   2f0036b6: bne s0,a0,2f0036c2 <status_led_halt+0xa4>
+   2f0036ba: sub a5,s7,s11
+   2f0036be: bgeu s2,a5,2f003744 <status_led_halt+0x126>
+   2f0036c2: srli a5,a0,0x10
+   2f0036c6: slli t1,a0,0x8
+   2f0036ca: slli a5,a5,0x8
+   2f0036cc: zext.h a5,a5
+   2f0036ce: and t1,t1,s1
+   2f0036d2: or t1,t1,a5
+   2f0036d6: zext.b a5,a0
+   2f0036da: or t1,t1,a5
+   2f0036de: rdcycle a4
+   2f0036e2: li a6,23
+   2f0036e4: sw s4,24(s3) # 20583018 <GPIO+0x18>
+   2f0036e8: bext a5,t1,a6
+   2f0036ec: lw a3,16(s9)
+   2f0036f0: lw t5,0(s9)
+   2f0036f4: lw t4,4(s9)
+   2f0036f8: lw t3,8(s9)
+   2f0036fc: lw a1,12(s9)
+   2f003700: bnez a5,2f003732 <status_led_halt+0x114>
+   2f003702: mv a7,t4
+   2f003704: mv a2,t5
+   2f003706: rdcycle a5
+   2f00370a: sub a5,a5,a4
+   2f00370c: bltu a5,a3,2f003706 <status_led_halt+0xe8>
+   2f003710: sw s4,20(s3)
+   2f003714: add a4,a4,a3
+   2f003716: rdcycle a5
+   2f00371a: sub a5,a5,a4
+   2f00371c: bltu a5,a2,2f003716 <status_led_halt+0xf8>
+   2f003720: sw s4,24(s3)
+   2f003724: addi a6,a6,-1
+   2f003726: beq a6,s8,2f003738 <status_led_halt+0x11a>
+   2f00372a: bext a5,t1,a6
+   2f00372e: mv a3,a7
+   2f003730: beqz a5,2f003702 <status_led_halt+0xe4>
+   2f003732: mv a7,a1
+   2f003734: mv a2,t3
+   2f003736: j 2f003706 <status_led_halt+0xe8>
+   2f003738: rdcycle a5
+   2f00373c: sub a5,a5,a4
+   2f00373e: bltu a5,a7,2f003738 <status_led_halt+0x11a>
+   2f003742: mv s11,s7
+   2f003744: mv s0,a0
+   2f003746: mv a4,s10
+   2f003748: j 2f003696 <status_led_halt+0x78>
+
+2. dosboard
+-- calls of esp_system_reset_modules_on_exit and its wrap, and the function each is in:
+   2f000e9e: jal 2f0316b8 <esp_system_reset_modules_on_exit>   in <esp_restart_noos_inner>:
+   2f0034b2: jal 2f0316b8 <esp_system_reset_modules_on_exit>   in <__wrap_esp_system_reset_modules_on_exit>:
+   400631fa: jalr 696(ra) # 2f0034ae <__wrap_esp_system_reset_modules_on_exit>   in <esp_panic_handler>:
+-- where the panic path's code and data are (internal RAM is 0x2f000000 up; flash 0x40000000 up):
+   2e002010 b s_rec
+   2f0032ae T audio_panic_quiet
+   2f0032f2 T __wrap_esp_panic_handler
+   2f0034ae T __wrap_esp_system_reset_modules_on_exit
+   2f0034c2 T status_led_panicking
+   2f0034cc T status_led_panic
+   2f00366a T status_led_halt
+   2f026b4e T status_error_pattern
+   2f026bbe T status_panic_pattern
+   2f026c02 T status_record_put
+   2f026c3c T status_bb_timing
+   2f036ca8 d s_cpu_us
+   2f036cac d s_bb
+   2f036cc0 d s_panicking
+   2f0370c4 d err_look
+   2f037124 d stage_rgb
+-- status_led_panic, from the frame's start to its end:
+   2f0035d4: rdcycle a4
+   2f0035d8: lui a3,0x2f037
+   2f0035dc: addi a5,a3,-852 # 2f036cac <s_bb>
+   2f0035e0: lui a3,0x20583
+   2f0035e4: mv a6,a3
+   2f0035e8: li a7,32
+   2f0035ec: li a1,23
+   2f0035ee: lw a3,16(a5)
+   2f0035f0: lw t0,0(a5)
+   2f0035f4: lw t6,4(a5)
+   2f0035f8: lw t5,8(a5)
+   2f0035fc: lw t4,12(a5)
+   2f003600: sw a7,24(a6)
+   2f003604: bext a5,t1,a1
+   2f003608: li t3,-1
+   2f00360a: bnez a5,2f00363c <status_led_panic+0x170>
+   2f00360c: mv a0,t6
+   2f00360e: mv a2,t0
+   2f003610: rdcycle a5
+   2f003614: sub a5,a5,a4
+   2f003616: bltu a5,a3,2f003610 <status_led_panic+0x144>
+   2f00361a: sw a7,20(a6)
+   2f00361e: add a4,a4,a3
+   2f003620: rdcycle a5
+   2f003624: sub a5,a5,a4
+   2f003626: bltu a5,a2,2f003620 <status_led_panic+0x154>
+   2f00362a: sw a7,24(a6)
+   2f00362e: addi a1,a1,-1
+   2f003630: beq a1,t3,2f003642 <status_led_panic+0x176>
+   2f003634: bext a5,t1,a1
+   2f003638: mv a3,a0
+   2f00363a: beqz a5,2f00360c <status_led_panic+0x140>
+   2f00363c: mv a0,t4
+   2f00363e: mv a2,t5
+   2f003640: j 2f003610 <status_led_panic+0x144>
+   2f003642: rdcycle a5
+   2f003646: sub a5,a5,a4
+   2f003648: bltu a5,a0,2f003642 <status_led_panic+0x176>
+   2f00364c: rdcycle a4
+   2f003650: lw s0,8(sp)
+   2f003652: lw ra,12(sp)
+   2f003654: lui a5,0x2f037
+   2f003658: sw a4,-860(a5) # 2f036ca4 <s_panic_cycles>
+   2f00365c: addi sp,sp,16
+   2f00365e: j 2f0032ae <audio_panic_quiet>
+   2f003660: li a5,40
+   2f003664: mv a1,a5
+   2f003666: j 2f00352a <status_led_panic+0x5e>
+   2f003668: ret
+-- status_led_halt, whole:
+   2f00366a <status_led_halt>:
+   2f00366a: addi sp,sp,-80
+   2f00366c: lui a5,0x2f037
+   2f003670: sw s6,48(sp)
+   2f003672: lw s6,-856(a5) # 2f036ca8 <s_cpu_us>
+   2f003676: lui a5,0x2f037
+   2f00367a: sw s0,72(sp)
+   2f00367c: lbu s0,-831(a5) # 2f036cc1 <s_started>
+   2f003680: lui a5,0x2f037
+   2f003684: lw a4,-860(a5) # 2f036ca4 <s_panic_cycles>
+   2f003688: xori a0,s0,1
+   2f00368c: li a1,0
+   2f00368e: sw s1,68(sp)
+   2f003690: sw s2,64(sp)
+   2f003692: sw s3,60(sp)
+   2f003694: sw s4,56(sp)
+   2f003696: sw s5,52(sp)
+   2f003698: sw s7,44(sp)
+   2f00369a: sw s8,40(sp)
+   2f00369c: sw s9,36(sp)
+   2f00369e: sw s11,28(sp)
+   2f0036a0: sw a4,12(sp)
+   2f0036a2: sw ra,76(sp)
+   2f0036a4: sw s10,32(sp)
+   2f0036a6: sh2add s6,s6,s6
+   2f0036aa: sw a0,8(sp)
+   2f0036ac: jal 2f026bbe <status_panic_pattern>
+   2f0036b0: sh2add s6,s6,s6
+   2f0036b4: lw a4,12(sp)
+   2f0036b6: sh2add s6,s6,s6
+   2f0036ba: lui s9,0x2f037
+   2f0036be: lui s3,0x20583
+   2f0036c2: slli s6,s6,0x3
+   2f0036c4: mv s0,a0
+   2f0036c6: addi s9,s9,-852 # 2f036cac <s_bb>
+   2f0036ca: mv s3,s3
+   2f0036ce: li s11,0
+   2f0036d0: li s7,0
+   2f0036d2: li s5,0
+   2f0036d4: lui s1,0xff0
+   2f0036d8: li s4,32
+   2f0036dc: li s8,-1
+   2f0036de: li s2,999
+   2f0036e2: rdcycle s10
+   2f0036e6: add s5,s5,s10
+   2f0036e8: sub s5,s5,a4
+   2f0036ec: bltu s5,s6,2f0036fa <status_led_halt+0x90>
+   2f0036f0: sub s5,s5,s6
+   2f0036f4: addi s7,s7,1
+   2f0036f6: bgeu s5,s6,2f0036f0 <status_led_halt+0x86>
+   2f0036fa: lw a0,8(sp)
+   2f0036fc: mv a1,s7
+   2f0036fe: jal 2f026bbe <status_panic_pattern>
+   2f003702: bne s0,a0,2f00370e <status_led_halt+0xa4>
+   2f003706: sub a5,s7,s11
+   2f00370a: bgeu s2,a5,2f003790 <status_led_halt+0x126>
+   2f00370e: srli a5,a0,0x10
+   2f003712: slli t1,a0,0x8
+   2f003716: slli a5,a5,0x8
+   2f003718: zext.h a5,a5
+   2f00371a: and t1,t1,s1
+   2f00371e: or t1,t1,a5
+   2f003722: zext.b a5,a0
+   2f003726: or t1,t1,a5
+   2f00372a: rdcycle a4
+   2f00372e: li a6,23
+   2f003730: sw s4,24(s3) # 20583018 <GPIO+0x18>
+   2f003734: bext a5,t1,a6
+   2f003738: lw a3,16(s9)
+   2f00373c: lw t5,0(s9)
+   2f003740: lw t4,4(s9)
+   2f003744: lw t3,8(s9)
+   2f003748: lw a1,12(s9)
+   2f00374c: bnez a5,2f00377e <status_led_halt+0x114>
+   2f00374e: mv a7,t4
+   2f003750: mv a2,t5
+   2f003752: rdcycle a5
+   2f003756: sub a5,a5,a4
+   2f003758: bltu a5,a3,2f003752 <status_led_halt+0xe8>
+   2f00375c: sw s4,20(s3)
+   2f003760: add a4,a4,a3
+   2f003762: rdcycle a5
+   2f003766: sub a5,a5,a4
+   2f003768: bltu a5,a2,2f003762 <status_led_halt+0xf8>
+   2f00376c: sw s4,24(s3)
+   2f003770: addi a6,a6,-1
+   2f003772: beq a6,s8,2f003784 <status_led_halt+0x11a>
+   2f003776: bext a5,t1,a6
+   2f00377a: mv a3,a7
+   2f00377c: beqz a5,2f00374e <status_led_halt+0xe4>
+   2f00377e: mv a7,a1
+   2f003780: mv a2,t3
+   2f003782: j 2f003752 <status_led_halt+0xe8>
+   2f003784: rdcycle a5
+   2f003788: sub a5,a5,a4
+   2f00378a: bltu a5,a7,2f003784 <status_led_halt+0x11a>
+   2f00378e: mv s11,s7
+   2f003790: mv s0,a0
+   2f003792: mv a4,s10
+   2f003794: j 2f0036e2 <status_led_halt+0x78>

@@ -1,0 +1,72 @@
+esp_main.c's set_led_brightness() (the [esp] led_brightness line) at the v3.7 tag, cut from the
+file (28 lines, from its first line to its closing brace) and built on the PC
+(host gcc 12, -Wall -Wextra) with stand-ins for the console and the LED
+(checks\ini-led-brightness-harness-v3.7.c), 2026-10-22.  The value is what ini.c hands on: the
+text after =, spaces and a ; comment taken off.  Also: the key in known_keys, and the call in
+parse_esp_ini().
+
+  esp_main.c line 513:	"esp:lcd_invalidate", "esp:led_brightness",
+  esp_main.c line 594:	} else if (NAME("led_brightness")) {
+  esp_main.c line 595-		set_led_brightness(value);
+
+== with the status LED (the Korvo-1 and the DOS board: STATUS_LED_GPIO defined)
+  led_brightness = "9":
+    the LED given 9, 0 yellow lines: as expected
+  led_brightness = "20":
+    the LED given 20, 0 yellow lines: as expected
+  led_brightness = "0":
+      info:   Status LED: dark (led_brightness = 0), a crash included.
+    the LED given 0, 0 yellow lines: as expected
+  led_brightness = "1":
+    the LED given 1, 0 yellow lines: as expected
+  led_brightness = "70":
+    the LED given 70, 0 yellow lines: as expected
+  led_brightness = "255":
+    the LED given 255, 0 yellow lines: as expected
+  led_brightness = "+20":
+    the LED given 20, 0 yellow lines: as expected
+  led_brightness = "020":
+    the LED given 20, 0 yellow lines: as expected
+  led_brightness = "256":
+      yellow: tiny386.ini: led_brightness = 256 is outside 0 to 255; 255 is used.
+    the LED given 255, 1 yellow line: as expected
+  led_brightness = "1000":
+      yellow: tiny386.ini: led_brightness = 1000 is outside 0 to 255; 255 is used.
+    the LED given 255, 1 yellow line: as expected
+  led_brightness = "99999999999999999999":
+      yellow: tiny386.ini: led_brightness = 99999999999999999999 is outside 0 to 255; 255 is used.
+    the LED given 255, 1 yellow line: as expected
+  led_brightness = "-1":
+      yellow: tiny386.ini: led_brightness = -1 is outside 0 to 255; 0 is used.
+      info:   Status LED: dark (led_brightness = 0), a crash included.
+    the LED given 0, 1 yellow line: as expected
+  led_brightness = "-99999999999999999999":
+      yellow: tiny386.ini: led_brightness = -99999999999999999999 is outside 0 to 255; 0 is used.
+      info:   Status LED: dark (led_brightness = 0), a crash included.
+    the LED given 0, 1 yellow line: as expected
+  led_brightness = "abc":
+      yellow: tiny386.ini: led_brightness = abc is not a number from 0 to 255; it was ignored.
+    the LED given -1 (not called), 1 yellow line: as expected
+  led_brightness = "":
+      yellow: tiny386.ini: led_brightness =  is not a number from 0 to 255; it was ignored.
+    the LED given -1 (not called), 1 yellow line: as expected
+  led_brightness = "20abc":
+      yellow: tiny386.ini: led_brightness = 20abc is not a number from 0 to 255; it was ignored.
+    the LED given -1 (not called), 1 yellow line: as expected
+  led_brightness = "0x10":
+      yellow: tiny386.ini: led_brightness = 0x10 is not a number from 0 to 255; it was ignored.
+    the LED given -1 (not called), 1 yellow line: as expected
+  led_brightness = "12.5":
+      yellow: tiny386.ini: led_brightness = 12.5 is not a number from 0 to 255; it was ignored.
+    the LED given -1 (not called), 1 yellow line: as expected
+  led_brightness = "20 ":
+    the LED given 20, 0 yellow lines: as expected
+19 cases, 0 not as expected
+exit 0
+
+== a board without the status LED (STATUS_LED_GPIO not defined): the key accepted, said to be ignored
+  led_brightness = "20 ":
+      info:   tiny386.ini: led_brightness is ignored: this board has no status LED.
+    0 yellow, 1 info: as expected
+19 cases, 0 not as expected
+exit 0

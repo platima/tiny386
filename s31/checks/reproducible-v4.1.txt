@@ -1,0 +1,91 @@
+Two runs of build.sh from nothing (WSL ~/v4-work/v41/rel), 2026-10-23, each with the staged
+build.sh (tiny386 4ce2e06, upstream's master of 2026-10-22) and the patch git diff
+upstream-20261022 v4.1 (tag v4.1 at f61337e): rel1 and rel2-second-run,
+each in a folder of its own with its own clone.
+
+The 23 files of the four image sets, each against rel1:
+  dosboard/bootloader.bin: same
+  dosboard/flash_args: same
+  dosboard/partition-table.bin: same
+  dosboard/SHA256SUMS: same
+  dosboard/tiny386.bin: same
+  dosboard/tiny386.elf: same
+  korvo1-dualboot/bootloader.bin: same
+  korvo1-dualboot/flash_args: same
+  korvo1-dualboot/partition-table.bin: same
+  korvo1-dualboot/SHA256SUMS: same
+  korvo1-dualboot/tiny386.bin: same
+  korvo1-dualboot-tiny386-default/bootloader.bin: same
+  korvo1-dualboot-tiny386-default/flash_args: same
+  korvo1-dualboot-tiny386-default/partition-table.bin: same
+  korvo1-dualboot-tiny386-default/SHA256SUMS: same
+  korvo1-dualboot-tiny386-default/tiny386.bin: same
+  korvo1-dualboot/tiny386.elf: same
+  korvo1-standalone/bootloader.bin: same
+  korvo1-standalone/flash_args: same
+  korvo1-standalone/partition-table.bin: same
+  korvo1-standalone/SHA256SUMS: same
+  korvo1-standalone/tiny386.bin: same
+  korvo1-standalone/tiny386.elf: same
+  ELF files that hold their own work folder's name: 0 (of 6)
+
+korvo1-dualboot-tiny386-default against korvo1-dualboot (rel1): the same bootloader, app and
+flash_args, and the tiny386-default table:
+  bootloader.bin: the same
+  tiny386.bin: the same
+  flash_args: the same
+  partition-table.bin: 5b90d4166afc39d72a1d6c7b16f3a2e4a5cc0193a3e0eb50990a4dbb9da58226, dualboot\partition-table-tiny386-default.bin byte for byte
+
+The patches applied to fresh clones (git apply, index and files) give the v4.1 tag's tree:
+  v4.1 tag tree                                           ef7457ecd3a05bc9ab794a26d169fdbfd2f07948
+  rel1, tiny386-idf-v4.patch on 4ce2e06 (build.sh)        ef7457ecd3a05bc9ab794a26d169fdbfd2f07948
+  rel2, the same                                          ef7457ecd3a05bc9ab794a26d169fdbfd2f07948
+  tiny386-idf-v3.patch on 9ed786b                         ef7457ecd3a05bc9ab794a26d169fdbfd2f07948
+  tiny386-idf-v4.patch: 1092010 bytes, sha256 f572ee48229969f0,  143 files changed, 27606 insertions(+), 724 deletions(-)
+    (byte for byte git diff upstream-20261022 v4.1 in the scratch tree)
+  tiny386-idf-v3.patch: 1120017 bytes, sha256 7093789d9561da78,  150 files changed, 28236 insertions(+), 739 deletions(-)
+    (byte for byte git diff pristine v4.1 in the scratch tree)
+  the file modes of the files v4.1 changed since v4.0, in the tree applied from the patch (rel1):       8 644 
+
+Against v4.0 (images\, the v4.0 sets still there when this ran): the bootloaders, partition
+tables and flash_args are the same files, byte for byte (cmp), with their SHA-256:
+  korvo1-dualboot/bootloader.bin  b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  same
+  korvo1-dualboot/partition-table.bin  d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346  same
+  korvo1-dualboot/flash_args  6fc0ab4111fd630343b9fce8d41df17e6af26eeda1cfc2993742b8c2fde56518  same
+  korvo1-dualboot/tiny386.bin  v4.0 902224 bytes, v4.1 902384 bytes
+  korvo1-dualboot-tiny386-default/bootloader.bin  b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  same
+  korvo1-dualboot-tiny386-default/partition-table.bin  5b90d4166afc39d72a1d6c7b16f3a2e4a5cc0193a3e0eb50990a4dbb9da58226  same
+  korvo1-dualboot-tiny386-default/flash_args  6fc0ab4111fd630343b9fce8d41df17e6af26eeda1cfc2993742b8c2fde56518  same
+  korvo1-dualboot-tiny386-default/tiny386.bin  v4.0 902224 bytes, v4.1 902384 bytes
+  korvo1-standalone/bootloader.bin  ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  same
+  korvo1-standalone/partition-table.bin  afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  same
+  korvo1-standalone/flash_args  48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  same
+  korvo1-standalone/tiny386.bin  v4.0 902224 bytes, v4.1 902384 bytes
+  dosboard/bootloader.bin  ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  same
+  dosboard/partition-table.bin  afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  same
+  dosboard/flash_args  48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  same
+  dosboard/tiny386.bin  v4.0 933904 bytes, v4.1 934080 bytes
+
+The apps against v4.0's: the ELF sections whose contents differ (objcopy of each PROGBITS
+section), and the number of symbol names that differ (nm):
+  korvo1-dualboot/tiny386.bin: v4.0 902224, v4.1 902384 bytes
+    section .iram0.text differs: 217098 and 217166 bytes
+    section .dram0.data differs: 14046 and 14046 bytes
+    section .flash.text differs: 437216 and 437316 bytes
+    section .flash.appdesc differs: 256 and 256 bytes
+    section .flash.rodata differs: 233416 and 233416 bytes
+    symbol names: the same set
+  korvo1-standalone/tiny386.bin: v4.0 902224, v4.1 902384 bytes
+    section .iram0.text differs: 217098 and 217166 bytes
+    section .dram0.data differs: 14046 and 14046 bytes
+    section .flash.text differs: 437216 and 437316 bytes
+    section .flash.appdesc differs: 256 and 256 bytes
+    section .flash.rodata differs: 233416 and 233416 bytes
+    symbol names: the same set
+  dosboard/tiny386.bin: v4.0 933904, v4.1 934080 bytes
+    section .iram0.text differs: 220336 and 220404 bytes
+    section .dram0.data differs: 14230 and 14230 bytes
+    section .flash.text differs: 434132 and 434232 bytes
+    section .flash.appdesc differs: 256 and 256 bytes
+    section .flash.rodata differs: 264756 and 264756 bytes
+    symbol names: the same set

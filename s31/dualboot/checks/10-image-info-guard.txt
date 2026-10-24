@@ -1,0 +1,29 @@
+=================== good.bin
+exit code 0
+17:Chip ID: 32 (ESP32-S31)
+33:Checksum: 0xe6 (valid)
+34:Validation hash: 673e9c09f9fd7de56a9c628d82d3e6cd9498360308dc02645c03b1151dd76189 (valid)
+findstr-style "(invalid)" present: no
+=================== flipped.bin
+exit code 0
+17:Chip ID: 32 (ESP32-S31)
+33:Checksum: 0xe6 (invalid - calculated 0x19)
+34:Validation hash: 1f47e8485e4f28de507c993f8f4220b5ed98e9db06866df3ea8a8a5fddc444e5 (invalid)
+findstr-style "(invalid)" present: yes
+=================== truncated.bin
+exit code 2
+4:ERROR: A fatal error occurred: End of file reading segment 0x40000020, length 936120 (actual length 413336)
+findstr-style "(invalid)" present: no
+=================== table.bin
+exit code 2
+3:ERROR: A fatal error occurred: This is not a valid image (invalid magic number: 0xaa).
+findstr-style "(invalid)" present: no
+=================== empty.bin
+exit code 2
+3:ERROR: A fatal error occurred: Image is empty.
+findstr-style "(invalid)" present: no
+=================== missing.bin
+exit code 2
+6:╭─ Error ──────────────────────────────────────────────────────────────────────╮
+7:│ Invalid value for 'FILENAME': [Errno 2] No such file or directory:           │
+findstr-style "(invalid)" present: no

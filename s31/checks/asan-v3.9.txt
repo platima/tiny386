@@ -1,0 +1,38 @@
+Tests 2 (console), 15 (status LED), 20 (faults in delivery, with the note's order) and the
+floppy test, and the logging benchmark, under AddressSanitizer and UBSan (-fsanitize=address,
+undefined, recovery off), address-space randomisation off (setarch -R: gcc 12's ASan loops at
+start on this WSL kernel otherwise), 2026-10-22, the scratch tree at tag v3.9.  Leaks reported
+apart (detect_leaks=0 for the pass); they are the tests' own, as in v3.8's run.
+
+== console
+exit 0, 0 reports; test_console: all checks passed
+with leak detection: SUMMARY: AddressSanitizer: 14200 byte(s) leaked in 3 allocation(s).
+== status
+exit 0, 0 reports; status LED: 48908 checks, 0 failed
+== floppy
+exit 0, 0 reports; test_floppy: 23 checks, 0 failed
+== cpu (test 20), as the Korvo-1 builds i386.c and as the Linux route does
+korvo1: exit 1, 8 reports; test_double_fault: 44 checks, 36 failed; note checks: 0 ok
+plain: exit 1, 8 reports; test_double_fault: 44 checks, 36 failed; note checks: 0 ok
+== the logging benchmark
+exit 0, 0 reports
+
+== cpu (test 20) again with UBSan recovering, as fix 1 ran it (BUILD-NOTES 19.6): with recovery
+   off, tiny386's own CR0_PG (1<<31) shift at i386.c line 754 (v3.8 has it the same) stops each
+   child at its first report, so 36 of 44 checks failed above.  The reports, by line:
+korvo1: exit 0; test_double_fault: 44 checks, 0 failed; note checks ok: 2; AddressSanitizer errors: 0
+         8 i386.c:694:17: runtime error: left shift of 1 by 31 places cannot be represented in type 'int'
+         8 i386.c:754:17: runtime error: left shift of 1 by 31 places cannot be represented in type 'int'
+         8 i386ins.def:216:1: runtime error: left shift of 1 by 31 places cannot be represented in type 'int'
+plain: exit 0; test_double_fault: 44 checks, 0 failed; note checks ok: 2; AddressSanitizer errors: 0
+         8 i386.c:694:17: runtime error: left shift of 1 by 31 places cannot be represented in type 'int'
+         8 i386.c:754:17: runtime error: left shift of 1 by 31 places cannot be represented in type 'int'
+         8 i386ins.def:216:1: runtime error: left shift of 1 by 31 places cannot be represented in type 'int'
+   v3.8's i386.c, the same test and flags: test_double_fault: 44 checks, 2 failed (its two failures the note's
+   order, as run_cpu.sh expects); its reports, by source text rather than line number:
+     v38/cpu.log: 8 x i386.c: if (cpu->cr0 & CR0_PG) {
+     v38/cpu.log: 8 x i386.c: if (cpu->cr0 & CR0_PG) {
+     v38/cpu.log: 8 x i386ins.def: (i386ins.def line 216)
+     asan/cpur-korvo1.log: 8 x i386.c: if (cpu->cr0 & CR0_PG) {
+     asan/cpur-korvo1.log: 8 x i386.c: if (cpu->cr0 & CR0_PG) {
+     asan/cpur-korvo1.log: 8 x i386ins.def: (i386ins.def line 216)

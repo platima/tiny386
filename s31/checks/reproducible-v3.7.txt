@@ -1,0 +1,94 @@
+Two runs of build.sh from nothing (WSL ~/tiny386-idf-scratch/v37-work), 2026-10-22, each with the
+staged build.sh and the patch git diff pristine v3.7 (tag v3.7 at 012158e):
+rel1 and rel2-second-run, each in a folder of its own with its own clone.
+
+The 18 files of the three image sets, each against rel1:
+  dosboard/flash_args: same
+  korvo1-dualboot/flash_args: same
+  korvo1-standalone/flash_args: same
+  dosboard/bootloader.bin: same
+  korvo1-dualboot/bootloader.bin: same
+  korvo1-standalone/bootloader.bin: same
+  dosboard/partition-table.bin: same
+  korvo1-dualboot/partition-table.bin: same
+  korvo1-standalone/partition-table.bin: same
+  dosboard/tiny386.bin: same
+  korvo1-dualboot/tiny386.bin: same
+  korvo1-standalone/tiny386.bin: same
+  dosboard/tiny386.elf: same
+  korvo1-dualboot/tiny386.elf: same
+  korvo1-standalone/tiny386.elf: same
+  dosboard/SHA256SUMS: same
+  korvo1-dualboot/SHA256SUMS: same
+  korvo1-standalone/SHA256SUMS: same
+  ELF files that hold their own work folder's name: 0 (of 6)
+
+The patch applied to a fresh clone (git apply, index and files) gives the v3.7 tag's tree:
+  rel1  index tree 16ac9ffe0e5878b0800548510e5c4ef44dc1df8f   v3.7 tag tree 16ac9ffe0e5878b0800548510e5c4ef44dc1df8f
+  rel2  index tree 16ac9ffe0e5878b0800548510e5c4ef44dc1df8f
+  the patch: 891666 bytes, sha256 98864e98be117e75
+  (byte for byte git diff pristine v3.7 in the scratch tree)
+  the file modes of the files v3.7 changed, in the tree applied from the patch (rel1): 644 esp/main/status_code.c 644 esp/main/status_code.h 644 esp/main/status_led.c 644 esp/main/status_led.h 644 esp/main/esp_main.c 644 tests/host/test_status.c 644 tests/host/run.sh 644 esp/version.txt 
+
+Against v3.6 (previous-v3.6\images): the bootloaders, partition tables and flash_args are the same
+files, byte for byte (cmp), with their SHA-256:
+  korvo1-dualboot/bootloader.bin  b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  same
+  korvo1-dualboot/partition-table.bin  d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346  same
+  korvo1-dualboot/flash_args  6fc0ab4111fd630343b9fce8d41df17e6af26eeda1cfc2993742b8c2fde56518  same
+  korvo1-dualboot/tiny386.bin  v3.6 885616 bytes, v3.7 886144 bytes
+  korvo1-standalone/bootloader.bin  ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  same
+  korvo1-standalone/partition-table.bin  afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  same
+  korvo1-standalone/flash_args  48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  same
+  korvo1-standalone/tiny386.bin  v3.6 885616 bytes, v3.7 886144 bytes
+  dosboard/bootloader.bin  ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  same
+  dosboard/partition-table.bin  afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  same
+  dosboard/flash_args  48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  same
+  dosboard/tiny386.bin  v3.6 917296 bytes, v3.7 917808 bytes
+  the dual-boot pair against the pinned SHA-256 in build.sh and flash-dualboot.bat:
+    build.sh: DB_BL_SHA=b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f
+    build.sh: DB_PT_SHA=d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346
+    flash-dualboot.bat: set "BL_SHA=b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f"
+    flash-dualboot.bat: set "PT_SHA=d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346"
+
+The apps against v3.6's: the ELF sections whose contents differ (objcopy of each PROGBITS
+section), and the symbols (nm) that differ:
+  korvo1-dualboot/tiny386.bin: v3.6 885616, v3.7 886144 bytes
+    section .iram0.text differs: 216152 and 216186 bytes
+    section .dram0.data differs: 13998 and 13998 bytes
+    section .flash.text differs: 425204 and 425428 bytes
+    section .flash.appdesc differs: 256 and 256 bytes
+    section .flash.rodata differs: 229824 and 230080 bytes
+    symbol names that differ (< v3.6 only, > v3.7 only):
+      > s_level
+      > s_sent_level
+      > status_brightness
+      > status_brightness_set
+      > status_frame_grb
+      > status_led_brightness
+  korvo1-standalone/tiny386.bin: v3.6 885616, v3.7 886144 bytes
+    section .iram0.text differs: 216152 and 216186 bytes
+    section .dram0.data differs: 13998 and 13998 bytes
+    section .flash.text differs: 425204 and 425428 bytes
+    section .flash.appdesc differs: 256 and 256 bytes
+    section .flash.rodata differs: 229824 and 230080 bytes
+    symbol names that differ (< v3.6 only, > v3.7 only):
+      > s_level
+      > s_sent_level
+      > status_brightness
+      > status_brightness_set
+      > status_frame_grb
+      > status_led_brightness
+  dosboard/tiny386.bin: v3.6 917296, v3.7 917808 bytes
+    section .iram0.text differs: 219394 and 219428 bytes
+    section .dram0.data differs: 14174 and 14182 bytes
+    section .flash.text differs: 422100 and 422324 bytes
+    section .flash.appdesc differs: 256 and 256 bytes
+    section .flash.rodata differs: 261164 and 261420 bytes
+    section .flash.tdata differs: 24 and 24 bytes
+    symbol names that differ (< v3.6 only, > v3.7 only):
+      > s_level
+      > s_sent_level
+      > status_brightness
+      > status_brightness_set
+      > status_frame_grb
+      > status_led_brightness

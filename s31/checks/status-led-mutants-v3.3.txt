@@ -1,0 +1,14 @@
+tests/host/test_status.c against faulty copies of status_code.c, status_code.h and status_bb.h
+(mutate.sh; nothing in the tree changed).  Each line: caught (test_status failed) or MISSED.
+caught  schedule-drift: 60 checks failed
+caught  t1h-800ns: 1206 checks failed
+caught  t0h-400ns: 1092 checks failed
+caught  reset-50us: 74 checks failed
+caught  rgb-not-grb: 1 checks failed
+caught  lsb-first: 3 checks failed
+caught  no-ini-3-blinks: 2 checks failed
+caught  fatal-replaced: 5 checks failed
+caught  stall-5s: 1 checks failed
+caught  record-check-weak: 22 checks failed
+caught  replay-no-lead: 305 checks failed
+caught  bb-cycles-low: 50 checks failed

@@ -1,0 +1,98 @@
+{
+ "dualboot-run1": [
+  [
+   14811136,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/images/korvo1-dualboot/tiny386.bin"
+  ]
+ ],
+ "dualboot-run2": [
+  [
+   8192,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/images/korvo1-dualboot/bootloader.bin"
+  ],
+  [
+   32768,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/images/korvo1-dualboot/partition-table.bin"
+  ]
+ ],
+ "standalone": [
+  [
+   8192,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/images/korvo1-standalone/bootloader.bin"
+  ],
+  [
+   32768,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/images/korvo1-standalone/partition-table.bin"
+  ],
+  [
+   65536,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/images/korvo1-standalone/tiny386.bin"
+  ]
+ ],
+ "linux-release-small": [
+  [
+   8192,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/dualboot/linux-v2026.09.20/bootloader/bootloader/bootloader.bin"
+  ],
+  [
+   32768,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/dualboot/linux-v2026.09.20/bootloader/partition_table/partition-table.bin"
+  ]
+ ],
+ "linux-release-full": [
+  [
+   8192,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/dualboot/linux-v2026.09.20/bootloader/bootloader/bootloader.bin"
+  ],
+  [
+   32768,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/dualboot/linux-v2026.09.20/bootloader/partition_table/partition-table.bin"
+  ],
+  [
+   36864,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/dualboot/blank-0x9000-0x1ffff.bin"
+  ],
+  [
+   131072,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/dualboot/linux-v2026.09.20/bootloader/s31-linux-loader.bin"
+  ],
+  [
+   2228224,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/dualboot/linux-v2026.09.20/opensbi.bin"
+  ],
+  [
+   2752512,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/dualboot/linux-v2026.09.20/Image"
+  ],
+  [
+   10616820,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/dualboot/linux-v2026.09.20/linux.size"
+  ],
+  [
+   10616832,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/dualboot/linux-v2026.09.20/initramfs.cpio"
+  ]
+ ],
+ "linux-be5b725-small": [
+  [
+   8192,
+   "/mnt/d/Repos/esp32-s31-linux-release/main-be5b725/esp32s31-linux-main-be5b725-flash/bootloader.bin"
+  ],
+  [
+   32768,
+   "/mnt/d/Repos/esp32-s31-linux-release/main-be5b725/esp32s31-linux-main-be5b725-flash/partition-table.bin"
+  ]
+ ],
+ "linux-be5b725-full": [
+  [
+   0,
+   "/mnt/d/Repos/esp32-s31-linux-release/main-be5b725/esp32s31-linux-main-be5b725-flash/flash.bin"
+  ]
+ ],
+ "dualboot-app": [
+  [
+   14811136,
+   "/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/images/korvo1-dualboot/tiny386.bin"
+  ]
+ ]
+}

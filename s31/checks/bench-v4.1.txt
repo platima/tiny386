@@ -1,0 +1,23 @@
+BENCH.COM under FreeDOS 4M, gen 4, no FPU, in the PC harness (-marks), the merge step's image
+(~/v4-work/merge/pc/img-bench/freedos-bench.img), v4.1 (w41) and v4.0 (v40), card/tiny386's
+vgabios.bin.  2026-10-23.
+
+== the marks' instruction counts, v4.1 | v4.0
+mark 00 at insns=514	mark 00 at insns=514
+mark a1 at insns=11801744	mark a1 at insns=11801744
+mark a2 at insns=13898896	mark a2 at insns=13898896
+mark a3 at insns=15668880	mark a3 at insns=15668880
+mark a4 at insns=18224784	mark a4 at insns=18224784
+mark a5 at insns=18246805	mark a5 at insns=18246805
+mark a6 at insns=23960646	mark a6 at insns=23960646
+mark a7 at insns=25960518	mark a7 at insns=25960518
+mark a8 at insns=27729990	mark a8 at insns=27729990
+mark a9 at insns=30330438	mark a9 at insns=30330438
+mark af at insns=31357510	mark af at insns=31357510
+END the same
+final picture the same
+
+== v4.1 against the VBE step's v4.0 run with the same VGA BIOS (bench-wt-new): the marks anywhere
+== in the line (that log has mark 00 inside the SeaBIOS banner's line, the harness's split line)
+  11 of 11 marks at the same instruction count
+  5:SeaBIOS (version rel-1.17[harness] mark 00 at insns=514 t=0.003902 host=10640 us

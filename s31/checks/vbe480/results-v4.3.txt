@@ -1,0 +1,116 @@
+BVBE480.COM (checks/vbe480/bvbe480.S, unchanged): v4.3 in two harness copies, 21 runs in each, both
+boards, 768K to 2M, the drawing in a second thread at four sizes, -vbe-blocks 0 at three.  2026-10-24.
+
+== in my copy of the T386MON step's harness (ph): every picture right; END against v4.1 and v4.2
+==== 3. BVBE480
+vbe480-v43-dosboard-1152K 800x600, 1152 KiB of video memory: 55 pictures, every one right [stopped: guest-done] 
+vbe480-v43-dosboard-1536K 800x600, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-v43-dosboard-1536K-vgathread 800x600, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-v43-dosboard-1M 800x600, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v43-dosboard-1M-vbeblocks0 800x600, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v43-dosboard-1M-vgathread 800x600, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v43-dosboard-2M 800x600, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-v43-dosboard-2M-vgathread 800x600, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-v43-dosboard-768K 800x600, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-v43-dosboard-768K-vgathread 800x600, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-v43-korvo1-1152K 800x480, 1152 KiB of video memory: 55 pictures, every one right [stopped: guest-done] 
+vbe480-v43-korvo1-1536K 800x480, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-v43-korvo1-1536K-vgathread 800x480, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-v43-korvo1-1M 800x480, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v43-korvo1-1M-vbeblocks0 800x480, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v43-korvo1-1M-vgathread 800x480, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v43-korvo1-2M 800x480, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-v43-korvo1-2M-vgathread 800x480, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-v43-korvo1-768K 800x480, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-v43-korvo1-768K-vbeblocks0 800x480, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-v43-korvo1-768K-vgathread 800x480, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+  dosboard-1152K: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  dosboard-1536K: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  dosboard-1536K-vgathread: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  dosboard-1M: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  dosboard-1M-vbeblocks0: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  dosboard-1M-vgathread: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  dosboard-2M: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  dosboard-2M-vgathread: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  dosboard-768K: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  dosboard-768K-vgathread: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  korvo1-1152K: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  korvo1-1536K: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  korvo1-1536K-vgathread: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  korvo1-1M: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  korvo1-1M-vbeblocks0: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  korvo1-1M-vgathread: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  korvo1-2M: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  korvo1-2M-vgathread: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  korvo1-768K: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  korvo1-768K-vbeblocks0: END against v4.1 DIFFERS, against v4.2 DIFFERS
+  korvo1-768K-vgathread: END against v4.1 DIFFERS, against v4.2 DIFFERS
+
+== the A/B: v4.2 in that copy, and v4.3 in the v4.1 work's harness (h41)
+96a97,102
+>     # perfport (the information port at 0F1F8h): main/CMakeLists.txt adds
+>     # perfport.c and TINY386_PERFPORT; headless.c fills the host's part
+>     if [ -f "$TREE/perfport.c" ] && [ -z "${NO_PERFPORT:-}" ]; then
+>         SRCS="$SRCS perfport.c"
+>         V3DEFS="$V3DEFS -DTINY386_PERFPORT"
+>     fi
+Files /home/owner/v4-work/v41/h/harness/build.sh and /home/owner/v43/merge/h41/harness/build.sh differ
+h41: built v43-korvo1
+h41: built v43-dosboard
+20
+ph: built v42-korvo1
+ph: built v42-dosboard
+0
+==> /home/owner/v43/merge/ph/lists/bv-v42.txt <==
+/home/owner/v43/merge/ph v42 korvo1 768K
+/home/owner/v43/merge/ph v42 korvo1 1M
+
+==> /home/owner/v43/merge/h41/lists/bv-v43.txt <==
+/home/owner/v43/merge/h41 v43 korvo1 768K
+/home/owner/v43/merge/h41 v43 korvo1 1M
+0
+(a) the T386MON harness copy: v4.3's END line v4.2's in 21 of 21 runs
+(b) the v4.1 work's harness: v4.3's END line apply42's v4.2 run's in 21 of 21 runs
+every picture right: 42 of 42 runs
+vbe480-v42-dosboard-1152K 800x600, 1152 KiB of video memory: 55 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-dosboard-1152K
+vbe480-v42-dosboard-1536K 800x600, 1536 KiB of video memory: 67 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-dosboard-1536K
+vbe480-v42-dosboard-1536K-vgathread 800x600, 1536 KiB of video memory: 67 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-dosboard-1536K-vgathread
+vbe480-v42-dosboard-1M 800x600, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-dosboard-1M
+vbe480-v42-dosboard-1M-vbeblocks0 800x600, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-dosboard-1M-vbeblocks0
+vbe480-v42-dosboard-1M-vgathread 800x600, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-dosboard-1M-vgathread
+vbe480-v42-dosboard-2M 800x600, 2048 KiB of video memory: 72 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-dosboard-2M
+vbe480-v42-dosboard-2M-vgathread 800x600, 2048 KiB of video memory: 72 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-dosboard-2M-vgathread
+vbe480-v42-dosboard-768K 800x600, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-dosboard-768K
+vbe480-v42-dosboard-768K-vgathread 800x600, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-dosboard-768K-vgathread
+vbe480-v42-korvo1-1152K 800x480, 1152 KiB of video memory: 55 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-korvo1-1152K
+vbe480-v42-korvo1-1536K 800x480, 1536 KiB of video memory: 67 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-korvo1-1536K
+vbe480-v42-korvo1-1536K-vgathread 800x480, 1536 KiB of video memory: 67 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-korvo1-1536K-vgathread
+vbe480-v42-korvo1-1M 800x480, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-korvo1-1M
+vbe480-v42-korvo1-1M-vbeblocks0 800x480, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-korvo1-1M-vbeblocks0
+vbe480-v42-korvo1-1M-vgathread 800x480, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-korvo1-1M-vgathread
+vbe480-v42-korvo1-2M 800x480, 2048 KiB of video memory: 72 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-korvo1-2M
+vbe480-v42-korvo1-2M-vgathread 800x480, 2048 KiB of video memory: 72 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-korvo1-2M-vgathread
+vbe480-v42-korvo1-768K 800x480, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-korvo1-768K
+vbe480-v42-korvo1-768K-vbeblocks0 800x480, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-korvo1-768K-vbeblocks0
+vbe480-v42-korvo1-768K-vgathread 800x480, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/ph vbe480-v42-korvo1-768K-vgathread
+vbe480-v43-dosboard-1152K 800x600, 1152 KiB of video memory: 55 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-dosboard-1152K
+vbe480-v43-dosboard-1536K 800x600, 1536 KiB of video memory: 67 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-dosboard-1536K
+vbe480-v43-dosboard-1536K-vgathread 800x600, 1536 KiB of video memory: 67 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-dosboard-1536K-vgathread
+vbe480-v43-dosboard-1M 800x600, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-dosboard-1M
+vbe480-v43-dosboard-1M-vbeblocks0 800x600, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-dosboard-1M-vbeblocks0
+vbe480-v43-dosboard-1M-vgathread 800x600, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-dosboard-1M-vgathread
+vbe480-v43-dosboard-2M 800x600, 2048 KiB of video memory: 72 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-dosboard-2M
+vbe480-v43-dosboard-2M-vgathread 800x600, 2048 KiB of video memory: 72 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-dosboard-2M-vgathread
+vbe480-v43-dosboard-768K 800x600, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-dosboard-768K
+vbe480-v43-dosboard-768K-vgathread 800x600, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-dosboard-768K-vgathread
+vbe480-v43-korvo1-1152K 800x480, 1152 KiB of video memory: 55 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-korvo1-1152K
+vbe480-v43-korvo1-1536K 800x480, 1536 KiB of video memory: 67 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-korvo1-1536K
+vbe480-v43-korvo1-1536K-vgathread 800x480, 1536 KiB of video memory: 67 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-korvo1-1536K-vgathread
+vbe480-v43-korvo1-1M 800x480, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-korvo1-1M
+vbe480-v43-korvo1-1M-vbeblocks0 800x480, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-korvo1-1M-vbeblocks0
+vbe480-v43-korvo1-1M-vgathread 800x480, 1024 KiB of video memory: 52 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-korvo1-1M-vgathread
+vbe480-v43-korvo1-2M 800x480, 2048 KiB of video memory: 72 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-korvo1-2M
+vbe480-v43-korvo1-2M-vgathread 800x480, 2048 KiB of video memory: 72 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-korvo1-2M-vgathread
+vbe480-v43-korvo1-768K 800x480, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-korvo1-768K
+vbe480-v43-korvo1-768K-vbeblocks0 800x480, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-korvo1-768K-vbeblocks0
+vbe480-v43-korvo1-768K-vgathread 800x480, 768 KiB of video memory: 38 pictures, every one right   [stopped: guest-done] /home/owner/v43/merge/h41 vbe480-v43-korvo1-768K-vgathread

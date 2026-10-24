@@ -1,0 +1,31 @@
+# v4.3 flicker list 1: apply42's list 1 runs of v4.2 (a42-, d42-, c42-) and list 8's 256 colours set
+# live (e42-), each made with v4.3 (the port compiled in, as the board builds it), the harness's count
+# of black; the END lines are to equal apply42's v4.2 runs of the same configuration
+a43-n16 r43 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448
+a43-n16dib r43 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448
+a43-vga r43 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios.bin plat 205 1 1000 -cursor-box 250,0,720,448
+a43-n16-blocks0 r43 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -vbe-blocks 0
+a43-n16dib-blocks0 r43 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -vbe-blocks 0
+a43-n16-thread r43 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -vgathread -check-every 10
+a43-n16dib-thread r43 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -vgathread -check-every 10
+a43-off8 r43 /home/owner/v4-work/vbe/w95/img/w8-800x480.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a43-off8dib r43 /home/owner/flicker/fix/h/img/off8-dib.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a43-off16 r43 /home/owner/v4-work/vbe/w95/img/w16-800x480.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a43-off16dib r43 /home/owner/flicker/fix/h/img/off16-dib.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a43-off24 r43 /home/owner/v4-work/vbe/w95/img/w24-800x480.img 13M 1152K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a43-off24dib r43 /home/owner/flicker/fix/h/img/off24-dib.img 13M 1152K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a43-off32 r43 /home/owner/v4-work/vbe/w95/img/w32-800x480.img 13M 1536K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a43-off32dib r43 /home/owner/flicker/fix/h/img/off32-dib.img 13M 1536K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a43-v640 r43 /home/owner/flicker/repro/h/img/off-v640x16.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 250,0,720,448
+a43-v640dib r43 /home/owner/flicker/fix/h/img/v640x16-dib.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 250,0,720,448
+a43-dos16 r43d /home/owner/v4-work/vbe/w95/img/w16-800x600.img 13M 1M vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a43-dos16dib r43d /home/owner/flicker/fix/h/img/dos16-dib.img 13M 1M vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a43-dosfix r43 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin dosfix 320 1 1000 @keep -cursor-box 170,0,640,448 -snap 5
+d43-n16 r43 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin dosbox 240 1 1500 -cursor-box 170,0,640,448
+d43-ps1 r43 /home/owner/flicker/review/img/n16-ps1.img 14M 768K vgabios.bin dosbox 240 1 1500 -cursor-box 170,0,640,448
+d43-vga r43 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios.bin dosbox 240 1 1500 -cursor-box 250,0,720,448
+d43-ps1-thread r43 /home/owner/flicker/review/img/n16-ps1.img 14M 768K vgabios.bin dosbox 240 1 1500 -cursor-box 170,0,640,448 -vgathread -check-every 10
+c43-gi r43 /home/owner/v4-work/v41/h/img/win95.pristine.img 14M 768K vgabios.bin - 0 0 1080 @keep @fda=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/card/tiny386/vbe-reg.img @fdb=/home/owner/flicker/apply42/drv/floppy-ptrfix.img -keyfile /home/owner/v4-work/v41/gi/gi18.keys
+c43-gi-rel r43 /home/owner/v4-work/v41/h/img/win95.pristine.img 14M 768K vgabios.bin - 0 0 1080 @keep @fda=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/card/tiny386/vbe-reg.img @fdb=/home/owner/flicker/apply42/drv/floppy-released.img -keyfile /home/owner/v4-work/v41/gi/gi18.keys
+e43-ptr8 r43 /home/owner/flicker/apply42/h/runs/c42-gis60/win95.img 14M 768K vgabios.bin depth8 500 1 1500 -cursor-box 170,0,640,448
+e43-rel8 r43 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin depth8 500 1 1500 -cursor-box 170,0,640,448

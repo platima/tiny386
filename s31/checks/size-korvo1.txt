@@ -1,0 +1,33 @@
+[1/4] cd /home/owner/tiny386-idf-scratch/final-r2/rel1/tiny386/esp/build-korvo1 && /home/owner/.espressif-upstream/python_env/idf6.2_py3.11_env/bin/python /home/owner/esp/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app /home/owner/tiny386-idf-scratch/final-r2/rel1/tiny386/esp/build-korvo1/partition_table/partition-table.bin /home/owner/tiny386-idf-scratch/final-r2/rel1/tiny386/esp/build-korvo1/tiny386.bin
+tiny386.bin binary size 0xd3c40 bytes. Smallest app partition is 0x1e0000 bytes. 0x10c3c0 bytes (56%) free.
+[2/4] Performing build step for 'bootloader'
+[1/1] cd /home/owner/tiny386-idf-scratch/final-r2/rel1/tiny386/esp/build-korvo1/bootloader && /home/owner/.espressif-upstream/python_env/idf6.2_py3.11_env/bin/python /home/owner/esp/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x2000 /home/owner/tiny386-idf-scratch/final-r2/rel1/tiny386/esp/build-korvo1/bootloader/bootloader.bin
+Bootloader binary size 0x5600 bytes. 0xa00 bytes (10%) free.
+[3/4] No install step for 'bootloader'
+[4/4] Completed 'bootloader'
+[0/1] cd /home/owner/tiny386-idf-scratch/final-r2/rel1/tiny386/esp/build-korvo1 && /usr/bin/cmake -D "IDF_SIZE_TOOL=/home/owner/.espressif-upstream/python_env/idf6.2_py3.11_env/bin/python;-m;esp_idf_size" -D MAP_FILE=/home/owner/tiny386-idf-scratch/final-r2/rel1/tiny386/esp/build-korvo1/tiny386.map -D OUTPUT_JSON= -P /home/owner/esp/esp-idf/tools/cmake/run_size_tool.cmake
+Memory Type Usage Summary
+┏━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Memory Type/Section ┃ Used [bytes] ┃ Used [%] ┃ Remain [bytes] ┃ Total [bytes] ┃
+┡━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ Flash               │       641180 │          │                │               │
+│    .text            │       415128 │          │                │               │
+│    .rodata          │       225716 │          │                │               │
+│    .appdesc         │          256 │          │                │               │
+│    .init_array      │           64 │          │                │               │
+│    .tdata           │           16 │          │                │               │
+│ DIRAM               │       241290 │     47.9 │         262454 │        503744 │
+│    .text            │       212440 │    42.17 │                │               │
+│    .bss             │        15192 │     3.02 │                │               │
+│    .data            │        13658 │     2.71 │                │               │
+│ LP SRAM             │         8232 │    25.12 │          24536 │         32768 │
+│    .rtc_noinit      │         8208 │    25.05 │                │               │
+│    .rtc_reserved    │           24 │     0.07 │                │               │
+└─────────────────────┴──────────────┴──────────┴────────────────┴───────────────┘
+Total image size: 867214 bytes (.bin may be padded larger)
+Note: The reported total sizes may be smaller than those in the technical reference manual due to reserved memory and application configuration. The total flash size available for the application is not included by default, as it cannot be reliably determined due to the presence of other data like the bootloader, partition table, and application partition size.
+Executing action: size
+Running ninja in directory /home/owner/tiny386-idf-scratch/final-r2/rel1/tiny386/esp/build-korvo1
+Executing "ninja all"...
+Running ninja in directory /home/owner/tiny386-idf-scratch/final-r2/rel1/tiny386/esp/build-korvo1
+Executing "ninja size"...

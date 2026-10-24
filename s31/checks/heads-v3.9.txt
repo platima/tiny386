@@ -1,0 +1,25 @@
+The first bytes of every bootloader this folder knows, as flash-dualboot.bat and
+flash-standalone.bat (v3.9) name the first 256 bytes at 0x2000 by SHA-256 (heads.py, WSL
+~/win95-debug/fix-v39), 2026-10-23.  dos is the DOS board's, the same file as tiny386's own (sa).
+
+dual 22352 b57469cd1542fe83 head256 4fd69a588e8b199d77d96b082938581e8fd4d1a2244252932ed9759e939068b0
+sa 22016 ec0a396b5bd96406 head256 7d9e47c773f62dfc9671ae4ae90b7ba32c38e0fb8c83f80b5c5e140e2bd8dda2
+dos 22016 ec0a396b5bd96406 head256 7d9e47c773f62dfc9671ae4ae90b7ba32c38e0fb8c83f80b5c5e140e2bd8dda2
+be5b725 22000 547c6a5b30551de6 head256 4624e0591cb20ab8b5170a635822b472f596c30668ed6915741ec1fa9f93d7e0
+release 23024 41d5a68752936c7b head256 0cf70bd457386471035c5836b40d41cfe1668b071ceacd11006c20a55567d854
+dual sa first differing byte: 28
+dual dos first differing byte: 28
+dual be5b725 first differing byte: 28
+dual release first differing byte: 28
+sa dos first differing byte: None
+sa be5b725 first differing byte: 28
+sa release first differing byte: 28
+dos be5b725 first differing byte: 28
+dos release first differing byte: 28
+be5b725 release first differing byte: 28
+ff256 3d6876a0146de8576eb2395a858de1213d1b92c65b779df3a331cfd5a4584546
+dual header: e903024fbaa2062fee000000200000000063000000000001
+sa header: e903024fbaa2062fee000000200000000063000000000001
+dos header: e903024fbaa2062fee000000200000000063000000000001
+be5b725 header: e903024fbaa2062fee000000200000000063000000000001
+release header: e903024fbaa2062fee000000200000000063000000000001

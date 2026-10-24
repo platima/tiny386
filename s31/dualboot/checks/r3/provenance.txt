@@ -1,0 +1,4 @@
+esp32-s31-linux-main HEAD: be5b7253a044c8f2c19ffb6e4a20d81fc4763a3d
+esp32-s31-linux HEAD:      c288bc9e154e2cc7c503619f9fec6d160a573974
+esp-idf HEAD:              188e3e55bb20505b5fa9dc49ee390bf42c58b4ee
+2026-10-21T20:53:26+08:00

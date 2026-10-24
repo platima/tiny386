@@ -1,0 +1,50 @@
+The files v3.5 changed, compiled again with each rel4-final-patch build's own command line plus
+-Wall -Wextra (warn3.py, as for v3.2 to v3.4), to assembly, thrown away; every warning in esp/main printed.
+== korvo1
+dosboard.c       not in this build
+i2s.c            1 warnings (exit 0)
+    /home/owner/tiny386-idf-scratch/v35-work/rel4-final-patch/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+audio_mix.c      0 warnings (exit 0)
+ch9350.c         not in this build
+total 1
+== korvo1-standalone
+dosboard.c       not in this build
+i2s.c            1 warnings (exit 0)
+    /home/owner/tiny386-idf-scratch/v35-work/rel4-final-patch/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+audio_mix.c      0 warnings (exit 0)
+ch9350.c         not in this build
+total 1
+== dosboard
+dosboard.c       0 warnings (exit 0)
+i2s.c            0 warnings (exit 0)
+audio_mix.c      0 warnings (exit 0)
+ch9350.c         0 warnings (exit 0)
+total 0
+
+== compiler warnings in build.sh's own logs, outside ESP-IDF and the managed components
+rel1.log:/home/owner/tiny386-idf-scratch/v35-work/rel1/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel1.log:/home/owner/tiny386-idf-scratch/v35-work/rel1/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel2-second-run.log:/home/owner/tiny386-idf-scratch/v35-work/rel2-second-run/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel2-second-run.log:/home/owner/tiny386-idf-scratch/v35-work/rel2-second-run/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel3.log:/home/owner/tiny386-idf-scratch/v35-work/rel3/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel3.log:/home/owner/tiny386-idf-scratch/v35-work/rel3/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel4-final-patch.log:/home/owner/tiny386-idf-scratch/v35-work/rel4-final-patch/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel4-final-patch.log:/home/owner/tiny386-idf-scratch/v35-work/rel4-final-patch/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+
+== the crash-test builds (in-tree, idf.py -DCRASH_TEST=1, at the v3.5 sources), warnings outside ESP-IDF
+tiny386-idf-scratch/v35-work/build-v35kc.log:/home/owner/tiny386-idf-scratch/v3/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+
+== the same files with -Wall -Wextra in the in-tree crash-test builds
+== v35kc
+dosboard.c       not in this build
+i2s.c            1 warnings (exit 0)
+    /home/owner/tiny386-idf-scratch/v3/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+audio_mix.c      0 warnings (exit 0)
+ch9350.c         not in this build
+total 1
+== v35dc
+dosboard.c       0 warnings (exit 0)
+i2s.c            0 warnings (exit 0)
+audio_mix.c      0 warnings (exit 0)
+ch9350.c         0 warnings (exit 0)
+total 0

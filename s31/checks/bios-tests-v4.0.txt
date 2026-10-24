@@ -1,0 +1,142 @@
+The Linux route's BIOS coverage tests (..\..\tiny386\tests\bios-tests.sh, unchanged, run as that
+route runs them: its board binary tiny386-korvo dd34a04f under qemu-riscv32-static, the fake
+console), with the release's bios.bin and three vgabios.bin: the Linux route's own (release), the
+same source built here with Debian's gcc (base-host, NO800=1), and v4.0's (v4).  2026-10-23.
+
+release: exit 0 in 299 s: 765 passed, 6 failed as expected, 0 failed, 0 passed unexpectedly, 0 missing, 0 not in the list
+base-host: exit 0 in 294 s: 765 passed, 6 failed as expected, 0 failed, 0 passed unexpectedly, 0 missing, 0 not in the list
+v4: exit 0 in 645 s: 765 passed, 6 failed as expected, 0 failed, 0 passed unexpectedly, 0 missing, 0 not in the list
+
+== release: f658c3b002a4fb09 vgabios.bin, 40448 bytes
+== base-host: 18d6f3ca147d53c2 vgabios.bin, 40960 bytes
+== v4: 4aeae74fbd78b1d0 vgabios.bin, 40960 bytes
+
+== the results that differ, release against v4 (sorted; info lines included)
+11,18c11,18
+< @info 10.11.30.pointer-bh00 c000:97e0
+< @info 10.11.30.pointer-bh01 c000:75e0
+< @info 10.11.30.pointer-bh02 c000:85e0
+< @info 10.11.30.pointer-bh03 c000:93e0
+< @info 10.11.30.pointer-bh04 c000:97e0
+< @info 10.11.30.pointer-bh05 c000:75d1
+< @info 10.11.30.pointer-bh06 c000:75e0
+< @info 10.11.30.pointer-bh07 c000:75d0
+---
+> @info 10.11.30.pointer-bh00 c000:9ac0
+> @info 10.11.30.pointer-bh01 c000:78c0
+> @info 10.11.30.pointer-bh02 c000:88c0
+> @info 10.11.30.pointer-bh03 c000:96c0
+> @info 10.11.30.pointer-bh04 c000:9ac0
+> @info 10.11.30.pointer-bh05 c000:78b1
+> @info 10.11.30.pointer-bh06 c000:78c0
+> @info 10.11.30.pointer-bh07 c000:78b0
+29c29
+< @info 10.4f.00.modes 001f
+---
+> @info 10.4f.00.modes 0022
+65a66,68
+> @info 10.4f.01.mode-01a0 0320x01e0x08 model 04 attributes 00bb
+> @info 10.4f.01.mode-01a1 0320x01e0x0f model 06 attributes 00bb
+> @info 10.4f.01.mode-01a2 0320x01e0x10 model 06 attributes 00bb
+129,130c132,133
+< @info regs.retrace.display-enable-changes 0075
+< @info regs.retrace.per-second 003b
+---
+> @info regs.retrace.display-enable-changes 0072
+> @info regs.retrace.per-second 0039
+293c296
+< @ok 10.01.cursor-block.blinks shown in 5 of 10 looks
+---
+> @ok 10.01.cursor-block.blinks shown in 4 of 10 looks
+298c301
+< @ok 10.01.cursor-default.blinks shown in 5 of 10 looks
+---
+> @ok 10.01.cursor-default.blinks shown in 6 of 10 looks
+388c391
+< @ok 10.10.03.blink.blinks the B shown in 5 of 10 looks
+---
+> @ok 10.10.03.blink.blinks the B shown in 6 of 10 looks
+459c462
+< @ok 10.11.22.int43 c00085e0
+---
+> @ok 10.11.22.int43 c00088c0
+462c465
+< @ok 10.11.23.int43 c00093e0
+---
+> @ok 10.11.23.int43 c00096c0
+465c468
+< @ok 10.11.24.int43 c00075e0
+---
+> @ok 10.11.24.int43 c00078c0
+467,469c470,472
+< @ok 10.11.30.bh2-pointer ax=c5e0
+< @ok 10.11.30.bh3-pointer ax=d3e0
+< @ok 10.11.30.bh6-pointer ax=f5e0
+---
+> @ok 10.11.30.bh2-pointer ax=c8c0
+> @ok 10.11.30.bh3-pointer ax=d6c0
+> @ok 10.11.30.bh6-pointer ax=f8c0
+
+== the results that differ, base-host against v4 (the 800x480 patch alone)
+11,18c11,18
+< @info 10.11.30.pointer-bh00 c000:9a60
+< @info 10.11.30.pointer-bh01 c000:7860
+< @info 10.11.30.pointer-bh02 c000:8860
+< @info 10.11.30.pointer-bh03 c000:9660
+< @info 10.11.30.pointer-bh04 c000:9a60
+< @info 10.11.30.pointer-bh05 c000:7851
+< @info 10.11.30.pointer-bh06 c000:7860
+< @info 10.11.30.pointer-bh07 c000:7850
+---
+> @info 10.11.30.pointer-bh00 c000:9ac0
+> @info 10.11.30.pointer-bh01 c000:78c0
+> @info 10.11.30.pointer-bh02 c000:88c0
+> @info 10.11.30.pointer-bh03 c000:96c0
+> @info 10.11.30.pointer-bh04 c000:9ac0
+> @info 10.11.30.pointer-bh05 c000:78b1
+> @info 10.11.30.pointer-bh06 c000:78c0
+> @info 10.11.30.pointer-bh07 c000:78b0
+29c29
+< @info 10.4f.00.modes 001f
+---
+> @info 10.4f.00.modes 0022
+65a66,68
+> @info 10.4f.01.mode-01a0 0320x01e0x08 model 04 attributes 00bb
+> @info 10.4f.01.mode-01a1 0320x01e0x0f model 06 attributes 00bb
+> @info 10.4f.01.mode-01a2 0320x01e0x10 model 06 attributes 00bb
+129,130c132,133
+< @info regs.retrace.display-enable-changes 0074
+< @info regs.retrace.per-second 003a
+---
+> @info regs.retrace.display-enable-changes 0072
+> @info regs.retrace.per-second 0039
+293c296
+< @ok 10.01.cursor-block.blinks shown in 5 of 10 looks
+---
+> @ok 10.01.cursor-block.blinks shown in 4 of 10 looks
+298c301
+< @ok 10.01.cursor-default.blinks shown in 5 of 10 looks
+---
+> @ok 10.01.cursor-default.blinks shown in 6 of 10 looks
+459c462
+< @ok 10.11.22.int43 c0008860
+---
+> @ok 10.11.22.int43 c00088c0
+462c465
+< @ok 10.11.23.int43 c0009660
+---
+> @ok 10.11.23.int43 c00096c0
+465c468
+< @ok 10.11.24.int43 c0007860
+---
+> @ok 10.11.24.int43 c00078c0
+467,469c470,472
+< @ok 10.11.30.bh2-pointer ax=c860
+< @ok 10.11.30.bh3-pointer ax=d660
+< @ok 10.11.30.bh6-pointer ax=f860
+---
+> @ok 10.11.30.bh2-pointer ax=c8c0
+> @ok 10.11.30.bh3-pointer ax=d6c0
+> @ok 10.11.30.bh6-pointer ax=f8c0
+
+== the 6 known failures (failed as expected) with v4

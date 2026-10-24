@@ -1,0 +1,417 @@
+tiny386 v3 bare metal on the ESP32-S31-Korvo-1, beside Linux (dual boot),
+and on the DOS board.  App version v4.3: v3 with six review rounds' fixes
+(REVIEW-RESOLUTION.md), the status LED (STATUS-LED.md), and for the DOS
+board rev A2c its new pins, its line out and speakers and a louder default
+sound (LINE-OUT.md).  v3.7 made the status LED much dimmer and added
+led_brightness under [esp] in the ini (STATUS-LED.md 7).  v3.8 fixes
+Windows 95's crashes at their cause (the guest's timer after a wait for
+the card, and the card's FAT walked on every seek; BUILD-NOTES.md 19),
+turns the status LED into a PC's front panel while the PC runs (steady
+green, a blue flash for each disk access; STATUS-LED.md 8) and makes the
+log quieter (BUILD-NOTES.md 20).  v3.9 takes in the two reviews of v3.8
+(REVIEW-RESOLUTION.md round 5, BUILD-NOTES.md 21): the scripts finish a
+first install that was cut short, the line that names an emulator abort's
+cause reaches the UART, and a few log lines that went missing are kept.
+v4.0 merges tiny386's own latest work (its author's master of 2026-10-22)
+and puts Windows 95 at the panel's own size, 800x480 on the Korvo-1 and
+800x600 on the DOS board, in 256 colours, High Color or True Color,
+through a free display driver for the emulated VGA (BUILD-NOTES.md 22,
+TEST-PLAN.md 13).  v4.1 takes in the two reviews of v4.0
+(REVIEW-RESOLUTION.md round 6, BUILD-NOTES.md 23): DOS programs in mode
+13h no longer pay for the new drawing's notes, vbe_blocks = 0 takes them
+away entirely, and a DOS board ini for Windows at 800x600.  v4.2
+(BUILD-NOTES.md 24 and 25, TEST-PLAN.md 14) answers the flicker of the
+mouse pointer at 800x480: the display driver's own pointer, cured by one
+byte of the driver (qemumini-pointer\ has the script and the steps);
+tiny386 also makes a clear of the screen with no black flash, and
+Ctrl+Alt+F11 changes vbe_blocks while the PC runs.  v4.3 (BUILD-NOTES.md
+27, TEST-PLAN.md 15) is v4.2 with the information port at 0F1F8h that the
+Windows 95 monitor T386MON reads (..\t386mon\): nothing else changes for
+the guest.  The writes and the ways back are the same as v3.2's to v4.2's.
+
+From v3.6 to v4.2 (the dual boot already in): only the app changed, so
+section 3, flash-dualboot.bat COM10 app, is all v4.3 needs.
+The dual-boot bootloader and partition table are v3.7's byte for byte,
+and the tiny386-default table is the one added after v3.7.  From v3.6 or
+v3.7, copy the card's two inis again too (card\tiny386\): they list
+v3.8's new settings, commented out.  v3.9 and v4.0 did not change them;
+v4.1 added a comment to win95-14m.ini and win95-800x480.ini; v4.2 and
+v4.3 changed no card file.
+For Windows at 800x480, v4.0 adds three files to card\tiny386\: a new
+vgabios.bin (the 800x480 modes added; v3.9's still works for everything
+else), win95-800x480.ini and vbe-reg.img; v4.1 adds
+card-dosboard\tiny386\win95-800x600.ini for the DOS board.  The display
+driver's own floppy image is not in this package; TEST-PLAN.md 13a says
+where to fetch it and how to install it.
+
+tiny386 the default at reset (added 2026-10-22, after v3.7; any app from
+v3.6 on): with the dual boot in, "flash-dualboot.bat COM10 table
+tiny386" writes one 4 KB sector, the partition table at 0x8000.  After
+it, RESET with no key held starts
+tiny386 and VOL+ held through RESET starts Linux.  "flash-dualboot.bat
+COM10 table linux" turns it back.  Section 2 has both ways round and what
+can go wrong.
+
+Built and checked without a board: BUILD-NOTES.md has the details,
+TEST-PLAN.md the first boot step by step and, at its top, every risk to
+your Linux install.  dualboot\DUALBOOT.md has the dual-boot evidence.  Plat
+has written v3.6 to his Korvo-1: FreeDOS and BENCH ran, the status LED was
+far too bright (v3.7) and Windows 95 failed (v3.8).  He then had Windows
+95 at its desktop on v3.9, and on v4.1 at 800x480, where the pointer
+flickered (v4.2).  Nothing of v4.2 or v4.3 has run on a board yet;
+TEST-PLAN.md 14 is the pointer at 800x480, and 15 (v4.3) T386MON's tests.
+
+
+What you need
+
+  esptool 5.4 or later:   pip install "esptool>=5.4"
+  The UART Type-C port (CP2102N).  COM10 below.  Every script needs the
+  port named: flash-dualboot.bat COM10, not flash-dualboot.bat.
+  Linux be5b725 or the fork release v2026.09.20 in the flash.  Both have the
+  same partition table, byte for byte.  Upstream v0.4.0 or later has a
+  different table and needs a different dual-boot table: the scripts see
+  that and stop.
+  16 MB free beside the scripts, for backup\ (the copy of the flash).
+  The images, in images\ (each folder has flash_args and SHA256SUMS):
+    korvo1-dualboot\     beside Linux: bootloader, table, tiny386 at 0xE20000
+    korvo1-dualboot-tiny386-default\
+                         the same set with tiny386 the default at reset:
+                         only partition-table.bin differs (section 2)
+    korvo1-standalone\   instead of Linux: tiny386's own bootloader and table
+    dosboard\            the DOS board (no Linux there)
+  The card: card\tiny386\ goes into the card's tiny386 folder (TEST-PLAN.md).
+
+Before any script, and before any command below: in Linux, "poweroff", and
+wait for it to finish.  The scripts reset the board into download mode;
+Linux running then, with the card's FAT partition mounted for writing,
+would be cut off with its writes half done.  If tiny386 is running
+instead, shut the guest down (or wait five seconds after its last disk
+activity), for the same reason.  The scripts keep the board in download
+mode (esptool -a no-reset) from their first reset to the last write, which
+resets it to start; if you answer N, or a script stops after reading the
+board, press RESET to start it again (Linux, or tiny386 if it is the
+default; the script says which).
+
+Every .bat checks its files first (SHA-256 for the fixed files, esptool
+image-info and the partition size for tiny386.bin), then reads the board,
+which writes nothing: it prints the board's MAC and reads the partition
+table at 0x8000.  If that table is not one the script was made for (Linux's,
+either dual-boot one, or tiny386's own, as each script needs), it says what
+it found and stops.  Over Linux's table it also names the bootloader at 0x2000
+by SHA-256 (be5b725's, the release's, or neither), and the first time it
+copies the flash into backup\ before writing (section 1).  Then it prints
+what it will do and writes only after you type Y.  The commands by hand
+are given too; they are run from this folder (v3).  flash-paths.cmd says
+which files the scripts use; put the Korvo-1's MAC there as KORVO1_MAC once
+you have it, and the Korvo-1 scripts refuse any other board.
+
+Never use "idf.py flash" (or app-flash, bootloader-flash, erase-flash,
+dfu-flash) with the Korvo-1 dual-boot build.  Its own flash_args would
+write tiny386's own bootloader (no VOL+ key) at 0x2000,
+ota_data_initial.bin at 0x17000 (Linux's otadata) and tiny386 at 0x20000,
+over the Linux loader.  The build refuses: those targets stop with a
+message before esptool runs.  The build folder's own flash_args and
+flasher_args.json still list those writes; do not hand them to esptool.
+Use the scripts or the commands below.
+
+
+1. Install the dual boot: a copy of the flash, tiny386, then two small
+   writes; Linux stays
+
+  flash-dualboot.bat COM10
+
+  The first time (Linux's table at 0x8000 and no backup yet) it reads the
+  whole flash, 16 MB, into backup\korvo1-before.bin, and 0x2000 to 0x8FFF
+  (the Linux bootloader and partition table) into
+  backup\korvo1-2000-8fff-before.bin, each with its SHA-256, the board's
+  MAC and a note beside it.  That takes a few minutes.  If it fails,
+  nothing is written.  A backup already there is kept if it is of this
+  board and of what the flash holds now, or of what it held before a write
+  by these scripts that was cut short (since v3.9; "If something goes
+  wrong" below); otherwise the script stops rather than overwrite it.  No
+  backup is ever taken of a cut write's state.  Keep backup\ (a copy
+  elsewhere is better): it is the exact way back (section 4).
+
+  by hand, in this order (the copy first; then tiny386: if that write is
+  cut short, Linux is still as it was):
+  esptool -c esp32s31 -p COM10 -b 921600 -a no-reset read-flash 0x0 0x1000000 backup\korvo1-before.bin
+  esptool -c esp32s31 -p COM10 -b 921600 -a no-reset write-flash -fm keep -ff keep -fs keep 0xE20000 images\korvo1-dualboot\tiny386.bin
+  esptool -c esp32s31 -p COM10 -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep 0x2000 images\korvo1-dualboot\bootloader.bin 0x8000 images\korvo1-dualboot\partition-table.bin
+
+  This erases and writes 0xE20000 to the end of tiny386.bin, then 0x2000 to
+  0x8FFF (bootloader and partition table).  Nothing from 0x9000 to 0xE1FFFF
+  is touched, which is all of Linux.  The script reads the board first and
+  goes on only if Linux's table (or a dual-boot one) is at 0x8000.
+
+  With tiny386 the default from the start (section 2):
+
+  flash-dualboot.bat COM10 all tiny386
+
+  The same writes and the same backup; only the table differs: by hand,
+  images\korvo1-dualboot-tiny386-default\partition-table.bin at 0x8000 in
+  the third command.  Over a dual boot that is in already, "all" with
+  neither "linux" nor "tiny386" keeps the default the board has.
+
+  images\korvo1-dualboot\flash_args lists the three files in address order,
+  for reference.  Written with "write-flash @flash_args" they would go in
+  one run, bootloader first; harmless (a cut write still leaves Linux
+  booting without the key), but the script and the commands above write
+  tiny386 first.
+
+
+2. Choosing at reset, and which one is the default
+
+  The dual boot has one bootloader and two partition tables.  The scripts
+  name the table they find: "dual" or "dual386".
+
+  Linux the default ("dual", images\korvo1-dualboot, what section 1 puts
+  in unless told otherwise):
+    Linux:    press RESET with nothing held.  As before.
+    tiny386:  hold VOL+, press and release RESET, keep holding VOL+ for two
+              seconds, then let go.
+
+  tiny386 the default ("dual386", images\korvo1-dualboot-tiny386-default):
+    tiny386:  press RESET with nothing held.
+    Linux:    hold VOL+, press and release RESET, keep holding VOL+ for two
+              seconds, then let go.
+
+  The bootloader starts the partition marked "test" while GPIO42 is held
+  low, and the one marked "factory" otherwise.  The two tables have the
+  same eight partitions in the same places; only those two marks are
+  swapped between the Linux loader (0x20000) and tiny386 (0xE20000)
+  (dualboot\DUALBOOT.md 13).
+
+  To change the default, with the dual boot in (either way round):
+
+  flash-dualboot.bat COM10 table tiny386      tiny386 the default
+  flash-dualboot.bat COM10 table linux        Linux the default again
+
+  by hand, only on a board whose 0x2000 holds the dual-boot bootloader
+  (the script checks that; see below):
+  esptool -c esp32s31 -p COM10 -b 921600 write-flash -fm keep -ff keep -fs keep 0x8000 images\korvo1-dualboot-tiny386-default\partition-table.bin
+  esptool -c esp32s31 -p COM10 -b 921600 write-flash -fm keep -ff keep -fs keep 0x8000 images\korvo1-dualboot\partition-table.bin
+
+  "table" writes the 3 KB table at 0x8000 and nothing else: one 4 KB
+  sector erased and written; not tiny386, not the bootloader, nothing of
+  Linux.  It takes no backup, as nothing of Linux is written.  It goes on
+  only if one of the two dual-boot tables is at 0x8000 and the dual-boot
+  bootloader (b57469cd) is at 0x2000: under any other bootloader the key
+  does nothing, and with tiny386 the default Linux could then not be
+  started without flashing.  If the board already has the default asked
+  for, it says so and writes nothing.  "app" (section 3) never changes the
+  default.
+
+  VOL+ is the schematic's name for the key that pulls GPIO42 down to 0.38 V
+  (the 1.3k one on the ADC ladder).  esp-board-manager calls the same key
+  SET, so go by trying: a key that does not read as low just lets the
+  default start.  VOL- (0.82 V) is close to the threshold and may work too,
+  unreliably.
+
+  Before you press RESET to change from one to the other:
+    from Linux:   "poweroff", and wait for it, so that nothing Linux had
+                  cached is left half written on the card's FAT partition,
+                  which tiny386 then writes to.
+    from tiny386: shut the guest down (Windows: "It is now safe to turn off
+                  your computer"; DOS: wait), or at least wait five seconds
+                  after its last disk activity.  tiny386 puts the guest's
+                  writes on the card two seconds after the guest last wrote.
+
+  What a reset does on its own:
+    Linux the default:   if tiny386 crashes or resets itself, the next boot
+                         is Linux unless VOL+ is still held.  Holding VOL+
+                         when there is no valid tiny386 in flash makes the
+                         board reset over and over until you let go; then
+                         Linux starts.
+    tiny386 the default: anything that resets the chip from Linux comes
+                         back up in tiny386 unless VOL+ is held: "reboot"
+                         (most likely), and the Linux loader's own restart
+                         when it cannot load OpenSBI, the kernel or the
+                         initramfs.  tiny386 halts on a crash (the red
+                         screen) rather than resetting, so it does not go
+                         round in a loop; RESET then starts tiny386 again.
+                         A tiny386 that is not valid in flash (a write cut
+                         short) is passed over: the bootloader starts Linux
+                         instead, key or no key.  If tiny386 starts but
+                         stops every time (a bad ini, say), hold VOL+ for
+                         Linux until the card is put right.
+
+
+3. A newer tiny386: one write
+
+  flash-dualboot.bat COM10 app
+
+  by hand:
+  esptool -c esp32s31 -p COM10 -b 921600 write-flash -fm keep -ff keep -fs keep 0xE20000 images\korvo1-dualboot\tiny386.bin
+
+  The script goes on only if a dual-boot table (either default) is at
+  0x8000.  It checks images\korvo1-dualboot\tiny386.bin (TINY386_BIN in
+  flash-paths.cmd) with esptool image-info and prints its App version line,
+  writes that one file at 0xE20000 after Y, and resets the board.  It takes
+  no backup and touches nothing else: not the bootloader, not the table (so
+  the default stays as it is), nothing of Linux.  For v3.6 to v4.2 to v4.3
+  this is the whole update.  The same tiny386.bin serves both tables.
+  Since v3.9 it also reads the bootloader at 0x2000 first and stops,
+  naming "all", if it is not the dual-boot one (then the key does nothing,
+  and tiny386 alone would not mend that), and it refuses the DOS board's
+  image (images\dosboard\tiny386.bin) if TINY386_BIN names it.
+
+
+4. Back to plain Linux
+
+  In tiny386, shut the guest down (or, from Linux, "poweroff") first.
+
+  back-to-linux.bat COM10
+
+  Everything in this section works the same from either default: the
+  scripts know both dual-boot tables, and afterwards Linux starts on every
+  reset, key or no key.
+
+  With a backup in backup\ (section 1) this is "backup": it puts 0x2000 to
+  0x8FFF back from backup\korvo1-2000-8fff-before.bin, exactly what was
+  there before step 1, whichever Linux it was.  The script checks the file
+  against the SHA-256 recorded beside it, and the board's MAC against the
+  one the backup was taken from.
+
+  by hand:
+  esptool -c esp32s31 -p COM10 -b 921600 write-flash -fm keep -ff keep -fs keep 0x2000 backup\korvo1-2000-8fff-before.bin
+
+  With no backup it is "small be5b725": be5b725's own bootloader and
+  table.  That puts back exactly what was in 0x0 to 0xC1FFFF if the flash
+  held be5b725's flash.bin; with the fork release in flash it puts
+  be5b725's bootloader in front of the release's loader, which should
+  start it but has not been tried.
+
+  back-to-linux.bat COM10 small
+
+  by hand:
+  esptool -c esp32s31 -p COM10 -b 921600 write-flash -fm keep -ff keep -fs keep 0x2000 ..\..\main-be5b725\esp32s31-linux-main-be5b725-flash\bootloader.bin 0x8000 ..\..\main-be5b725\esp32s31-linux-main-be5b725-flash\partition-table.bin
+
+  The whole 16 MB backup again, the flash exactly as it was before step 1
+  (a tiny386 at 0xE20000 goes too; several minutes):
+
+  back-to-linux.bat COM10 whole
+
+  After the standalone set (section 5), "backup" and "small" cannot bring
+  Linux back, and the script says so: use "whole", or the whole be5b725
+  again (its flash.bin at 0x0):
+
+  back-to-linux.bat COM10 full
+
+  The fork release v2026.09.20 instead of be5b725 needs the word "release"
+  (small or full).  That changes the Linux kernel and loader in flash but
+  not the card, and whether the release kernel runs the be5b725 card's root
+  file system has not been tried, so use it only if you mean to:
+
+  back-to-linux.bat COM10 full release
+
+  None of backup, small and full reach 0xE20000.  tiny386 stays in flash,
+  unused and out of the table, until step 1 is done again.
+
+
+5. tiny386 alone on the Korvo-1, replacing Linux
+
+  flash-standalone.bat COM10
+
+  by hand (after the copy of section 1):
+  esptool -c esp32s31 -p COM10 -b 921600 write-flash -fm keep -ff keep -fs keep 0x2000 images\korvo1-standalone\bootloader.bin 0x8000 images\korvo1-standalone\partition-table.bin 0x10000 images\korvo1-standalone\tiny386.bin
+
+  tiny386 then starts on every reset.  This overwrites the Linux loader, so
+  the way back is "back-to-linux.bat COM10 whole" (or "full"), not
+  "backup" or "small".  The script takes the same copy of the flash first
+  if there is none, and checks the bootloader and table by SHA-256.  The
+  card is not touched.
+
+  One write the dual-boot set never makes: with no card in, the standalone
+  build (and the DOS board's) mounts the flash's own "storage" partition
+  (0x600000 to 0xFFFFFF in tiny386's table) and its wear levelling writes
+  its own records in the last sectors below 0x1000000 the first time.
+  That is no Linux partition (in the dual-boot table it is the unused end
+  of tiny386's), so it costs Linux nothing.
+
+
+6. The DOS board (when there is one)
+
+  There is no script for it yet.  Through the board's USB-C (the CH340C;
+  esptool puts the S31 into download mode itself, through DTR and RTS), by
+  hand, with the board's own COM port:
+
+  esptool -c esp32s31 -p COMx -b 921600 write-flash -fm keep -ff keep -fs keep 0x2000 images\dosboard\bootloader.bin 0x8000 images\dosboard\partition-table.bin 0x10000 images\dosboard\tiny386.bin
+
+  This image looks for the HDMI transmitter first (at I2C 0x59, then 0x2B)
+  and stops, with a message on the UART, on any board without one, so on a
+  Korvo-1 it does nothing but say so (and it would have overwritten the
+  Linux loader).  Until the transmitter has answered it drives no pin but
+  the I2C bus and what both boards share (the console's UART0 and the
+  status LED on GPIO37).  If nothing answers at all, it reads GPIO46 for
+  about 0.1 ms with the pin's weak pull-up on (R302 holds it low on a DOS
+  board; on a Korvo-1 it is a camera input), leaves it an input with no
+  pull, and only if it read low pulses the transmitter's reset (GPIO49)
+  once and looks again (since v3.6; v3.5 pulsed it whenever nothing
+  answered and no Korvo-1 device was found).  It is built for rev A2c's
+  pins (I2S on GPIO51 to 53, the transmitter's reset on GPIO49, the
+  CH9350L's on GPIO56); an earlier board, were one ever made, would have no
+  sound from it.  Do not put the Korvo-1 images on the DOS board.  Its own
+  settings go in dosboard.ini (card-dosboard\tiny386\dosboard.ini has every
+  one, with its default); since v4.1 card-dosboard\tiny386\win95-800x600.ini
+  is Windows at its 800x600 (TEST-PLAN.md 13e).  dosboard\images-old-v2\ is
+  the DOS board work's older build: not for flashing.
+
+
+The card for tiny386
+
+  In the dual-boot table there are no bios.bin, vgabios.bin or storage
+  partitions, so tiny386 finds the BIOS files and disk images on the card:
+  the inis in the card's tiny386 folder name them, and a name without a /
+  in front is looked for beside the ini.  card\tiny386\ has the two BIOS
+  files and three inis, and since v4.0 vbe-reg.img (a floppy image for
+  TEST-PLAN.md 13); TEST-PLAN.md says where each file goes.  tiny386
+  writes only lastboot.txt and the disk and floppy images the inis name,
+  and never past an image's end; it never formats or repartitions the
+  card, and never mounts the Linux root partition.  p1 may be FAT16 (as
+  be5b725's card image has it) or FAT32.  "hda = /dev/mmcblk0" (the whole
+  card as one disk) is refused, and so is one image named for two drives.
+
+
+If something goes wrong
+
+  esptool resets the board into download mode by itself through the
+  USB-to-UART bridge: the CP2102N on the Korvo-1, the CH340C on the DOS
+  board.  If it cannot: hold BOOT, press and release RESET, let go of BOOT,
+  then run the script again.  Download mode is in the chip's ROM, and no
+  image here burns an eFuse, so a bad bootloader or table cannot lock you
+  out.
+
+  A write cut off part way (cable, power): run the same script again.  A
+  first install over Linux cut inside its bootloader write (the board then
+  starts nothing) or between the bootloader and the table (Linux starts) is
+  recognised since v3.9: the script reads the first 256 bytes at 0x2000,
+  finds the start of the dual-boot bootloader (or of tiny386's own, or an
+  erased page) in front of Linux's table, keeps the backup it took before
+  that write, and finishes.  "back-to-linux.bat COM10" from there puts
+  Linux back as the backup has it.  (v3.8's scripts stopped there instead
+  and advised renaming the backup, which led to a backup of the broken
+  state; if you ever followed that, see dualboot\DUALBOOT.md 14.)  The one
+  case the scripts cannot sort out is a cut inside the 3 KB partition table
+  itself: they then find a table they do not know at 0x8000 and stop.
+  Write backup\korvo1-2000-8fff-before.bin at 0x2000 by hand as in section
+  4 (or the two small be5b725 files); the scripts know that table, so the
+  one you were running then works again.  dualboot\DUALBOOT.md 12 and 14
+  have every cut-off case.
+
+  The same holds for a cut inside the table during "flash-dualboot.bat
+  COM10 table ...": the board then resets over and over, key or no key,
+  and the scripts stop on a table they do not know.  The dual-boot
+  bootloader is still in, so writing either dual-boot table by hand is
+  enough, for example the Linux-default one:
+  esptool -c esp32s31 -p COM10 -b 921600 write-flash -fm keep -ff keep -fs keep 0x8000 images\korvo1-dualboot\partition-table.bin
+  then "table tiny386" again if that is what you wanted.  One more case
+  with tiny386 the default: back-to-linux.bat stopped between its
+  bootloader and its table leaves be5b725's bootloader (no key) in front of
+  the tiny386-default table, so tiny386 starts with or without VOL+ and
+  Linux does not until back-to-linux.bat COM10 is run again.  It can be:
+  the script knows that table.  dualboot\DUALBOOT.md 13 has these cases.
+
+  The boot messages are on the same port at 115200 8N1, if the panel stays
+  black.  Since v3.8 they stop there once the PC starts, unless the ini has
+  uart_log = 1 under [esp]; a crash report always goes there (since v3.9
+  with the line that names an emulator abort's cause).

@@ -1,0 +1,63 @@
+Two runs of build.sh from nothing, with the v3.3 patch: final-rel1 and final-rel2-second-run, different
+folders (WSL ~/tiny386-idf-scratch/v32-work), 2026-10-22.
+same  dosboard/flash_args
+same  korvo1-dualboot/flash_args
+same  korvo1-standalone/flash_args
+same  dosboard/bootloader.bin
+same  korvo1-dualboot/bootloader.bin
+same  korvo1-standalone/bootloader.bin
+same  dosboard/partition-table.bin
+same  korvo1-dualboot/partition-table.bin
+same  korvo1-standalone/partition-table.bin
+same  dosboard/tiny386.bin
+same  korvo1-dualboot/tiny386.bin
+same  korvo1-standalone/tiny386.bin
+same  dosboard/tiny386.elf
+same  korvo1-dualboot/tiny386.elf
+same  korvo1-standalone/tiny386.elf
+same  dosboard/SHA256SUMS
+same  korvo1-dualboot/SHA256SUMS
+same  korvo1-standalone/SHA256SUMS
+
+The patch applied to a fresh clone (git apply, index and files) gives the v3.3 tree:
+  final-rel1 index tree  2cfbe826218a9c1b059f56e748bed1ff853e2246
+  final-rel2 index tree  2cfbe826218a9c1b059f56e748bed1ff853e2246
+  v3.3 tag tree          a6079865f5fab567293c948c5fee0a98921cdd9c
+  (these two runs used the patch made at f8c05ec, whose tree is 2cfbe826; the tag was then
+  moved one commit on, by a change to tests/host/test_status.c only: see the third run below)
+
+Against v3.2 (previous-v3.2\images): the bootloaders and tables are the same files:
+  korvo1-dualboot/bootloader.bin  b57469cd1542fe83  same
+  korvo1-dualboot/partition-table.bin  d41cba3cf33bedee  same
+  korvo1-dualboot/tiny386.bin  v3.2 867392 bytes, v3.3 885552 bytes
+  korvo1-standalone/bootloader.bin  ec0a396b5bd96406  same
+  korvo1-standalone/partition-table.bin  afbe6410c2040c5e  same
+  korvo1-standalone/tiny386.bin  v3.2 867392 bytes, v3.3 885552 bytes
+  dosboard/bootloader.bin  ec0a396b5bd96406  same
+  dosboard/partition-table.bin  afbe6410c2040c5e  same
+  dosboard/tiny386.bin  v3.2 896432 bytes, v3.3 914624 bytes
+
+A third run, final-rel3, 2026-10-22, with the final patch: the v3.3 tag moved by one commit
+that changes only tests/host/test_status.c (the stall time checked against 10 s as written,
+not against the header), which is not built into any image:
+same as final-rel1  dosboard/flash_args
+same as final-rel1  korvo1-dualboot/flash_args
+same as final-rel1  korvo1-standalone/flash_args
+same as final-rel1  dosboard/bootloader.bin
+same as final-rel1  korvo1-dualboot/bootloader.bin
+same as final-rel1  korvo1-standalone/bootloader.bin
+same as final-rel1  dosboard/partition-table.bin
+same as final-rel1  korvo1-dualboot/partition-table.bin
+same as final-rel1  korvo1-standalone/partition-table.bin
+same as final-rel1  dosboard/tiny386.bin
+same as final-rel1  korvo1-dualboot/tiny386.bin
+same as final-rel1  korvo1-standalone/tiny386.bin
+same as final-rel1  dosboard/tiny386.elf
+same as final-rel1  korvo1-dualboot/tiny386.elf
+same as final-rel1  korvo1-standalone/tiny386.elf
+same as final-rel1  dosboard/SHA256SUMS
+same as final-rel1  korvo1-dualboot/SHA256SUMS
+same as final-rel1  korvo1-standalone/SHA256SUMS
+  final-rel3 index tree  a6079865f5fab567293c948c5fee0a98921cdd9c
+  v3.3 tag tree          a6079865f5fab567293c948c5fee0a98921cdd9c
+  the patch in v3: git diff pristine v3.3, 787754 bytes, sha256 984f2c841ad8eeab

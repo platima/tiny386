@@ -1,0 +1,9 @@
+96a97,104
+>     # v4.3 (perfport.c in the tree): main/CMakeLists.txt adds perfport.c and
+>     # TINY386_PERFPORT, so pc_vga_step() draws through perfport_redraw() as on
+>     # the board (the port's host part is not filled here; NO_PERFPORT=1 leaves
+>     # the port out)
+>     if [ -f "$TREE/perfport.c" ] && [ -z "${NO_PERFPORT:-}" ]; then
+>         SRCS="$SRCS perfport.c"
+>         V3DEFS="$V3DEFS -DTINY386_PERFPORT"
+>     fi

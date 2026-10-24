@@ -1,0 +1,12 @@
+The cost of the emulator's log lines with v3.9's console.c (the limit's count now at the held
+lines' level), measured on this PC as v3.8's log-cost-v3.8.txt was: console.c built for the host
+(CONSOLE_HOST), gcc -O2, the same program (log-cost-v3.8.c, unchanged) and the same boot log
+(~/win95-debug/fix/runs-final/board-frag-14M-a/log.txt), 2026-10-22.
+
+== boot (Windows 95 OSR2 to the desktop, PC harness): 180 lines, 4995 bytes with CR LF, over 80.0 s of the clock
+  limit off: 180 lines out (0 of the 180 held back, 0 count lines added), 4995 bytes to the UART; on the PC 105 ns a line in console.c (median of 7: 0.02 ms in all); at 86.8 us a byte the UART takes 0.43 s
+  limit on : 107 lines out (75 of the 180 held back, 2 count lines added), 3690 bytes to the UART; on the PC 116 ns a line in console.c (median of 7: 0.02 ms in all); at 86.8 us a byte the UART takes 0.32 s
+== storm (an unknown port and a bad selector by turns, 100,000 lines in 60 s): 100000 lines, 4538894 bytes with CR LF, over 60.0 s of the clock
+  limit off: 100000 lines out (0 of the 100000 held back, 0 count lines added), 4538894 bytes to the UART; on the PC 156 ns a line in console.c (median of 7: 15.63 ms in all); at 86.8 us a byte the UART takes 393.98 s
+  limit on : 144 lines out (99880 of the 100000 held back, 24 count lines added), 7554 bytes to the UART; on the PC 64 ns a line in console.c (median of 7: 6.45 ms in all); at 86.8 us a byte the UART takes 0.66 s
+exit 0

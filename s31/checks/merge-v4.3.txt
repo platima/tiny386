@@ -1,0 +1,154 @@
+v4.3: tag v4.2 (6502063) with the branch perfport (6e9a6f1) merged in, in a new worktree on a new
+branch v43 (WSL ~/v43/merge/tree; the branches v42 and perfport untouched).  2026-10-24.
+
+== the branches and the merge base
+  v4.2: 6502063 esp/version.txt: v4.2, no black between a clear and its picture; Ctrl+Alt+F11 for vbe_blocks
+  perfport: 6e9a6f1 esp/version.txt: v4.1-perfport
+  v4.1: f61337e esp/version.txt: v4.1, the v4.0 reviews' fixes
+  v43: 0f87c1c esp/version.txt: v4.3, v4.2 with the information port at 0F1F8h
+  v4.3: 0f87c1c esp/version.txt: v4.3, v4.2 with the information port at 0F1F8h
+  merge base of v4.2 and perfport: f61337e (v4.1)
+  the branches v42 and perfport still at: 6502063 and 6e9a6f1
+
+== git log --graph v4.1..v4.3
+* 0f87c1c esp/version.txt: v4.3, v4.2 with the information port at 0F1F8h
+* b267cd9 tests/host: the information port and Ctrl+Alt+F11 together (test_port_blocks)
+*   c044193 Merge branch 'perfport' into v43: the information port at 0F1F8h with v4.2
+|\  
+| * 6e9a6f1 esp/version.txt: v4.1-perfport
+| * 1ea0539 perfport.c, perfport.h, tests/host: the port's 1.1, the panel's frames a second and the second after a pause
+| * 32191dc tests/host: the information port
+| * 4940f13 esp/main: the board's values for the information port
+| * e24e7b2 perfport.h, perfport.c, pc.c, vga.c, vga.h, i8042.c, i8042.h: an information port at 0F1F8h
+* 6502063 esp/version.txt: v4.2, no black between a clear and its picture; Ctrl+Alt+F11 for vbe_blocks
+* cbabe92 tests/host: Ctrl+Alt+F11 beside Ctrl+Alt+F12; vbe_blocks changed while drawing
+* 26da490 esp/main, vga.c: Ctrl+Alt+F11 changes vbe_blocks while the PC runs
+* f77fc44 tests/host: test_clear: a clear made by the picture after it, no page stored for nothing
+* 411b6bf vga.c: a clear is made by the picture after it, with no black between
+
+== the commits' identity (the scratch tree's own; no co-author line in any message)
+  0f87c1c author Platima Tinkers <address removed before publishing>, committer Platima Tinkers <address removed before publishing>
+  b267cd9 author Platima Tinkers <address removed before publishing>, committer Platima Tinkers <address removed before publishing>
+  c044193 author Platima Tinkers <address removed before publishing>, committer Platima Tinkers <address removed before publishing>
+  6e9a6f1 author Platima Tinkers <address removed before publishing>, committer Platima Tinkers <address removed before publishing>
+  1ea0539 author Platima Tinkers <address removed before publishing>, committer Platima Tinkers <address removed before publishing>
+  32191dc author Platima Tinkers <address removed before publishing>, committer Platima Tinkers <address removed before publishing>
+  4940f13 author Platima Tinkers <address removed before publishing>, committer Platima Tinkers <address removed before publishing>
+  e24e7b2 author Platima Tinkers <address removed before publishing>, committer Platima Tinkers <address removed before publishing>
+  messages naming a co-author: 0
+
+== the merge's two conflicts, as git left them (the merge run again in a scratch clone)
+  Auto-merging esp/main/speed.c
+  Auto-merging esp/version.txt
+  CONFLICT (content): Merge conflict in esp/version.txt
+  Auto-merging tests/host/run.sh
+  CONFLICT (content): Merge conflict in tests/host/run.sh
+  Auto-merging vga.c
+  Auto-merging vga.h
+  Automatic merge failed; fix conflicts and then commit the result.
+  diff --cc esp/version.txt
+  index 2fa2c57,fc7480b..0000000
+  --- a/esp/version.txt
+  +++ b/esp/version.txt
+  @@@ -1,1 -1,1 +1,5 @@@
+  ++<<<<<<< HEAD
+   +v4.2
+  ++=======
+  + v4.1-perfport
+  ++>>>>>>> origin/perfport
+  diff --cc tests/host/run.sh
+  index 4ac66af,e61bdf2..0000000
+  --- a/tests/host/run.sh
+  +++ b/tests/host/run.sh
+  @@@ -103,7 -103,7 +103,11 @@@ vga_rename() 
+                 vga_ioport_read vbe_write vbe_read vga_mem_write vga_mem_read \
+                 vga_mem_write16 vga_mem_write32 vga_mem_write_string vga_pci_init \
+                 vga_planar_fast vga_set_text_ops vga_dirty_map vga_dirty vga_dirty_blocks \
+  ++<<<<<<< HEAD
+   +             vga_set_dirty_blocks; do
+  ++=======
+  +              vga_get_info; do
+  ++>>>>>>> origin/perfport
+            printf ' -D%s=%s%s' "$s" "$p" "$s"
+        done
+    }
+
+== how they were resolved (git show --cc of the merge commit: only the lines that differ from both sides)
+c044193 Merge branch 'perfport' into v43: the information port at 0F1F8h with v4.2
+
+perfport (v4.1 and the port 1.1, 6e9a6f1) into v4.2 (6502063).  Git merged
+pc.c, vga.c, vga.h and speed.c by itself; two one-line conflicts, both
+sides kept: the renamed functions of tests/host/run.sh's vga_rename()
+(vga_set_dirty_blocks from v4.2, vga_get_info from perfport), and
+esp/version.txt, left at v4.2 here (the version is its own commit).
+
+
+diff --cc tests/host/run.sh
+index 4ac66af,e61bdf2..1d1b3f5
+--- a/tests/host/run.sh
++++ b/tests/host/run.sh
+@@@ -103,7 -103,7 +103,7 @@@ vga_rename() 
+               vga_ioport_read vbe_write vbe_read vga_mem_write vga_mem_read \
+               vga_mem_write16 vga_mem_write32 vga_mem_write_string vga_pci_init \
+               vga_planar_fast vga_set_text_ops vga_dirty_map vga_dirty vga_dirty_blocks \
+-              vga_set_dirty_blocks; do
+ -             vga_get_info; do
+++             vga_set_dirty_blocks vga_get_info; do
+          printf ' -D%s=%s%s' "$s" "$p" "$s"
+      done
+  }
+
+== each file the merge took from perfport: its lines added to and taken from v4.2 are exactly the
+== lines perfport added to and took from v4.1 (the +/- lines of the two diffs, compared)
+  esp/main/CMakeLists.txt            exactly perfport's lines; v4.2 had changed it in 0 lines
+  esp/main/disk_image.c              exactly perfport's lines; v4.2 had changed it in 0 lines
+  esp/main/disk_image.h              exactly perfport's lines; v4.2 had changed it in 0 lines
+  esp/main/speed.c                   exactly perfport's lines; v4.2 had changed it in 31 lines
+  esp/main/status_led.c              exactly perfport's lines; v4.2 had changed it in 0 lines
+  esp/main/status_led.h              exactly perfport's lines; v4.2 had changed it in 0 lines
+  i8042.c                            exactly perfport's lines; v4.2 had changed it in 0 lines
+  i8042.h                            exactly perfport's lines; v4.2 had changed it in 0 lines
+  pc.c                               exactly perfport's lines; v4.2 had changed it in 0 lines
+  perfport.c                         exactly perfport's lines; v4.2 had changed it in 0 lines
+  perfport.h                         exactly perfport's lines; v4.2 had changed it in 0 lines
+  tests/host/disk/test_ide_fatfs.c   exactly perfport's lines; v4.2 had changed it in 0 lines
+  tests/host/run.sh                  NOT perfport's lines alone (the conflict resolved above); v4.2 had changed it in 47 lines
+  tests/host/test_perfport.c         exactly perfport's lines; v4.2 had changed it in 0 lines
+  tests/host/test_vga_info.c         exactly perfport's lines; v4.2 had changed it in 0 lines
+  vga.c                              exactly perfport's lines; v4.2 had changed it in 132 lines
+  vga.h                              exactly perfport's lines; v4.2 had changed it in 9 lines
+
+== the port's own files in v4.3 against the branch (no output: the same)
+
+== vbe_blocks: where the port reads it, and where Ctrl+Alt+F11 changes it (v4.3)
+  esp/main/speed.c:428:		vga_set_dirty_blocks(!vga_dirty_blocks);
+  perfport.c:236:	PERFPORT_PUT(v, ok, PP_I_VBE_BLOCKS_ON, vga_dirty_blocks);
+  vga.c:45:int vga_dirty_blocks = 1;
+  vga.c:46:/* how many times vga_set_dirty_blocks() has changed it */
+  vga.c:49:void vga_set_dirty_blocks(int on)
+  vga.c:2600:    /* vbe_blocks changed while the PC runs (vga_set_dirty_blocks()): this
+
+== git diff --stat v4.2 v4.3
+ esp/main/CMakeLists.txt          |   4 ++
+ esp/main/disk_image.c            |   8 ++-
+ esp/main/disk_image.h            |   3 +
+ esp/main/speed.c                 |  85 +++++++++++++++++++++++++++
+ esp/main/status_led.c            |   9 +++
+ esp/main/status_led.h            |   4 ++
+ esp/version.txt                  |   2 +-
+ i8042.c                          |   7 +++
+ i8042.h                          |   5 ++
+ pc.c                             |  43 ++++++++++++++
+ perfport.c                       | 320 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ perfport.h                       | 246 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ tests/host/disk/test_ide_fatfs.c |  13 +++++
+ tests/host/run.sh                |  34 ++++++++++-
+ tests/host/test_perfport.c       | 506 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ tests/host/test_port_blocks.c    | 214 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ tests/host/test_vga_info.c       | 198 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ vga.c                            |  55 ++++++++++++++++++
+ vga.h                            |  15 +++++
+ 19 files changed, 1767 insertions(+), 4 deletions(-)
+
+== the tag
+  v4.3 at 0f87c1c, tree 284a933193c2fc720f348432c4281a141fe46371; esp/version.txt: v4.3

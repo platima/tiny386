@@ -1,0 +1,20 @@
+tests/host/test_status.c against faulty copies of status_code.c, status_code.h and status_bb.h
+(mutate.sh, WSL ~/v34-fw; nothing in the tree changed), at v3.4.  Each line: caught (test_status
+failed) or MISSED.  v3.3's twelve, moved to v3.4's text, and five new ones.
+caught  schedule-drift: 3826 checks failed
+caught  t1h-800ns: 3330 checks failed
+caught  t0h-400ns: 2108 checks failed
+caught  reset-50us: 138 checks failed
+caught  rgb-not-grb: 1 checks failed
+caught  lsb-first: 3 checks failed
+caught  no-ini-3-blinks: 2 checks failed
+caught  fatal-replaced: 5 checks failed
+caught  stall-5s: 1 checks failed
+caught  record-check-weak: 22 checks failed
+caught  replay-no-lead: 305 checks failed
+caught  bb-cycles-low: 98 checks failed
+caught  t1h-v33-662.5ns: 76 checks failed
+caught  t1-1300ns: 2 checks failed
+caught  t0h-275ns: 2226 checks failed
+caught  bb-no-last-low: 448 checks failed
+caught  bb-reset-short: 128 checks failed

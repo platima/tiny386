@@ -1,0 +1,21 @@
+run_storage.sh with the build's sdkconfig.h: exit 0
+stubs/sdkconfig.h: the same FatFs lines as /home/owner/tiny386-idf-scratch/v3-work-integ/resume/rel1/tiny386/esp/build-korvo1/config/sdkconfig.h
+== compiler warnings outside ESP-IDF and managed components, per build
+build-korvo1: 1
+   /home/owner/tiny386-idf-scratch/v3-work-integ/resume/rel1/tiny386/esp/main/i2s.c:19:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+build-korvo1-standalone: 1
+   /home/owner/tiny386-idf-scratch/v3-work-integ/resume/rel1/tiny386/esp/main/i2s.c:19:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+build-dosboard: 0
+== sizes
+build-korvo1:
+   │ DIRAM               │       241282 │     47.9 │         262462 │        503744 │
+   │ LP SRAM             │         8232 │    25.12 │          24536 │         32768 │
+   Total image size: 865738 bytes (.bin may be padded larger)
+build-korvo1-standalone:
+   │ DIRAM               │       241282 │     47.9 │         262462 │        503744 │
+   │ LP SRAM             │         8232 │    25.12 │          24536 │         32768 │
+   Total image size: 865738 bytes (.bin may be padded larger)
+build-dosboard:
+   │ DIRAM               │       244296 │     48.5 │         259448 │        503744 │
+   │ LP SRAM             │         8232 │    25.12 │          24536 │         32768 │
+   Total image size: 893956 bytes (.bin may be padded larger)

@@ -1,0 +1,33 @@
+tests/host/dosboard/audio_mix_test.c against faulty copies of esp/main/audio_mix.c (and other default
+levels), and tests/host/dosboard/check_pins.py against faulty copies of board_dosboard.h
+(mutate.sh, WSL ~/tiny386-idf-scratch/v35-work; nothing in the tree changed), at v3.5, 2026-10-22.
+Each line: caught (the test failed) or MISSED; the first is the unchanged copy, which must pass.
+default-level-3 and -4 are a quieter default: the test now wants the loudest level that cannot clip.
+
+control unchanged: passes (audio_mix_test: 7753016 checks, 0 failed: PASS)
+caught  sum-wraps-16-bit: exit 1, 30 failure lines shown (of 901737 failed checks)
+caught  no-hold-high: exit 1, 30 failure lines shown (of 73372 failed checks)
+caught  no-hold-low: exit 1, 30 failure lines shown (of 73836 failed checks)
+caught  held-before-level: exit 1, 30 failure lines shown (of 780539 failed checks)
+caught  rounds-down: exit 1, 30 failure lines shown (of 1957809 failed checks)
+caught  speaker-x16: exit 1, 30 failure lines shown (of 2600689 failed checks)
+caught  speaker-centre-7f: exit 1, 30 failure lines shown (of 2098775 failed checks)
+caught  adlib-right-channel-off-by-one: exit 1, 30 failure lines shown (of 2329866 failed checks)
+caught  adlib-asked-half: exit 1, 30 failure lines shown (of 1651414 failed checks)
+caught  sb16-asked-half: exit 1, 30 failure lines shown (of 1422374 failed checks)
+caught  speaker-asked-half: exit 1, 30 failure lines shown (of 632353 failed checks)
+caught  no-shift-cap: exit 1, 30 failure lines shown (of 498 failed checks)
+caught  held-not-counted: exit 1, 30 failure lines shown (of 4394 failed checks)
+caught  default-level-1: exit 1, 3 failure lines shown (of 3 failed checks)
+caught  default-level-3: exit 1, 1 failure lines shown (of 1 failed checks)
+caught  default-level-4-as-v3.4: exit 1, 2 failure lines shown (of 2 failed checks)
+
+check_pins.py against faulty copies of board_dosboard.h:
+caught  i2s-bclk-back-on-3: 3 failed: I2S_BCLK          GPIO3  module pad 7   net GPIO3         (want I2S_BCLK);GPIO3  J202 pin 8 net GPIO3: left to the header user, the firmware names it as I2S_BCLK;
+caught  rstn-back-on-2: 3 failed: HDMI_RSTN_GPIO    GPIO2  module pad 6   net GPIO2         (want HDMI_RSTN);GPIO2  J202 pin 7 net GPIO2: left to the header user, the firmware names it as HDMI_RSTN_GPIO;
+caught  km-rst-back-on-7: 3 failed: KM_RST_GPIO       GPIO7  module pad 13  net GPIO7         (want KM_RST);GPIO7  J202 pin 12 net GPIO7: left to the header user, the firmware names it as KM_RST_GPIO;
+caught  km-rst-on-header-57: 2 failed: KM_RST_GPIO       GPIO57 module pad 67  net GPIO57        (want KM_RST);GPIO57 J202 pin 13 net GPIO57: left to the header user, the firmware names it as KM_RST_GPIO;
+caught  ws-dout-swapped: 2 failed: I2S_WS            GPIO53 module pad 63  net I2S_DOUT      (want I2S_WS);I2S_DOUT          GPIO52 module pad 62  net I2S_WS        (want I2S_DOUT);
+caught  new-pin-on-gpio5: 1 failed: SPARE_LED_GPIO = 5: a pin name this script does not know (add it to EXPECT);
+caught  mute-on-60: 2 failed: AUDIO_MUTE_GPIO   GPIO60 module pad 70  net GPIO60        (want AUD_XSMT);GPIO60 J202 pin 14 net GPIO60: left to the header user, the firmware names it as AUDIO_MUTE_GPIO;
+caught  lcd-data-swapped: 2 failed: LCD_DATA_GPIOS[0 ] GPIO9  module pad 15  net LCD_D1        (want LCD_D0);LCD_DATA_GPIOS[1 ] GPIO8  module pad 14  net LCD_D0        (want LCD_D1);

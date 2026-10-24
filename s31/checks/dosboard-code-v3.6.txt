@@ -1,0 +1,135 @@
+The DOS board image (rel1, build.sh with the v3.6 patch at 3017d38; the same bytes in all five runs, the final patch's two included), read with
+riscv32-esp-elf-objdump, 2026-10-22.
+
+1. board_early_init(): the calls it makes, in the order of the code, each with the constant
+   put in a0 just before it where there is one (a GPIO number for gpio_set_level and
+   gpio_get_level; gpio_config takes a pointer).  s0_strap_low() and korvo1_device() are
+   inlined.  Before the first probe_ms7210() only the I2C bus is set up; then i2c_master_probe()
+   (the Korvo-1 addresses), then GPIO46: gpio_config (the pull-up), gpio_get_level(46) in a
+   loop, gpio_config (no pull); only after that the branch to RSTN (gpio_set_level(49),
+   gpio_config) or to wrong_board().
+   heap_caps_calloc(24) fprintf i2c_new_master_bus i2c_master_bus_add_device i2c_master_bus_add_device i2c_master_bus_add_device probe_ms7210 i2c_master_probe gpio_config esp_rom_delay_us(100) gpio_get_level(46) esp_rom_delay_us(10) gpio_config fprintf gpio_set_level(49) gpio_config probe_ms7210 gpio_set_level(38) gpio_set_level(48) gpio_config gpio_set_level(48) gpio_config gpio_get_level(50) dosboard_note dosboard_note gpio_get_level(50) fwrite wrong_board wrong_board 
+
+   The GPIO46 read as built: the two gpio_config_t constants (pin mask, mode, pull-up,
+   pull-down, interrupt) and the code from the first gpio_config to the branch on the result:
+   40021cbc:	li	s2,-1
+   40021cbe:	li	a4,0
+   40021cc0:	lui	a5,0x4
+   40021cc2:	li	s0,1
+   40021cc4:	addi	a0,sp,96
+   40021cc6:	sw	a4,96(sp)
+   40021cc8:	sw	a5,100(sp)
+   40021cca:	sw	a4,128(sp)
+   40021ccc:	sw	a5,132(sp)
+   40021cce:	sw	s2,-1676(gp) # 2f035afc <s_korvo1_addr>
+   40021cd2:	sw	zero,112(sp)
+   40021cd4:	sw	zero,116(sp)
+   40021cd6:	sw	zero,120(sp)
+   40021cd8:	sw	zero,124(sp)
+   40021cda:	sw	zero,140(sp)
+   40021cdc:	sw	zero,144(sp)
+   40021cde:	sw	zero,148(sp)
+   40021ce0:	sw	zero,152(sp)
+   40021ce2:	sw	zero,156(sp)
+   40021ce4:	sw	s0,104(sp)
+   40021ce6:	sw	s0,108(sp)
+   40021ce8:	sw	s0,136(sp)
+   40021cea:	jal	4004b36c <gpio_config>
+   40021cee:	li	a0,100
+   40021cf2:	auipc	ra,0xef7de
+   40021cf6:	jalr	842(ra) # 2f80003c <esp_rom_delay_us>
+   40021cfa:	li	s1,4
+   40021cfc:	li	a0,46
+   40021d00:	jal	4004b27c <gpio_get_level>
+   40021d04:	seqz	a5,a0
+   40021d08:	addi	s1,s1,-1
+   40021d0a:	li	a0,10
+   40021d0c:	and	s0,s0,a5
+   40021d0e:	auipc	ra,0xef7de
+   40021d12:	jalr	814(ra) # 2f80003c <esp_rom_delay_us>
+   40021d16:	bnez	s1,40021cfc <board_early_init+0x1a6>
+   40021d18:	addi	a0,sp,128
+   40021d1a:	jal	4004b36c <gpio_config>
+   40021d1e:	sw	s0,-1680(gp) # 2f035af8 <s_strap>
+   40021d22:	beqz	s0,40021e44 <board_early_init+0x2ee>
+   40021d26:	lw	a2,-1676(gp) # 2f035afc <s_korvo1_addr>
+   40021d2a:	lw	a0,-1800(gp) # 2f035a80 <stderr>
+   40021d2e:	bltz	a2,40021e10 <board_early_init+0x2ba>
+   40021d32:	lui	a1,0x4007a
+
+2. probe_ms7210(): i2c_readdress ms7210_probe fprintf i2c_readdress ms7210_default_cfg ms7210_probe 
+
+3. io_rstn(), the MS7210 driver's reset callback: GPIO49 is driven only once s_rstn_ours is set
+   400215b8:	lui	a5,0x2f03d
+   400215bc:	lbu	a5,-1451(a5) # 2f03ca55 <s_rstn_ours>
+   400215c0:	bnez	a5,400215c4 <io_rstn+0xc>
+   400215c2:	ret
+   400215c4:	li	a0,49
+   400215c8:	j	4004b1e2 <gpio_set_level>
+
+4. wrong_board(): i2c_master_bus_rm_device i2c_master_bus_rm_device i2c_master_bus_rm_device i2c_del_master_bus status_led_fatal snprintf gpio_reset_pin snprintf fprintf vTaskDelay snprintf snprintf snprintf 
+
+5. i2s_task(): fprintf xEventGroupWaitBits i2s_channel_enable esp_timer_get_time esp_timer_get_time audio_mix_pc i2s_channel_write esp_timer_get_time console_uart_printf gpio_set_level console_uart_printf 
+   audio_mix_pc(): audio_mix_devices 
+   audio_mix_devices(): memset memset adlib_callback sb16_audio_callback pcspk_get_active_out audio_mix_block memset pcspk_callback 
+   audio_mix_devices(), its first instructions (the clamp, the rounding to even and, new in
+   v3.6, the return when n comes to 0 or less, before the first memset):
+   4001feae:	addi	sp,sp,-496
+   4001feb0:	mv	a6,a1
+   4001feb2:	sw	ra,492(sp)
+   4001feb6:	sw	s0,488(sp)
+   4001feba:	sw	s4,472(sp)
+   4001febe:	sw	s5,468(sp)
+   4001fec2:	li	a1,128
+   4001fec6:	blt	a1,a6,4001ff6a <audio_mix_devices+0xbc>
+   4001feca:	andi	s0,a6,-2
+   4001fece:	li	a1,0
+   4001fed0:	blez	s0,4001ff54 <audio_mix_devices+0xa6>
+   4001fed4:	sw	s1,484(sp)
+   4001fed8:	sw	s2,480(sp)
+   4001fedc:	sw	s3,476(sp)
+   4001fee0:	sw	s6,464(sp)
+   4001fee4:	slli	s4,s0,0x1
+   4001fee8:	slli	s5,s0,0x1
+   4001feec:	mv	a1,s0
+   4001feee:	sw	a2,8(sp)
+   4001fef0:	mv	s6,a0
+   4001fef2:	mv	a2,a1
+   4001fef4:	addi	a0,sp,80
+   4001fef6:	li	a1,0
+   4001fef8:	mv	s1,a5
+   4001fefa:	mv	s2,a3
+   4001fefc:	sw	a6,12(sp)
+   4001fefe:	mv	s3,a4
+   4001ff00:	auipc	ra,0xef7e0
+   4001ff04:	jalr	1472(ra) # 2f8004c0 <memset>
+
+6. The panic path's sound mute, as in v3.4 and v3.5: audio_panic_quiet in internal RAM
+   (0x2f000000 up) and called from status_led_panic:
+   2f0032b2 T audio_panic_quiet
+   2f0034d0 T status_led_panic
+   2f036d2b d s_i2s_running
+   status_led_panic() calls: status_record_put esp_rom_get_cpu_ticks_per_us status_bb_timing rom_gpio_set_output_level status_panic_pattern audio_panic_quiet 
+
+7. The status LED's bit-bang layout, build.sh's own check (bb_layout()) in each image:
+   == korvo1-dualboot
+     status_led_panic: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+     status_led_halt: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+   == korvo1-standalone
+     status_led_panic: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+     status_led_halt: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+   == dosboard
+     status_led_panic: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+     status_led_halt: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+
+8. GPIO numbers the DOS board code loads as constants before calling gpio_set_level,
+   gpio_get_level or gpio_reset_pin, in dosboard.c's and ch9350.c's functions (li a0,N before
+   the call); gpio_config's masks are in the gpio_config_t constants (section 1):
+   board_early_init: 38 46 48 49 50 
+   io_rstn: 49 
+   wrong_board: 49 
+   ch9350_setup: 46 56 
+   chip_reset: 
+   line_out_init: 
+   i2s_task: 48 
+   audio_panic_quiet: 

@@ -1,0 +1,27 @@
+Which flashing targets of each build depend on tiny386_no_flash, the target that fails
+(esp/CMakeLists.txt, the dual-boot table only).  From the build graphs with ninja -t query
+and ninja -t inputs, in rel1 (build.sh); no flash target was run.
+== build-korvo1
+  flash: refused (tiny386_no_flash comes first)
+  app-flash: refused (tiny386_no_flash comes first)
+  bootloader-flash: refused (tiny386_no_flash comes first)
+  partition-table-flash: refused (tiny386_no_flash comes first)
+  erase-flash: refused (tiny386_no_flash comes first)
+  encrypted-flash: refused (tiny386_no_flash comes first)
+  encrypted-app-flash: refused (tiny386_no_flash comes first)
+== build-korvo1-standalone
+  flash: allowed
+  app-flash: allowed
+  bootloader-flash: allowed
+  partition-table-flash: allowed
+  erase-flash: allowed
+  encrypted-flash: allowed
+  encrypted-app-flash: allowed
+== build-dosboard
+  flash: allowed
+  app-flash: allowed
+  bootloader-flash: allowed
+  partition-table-flash: allowed
+  erase-flash: allowed
+  encrypted-flash: allowed
+  encrypted-app-flash: allowed

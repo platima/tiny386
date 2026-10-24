@@ -1,0 +1,95 @@
+### 3. bootloaders: sizes and room below the table at 0x8000 (0x6000 = 24576 bytes from 0x2000)
+inputs/be5b725/bootloader.bin                                 22000 bytes  0x055f0  room  2576 bytes  ends 0x075f0  erased to 0x07fff
+inputs/release-v2026.09.20/bootloader/bootloader/bootloader.bin  23024 bytes  0x059f0  room  1552 bytes  ends 0x079f0  erased to 0x07fff
+ref/build/bootloader/bootloader/bootloader.bin                22000 bytes  0x055f0  room  2576 bytes  ends 0x075f0  erased to 0x07fff
+dual/build/bootloader/bootloader/bootloader.bin               22352 bytes  0x05750  room  2224 bytes  ends 0x07750  erased to 0x07fff
+dual-fresh/build/bootloader/bootloader/bootloader.bin         22352 bytes  0x05750  room  2224 bytes  ends 0x07750  erased to 0x07fff
+inputs/v2/bootloader/bootloader.bin                           22016 bytes  0x05600  room  2560 bytes  ends 0x07600  erased to 0x07fff
+
+ref (unchanged copy) vs be5b725 bootloader.bin, differing bytes (offset, octal values):
+43
+  0x0048 117 123
+  0x0049 143 145
+  0x004a 164 160
+  0x004d 61 67
+  0x0054 61 60
+  0x0055 65 70
+  0x0057 61 60
+  0x0058 62 65
+  0x005a 60 64
+  0x005b 64 62
+  0x55cf 223 203
+  0x55d0 363 367
+  0x55d1 175 207
+  0x55d2 257 36
+  0x55d3 254 125
+  0x55d4 231 375
+  0x55d5 236 276
+  0x55d6 224 23
+  0x55d7 346 150
+  0x55d8 152 330
+  0x55d9 121 224
+  0x55da 155 210
+  0x55db 271 0
+  0x55dc 316 177
+  0x55dd 140 165
+  0x55de 205 265
+  0x55df 325 67
+  0x55e0 210 363
+  0x55e1 54 157
+  0x55e2 306 25
+  0x55e3 63 110
+  0x55e4 317 230
+  0x55e5 133 111
+  0x55e6 35 335
+  0x55e7 203 372
+  0x55e8 107 17
+  0x55e9 231 54
+  0x55ea 266 353
+  0x55eb 375 164
+  0x55ec 321 334
+  0x55ed 172 245
+  0x55ee 361 221
+  0x55ef 220 313
+compile-time strings:
+inputs/be5b725/bootloader.bin:      48 Sep 27 2026 08:05:42 
+ref/build/bootloader/bootloader/bootloader.bin:      48 Oct 21 2026 15:12:04 
+dual/build/bootloader/bootloader/bootloader.bin:      48 Oct 21 2026 15:12:14 
+dual-fresh/build/bootloader/bootloader/bootloader.bin:      48 Oct 21 2026 15:12:24 
+
+dual vs dual-fresh bootloader.bin, differing bytes:
+34
+  0x005a
+  0x572f
+  0x5730
+  0x5731
+  0x5732
+  0x5733
+  0x5734
+  0x5735
+  0x5736
+  0x5737
+  0x5738
+  0x5739
+  0x573a
+  0x573b
+  0x573c
+  0x573d
+  0x573e
+  0x573f
+  0x5740
+  0x5741
+  0x5742
+  0x5743
+  0x5744
+  0x5745
+  0x5746
+  0x5747
+  0x5748
+  0x5749
+  0x574a
+  0x574b
+  0x574c
+  0x574d
+  0x574e
+  0x574f

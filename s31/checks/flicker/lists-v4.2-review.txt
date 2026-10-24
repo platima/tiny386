@@ -1,0 +1,141 @@
+#### l1.txt
+# apply42 list 1: the fix agent's list3 (the session and the sweep) and list2 (DEBUG in MS-DOS
+# mode), the review's DOS box session (and v4.1 with the standard VGA driver too), and the install
+# through the dialogs from the changed floppy (route C), all with the harness's new count of black
+a42-n16 r42 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448
+a41-n16 r41 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448
+a42-n16dib r42 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448
+a41-n16dib r41 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448
+a42-vga r42 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios.bin plat 205 1 1000 -cursor-box 250,0,720,448
+a41-vga r41 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios.bin plat 205 1 1000 -cursor-box 250,0,720,448
+a39-vga r39 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios-v3.9.bin plat 205 1 1000 -cursor-box 250,0,720,448
+a42-n16-blocks0 r42 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -vbe-blocks 0
+a42-n16dib-blocks0 r42 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -vbe-blocks 0
+a42-n16-thread r42 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -vgathread -check-every 10
+a42-n16dib-thread r42 /home/owner/flicker/fix/h/img/n16-dib.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448 -vgathread -check-every 10
+a42-off8 r42 /home/owner/v4-work/vbe/w95/img/w8-800x480.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a42-off8dib r42 /home/owner/flicker/fix/h/img/off8-dib.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a42-off16 r42 /home/owner/v4-work/vbe/w95/img/w16-800x480.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a42-off16dib r42 /home/owner/flicker/fix/h/img/off16-dib.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a41-off16 r41 /home/owner/v4-work/vbe/w95/img/w16-800x480.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a42-off24 r42 /home/owner/v4-work/vbe/w95/img/w24-800x480.img 13M 1152K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a42-off24dib r42 /home/owner/flicker/fix/h/img/off24-dib.img 13M 1152K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a42-off32 r42 /home/owner/v4-work/vbe/w95/img/w32-800x480.img 13M 1536K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a42-off32dib r42 /home/owner/flicker/fix/h/img/off32-dib.img 13M 1536K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a41-off32 r41 /home/owner/v4-work/vbe/w95/img/w32-800x480.img 13M 1536K vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a42-v640 r42 /home/owner/flicker/repro/h/img/off-v640x16.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 250,0,720,448
+a42-v640dib r42 /home/owner/flicker/fix/h/img/v640x16-dib.img 14M 768K vgabios.bin sweep 50 6 1000 -cursor-box 250,0,720,448
+a42-dos16 r42d /home/owner/v4-work/vbe/w95/img/w16-800x600.img 13M 1M vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a42-dos16dib r42d /home/owner/flicker/fix/h/img/dos16-dib.img 13M 1M vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a41-dos16 r41d /home/owner/v4-work/vbe/w95/img/w16-800x600.img 13M 1M vgabios.bin sweep 50 6 1000 -cursor-box 170,0,640,448
+a42-dosfix r42 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin dosfix 320 1 1000 @keep -cursor-box 170,0,640,448 -snap 5
+d42-n16 r42 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin dosbox 240 1 1500 -cursor-box 170,0,640,448
+d41-n16 r41 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin dosbox 240 1 1500 -cursor-box 170,0,640,448
+d42-ps1 r42 /home/owner/flicker/review/img/n16-ps1.img 14M 768K vgabios.bin dosbox 240 1 1500 -cursor-box 170,0,640,448
+d41-ps1 r41 /home/owner/flicker/review/img/n16-ps1.img 14M 768K vgabios.bin dosbox 240 1 1500 -cursor-box 170,0,640,448
+d42-vga r42 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios.bin dosbox 240 1 1500 -cursor-box 250,0,720,448
+d41-vga r41 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios.bin dosbox 240 1 1500 -cursor-box 250,0,720,448
+d42-ps1-thread r42 /home/owner/flicker/review/img/n16-ps1.img 14M 768K vgabios.bin dosbox 240 1 1500 -cursor-box 170,0,640,448 -vgathread -check-every 10
+c42-gi r42 /home/owner/v4-work/v41/h/img/win95.pristine.img 14M 768K vgabios.bin - 0 0 1080 @keep @fda=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/card/tiny386/vbe-reg.img @fdb=/home/owner/flicker/apply42/drv/floppy-ptrfix.img -keyfile /home/owner/v4-work/v41/gi/gi18.keys
+c42-gi-rel r42 /home/owner/v4-work/v41/h/img/win95.pristine.img 14M 768K vgabios.bin - 0 0 1080 @keep @fda=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/card/tiny386/vbe-reg.img @fdb=/home/owner/flicker/apply42/drv/floppy-released.img -keyfile /home/owner/v4-work/v41/gi/gi18.keys
+c41-gi r41 /home/owner/v4-work/v41/h/img/win95.pristine.img 14M 768K vgabios.bin - 0 0 1080 @fda=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/card/tiny386/vbe-reg.img @fdb=/home/owner/flicker/apply42/drv/floppy-ptrfix.img -keyfile /home/owner/v4-work/v41/gi/gi18.keys
+
+#### l2.txt
+# apply42 list 2: Plat's session and the DOS box session on the images the installs of list 1 left
+# (route C: the driver installed from the changed floppy; and from the released one), and v3.9's
+# install from the changed floppy (the text screen at the restart, 26.4)
+c42-n16ptr r42 /home/owner/flicker/apply42/h/runs/c42-gi/win95.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448
+c42-n16rel r42 /home/owner/flicker/apply42/h/runs/c42-gi-rel/win95.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448
+c42-ptr-dosbox r42 /home/owner/flicker/apply42/h/runs/c42-gi/win95.img 14M 768K vgabios.bin dosbox 240 1 1500 -cursor-box 170,0,640,448
+c39-gi r39 /home/owner/v4-work/v41/h/img/win95.pristine.img 14M 768K vgabios-v3.9.bin - 0 0 1080 @fda=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/card/tiny386/vbe-reg.img @fdb=/home/owner/flicker/apply42/drv/floppy-ptrfix.img -keyfile /home/owner/v4-work/v41/gi/gi18.keys
+
+#### l3.txt
+# apply42 list 3: route C again, the install with the shutdown at its end (gi18s, as base-n16.img was made)
+c42-gis r42 /home/owner/v4-work/v41/h/img/win95.pristine.img 14M 768K vgabios.bin - 0 0 1150 @keep @fda=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/card/tiny386/vbe-reg.img @fdb=/home/owner/flicker/apply42/drv/floppy-ptrfix.img -keyfile /home/owner/v4-work/v41/gi/gi18s.keys
+c42-gis-rel r42 /home/owner/v4-work/v41/h/img/win95.pristine.img 14M 768K vgabios.bin - 0 0 1150 @keep @fda=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/card/tiny386/vbe-reg.img @fdb=/home/owner/flicker/apply42/drv/floppy-released.img -keyfile /home/owner/v4-work/v41/gi/gi18s.keys
+
+#### l4.txt
+# apply42 list 4: Plat's session and the DOS box session on the image route C left (c42-gis), and the session on the released floppy's image as a control
+c42s-plat r42 /home/owner/flicker/apply42/h/runs/c42-gis/win95.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448
+c42s-rel-plat r42 /home/owner/flicker/apply42/h/runs/c42-gis-rel/win95.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448
+c42s-dosbox r42 /home/owner/flicker/apply42/h/runs/c42-gis/win95.img 14M 768K vgabios.bin dosbox 240 1 1500 -cursor-box 170,0,640,448
+
+#### l5.txt
+# apply42 list 5: the text screen at the install's restart (26.3): the VGA BIOS against the drawing
+x42-gi-bios39 r42 /home/owner/v4-work/v41/h/img/win95.pristine.img 14M 768K vgabios-v3.9.bin - 0 0 700 @fda=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/card/tiny386/vbe-reg.img @fdb=/home/owner/flicker/apply42/drv/floppy-released.img -keyfile /home/owner/v4-work/v41/gi/gi18.keys
+x39-gi-bios42 r39 /home/owner/v4-work/v41/h/img/win95.pristine.img 14M 768K vgabios.bin - 0 0 700 @fda=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/card/tiny386/vbe-reg.img @fdb=/home/owner/flicker/apply42/drv/floppy-released.img -keyfile /home/owner/v4-work/v41/gi/gi18.keys
+
+#### l6.txt
+# apply42 list 6: route C, the install from the changed floppy with the shutdown 60 s later (c42-gis's keys at 1000 s came before its desktop was ready)
+c42-gis60 r42 /home/owner/v4-work/v41/h/img/win95.pristine.img 14M 768K vgabios.bin - 0 0 1250 @keep @fda=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/card/tiny386/vbe-reg.img @fdb=/home/owner/flicker/apply42/drv/floppy-ptrfix.img -keyfile /home/owner/flicker/apply42/sess/gi18s60.keys
+
+#### l7.txt
+# apply42 list 7: Plat's session and the DOS box session on the image route C left (c42-gis60: installed from the changed floppy, shut down from the Start menu)
+c42r-plat r42 /home/owner/flicker/apply42/h/runs/c42-gis60/win95.img 14M 768K vgabios.bin plat 205 1 1000 -cursor-box 170,0,640,448
+c42r-dosbox r42 /home/owner/flicker/apply42/h/runs/c42-gis60/win95.img 14M 768K vgabios.bin dosbox 240 1 1500 -cursor-box 170,0,640,448
+
+#### l8.txt
+# apply42 list 8: 256 colours set live (Plat's third report), the sweep and the DOS box at 8 bits, on the image route C left and, as released, on base-n16.img; v4.2 and v4.1
+e42-ptr8 r42 /home/owner/flicker/apply42/h/runs/c42-gis60/win95.img 14M 768K vgabios.bin depth8 500 1 1500 -cursor-box 170,0,640,448
+e41-ptr8 r41 /home/owner/flicker/apply42/h/runs/c42-gis60/win95.img 14M 768K vgabios.bin depth8 500 1 1500 -cursor-box 170,0,640,448
+e42-rel8 r42 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin depth8 500 1 1500 -cursor-box 170,0,640,448
+e41-rel8 r41 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin depth8 500 1 1500 -cursor-box 170,0,640,448
+
+#### sess/depth8.txt (list 8's session)
+# 256 colours set live from Display Properties, as Plat did (his third report): the colour palette
+# one up from High Color, OK, apply without restarting, OK, keep the setting; then the pointer swept
+# over empty desktop and the review's DOS box session (REVIEW-v42.md note 7), all at 8 bits.
+# Times from the desktop + 10 s; nothing in the first 30 s (a freshly installed Windows is busy).
+size 800 480
+5 moveto 600 120 3
+40 key ctrl+esc
+46 key r
+52 text control desk.cpl,,3
+58 key enter
+110 key up
+116 key enter
+130 key alt+a
+136 key enter
+180 key enter
+196 key y
+230 moveto 600 120 4
+234 moveto 250 380 5
+239 moveto 600 380 4
+243 moveto 400 240 3
+270 key ctrl+esc
+274 key r
+280 text command
+284 key enter
+310 text dir
+313 key enter
+325 key alt+enter
+340 text dir
+343 key enter
+352 text mode co40
+356 key enter
+365 text mode co80
+369 key enter
+380 key alt+enter
+395 moveto 300 300 3
+400 moveto 600 120 3
+410 key alt+enter
+416 key alt+enter
+422 key alt+enter
+428 key alt+enter
+445 moveto 300 300 3
+455 text exit
+458 key enter
+475 moveto 400 240 3
+
+#### sess/depth8-segments.txt
+# NAME T0 T1, seconds from the session's start (desktop + 10 s)
+idle 0 39
+dialogs 40 175
+change 176 229
+sweep 230 249
+open 270 324
+full 325 379
+back 380 409
+quick 410 444
+after 445 454
+closed 455 485

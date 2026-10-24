@@ -1,0 +1,25 @@
+MODE13X.COM (checks\mode13x\) and the Linux route's BMODES.COM under FreeDOS 4M, gen 4, no FPU, in the
+flicker harness with -board (every picture against the reference), v4.2 and v4.1, the card's BIOS
+files.  dosrun.sh in WSL ~/flicker/fix.  2026-10-23.
+
+dos-bmodes-v42-256K: [harness] stopped: guest-done; 12.7 M instructions in 0.7 ho | shots 15
+dos-bmodes-w41-256K: [harness] stopped: guest-done; 12.7 M instructions in 0.8 ho | shots 15
+dos-m13x-v42-256K: [harness] stopped: guest-done; 18.6 M instructions in 0.7 ho | shots 8
+dos-m13x-v42-768K: [harness] stopped: guest-done; 18.6 M instructions in 0.7 ho | shots 8
+dos-m13x-w41-256K: [harness] stopped: guest-done; 18.6 M instructions in 0.7 ho | shots 8
+dos-m13x-w41-768K: [harness] stopped: guest-done; 18.6 M instructions in 0.8 ho | shots 8
+== m13x-%-256K: END lines same; 8 shots, 0 differ
+   v4.1: 421 pictures; 421 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first 
+         clears in 7 steps, 6 of them over a picture (flash, 1033601 pixels in all), first at step 292; blank pictures 0
+   v4.2: 421 pictures; 421 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first 
+         clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 0
+== m13x-%-768K: END lines same; 8 shots, 0 differ
+   v4.1: 421 pictures; 421 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first 
+         clears in 7 steps, 6 of them over a picture (flash, 1033601 pixels in all), first at step 292; blank pictures 0
+   v4.2: 421 pictures; 421 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first 
+         clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 0
+== bmodes-%-256K: END lines same; 15 shots, 0 differ
+   v4.1: 433 pictures; 433 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first 
+         clears in 12 steps, 11 of them over a picture (flash, 2253286 pixels in all), first at step 377; blank pictures 0
+   v4.2: 433 pictures; 433 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first 
+         clears in 0 steps, 0 of them over a picture (flash, 0 pixels in all), first at step 0; blank pictures 0

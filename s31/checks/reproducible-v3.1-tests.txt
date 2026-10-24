@@ -1,0 +1,40 @@
+build.sh from nothing, a third time (2026-10-21, 21:11 to 21:14), with the patch made
+from tag v3.1-tests (v3.1 plus tests/host/storage, no firmware file changed), in
+~/tiny386-idf-scratch/v3-work-integ/resume/rel1, from a staged copy of this folder's
+build.sh, dependencies.lock and dualboot pair beside the new patch.
+
+start 2026-10-21 21:11:26
+build.sh exit 0 at 2026-10-21 21:14:17
+tree from the patch: cec859c2f08193e3641ff23cc13ba7e2ea4f45c2 (v3.1-tests is cec859c2f08193e3641ff23cc13ba7e2ea4f45c2)
+== host tests
+run.sh exit 0 at 2026-10-21 21:14:37
+PASS storage.c: the card's partitions with ESP-IDF's FatFs, on images laid out as Plat's card
+
+host tests: 18 passed, 0 failed
+== images against v3\images
+same  korvo1-dualboot/flash_args
+same  korvo1-dualboot/bootloader.bin
+same  korvo1-dualboot/partition-table.bin
+same  korvo1-dualboot/tiny386.bin
+same  korvo1-dualboot/tiny386.elf
+same  korvo1-dualboot/SHA256SUMS
+same  korvo1-standalone/flash_args
+same  korvo1-standalone/bootloader.bin
+same  korvo1-standalone/partition-table.bin
+same  korvo1-standalone/tiny386.bin
+same  korvo1-standalone/tiny386.elf
+same  korvo1-standalone/SHA256SUMS
+same  dosboard/flash_args
+same  dosboard/bootloader.bin
+same  dosboard/partition-table.bin
+same  dosboard/tiny386.bin
+same  dosboard/tiny386.elf
+same  dosboard/SHA256SUMS
+end 2026-10-21 21:14:37
+
+Files changed between v3.1 and v3.1-tests outside tests/host:
+  none
+
+The 18 in the tree made from the patch: the test against v3's i8042.c runs only in a
+tree that has the v3 tag (run.sh 4b), which a clone made from the patch has not. In the
+scratch tree at v3.1-tests all 19 run and pass (host-tests-v3.1-tests.log).

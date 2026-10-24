@@ -1,0 +1,27 @@
+The sound task's stack (the v3.5 review's N3), measured again for v3.6, 2026-10-22: the sound
+path's files and dosboard.c compiled once more with the in-tree DOS board build's own command
+lines (build-v36d/compile_commands.json) plus -fstack-usage, into WSL /home/owner/tiny386-idf-scratch/v36-work/su.
+The v3.5 column is the review's own measurement (/home/owner/tiny386-idf-scratch/v35-review/su, read, not rerun).
+adlib.c rc 0 
+fmopl.c rc 0 
+sb16.c rc 0 
+pcspk.c rc 0 
+i2s.c rc 0 
+audio_mix.c rc 0 
+dosboard.c rc 0 
+
+function                     file               v3.5     v3.6
+i2s_task                     i2s.c               352      352   static
+audio_mix_pc                 audio_mix.c           0        0   static
+audio_mix_devices            audio_mix.c         496      496   static
+audio_mix_block              audio_mix.c           0        0   static
+adlib_callback               adlib.c               0        0   static
+YM3812UpdateOne              fmopl.c             112      112   static
+sb16_audio_callback          sb16.c               16       16   static
+pcspk_callback               pcspk.c              32       32   static
+pcspk_get_active_out         pcspk.c               0        0   static
+board_early_init             dosboard.c                   192   static
+s0_strap_low                                                    
+korvo1_device                                                   
+probe_ms7210                 dosboard.c                    32   static
+wrong_board                  dosboard.c                   128   static

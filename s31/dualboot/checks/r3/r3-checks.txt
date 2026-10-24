@@ -1,0 +1,252 @@
+### r3. The dual-boot set as it is on disk now (v3.1 images, scripts after the review)
+v3 folder: /mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3
+
+== A. Files the scripts are given, and their SHA-256 against v3\SHA256SUMS
+  ok    flash-dualboot.bat                            856597f46adeafba, as v3\SHA256SUMS lists it
+  ok    flash-standalone.bat                          2fe3f3c74db1f262, as v3\SHA256SUMS lists it
+  ok    back-to-linux.bat                             d828992b5fb7c5c6, as v3\SHA256SUMS lists it
+  ok    flash-paths.cmd                               ec3e06b4f9481470, as v3\SHA256SUMS lists it
+  ok    FLASH.txt                                     f32fb2a78a17c7a8, as v3\SHA256SUMS lists it
+  ok    images/korvo1-dualboot/bootloader.bin         b57469cd1542fe83, as v3\SHA256SUMS lists it
+  ok    images/korvo1-dualboot/partition-table.bin    d41cba3cf33bedee, as v3\SHA256SUMS lists it
+  ok    images/korvo1-dualboot/tiny386.bin            edef0eee9cc42239, as v3\SHA256SUMS lists it
+  ok    images/korvo1-standalone/bootloader.bin       ec0a396b5bd96406, as v3\SHA256SUMS lists it
+  ok    images/korvo1-standalone/partition-table.bin  afbe6410c2040c5e, as v3\SHA256SUMS lists it
+  ok    images/korvo1-standalone/tiny386.bin          80fe3b749a86b053, as v3\SHA256SUMS lists it
+  ok    dualboot/bootloader.bin                      as dualboot\SHA256SUMS lists it
+  ok    dualboot/partition-table.bin                 as dualboot\SHA256SUMS lists it
+  ok    dualboot/blank-0x9000-0x1ffff.bin            as dualboot\SHA256SUMS lists it
+  ok    dualboot/partitions-korvo1-dualboot.csv      as dualboot\SHA256SUMS lists it
+  ok    dual-boot bootloader: dualboot\, images\korvo1-dualboot\ and the WSL build output are the same bytes
+  ok    dual-boot table: dualboot\, images\korvo1-dualboot\ and the WSL build output are the same bytes
+  ok    standalone bootloader is v2's own (ec0a396b)
+  ok    standalone table is v2's own (afbe6410)
+
+== B. Hash pins inside the scripts, resolved to the files they name
+  ok    flash-dualboot.bat PT_LINUX = be5b725 table = release table = be5b725 flash.bin 0x8000..0x8BFF
+  ok    flash-dualboot.bat PT_DUAL = the dual-boot table
+  ok    flash-dualboot.bat PT_OWN = tiny386's own table
+  ok    flash-standalone.bat PT_LINUX = be5b725 table = release table = be5b725 flash.bin 0x8000..0x8BFF
+  ok    flash-standalone.bat PT_DUAL = the dual-boot table
+  ok    flash-standalone.bat PT_OWN = tiny386's own table
+  ok    back-to-linux.bat PT_LINUX = be5b725 table = release table = be5b725 flash.bin 0x8000..0x8BFF
+  ok    back-to-linux.bat PT_DUAL = the dual-boot table
+  ok    back-to-linux.bat PT_OWN = tiny386's own table
+  ok    every table file is 0xC00 bytes, the length read-board reads at 0x8000
+  ok    flash-dualboot.bat BL_SHA = v3/images/korvo1-dualboot/bootloader.bin
+  ok    flash-dualboot.bat PT_SHA = v3/images/korvo1-dualboot/partition-table.bin
+  ok    flash-standalone.bat SA_BL_SHA = v3/images/korvo1-standalone/bootloader.bin
+  ok    flash-standalone.bat SA_PT_SHA = v3/images/korvo1-standalone/partition-table.bin
+  ok    back-to-linux.bat :set_release_small pins v3/dualboot/linux-v2026.09.20/bootloader/bootloader/bootloader.bin
+  ok    back-to-linux.bat :set_release_small pins v3/dualboot/linux-v2026.09.20/bootloader/partition_table/partition-table.bin
+  ok    back-to-linux.bat :set_release_full pins v3/dualboot/linux-v2026.09.20/bootloader/bootloader/bootloader.bin
+  ok    back-to-linux.bat :set_release_full pins v3/dualboot/linux-v2026.09.20/bootloader/partition_table/partition-table.bin
+  ok    back-to-linux.bat :set_release_full pins v3/dualboot/blank-0x9000-0x1ffff.bin
+  ok    back-to-linux.bat :set_release_full pins v3/dualboot/linux-v2026.09.20/bootloader/s31-linux-loader.bin
+  ok    back-to-linux.bat :set_release_full pins v3/dualboot/linux-v2026.09.20/opensbi.bin
+  ok    back-to-linux.bat :set_release_full pins v3/dualboot/linux-v2026.09.20/Image
+  ok    back-to-linux.bat :set_release_full pins v3/dualboot/linux-v2026.09.20/linux.size
+  ok    back-to-linux.bat :set_release_full pins v3/dualboot/linux-v2026.09.20/initramfs.cpio
+  ok    back-to-linux.bat :set_be5b725_small pins be5b725/bootloader.bin
+  ok    back-to-linux.bat :set_be5b725_small pins be5b725/partition-table.bin
+  ok    back-to-linux.bat :set_be5b725_full pins be5b725/flash.bin
+
+== C. What each script writes (offset, file, bytes, SHA-256), from the scripts themselves
+  dualboot-run1:
+    0x0e20000  v3/images/korvo1-dualboot/tiny386.bin                             865904  edef0eee9cc42239
+  dualboot-run2:
+    0x0002000  v3/images/korvo1-dualboot/bootloader.bin                           22352  b57469cd1542fe83
+    0x0008000  v3/images/korvo1-dualboot/partition-table.bin                       3072  d41cba3cf33bedee
+  standalone:
+    0x0002000  v3/images/korvo1-standalone/bootloader.bin                         22016  ec0a396b5bd96406
+    0x0008000  v3/images/korvo1-standalone/partition-table.bin                     3072  afbe6410c2040c5e
+    0x0010000  v3/images/korvo1-standalone/tiny386.bin                           865904  80fe3b749a86b053
+  linux-release-small:
+    0x0002000  v3/dualboot/linux-v2026.09.20/bootloader/bootloader/bootloader.bin     23024  41d5a68752936c7b
+    0x0008000  v3/dualboot/linux-v2026.09.20/bootloader/partition_table/partition-table.bin      3072  520538d3a006f75c
+  linux-release-full:
+    0x0002000  v3/dualboot/linux-v2026.09.20/bootloader/bootloader/bootloader.bin     23024  41d5a68752936c7b
+    0x0008000  v3/dualboot/linux-v2026.09.20/bootloader/partition_table/partition-table.bin      3072  520538d3a006f75c
+    0x0009000  v3/dualboot/blank-0x9000-0x1ffff.bin                               94208  667072b19b8057c9
+    0x0020000  v3/dualboot/linux-v2026.09.20/bootloader/s31-linux-loader.bin     768096  a064c58f8c2b40f2
+    0x0220000  v3/dualboot/linux-v2026.09.20/opensbi.bin                         134012  c8c51fdf3de3668c
+    0x02a0000  v3/dualboot/linux-v2026.09.20/Image                              4008448  d04e9f631b9cfeab
+    0x0a1fff4  v3/dualboot/linux-v2026.09.20/linux.size                              12  0e0a90b415952475
+    0x0a20000  v3/dualboot/linux-v2026.09.20/initramfs.cpio                     2097152  9426b1aaf1ee2746
+  linux-be5b725-small:
+    0x0002000  be5b725/bootloader.bin                                             22000  547c6a5b30551de6
+    0x0008000  be5b725/partition-table.bin                                         3072  520538d3a006f75c
+  linux-be5b725-full:
+    0x0000000  be5b725/flash.bin                                               12713984  f48b83f750dc96f6
+  dualboot-app:
+    0x0e20000  v3/images/korvo1-dualboot/tiny386.bin                             865904  edef0eee9cc42239
+  ok    flash-dualboot.bat run 1 writes only 0xE20000
+  ok    flash-dualboot.bat run 2 writes only 0x2000 and 0x8000
+  ok    the tiny386 image comes from one variable, TINY386_BIN in flash-paths.cmd (v3/images/korvo1-dualboot/tiny386.bin)
+  ok    flash-dualboot.bat checks the image against APP_MAX = 1966080 = 0x1E0000
+  ok    flash-dualboot.bat: every write command is '-c esp32s31 -p PORT -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep'
+  ok    flash-dualboot.bat: writes only after the answer Y
+  ok    flash-dualboot.bat: reads the board, then asks, then writes (in that order in the file)
+  ok    flash-dualboot.bat: the board read is read-mac and read-flash 0x8000 0xC00 only
+  ok    flash-dualboot.bat: no erase-flash, erase-region, status-register or eFuse command
+  ok    flash-standalone.bat: every write command is '-c esp32s31 -p PORT -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep'
+  ok    flash-standalone.bat: writes only after the answer Y
+  ok    flash-standalone.bat: reads the board, then asks, then writes (in that order in the file)
+  ok    flash-standalone.bat: the board read is read-mac and read-flash 0x8000 0xC00 only
+  ok    flash-standalone.bat: no erase-flash, erase-region, status-register or eFuse command
+  ok    back-to-linux.bat: every write command is '-c esp32s31 -p PORT -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep'
+  ok    back-to-linux.bat: writes only after the answer Y
+  ok    back-to-linux.bat: reads the board, then asks, then writes (in that order in the file)
+  ok    back-to-linux.bat: the board read is read-mac and read-flash 0x8000 0xC00 only
+  ok    back-to-linux.bat: no erase-flash, erase-region, status-register or eFuse command
+
+== D. FLASH.txt's commands by hand against the scripts' lists (run from the v3 folder)
+  6 write-flash lines, all '-c esp32s31 -p COMx -b 921600 write-flash -fm keep -ff keep -fs keep'
+  ok    FLASH.txt has the six command lines (1: two, 3, 4, 5, 6)
+  ok    FLASH.txt 1 = flash-dualboot.bat runs 1 and 2, same order
+  ok    FLASH.txt 3 = flash-dualboot.bat app
+  ok    FLASH.txt 4 = back-to-linux.bat small be5b725 (the default)
+  ok    FLASH.txt 5 = flash-standalone.bat
+  ok    FLASH.txt 6 (DOS board) writes 0x2000, 0x8000, 0x10000 from files that exist
+
+== E. Partition tables
+  ok    be5b725 and release v2026.09.20 tables are byte-identical (sha 520538d3a006f75c)
+  ok    be5b725 tree bootloader/partitions.csv (read now) = the copy the build used
+  ok    fork tree bootloader/partitions.csv (read now) = the copy the build used
+  ok    gen_esp32part.py decodes the linux table (exit 0)
+  ok    gen_esp32part.py decodes the dual table (exit 0)
+  ok    gen_esp32part.py decodes the own table (exit 0)
+  decoded Linux table:
+    nvs,data,nvs,0x11000,24K,
+    otadata,data,ota,0x17000,8K,
+    phy_init,data,phy,0x19000,4K,
+    factory,app,factory,0x20000,2M,
+    opensbi,data,64,0x220000,512K,
+    linux,data,64,0x2a0000,7680K,
+    initramfs,data,64,0xa20000,2M,
+  diff, decoded Linux table to decoded dual-boot table:
+    --- linux
+    +++ dual
+    @@ -7,0 +8 @@
+    +tiny386,app,test,0xe20000,1920K,
+  ok    the dual-boot table is the Linux table plus one line, tiny386,app,test,0xe20000,1920K
+  ok    the first 224 bytes (seven Linux entries) are the same bytes
+  ok    entry 8: magic 0x50AA, type app (0), subtype test (0x20), 0xE20000, 0x1E0000, name tiny386
+  ok    entry 9 is the MD5 entry, and the MD5 over the eight entries is right
+  ok    0xE20000 is 64 KiB aligned, ends at 16 MiB, starts above the last Linux partition (0xC20000)
+  ok    gen_esp32part.py on the CSV gives the table byte for byte
+  tiny386's own table (standalone): nvs,data,nvs,0x9000,24K, | phy_init,data,phy,0xf000,4K, | factory,app,factory,0x10000,1792K, | bios.bin,data,undefined,0x1d0000,128K, | vgabios.bin,data,undefined,0x1f0000,60K, | linuxstart.bin,data,undefined,0x1ff000,4K, | vmlinux.bin,data,undefined,0x200000,4M, | storage,data,fat,0x600000,10M,
+
+== F. The dual-boot bootloader
+  dual boot                     22352 bytes,  2224 spare below 0x8000 (9.0 per cent)
+  be5b725 (in Plat's flash)     22000 bytes,  2576 spare below 0x8000 (10.5 per cent)
+  release v2026.09.20           23024 bytes,  1552 spare below 0x8000 (6.3 per cent)
+  tiny386 own (standalone)      22016 bytes,  2560 spare below 0x8000 (10.4 per cent)
+  ok    dual-boot bootloader 22352 <= 24576 bytes (0x2000 to 0x8000): 2224 bytes spare
+  ok    ESP-IDF's own check in the build log: Bootloader binary size 0x5750 bytes. 0x8b0 bytes (9%) free.
+  ok    image header flash mode and size/speed bytes = be5b725's (0x02 0x4F: DIO, 16MB, 80m)
+  ok    string 'Detect a boot condition of the test firmware' in the dual-boot bootloader, not in be5b725's
+  ok    string 'Test firmware is not found in partition table' in the dual-boot bootloader, not in be5b725's
+  ok    second-stage bootloader's sdkconfig.h: #define CONFIG_BOOTLOADER_APP_TEST 1
+  ok    second-stage bootloader's sdkconfig.h: #define CONFIG_BOOTLOADER_NUM_PIN_APP_TEST 42
+  ok    second-stage bootloader's sdkconfig.h: #define CONFIG_BOOTLOADER_APP_TEST_PIN_LOW 1
+  ok    second-stage bootloader's sdkconfig.h: #define CONFIG_BOOTLOADER_HOLD_TIME_GPIO 1
+  ok    anti-rollback off (APP_TEST requires it)
+  sdkconfig, Linux be5b725 copy to dual boot:
+    --- linux sdkconfig
+    +++ dual-boot sdkconfig
+    @@ -1100,2 +1100,5 @@
+    -# default:
+    -# CONFIG_BOOTLOADER_APP_TEST is not set
+    +CONFIG_BOOTLOADER_APP_TEST=y
+    +CONFIG_BOOTLOADER_NUM_PIN_APP_TEST=42
+    +CONFIG_BOOTLOADER_APP_TEST_PIN_LOW=y
+    +# CONFIG_BOOTLOADER_APP_TEST_PIN_HIGH is not set
+    +CONFIG_BOOTLOADER_HOLD_TIME_GPIO=1
+    @@ -1282,3 +1285,3 @@
+    -CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+    -# default:
+    -CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+    +CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions-korvo1-dualboot.csv"
+    +# default:
+    +CONFIG_PARTITION_TABLE_FILENAME="partitions-korvo1-dualboot.csv"
+  ok    no setting changed but the test pin ones and the table file name: CONFIG_BOOTLOADER_APP_TEST, CONFIG_BOOTLOADER_APP_TEST_PIN_HIGH, CONFIG_BOOTLOADER_APP_TEST_PIN_LOW, CONFIG_BOOTLOADER_HOLD_TIME_GPIO, CONFIG_BOOTLOADER_NUM_PIN_APP_TEST, CONFIG_PARTITION_TABLE_CUSTOM_FILENAME, CONFIG_PARTITION_TABLE_FILENAME
+  ok    ~/esp32-s31-linux-main/bootloader/sdkconfig (read now) = the copy the build started from
+    CONFIG_BOOTLOADER_LOG_LEVEL              CONFIG_BOOTLOADER_LOG_LEVEL_INFO=y; CONFIG_BOOTLOADER_LOG_LEVEL=3
+    CONFIG_ESPTOOLPY_FLASHMODE               CONFIG_ESPTOOLPY_FLASHMODE_QIO=y; CONFIG_ESPTOOLPY_FLASHMODE="dio"
+    CONFIG_ESPTOOLPY_FLASHFREQ               CONFIG_ESPTOOLPY_FLASHFREQ_80M=y; CONFIG_ESPTOOLPY_FLASHFREQ="80m"
+    CONFIG_ESPTOOLPY_FLASHSIZE               CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y; CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+    CONFIG_PARTITION_TABLE_OFFSET            CONFIG_PARTITION_TABLE_OFFSET=0x8000
+    CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE       CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE=y
+    CONFIG_SPIRAM_BOOT_INIT                  CONFIG_SPIRAM_BOOT_INIT=y
+    CONFIG_BOOTLOADER_COMPILE_TIME_DATE      CONFIG_BOOTLOADER_COMPILE_TIME_DATE=y
+    CONFIG_SECURE_BOOT                       CONFIG_SECURE_BOOT_V2_RSA_SUPPORTED=y; CONFIG_SECURE_BOOT_V2_PREFERRED=y; # CONFIG_SECURE_BOOT is not set
+    CONFIG_SECURE_FLASH_ENC_ENABLED          # CONFIG_SECURE_FLASH_ENC_ENABLED is not set
+
+== G. esptool image-info on every image (esptool -c esp32s31 image-info FILE, as the scripts run it)
+  ok    dual-boot bootloader              22352 bytes; DIO 80m 16MB; min rev v0.0; checksum (valid); hash (valid);  
+  ok    v3.1 tiny386.bin, dual boot      865904 bytes; DIO 80m 16MB; min rev v0.0; checksum (valid); hash (valid); tiny386 v3.1
+  ok    v2 tiny386.bin                  1482096 bytes; DIO 80m 16MB; min rev v0.0; checksum (valid); hash (valid); tiny386 pristine-dirty
+  ok    standalone bootloader             22016 bytes; DIO 80m 16MB; min rev v0.0; checksum (valid); hash (valid);  
+  ok    v3.1 tiny386.bin, standalone     865904 bytes; DIO 80m 16MB; min rev v0.0; checksum (valid); hash (valid); tiny386 v3.1
+  ok    be5b725 bootloader                22000 bytes; DIO 80m 16MB; min rev v0.0; checksum (valid); hash (valid);  
+  ok    be5b725 Linux loader             740992 bytes; DIO 80m 16MB; min rev v0.0; checksum (valid); hash (valid); s31-linux-loader v0.1.0-1-gbe5b725
+  ok    release bootloader                23024 bytes; DIO 80m 16MB; min rev v0.0; checksum (valid); hash (valid);  
+  ok    release Linux loader             768096 bytes; DIO 80m 16MB; min rev v0.0; checksum (valid); hash (valid); s31-linux-loader c288bc9
+
+== H. tiny386 in its partition, and its RAM against the bootloader's
+  ok    v2 tiny386.bin                   1482096 of   1966080 bytes (test 0xE20000): 483984 spare, 24.6 per cent
+  ok    v3.1 tiny386.bin (dual boot)      865904 of   1966080 bytes (test 0xE20000): 1100176 spare, 56.0 per cent
+  ok    v3.1 tiny386.bin (standalone)     865904 of   1835008 bytes (factory 0x10000): 969104 spare, 52.8 per cent
+  ok    SA_APP_SIZE 1835008 = the factory partition of tiny386's own table (1792K)
+  ok    v2 tiny386.bin: highest RAM byte loaded 0x2F03E13F, below the dual-boot bootloader's lowest segment 0x2F06A2B0
+  ok    v3.1 tiny386.bin, dual boot: highest RAM byte loaded 0x2F03735B, below the dual-boot bootloader's lowest segment 0x2F06A2B0
+
+== I. Linux's own flash lists never reach 0xE20000
+    release flash.bat  0x0002000 bootloader\bootloader\bootloader.bin                23024 bytes, erased to 0x0007fff
+    release flash.bat  0x0008000 bootloader\partition_table\partition-table.bin       3072 bytes, erased to 0x0008fff
+    release flash.bat  0x0020000 bootloader\s31-linux-loader.bin                    768096 bytes, erased to 0x00dbfff
+    release flash.bat  0x0220000 opensbi.bin                                        134012 bytes, erased to 0x0240fff
+    release flash.bat  0x02a0000 Image                                             4008448 bytes, erased to 0x0672fff
+    release flash.bat  0x0a1fff4 linux.size                                             12 bytes, erased to 0x0a1ffff
+    release flash.bat  0x0a20000 initramfs.cpio                                    2097152 bytes, erased to 0x0c1ffff
+  ok    release flash.bat: highest byte erased or written 0xC1FFFF, below 0xE20000
+  ok    v3\dualboot\linux-v2026.09.20\Image = the zip's
+  ok    v3\dualboot\linux-v2026.09.20\linux.size = the zip's
+  ok    v3\dualboot\linux-v2026.09.20\initramfs.cpio = the zip's
+  ok    v3\dualboot\linux-v2026.09.20\opensbi.bin = the zip's
+  ok    v3\dualboot\linux-v2026.09.20\bootloader\s31-linux-loader.bin = the zip's
+  ok    v3\dualboot\linux-v2026.09.20\bootloader\bootloader\bootloader.bin = the zip's
+  ok    v3\dualboot\linux-v2026.09.20\bootloader\partition_table\partition-table.bin = the zip's
+  ok    v3\dualboot\linux-v2026.09.20\flash.bat = the zip's
+  ok    be5b725 flash_args: highest byte 0xC1FFFF, below 0xE20000
+  ok    be5b725 flash.bin at 0x0: 12713984 bytes, last byte 0xC1FFFF, below 0xE20000
+  ok    back-to-linux.bat release-small          highest byte 0x0008FFF, below 0xE20000
+  ok    back-to-linux.bat release-full           highest byte 0x0C1FFFF, below 0xE20000
+  ok    back-to-linux.bat be5b725-small          highest byte 0x0008FFF, below 0xE20000
+  ok    back-to-linux.bat be5b725-full           highest byte 0x0C1FFFF, below 0xE20000
+
+== J. esptool's own help for every command and option the scripts use (no port opened)
+  ok    main: --chip/-c lists esp32s31
+  ok    main: --port/-p and --baud/-b
+  ok    main: --after/-a with hard-reset
+  ok    main: command write-flash
+  ok    main: command read-flash
+  ok    main: command read-mac
+  ok    main: command image-info
+  ok    main: command version
+  ok    main: command merge-bin
+  ok    write-flash: -fm, -ff, -fs, each taking keep
+  ok    read-flash: ADDRESS SIZE OUTPUT
+  ok    version prints a line that starts with a digit (what the scripts' findstr takes): 5.4.0
+  ok    esptool loader.py: read-flash needs the flasher stub on this chip (the ROM-only path raises NotImplementedInROMError)
+  ok    targets/esp32s31.py does not supply a ROM read_flash_slow
+  ok    esptool 5.4.0 ships an esp32s31 flasher stub (stub_flasher/2/esp32s31.json)
+
+== K. The exact global and write options, parsed by esptool offline (merge-bin takes the same flash options; no port)
+  ok    esptool -c esp32s31 -b 921600 -a hard-reset merge-bin -o /home/owner/tiny386-idf-scratch/dualboot/r3/out/merged.bin -fm keep -ff keep -fs ... (exit 0)
+  ok    bootloader bytes unchanged in the merged image (keep leaves the header alone)
+  ok    tiny386 bytes at 0xE20000 unchanged
+
+== Result: 0 failed
+check-r3.py exit 0

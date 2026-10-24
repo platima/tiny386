@@ -1,0 +1,45 @@
+test_vbe and test_clear (tests/host at tag v4.2), both boards, under AddressSanitizer and UBSan
+(-fsanitize=address,undefined, recovery off; test_clear with handle_segv=0, its own SIGSEGV handler
+being the test), address-space randomisation off (setarch -R), the reference builds of vga.c made the
+same way; then test_vbe on the Korvo-1 under ThreadSanitizer.  asan.sh in WSL ~/flicker/fix.  2026-10-23.
+
+test_vbe korvo1: exit 0: test_vbe: all 6851 checks passed; sanitizer reports: 0
+test_clear korvo1: exit 0: test_clear: all 163 checks passed; sanitizer reports: 0
+test_vbe dosboard: exit 0: test_vbe: all 6851 checks passed; sanitizer reports: 0
+test_clear dosboard: exit 0: test_clear: all 163 checks passed; sanitizer reports: 0
+tsan: exit 66: test_vbe: all 6851 checks passed; reports: 19
+      1 SUMMARY: ThreadSanitizer: data race /home/owner/flicker/fix/t-v42/tests/host/test_vbe.c:689 in writer
+      2 SUMMARY: ThreadSanitizer: data race /home/owner/flicker/fix/t-v42/vga.c:1525 in vbe_row
+      2 SUMMARY: ThreadSanitizer: data race /home/owner/flicker/fix/t-v42/vga.c:1534 in vbe_row
+      6 SUMMARY: ThreadSanitizer: data race /home/owner/flicker/fix/t-v42/vga.c:1545 in vbe_row
+      4 SUMMARY: ThreadSanitizer: data race /home/owner/flicker/fix/t-v42/vga.c:1554 in vbe_row
+      4 SUMMARY: ThreadSanitizer: data race /home/owner/flicker/fix/t-v42/vga.c:1674 in vga_pixel
+
+== ThreadSanitizer: the reports, by where they are (as in v4.1, the drawing's read of guest video
+== memory against the writer thread's store into it, the race the design allows: the block's mark
+== is set again after the store; none on the mark map, the row marks or the new change count)
+      1 SUMMARY: ThreadSanitizer: data race /home/owner/flicker/fix/t-v42/tests/host/test_vbe.c:689 in writer
+      2 SUMMARY: ThreadSanitizer: data race /home/owner/flicker/fix/t-v42/vga.c:1525 in vbe_row
+      2 SUMMARY: ThreadSanitizer: data race /home/owner/flicker/fix/t-v42/vga.c:1534 in vbe_row
+      6 SUMMARY: ThreadSanitizer: data race /home/owner/flicker/fix/t-v42/vga.c:1545 in vbe_row
+      4 SUMMARY: ThreadSanitizer: data race /home/owner/flicker/fix/t-v42/vga.c:1554 in vbe_row
+      4 SUMMARY: ThreadSanitizer: data race /home/owner/flicker/fix/t-v42/vga.c:1674 in vga_pixel
+      1   Previous read of size 4 by main thread:
+      4   Read of size 1 by main thread:
+     14   Read of size 4 by main thread:
+== the end of the ThreadSanitizer run's output
+VBE pictures from the blocks written against every pixel every time, on a 800x480 screen
+ThreadSanitizer: reported 19 warnings
+ame in every picture
+the bank window
+marks only where a picture reads them (v4.1)
+chain 4 switched under VBE (v4.1)
+vbe_blocks changed while the PC runs (v4.2)
+two threads
+test_vbe: all 6851 checks passed
+
+== where each report's memory is (every one in the block inst_init allocates as guest video memory)
+     19     #1 inst_init tests/host/test_vbe.c:196
+  test_vbe.c:196: t->vram = calloc(1, VRAM_MAX + VGA_MEM_SLACK);
+== v4.1 (asan-v4.1.txt): 19 reports, writer 2, vbe_row 2, 2, 6 and 4, vga_pixel 3, at the same lines
+== of vga.c before v4.2 moved them down.  The run took 65 minutes there and 69 here (20:02 to 21:11).

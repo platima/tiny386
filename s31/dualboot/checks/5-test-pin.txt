@@ -1,0 +1,40 @@
+### 5. the test-pin check in the dual-boot bootloader.elf
+objdump: ~/.espressif-upstream/tools/riscv32-esp-elf/esp-16.1.0_20260609/riscv32-esp-elf/bin/riscv32-esp-elf-objdump
+== symbols
+2f06d950 0000000e T bootloader_common_ota_select_crc
+2f06d95e 00000016 T bootloader_common_ota_select_invalid
+2f06d974 0000001e T bootloader_common_ota_select_valid
+2f06da82 00000034 T bootloader_common_select_otadata
+2f06a38a 0000008c T bootloader_common_check_long_hold_gpio_level
+2f06a2ba 000000d0 T call_start_cpu0
+2f06e57e 0000015c T bootloader_utility_get_selected_boot_partition
+== calls to bootloader_common_check_long_hold_gpio_level, with the 12 lines before each
+2f06a31c:	262040ef          	jal	2f06e57e <bootloader_utility_get_selected_boot_partition>
+2f06a320:	f9d00793          	li	a5,-99
+2f06a324:	842a                	mv	s0,a0
+2f06a326:	faf505e3          	beq	a0,a5,2f06a2d0 <call_start_cpu0+0x16>
+2f06a32a:	4501                	li	a0,0
+2f06a32c:	00796097          	auipc	ra,0x796
+2f06a330:	cec080e7          	jalr	-788(ra) # 2f800018 <esp_rom_get_reset_reason>
+2f06a334:	4795                	li	a5,5
+2f06a336:	04f50663          	beq	a0,a5,2f06a382 <call_start_cpu0+0xc8>
+2f06a33a:	4601                	li	a2,0
+2f06a33c:	4585                	li	a1,1
+2f06a33e:	02a00513          	li	a0,42
+2f06a342:	20a1                	jal	2f06a38a <bootloader_common_check_long_hold_gpio_level>
+== the message strings
+I (%lu) %s: Detect a boot condition of the test firmware
+E (%lu) %s: Test firmware is not found in partition table
+E (%lu) %s: Factory test app partition%s
+test app
+W (%lu) %s: Falling back to test app as only bootable partition
+W (%lu) %s: Unicore bootloader
+== the same strings in the reference (unchanged) bootloader
+E (%lu) %s: Factory test app partition%s
+test app
+W (%lu) %s: Falling back to test app as only bootable partition
+W (%lu) %s: Unicore bootloader
+== section sizes, ref then dual
+   text	   data	    bss	    dec	    hex	filename
+  21766	    148	    264	  22178	   56a2	ref/build/bootloader/bootloader/bootloader.elf
+  22106	    148	    264	  22518	   57f6	dual/build/bootloader/bootloader/bootloader.elf

@@ -1,0 +1,28 @@
+Host test 15 (tests/host/test_status.c) against faulty copies of the status LED's sources (v3.7),
+2026-10-22: each fault is one change to one of status_code.c, status_code.h or status_led.c
+(status-led-mutants-v3.7.py), built as run.sh builds the test and run with the copy's folder as
+its esp/main, so that it reads that copy's status_led.c and status_code.c.  A fault is caught when
+the test fails.  The unchanged files first, which have to pass.
+  unchanged: exit 0, status LED: 47085 checks, 0 failed
+  caught  no-floor (status_code.c): 127 checks failed; a lit channel may come to 0 (no floor of 1). First: level 1: 255 channel values scaled wrongly, the first 0001ff to 000001, the model says 000101
+  caught  floor-dark (status_code.c): 2652 checks failed; the floor of 1 lights dark channels too. First: level 1: 3 channel values scaled wrongly, the first 0001ff to 010101, the model says 000101
+  caught  round-down (status_code.c): 262 checks failed; rounded down, not to the nearest step. First: level 2: 163 channel values scaled wrongly, the first 0109fe to 010101, the model says 010102
+  caught  div-256 (status_code.c): 292 checks failed; divided by 256 (a shift), so 255 is not the table. First: level 3: 3 channel values scaled wrongly, the first 1ed5e1 to 010203, the model says 010303
+  caught  no-clamp-scale (status_code.c): 28 checks failed; a level above 255 not held to 255 in the scale. First: level 256: white is 939393
+  caught  no-clamp-set (status_code.c): 4 checks failed; the level set not held to 0 to 255. First: set to -2147483648: the level is 2147483648, not 0
+  caught  frame-unscaled (status_code.c): 42 checks failed; status_frame_grb() without the level (both paths at full scale). First: level 9: white's frame 929292
+  caught  frame-default (status_code.c): 41 checks failed; status_frame_grb() at the default whatever the level set. First: level 0: white's frame 050505
+  caught  scale-64bit (status_code.c): 1 checks failed; the scale in 64 bits (a 64-bit division the panic path would reach in flash). First: status_scale(): 64-bit or floating-point arithmetic, or not found
+  caught  level-not-dram (status_code.c): 1 checks failed; the level not marked for internal RAM. First: status_code.c: the scale, status_frame_grb() or the level not marked for internal RAM
+  caught  scale-not-iram (status_code.c): 2 checks failed; the scale not marked for internal RAM. First: status_code.c: the scale, status_frame_grb() or the level not marked for internal RAM
+  caught  table-v36 (status_code.c): 54 checks failed; the table left at v3.6's quarter (red 0x46). First: no card: colour 460000, not ff0000
+  caught  yellow-hue (status_code.c): 913 checks failed; yellow's green changed (a different hue). First: stopped before tiny386 started (PSRAM not found, or failing its test?): colour db6000, not db8000
+  caught  white-share (status_code.c): 346 checks failed; white at full scale on its own (its share against red changed). First: crash at 250 ms: ffffff
+  caught  default-70 (status_code.h): 9 checks failed; the default left at v3.6's light (70). First: the default: white gives 1.000 of v3.6's light, not about an eighth
+  caught  default-20 (status_code.h): 9 checks failed; a default of 20 (red 20 of 255). First: the default: white gives 0.275 of v3.6's light, not about an eighth
+  caught  default-4 (status_code.h): 10 checks failed; a default of 4 (red 4 of 255). First: the default: white gives 0.050 of v3.6's light, not about an eighth
+  caught  rmt-unscaled (status_led.c): 2 checks failed; the RMT path's frames without the brightness (status_grb()). First: status_led.c: 0 of its 1 status_rmt_frame() calls take status_frame_grb()
+  caught  panic-unscaled (status_led.c): 2 checks failed; the panic path's first frame without the brightness. First: status_led.c: 1 of its 2 status_bb_frame() calls take status_frame_grb()
+  caught  halt-unscaled (status_led.c): 2 checks failed; the halt loop's frames without the brightness. First: status_led.c: 1 of its 2 status_bb_frame() calls take status_frame_grb()
+  caught  halt-own-scale (status_led.c): 2 checks failed; the halt loop scaling at a fixed level of its own (not the level set). First: status_led.c: 1 of its 2 status_bb_frame() calls take status_frame_grb()
+21 of 21 faults caught

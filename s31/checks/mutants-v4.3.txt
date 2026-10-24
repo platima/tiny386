@@ -1,0 +1,27 @@
+The port with Ctrl+Alt+F11 (test_port_blocks, new in v4.3) against faults put one at a time into
+copies of v4.3's perfport.c and vga.c (mutants-v4.3.sh beside this file: each fault a sed expression),
+each built into test_port_blocks with the Korvo-1's header.  A fault is caught when the test fails.  2026-10-24.
+
+== unchanged (none): exit 0, perfport and Ctrl+Alt+F11: 18 checks, 0 failed
+== port-reads-a-constant (perfport.c): exit 1, perfport and Ctrl+Alt+F11: 18 checks, 5 failed
+FAIL /home/owner/v43/merge/mt/port-reads-a-constant/tests/host/test_port_blocks.c:148: after Ctrl+Alt+F11, before any picture: vbe_blocks 1, 0 wanted
+FAIL /home/owner/v43/merge/mt/port-reads-a-constant/tests/host/test_port_blocks.c:153: the last snapshot's value until the next one
+FAIL /home/owner/v43/merge/mt/port-reads-a-constant/tests/host/test_port_blocks.c:158: and again: 1, 0 wanted
+== port-reads-the-first-value (perfport.c): exit 1, perfport and Ctrl+Alt+F11: 18 checks, 5 failed
+FAIL /home/owner/v43/merge/mt/port-reads-the-first-value/tests/host/test_port_blocks.c:148: after Ctrl+Alt+F11, before any picture: vbe_blocks 1, 0 wanted
+FAIL /home/owner/v43/merge/mt/port-reads-the-first-value/tests/host/test_port_blocks.c:153: the last snapshot's value until the next one
+FAIL /home/owner/v43/merge/mt/port-reads-the-first-value/tests/host/test_port_blocks.c:158: and again: 1, 0 wanted
+== set-does-not-store (vga.c): exit 1, perfport and Ctrl+Alt+F11: 18 checks, 4 failed
+FAIL /home/owner/v43/merge/mt/set-does-not-store/tests/host/test_port_blocks.c:148: after Ctrl+Alt+F11, before any picture: vbe_blocks 1, 0 wanted
+FAIL /home/owner/v43/merge/mt/set-does-not-store/tests/host/test_port_blocks.c:153: the last snapshot's value until the next one
+FAIL /home/owner/v43/merge/mt/set-does-not-store/tests/host/test_port_blocks.c:158: and again: 1, 0 wanted
+== no-whole-after-change (vga.c): exit 1, perfport and Ctrl+Alt+F11: 18 checks, 1 failed
+FAIL /home/owner/v43/merge/mt/no-whole-after-change/tests/host/test_port_blocks.c:188: the second whole too: pictures 4, whole 2
+== one-whole-after-change (vga.c): exit 1, perfport and Ctrl+Alt+F11: 18 checks, 1 failed
+FAIL /home/owner/v43/merge/mt/one-whole-after-change/tests/host/test_port_blocks.c:188: the second whole too: pictures 4, whole 2
+== whole-not-counted (vga.c): exit 1, perfport and Ctrl+Alt+F11: 18 checks, 4 failed
+FAIL /home/owner/v43/merge/mt/whole-not-counted/tests/host/test_port_blocks.c:137: at the start: on 1, VBE pictures 1, whole 0
+FAIL /home/owner/v43/merge/mt/whole-not-counted/tests/host/test_port_blocks.c:141: a still picture: 1 2 0
+FAIL /home/owner/v43/merge/mt/whole-not-counted/tests/host/test_port_blocks.c:183: the first picture after the change whole: pictures 3, whole 0 (2, 0 before)
+== change-not-counted (vga.c): exit 1, perfport and Ctrl+Alt+F11: 18 checks, 1 failed
+FAIL /home/owner/v43/merge/mt/change-not-counted/tests/host/test_port_blocks.c:188: the second whole too: pictures 4, whole 2

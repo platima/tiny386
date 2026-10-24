@@ -1,0 +1,38 @@
+The files v4.1 changed that the boards compile (vga.c, pc.c, i386.c), compiled again with each
+in-tree build's own command (compile_commands.json, ~/v4-work/v41/tree/esp/build-k for the
+Korvo-1, build-d for the DOS board) plus -Wall -Wextra -Wno-error, to /dev/null, each beside the
+same file at v4.0 compiled the same way (warnings-wall-wextra-v4.1.py), 2026-10-23.
+
+build-k vga.c                  v4.1: exit 0, 3 warnings; v4.0: exit 0, 3 warnings
+build-k pc.c                   v4.1: exit 0, 1 warnings; v4.0: exit 0, 1 warnings
+build-k i386.c                 v4.1: exit 0, 34 warnings; v4.0: exit 0, 34 warnings
+build-d vga.c                  v4.1: exit 0, 3 warnings; v4.0: exit 0, 3 warnings
+build-d pc.c                   v4.1: exit 0, 1 warnings; v4.0: exit 0, 1 warnings
+build-d i386.c                 v4.1: exit 0, 34 warnings; v4.0: exit 0, 34 warnings
+
+== compiler warnings in build.sh's own logs, outside ESP-IDF and the managed components
+v4-work/v41/rel/rel1.log:/home/owner/v4-work/v41/rel/rel1/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+v4-work/v41/rel/rel1.log:/home/owner/v4-work/v41/rel/rel1/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+v4-work/v41/rel/rel2-second-run.log:/home/owner/v4-work/v41/rel/rel2-second-run/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+v4-work/v41/rel/rel2-second-run.log:/home/owner/v4-work/v41/rel/rel2-second-run/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+
+== the in-tree builds (idf.py at the v4.1 sources), release and crash-test, warnings outside ESP-IDF
+v4-work/v41/builds/build-k.log:/home/owner/v4-work/v41/tree/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+v4-work/v41/builds/build-ks.log:/home/owner/v4-work/v41/tree/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+v4-work/v41/builds/build-kc.log:/home/owner/v4-work/v41/tree/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+== their exit codes and sizes
+== k (korvo1 ) exit 0, 57 s
+│ DIRAM               │       249948 │    49.62 │         253796 │        503744 │
+Total image size: 902216 bytes (.bin may be padded larger)
+== ks (korvo1 -DPARTITION_CSV=partitions.csv) exit 0, 53 s
+│ DIRAM               │       249948 │    49.62 │         253796 │        503744 │
+Total image size: 902216 bytes (.bin may be padded larger)
+== d (dosboard ) exit 0, 53 s
+│ DIRAM               │       252946 │    50.21 │         250798 │        503744 │
+Total image size: 933902 bytes (.bin may be padded larger)
+== kc (korvo1 -DCRASH_TEST=1) exit 0, 58 s
+│ DIRAM               │       249948 │    49.62 │         253796 │        503744 │
+Total image size: 902784 bytes (.bin may be padded larger)
+== dc (dosboard -DCRASH_TEST=1) exit 0, 60 s
+│ DIRAM               │       252946 │    50.21 │         250798 │        503744 │
+Total image size: 934470 bytes (.bin may be padded larger)

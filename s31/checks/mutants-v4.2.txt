@@ -1,0 +1,20 @@
+v4.2's two vga.c changes against faults put one at a time into copies of vga.c at tag v4.2
+(mutants-v4.2.sh beside this file: each fault a sed expression), each copy linked into test_vbe
+(the reference: the old loop, from the tree) and test_clear (the reference: the tree's vga.c with
+VGA_NO_CLEAR_AROUND), Korvo-1 header.  A fault is caught when either test fails.  2026-10-23.
+
+m1-no-change-count: test_vbe exit 1 (10 FAIL), test_clear exit 0 (0 FAIL)
+m2-one-whole-picture: test_vbe exit 1 (7 FAIL), test_clear exit 0 (0 FAIL)
+m3-set-not-counted: test_vbe exit 1 (10 FAIL), test_clear exit 0 (0 FAIL)
+m4-around-not-black: test_vbe exit 1 (260 FAIL), test_clear exit 1 (64 FAIL)
+m5-around-none-at-end: test_vbe exit 0 (0 FAIL), test_clear exit 1 (7 FAIL)
+m6-text-no-full: test_vbe exit 0 (0 FAIL), test_clear exit 0 (0 FAIL)
+m7-graphic-rect-wrong: test_vbe exit 1 (172 FAIL), test_clear exit 1 (36 FAIL)
+m8-shrunk-rect-wrong: test_vbe exit 0 (0 FAIL), test_clear exit 1 (32 FAIL)
+m9-no-flush-after: test_vbe exit 1 (2835 FAIL), test_clear exit 0 (0 FAIL)
+m10-clear-not-noted: test_vbe exit 1 (260 FAIL), test_clear exit 1 (64 FAIL)
+
+m6 (the text drawn whole after a clear only if full_update says so) is not caught, and changes
+nothing in the boards' builds: there, every clear before a text picture comes with full_update
+already (a VBE mode set, a change of mode, the text's own change of size); the line is for a build
+with one core, where vbe_update_vgaregs() clears on the emulator's side.

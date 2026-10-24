@@ -1,0 +1,2 @@
+vgatest.c (..\..\tiny386\tests) against the v3.2 vga.c, host gcc, gcc -O2 -std=gnu11 -I. -DBPP=16 -DVGA_STORE_CHANGED
+72000 pictures, 26964 of them drawn the quick way from first line to last (11033 at half the dot clock), 36708 writes to the CRT controller, 9584 pictures with a clear put off, 6568 of those clears left out, 19959 text pictures, 690 second clears of a text screen left out: 0 rounds of 6000 went wrong

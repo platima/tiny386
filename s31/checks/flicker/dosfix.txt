@@ -1,0 +1,28 @@
+# The pointer fix typed by hand in MS-DOS mode, as TEST-PLAN has it for
+# Plat: Start, Shut Down, Restart in MS-DOS mode, DEBUG on QEMUMINI.DRV
+# (look, change the byte, look, write, quit), exit back to Windows, then
+# the pointer swept over empty desktop.  Times from the desktop + 10 s; nothing in the first 30 s (Windows still starting).
+size 800 480
+30 key ctrl+esc
+35 key u
+45 key alt+m
+48 key enter
+100 text debug c:\windows\system\qemumini.drv
+108 key enter
+118 text d 2160 l10
+121 key enter
+126 text e 2168 0
+129 key enter
+132 text d 2160 l10
+135 key enter
+140 key w
+141 key enter
+148 key q
+149 key enter
+155 text exit
+157 key enter
+# the desktop again by about 220; the pointer over empty desktop
+270 moveto 600 120 4
+274 moveto 250 380 5
+279 moveto 600 380 4
+283 moveto 400 240 3

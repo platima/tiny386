@@ -1,0 +1,105 @@
+--- /home/owner/flicker/repro/h/harness/headless.c	2026-10-23 18:57:41.018891106 +0800
++++ /home/owner/flicker/fix/h/harness/headless.c	2026-10-23 20:15:05.522071500 +0800
+@@ -742,6 +742,54 @@
+ 	return diff;
+ }
+ 
++/* v4.2's runs: PCR_EIPHIST=T0,T1 (virtual seconds) counts the guest's
++   instructions by where its CS:EIP was at the end of each step (CS and the
++   256 bytes of EIP), and prints the 40 places that took most at the end */
++#define EH_N 65536
++static struct { uint64_t key; uint64_t n; } eh_tab[EH_N];
++static int eh_on = -1;
++static double eh_t0, eh_t1;
++static uint64_t eh_total, eh_lost;
++static void eiphist_step(uint64_t t, uint64_t d)
++{
++	if (eh_on < 0) {
++		const char *e = getenv("PCR_EIPHIST");
++		eh_on = e && sscanf(e, "%lf,%lf", &eh_t0, &eh_t1) == 2;
++	}
++	if (!eh_on || !d || t < eh_t0 * 1e6 || t >= eh_t1 * 1e6)
++		return;
++	CPUI386_State st;
++	cpui386_get_state(g_pc->cpu, &st);
++	uint64_t key = ((uint64_t) (st.seg[1] & 0xffff) << 32) | (st.ip >> 8);
++	uint32_t h = (uint32_t) ((key * 0x9E3779B97F4A7C15ull) >> 40) % EH_N;
++	for (int i = 0; i < 64; i++, h = (h + 1) % EH_N) {
++		if (eh_tab[h].n == 0 || eh_tab[h].key == key) {
++			eh_tab[h].key = key;
++			eh_tab[h].n += d;
++			eh_total += d;
++			return;
++		}
++	}
++	eh_lost += d;
++}
++static int eh_cmp(const void *a, const void *b)
++{
++	uint64_t x = ((const typeof(eh_tab[0]) *) a)->n, y = ((const typeof(eh_tab[0]) *) b)->n;
++	return x < y ? 1 : x > y ? -1 : 0;
++}
++static void eiphist_print(void)
++{
++	if (eh_on <= 0)
++		return;
++	qsort(eh_tab, EH_N, sizeof(eh_tab[0]), eh_cmp);
++	fprintf(hout, "[harness] eiphist: %llu guest instructions from %.1f to %.1f s (%llu not placed)\n",
++		(unsigned long long) eh_total, eh_t0, eh_t1, (unsigned long long) eh_lost);
++	for (int i = 0; i < 40 && eh_tab[i].n; i++)
++		fprintf(hout, "[harness] eiphist: cs %04x eip %06xxx: %llu (%.1f %%)\n",
++			(unsigned) (eh_tab[i].key >> 32), (unsigned) (eh_tab[i].key & 0xffffff),
++			(unsigned long long) eh_tab[i].n, 100.0 * eh_tab[i].n / (eh_total ? eh_total : 1));
++}
++
+ /* "@shot NAME" from a guest test program: one more picture drawn as the
+    periodic drawing draws it (full_update 0, not snapshot()'s redraw of
+    everything, which would hide a block not marked), saved as shot-NAME,
+@@ -750,7 +798,14 @@
+ {
+ 	char file[160];
+ 	pthread_mutex_lock(&vga_lock);
++	/* fix (v4.2's runs): with -board this picture is one the board would
++	   draw too, so the rows it gives redraw() go to the panel as well;
++	   before, they reached fb only, and the panel kept the rows such a
++	   picture drew first stale until the guest changed them again */
++	int was = in_board_step;
++	in_board_step = opt_board;
+ 	vga_refresh(g_pc->vga, redraw, NULL, 0);
++	in_board_step = was;
+ 	snprintf(file, sizeof(file), "shot-%s", name);
+ 	save_ppm(file);
+ 	long diff = audit_screen();
+@@ -1924,6 +1979,7 @@
+ 		if (after == before)
+ 			idle_insns += opt_idle;
+ 		uint64_t t = vnow_us();
++		eiphist_step(t, after - before);
+ 		__atomic_store_n(&insns_pub, after, __ATOMIC_RELAXED);
+ 		if (opt_board && opt_vgathread)
+ 			service_pause();
+@@ -2077,6 +2133,24 @@
+ 			emulink_flush(pc->emulink);
+ 	}
+ 	state_line("END");
++	eiphist_print();
++	if (getenv("PCR_DUMPCS")) {
++		/* the code segment the guest is in at the end, from offset 0 to
++		   the end of the 64 KiB or the first byte that does not load */
++		char path[512];
++		snprintf(path, sizeof(path), "%s/csdump.bin", opt_out);
++		FILE *f = fopen(path, "wb");
++		unsigned n = 0;
++		for (uint32_t a = 0; f && a < 0x10000; a++, n++) {
++			u8 b;
++			if (!cpu_load8(g_pc->cpu, 1, a, &b))
++				break;
++			fputc(b, f);
++		}
++		if (f)
++			fclose(f);
++		fprintf(hout, "[harness] csdump: %u bytes of the code segment\n", n);
++	}
+ 	fprintf(hout, "[harness] rows changed a picture: %llu pictures, %llu rows in all (%.1f a picture); "
+ 		"none %llu, 1-8 %llu, 9-32 %llu, 33-128 %llu, 129-479 %llu, 480 or more %llu\n",
+ 		(unsigned long long) rows_pics, (unsigned long long) rows_total,

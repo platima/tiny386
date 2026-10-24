@@ -1,0 +1,58 @@
+esptool v5.4.0
+                                                                                                                        
+ Usage: esptool write-flash [OPTIONS] <address> <filename>...                                                           
+                                                                                                                        
+ Write a binary blob to flash. The address is followed by binary filename, separated by space.                          
+                                                                                                                        
+╭─ Flash options ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --flash-freq      -ff  [keep|80m|60m|48m|40m|30m|26m|24m|20m|16m|15m  SPI flash memory frequency.                    │
+│                        |12m]                                                                                         │
+│ --flash-mode      -fm  [keep|qio|qout|dio|dout]                       SPI flash memory mode.                         │
+│ --flash-size      -fs  [detect|keep|256KB|512KB|1MB|2MB|2MB-c1|4MB|4  SPI flash memory size. ESP8266-only sizes:     │
+│                        MB-c1|8MB|16MB|32MB|64MB|128MB]                256KB, 512KB, 2MB-c1, 4MB-c1.                  │
+│ --spi-connection  -sc  SPI-CONNECTION                                 Override default SPI flash memory connection.  │
+│                                                                       Value can be SPI, HSPI or a comma-separated    │
+│                                                                       list of 5 I/O numbers to use for SPI flash     │
+│                                                                       (CLK,Q,D,HD,CS). Not supported with ESP8266.   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ *  ADDR-FILENAME  <address> <filename>...  [required]                                                                │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --erase-all               -e                             Erase all regions of flash (not just write areas) before    │
+│                                                          programming.                                                │
+│ --no-progress             -p                             Suppress progress output.                                   │
+│ --encrypt                                                Apply flash encryption when writing data (required correct  │
+│                                                          eFuse settings).                                            │
+│ --encrypt-files               [<address> <filename>]     Files to be encrypted during flashing. The address is       │
+│                                                          followed by binary filename, separated by space.            │
+│ --ignore-flash-enc-efuse                                 Ignore flash encryption eFuse settings.                     │
+│ --diff-with                   [<filename(s)> or 'skip']  Previously flashed file(s) to compare the to-be-flashed     │
+│                                                          files with for fast reflashing. Use 'skip' to skip          │
+│                                                          comparison for a specific file. This list is zipped         │
+│                                                          sequentially with the files being flashed.                  │
+│ --trust-flash-content                                    Skip post-flash verification of unchanged files when using  │
+│                                                          --diff-with to save time. Only unchanged files are skipped  │
+│                                                          without an MD5 check, written data is still verified after  │
+│                                                          write and the whole file is reflashed if verification       │
+│                                                          fails. Requires --diff-with. Use only when flash has not    │
+│                                                          been modified since the last flash (e.g. no other tool,     │
+│                                                          app, or manual change touched the data in flash). NOTE:     │
+│                                                          This argument is mutually exclusive with arguments:         │
+│                                                          --skip-flashed.                                             │
+│ --skip-flashed            -s                             Skip flashing if the new binary is already in flash.        │
+│                                                          Performs MD5 checks to verify the flash content matches the │
+│                                                          new binary. Only for use when no --diff-with files are      │
+│                                                          specified (mutually exclusive). NOTE: This argument is      │
+│                                                          mutually exclusive with arguments: --diff-with,             │
+│                                                          --trust-flash-content.                                      │
+│ --force                                                  Force write, skip security and compatibility checks. Use    │
+│                                                          with caution!                                               │
+│ --compress                -z                             Compress data during transfer (default unless --no-stub is  │
+│                                                          specified). NOTE: This argument is mutually exclusive with  │
+│                                                          arguments: --no-compress.                                   │
+│ --no-compress             -u                             Disable data compression during transfer (default if        │
+│                                                          --no-stub is specified) NOTE: This argument is mutually     │
+│                                                          exclusive with arguments: --compress.                       │
+│ --help                    -h                             Show this message and exit.                                 │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

@@ -1,0 +1,20 @@
+Fix 2 of v3.8 changed four shared files (ide.c, ide.h, misc.c, misc.h).  As the Linux route and upstream
+build them (no BUILD_ESP32, no EMULINK_CHECKED), ide.c and misc.c from fix 1's last commit (6714724) and from
+the v3.8 tag, each compiled on this PC (gcc -O2), give the same code, data and symbols.  linuxroute.sh, 2026-10-22.
+
+ide.c .text: the same
+ide.c .data: the same
+ide.c .nm: the same
+misc.c .text: the same
+misc.c .data: the same
+misc.c .nm: the same
+git diff --stat v3.7 v3.8:
+ 42 files changed, 3216 insertions(+), 112 deletions(-)
+git diff --stat 6714724 v3.8:
+ 18 files changed, 1009 insertions(+), 58 deletions(-)
+outside esp/ and tests/, 6714724 to v3.8:
+ ide.c  | 9 +++++++++
+ ide.h  | 3 +++
+ misc.c | 8 ++++++++
+ misc.h | 3 +++
+ 4 files changed, 23 insertions(+)

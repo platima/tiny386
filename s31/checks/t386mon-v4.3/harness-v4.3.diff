@@ -1,0 +1,85 @@
+--- /home/owner/perfapp/pfix/h/harness/headless.c	2026-10-23 21:38:09.456212137 +0800
++++ ph/harness/headless.c	2026-10-23 23:49:01.318522827 +0800
+@@ -87,6 +87,12 @@
+ static int opt_audit = 0;               /* v4.0: every Nth picture held against a full redraw */
+ static int opt_vbe_blocks = -1;         /* v4.0: vga_dirty_blocks, where the tree has it */
+ static double opt_perfport = 0;         /* perfport: a line of the port's values every S virtual s */
++/* v4.3: -f11 T,T,...: Ctrl+Alt+F11 at these virtual seconds, as the board's speed.c takes it
++   (vga_set_dirty_blocks(!vga_dirty_blocks), between two pictures), each followed by a
++   perfport line read as a guest reads the port */
++static double opt_f11[16];
++static int n_f11;
++extern void vga_set_dirty_blocks(int on) __attribute__((weak));
+ extern int vga_dirty_blocks __attribute__((weak));
+ struct key_ev { double t; int sc; int down; };
+ static struct key_ev keys[2048];  /* v4.0: 64 was too few for a guest test's keys */
+@@ -931,7 +937,7 @@
+ 	fw[32] = board[32] = 0;
+ 	fprintf(hout, "[harness] perfport %s t=%.3f: magic %08x version %08x snaps %u src %u "
+ 		"insns %llu kips %u halt %u%% pictures %u (%u last s, draw %u us avg %u max) changed %u (%u last s) "
+-		"flushes %u rows %u vbe %u whole %u blocks %u rows %u mode %u %ux%ux%u "
++		"flushes %u rows %u vbe %u whole %u blocks %u rows %u blocks_on %u mode %u %ux%ux%u "
+ 		"bios %02x screen %ux%u mem %uK vga %uK disk r %u w %u rs %u ws %u "
+ 		"timer owed %u dropped %u keys %u mouse %u/%u io %u snap %u us "
+ 		"valid %08x %08x %08x %08x \"%s\" \"%s\"\n",
+@@ -941,7 +947,7 @@
+ 		v[PP_I_KIPS], v[PP_I_HALT_PCT], v[PP_I_PICTURES], v[PP_I_PICTURES_1S],
+ 		v[PP_I_DRAW_AVG_US_1S], v[PP_I_DRAW_MAX_US_1S], v[PP_I_CHANGED], v[PP_I_CHANGED_1S], v[PP_I_FLUSHES],
+ 		v[PP_I_FLUSH_ROWS], v[PP_I_VBE_PICTURES], v[PP_I_VBE_WHOLE], v[PP_I_VBE_BLOCKS],
+-		v[PP_I_VBE_ROWS], v[PP_I_MODE_KIND], v[PP_I_MODE_WIDTH], v[PP_I_MODE_HEIGHT],
++		v[PP_I_VBE_ROWS], v[PP_I_VBE_BLOCKS_ON], v[PP_I_MODE_KIND], v[PP_I_MODE_WIDTH], v[PP_I_MODE_HEIGHT],
+ 		v[PP_I_MODE_BPP], v[PP_I_BIOS_MODE], v[PP_I_SCREEN_WIDTH], v[PP_I_SCREEN_HEIGHT],
+ 		v[PP_I_GUEST_MEM_KB], v[PP_I_VGA_MEM_KB], v[PP_I_DISK_READS], v[PP_I_DISK_WRITES],
+ 		v[PP_I_DISK_READ_SECTORS], v[PP_I_DISK_WRITE_SECTORS], v[PP_I_TIMER_OWED_MAX],
+@@ -1021,6 +1027,8 @@
+ 		"                (not with -vgathread); a guest's \"@shot NAME\" on port\n"
+ 		"                402h always is, and is saved as shot-NAME; \"@done\" stops\n"
+ 		"  -vbe-blocks N vga_dirty_blocks = N (v4.0: 0 draws VBE pictures in full)\n"
++		"  -f11 T,T...   Ctrl+Alt+F11 (vbe_blocks the other way) at these virtual s, as\n"
++		"                the board's speed.c does it between two pictures (v4.2 on)\n"
+ 		"  -perfport S   the information port's values, read as a guest reads them,\n"
+ 		"                every S virtual seconds (and at the end in any case)\n");
+ 	exit(1);
+@@ -1085,6 +1093,16 @@
+ 		else if (!strcmp(a, "-audit")) opt_audit = atoi(ARG());
+ 		else if (!strcmp(a, "-vbe-blocks")) opt_vbe_blocks = atoi(ARG());
+ 		else if (!strcmp(a, "-perfport")) opt_perfport = atof(ARG());
++		else if (!strcmp(a, "-f11")) {
++			char *q = ARG();
++			while (q && *q && n_f11 < 16) {
++				opt_f11[n_f11++] = strtod(q, &q);
++				if (*q == ',')
++					q++;
++				else
++					break;
++			}
++		}
+ 		else if (!strcmp(a, "-keyfile")) {
+ 			/* v4.0: lines "T SC D": scancode SC (hex, set 1) down (D 1) or
+ 			   up (0) at T virtual seconds, in time order */
+@@ -1180,6 +1198,7 @@
+ #ifdef TINY386_PERFPORT
+ 	perfport_set_fill(pp_fill, NULL);
+ 	uint64_t next_pp = opt_perfport > 0 ? (uint64_t) (opt_perfport * 1e6) : UINT64_MAX;
++	int f11_next = 0;
+ #endif
+ 
+ 	pthread_t vt, mt;
+@@ -1270,6 +1289,17 @@
+ 			draw_us += real_us() - d0;
+ 			rows_picture_done();
+ 			next_vga = t + vga_period;
++#ifdef TINY386_PERFPORT
++			while (f11_next < n_f11 && t >= (uint64_t) (opt_f11[f11_next] * 1e6)) {
++				f11_next++;
++				if (&vga_set_dirty_blocks && &vga_dirty_blocks) {
++					vga_set_dirty_blocks(!vga_dirty_blocks);
++					fprintf(hout, "[harness] Ctrl+Alt+F11 at t=%.3f: vbe_blocks = %d now\n",
++						t / 1e6, vga_dirty_blocks);
++					pp_line("f11");
++				}
++			}
++#endif
+ 			if (opt_audit > 0 && rows_pics % opt_audit == 0) {
+ 				long d = audit_screen();
+ 				if (d && audit_bad <= 20)

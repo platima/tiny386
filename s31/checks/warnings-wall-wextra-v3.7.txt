@@ -1,0 +1,45 @@
+The files v3.7 changed (status_code.c, status_led.c, esp_main.c) and the one that calls into the
+LED's panic path (crash.c), compiled again with each rel1 build's own command line plus -Wall
+-Wextra (warn3.py, as for v3.2 to v3.6), to assembly, thrown away; every warning in esp/main printed.
+== korvo1
+status_code.c    0 warnings (exit 0)
+status_led.c     0 warnings (exit 0)
+esp_main.c       0 warnings (exit 0)
+crash.c          0 warnings (exit 0)
+total 0
+== korvo1-standalone
+status_code.c    0 warnings (exit 0)
+status_led.c     0 warnings (exit 0)
+esp_main.c       0 warnings (exit 0)
+crash.c          0 warnings (exit 0)
+total 0
+== dosboard
+status_code.c    0 warnings (exit 0)
+status_led.c     0 warnings (exit 0)
+esp_main.c       0 warnings (exit 0)
+crash.c          0 warnings (exit 0)
+total 0
+
+== compiler warnings in build.sh's own logs, outside ESP-IDF and the managed components
+rel1.log:/home/owner/tiny386-idf-scratch/v37-work/rel1/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel1.log:/home/owner/tiny386-idf-scratch/v37-work/rel1/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel2-second-run.log:/home/owner/tiny386-idf-scratch/v37-work/rel2-second-run/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel2-second-run.log:/home/owner/tiny386-idf-scratch/v37-work/rel2-second-run/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+
+== the in-tree builds (idf.py, at the v3.7 sources), release and crash-test, warnings outside ESP-IDF
+tiny386-idf-scratch/v37-work/build-v37k.log:/home/owner/tiny386-idf-scratch/v3/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+tiny386-idf-scratch/v37-work/build-v37kc.log:/home/owner/tiny386-idf-scratch/v3/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+
+== the same files with -Wall -Wextra in the in-tree crash-test builds
+== v37kc
+status_code.c    0 warnings (exit 0)
+status_led.c     0 warnings (exit 0)
+esp_main.c       0 warnings (exit 0)
+crash.c          0 warnings (exit 0)
+total 0
+== v37dc
+status_code.c    0 warnings (exit 0)
+status_led.c     0 warnings (exit 0)
+esp_main.c       0 warnings (exit 0)
+crash.c          0 warnings (exit 0)
+total 0

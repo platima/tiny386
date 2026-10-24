@@ -1,0 +1,50 @@
+== Linux release v2026.09.20, flash.bat as written
+   offset    file                                                  bytes  last byte  erased to  note
+   0x0002000 inputs/release-v2026.09.20/bootloader/bootloader/bootloader.bin      23024  0x00079ef  0x0007fff
+   0x0008000 inputs/release-v2026.09.20/bootloader/partition_table/partition-table.bin       3072  0x0008bff  0x0008fff
+   0x0020000 inputs/release-v2026.09.20/bootloader/s31-linux-loader.bin     768096  0x00db85f  0x00dbfff
+   0x0220000 inputs/release-v2026.09.20/opensbi.bin               134012  0x0240b7b  0x0240fff
+   0x02a0000 inputs/release-v2026.09.20/Image                    4008448  0x06729ff  0x0672fff
+   0x0a1fff4 inputs/release-v2026.09.20/linux.size                    12  0x0a1ffff  0x0a1ffff
+   0x0a20000 inputs/release-v2026.09.20/initramfs.cpio           2097152  0x0c1ffff  0x0c1ffff
+   highest byte erased or written: 0x0c1ffff; below 0xE20000: True
+
+== Linux be5b725, flash_args
+   offset    file                                                  bytes  last byte  erased to  note
+   0x0002000 inputs/be5b725/bootloader.bin                         22000  0x00075ef  0x0007fff
+   0x0008000 inputs/be5b725/partition-table.bin                     3072  0x0008bff  0x0008fff
+   0x0020000 inputs/be5b725/s31-linux-loader.bin                  740992  0x00d4e7f  0x00d4fff
+   0x0220000 inputs/be5b725/opensbi.bin                           134012  0x0240b7b  0x0240fff
+   0x02a0000 inputs/be5b725/Image                                4395248  0x06d10ef  0x06d1fff
+   0x0a1fff4 inputs/be5b725/linux.size                                12  0x0a1ffff  0x0a1ffff
+   0x0a20000 inputs/be5b725/initramfs.cpio                       2097152  0x0c1ffff  0x0c1ffff
+   highest byte erased or written: 0x0c1ffff; below 0xE20000: True
+
+== Linux be5b725, flash.bin at 0x0
+   offset    file                                                  bytes  last byte  erased to  note
+   0x0000000 inputs/be5b725/flash.bin                           12713984  0x0c1ffff  0x0c1ffff
+   highest byte erased or written: 0x0c1ffff; below 0xE20000: True
+
+== dual-boot set (tiny386.bin from v2)
+   offset    file                                                  bytes  last byte  erased to  note
+   0x0002000 dual/build/bootloader/bootloader/bootloader.bin       22352  0x000774f  0x0007fff
+   0x0008000 dual/build/bootloader/partition_table/partition-table.bin       3072  0x0008bff  0x0008fff
+   0x0e20000 inputs/v2/tiny386.bin                               1482096  0x0f89d6f  0x0f89fff
+   highest byte erased or written: 0x0f89fff; below 0xE20000: False
+
+== standalone set (v2 images, tiny386 own table)
+   offset    file                                                  bytes  last byte  erased to  note
+   0x0002000 inputs/v2/bootloader/bootloader.bin                   22016  0x00075ff  0x0007fff
+   0x0008000 inputs/v2/partition_table/partition-table.bin          3072  0x0008bff  0x0008fff
+   0x0010000 inputs/v2/tiny386.bin                               1482096  0x0179d6f  0x0179fff
+   highest byte erased or written: 0x0179fff; below 0xE20000: True
+
+tiny386.bin (v2): 1482096 bytes (0x169d70)
+  test partition 0x1E0000 = 1966080 bytes: fits True, 483984 bytes (24.6 per cent) spare
+  standalone factory 0x1C0000 = 1835008 bytes: fits True, 352912 bytes (19.2 per cent) spare
+
+standalone set against the Linux layout:
+  tiny386.bin at 0x10000 (erased 0x10000 to 0x179fff) overlaps nvs (0x11000 to 0x16fff)
+  tiny386.bin at 0x10000 (erased 0x10000 to 0x179fff) overlaps otadata (0x17000 to 0x18fff)
+  tiny386.bin at 0x10000 (erased 0x10000 to 0x179fff) overlaps phy_init (0x19000 to 0x19fff)
+  tiny386.bin at 0x10000 (erased 0x10000 to 0x179fff) overlaps factory (0x20000 to 0x21ffff)

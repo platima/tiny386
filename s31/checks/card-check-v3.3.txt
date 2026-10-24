@@ -1,0 +1,51 @@
+bios.bin
+dosboard.ini
+freedos-hd.img
+freedos.ini
+tiny386.ini
+vgabios.bin
+win95-14m.ini
+boot menu: 3 inis in /sdcard/tiny386
+  1 freedos.ini      FreeDOS from the hard disk image: the first thing to try on the board.
+  2 tiny386.ini      FreeDOS from freedos-hd.img, 4 MB (enough for BENCH): the first boot
+  3 win95-14m.ini    Windows 95 OSR2 from win95.img on the WIN9X partition, 14 MB
+default without lastboot.txt: tiny386.ini
+  freedos.ini:
+    [pc] bios = bios.bin   -> /sdcard/tiny386/bios.bin (there)
+    [pc] vga_bios = vgabios.bin   -> /sdcard/tiny386/vgabios.bin (there)
+    [pc] mem_size = 2M
+    [pc] vga_mem_size = 256K
+    [pc] hda = freedos-hd.img   -> /sdcard/tiny386/freedos-hd.img (there)
+    [pc] fill_cmos = 1
+    [display] width = 800
+    [display] height = 480
+    [cpu] gen = 4
+    [cpu] fpu = 0
+    ini_parse: 0
+  tiny386.ini:
+    [esp] console = 2
+    [esp] enable_usb = 1
+    [pc] bios = bios.bin   -> /sdcard/tiny386/bios.bin (there)
+    [pc] vga_bios = vgabios.bin   -> /sdcard/tiny386/vgabios.bin (there)
+    [pc] mem_size = 4M
+    [pc] vga_mem_size = 256K
+    [pc] hda = freedos-hd.img   -> /sdcard/tiny386/freedos-hd.img (there)
+    [pc] fill_cmos = 1
+    [cpu] gen = 4
+    [cpu] fpu = 0
+    ini_parse: 0
+  win95-14m.ini:
+    [esp] console = 2
+    [esp] enable_usb = 1
+    [pc] bios = bios.bin   -> /sdcard/tiny386/bios.bin (there)
+    [pc] vga_bios = vgabios.bin   -> /sdcard/tiny386/vgabios.bin (there)
+    [pc] mem_size = 14M
+    [pc] vga_mem_size = 320K
+    [pc] hda = /sdcard3/win95.img   -> /sdcard3/win95.img (there)
+    [pc] fill_cmos = 1
+    [cpu] gen = 3
+    [cpu] fpu = 0
+    ini_parse: 0
+cardcheck: 0 problems
+== the v3.2 file and this one differ only in comment lines:
+  (no line that is not a comment differs)

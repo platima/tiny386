@@ -1,0 +1,27 @@
+# v4.2 against v4.1 (and v3.9 for the VGA), the session and the sweep, with the driver as released and with its pointer byte changed (dib)
+v42-n16 v42-korvo1 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin plat -cursor-box 170,0,640,448
+w41-n16 w41-korvo1 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin plat -cursor-box 170,0,640,448
+v42-n16dib v42-korvo1 n16-dib.img 14M 768K vgabios.bin plat -cursor-box 170,0,640,448
+w41-n16dib w41-korvo1 n16-dib.img 14M 768K vgabios.bin plat -cursor-box 170,0,640,448
+v42-vga v42-korvo1 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios.bin plat -cursor-box 250,0,720,448
+w41-vga w41-korvo1 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios.bin plat -cursor-box 250,0,720,448
+v39-vga v39-korvo1 /home/owner/flicker/repro/h/img/base-vga.img 14M 320K vgabios-v3.9.bin plat -cursor-box 250,0,720,448
+v42-n16-blocks0 v42-korvo1 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin plat -cursor-box 170,0,640,448 -vbe-blocks 0
+v42-n16dib-blocks0 v42-korvo1 n16-dib.img 14M 768K vgabios.bin plat -cursor-box 170,0,640,448 -vbe-blocks 0
+v42-n16-thread v42-korvo1 /home/owner/flicker/repro/h/img/base-n16.img 14M 768K vgabios.bin plat -cursor-box 170,0,640,448 -vgathread -check-every 10
+v42-n16dib-thread v42-korvo1 n16-dib.img 14M 768K vgabios.bin plat -cursor-box 170,0,640,448 -vgathread -check-every 10
+v42-off8 v42-korvo1 /home/owner/v4-work/vbe/w95/img/w8-800x480.img 14M 768K vgabios.bin sweep -cursor-box 170,0,640,448
+v42-off8dib v42-korvo1 off8-dib.img 14M 768K vgabios.bin sweep -cursor-box 170,0,640,448
+v42-off16 v42-korvo1 /home/owner/v4-work/vbe/w95/img/w16-800x480.img 14M 768K vgabios.bin sweep -cursor-box 170,0,640,448
+v42-off16dib v42-korvo1 off16-dib.img 14M 768K vgabios.bin sweep -cursor-box 170,0,640,448
+w41-off16 w41-korvo1 /home/owner/v4-work/vbe/w95/img/w16-800x480.img 14M 768K vgabios.bin sweep -cursor-box 170,0,640,448
+v42-off24 v42-korvo1 /home/owner/v4-work/vbe/w95/img/w24-800x480.img 13M 1152K vgabios.bin sweep -cursor-box 170,0,640,448
+v42-off24dib v42-korvo1 off24-dib.img 13M 1152K vgabios.bin sweep -cursor-box 170,0,640,448
+v42-off32 v42-korvo1 /home/owner/v4-work/vbe/w95/img/w32-800x480.img 13M 1536K vgabios.bin sweep -cursor-box 170,0,640,448
+v42-off32dib v42-korvo1 off32-dib.img 13M 1536K vgabios.bin sweep -cursor-box 170,0,640,448
+w41-off32 w41-korvo1 /home/owner/v4-work/vbe/w95/img/w32-800x480.img 13M 1536K vgabios.bin sweep -cursor-box 170,0,640,448
+v42-v640 v42-korvo1 /home/owner/flicker/repro/h/img/off-v640x16.img 14M 768K vgabios.bin sweep -cursor-box 250,0,720,448
+v42-v640dib v42-korvo1 v640x16-dib.img 14M 768K vgabios.bin sweep -cursor-box 250,0,720,448
+v42-dos16 v42-dosboard /home/owner/v4-work/vbe/w95/img/w16-800x600.img 13M 1M vgabios.bin sweep -cursor-box 170,0,640,448
+v42-dos16dib v42-dosboard dos16-dib.img 13M 1M vgabios.bin sweep -cursor-box 170,0,640,448
+w41-dos16 w41-dosboard /home/owner/v4-work/vbe/w95/img/w16-800x600.img 13M 1M vgabios.bin sweep -cursor-box 170,0,640,448

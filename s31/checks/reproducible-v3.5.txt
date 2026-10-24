@@ -1,0 +1,59 @@
+Four runs of build.sh from nothing (WSL ~/tiny386-idf-scratch/v35-work), 2026-10-22: rel1 and
+rel2-second-run with the patch at 76394fa, rel3 with the patch at 8b4403f, rel4-final-patch with
+the final patch (git diff pristine v3.5, tag v3.5 at 07e7784).  The commits after
+76394fa touch tests/host/dosboard/audio_mix_test.c only.
+
+The 18 files of the three image sets, each against rel1:
+  dosboard/flash_args: same same same
+  korvo1-dualboot/flash_args: same same same
+  korvo1-standalone/flash_args: same same same
+  dosboard/bootloader.bin: same same same
+  korvo1-dualboot/bootloader.bin: same same same
+  korvo1-standalone/bootloader.bin: same same same
+  dosboard/partition-table.bin: same same same
+  korvo1-dualboot/partition-table.bin: same same same
+  korvo1-standalone/partition-table.bin: same same same
+  dosboard/tiny386.bin: same same same
+  korvo1-dualboot/tiny386.bin: same same same
+  korvo1-standalone/tiny386.bin: same same same
+  dosboard/tiny386.elf: same same same
+  korvo1-dualboot/tiny386.elf: same same same
+  korvo1-standalone/tiny386.elf: same same same
+  dosboard/SHA256SUMS: same same same
+  korvo1-dualboot/SHA256SUMS: same same same
+  korvo1-standalone/SHA256SUMS: same same same
+
+Each patch applied to a fresh clone (git apply, index and files) gives its commit's tree:
+  rel1  index tree 05d3c561ff91de1b01c750eaf27c2d9b54506edd   76394fa tree 05d3c561ff91de1b01c750eaf27c2d9b54506edd
+  rel2  index tree 05d3c561ff91de1b01c750eaf27c2d9b54506edd
+  rel3  index tree 780e45078a574d1eaadb515ddec2c532c62276ec   8b4403f tree 780e45078a574d1eaadb515ddec2c532c62276ec
+  rel4  index tree c80d5d8b3233360ff6e8d34207f312172fd76703   v3.5 tag tree c80d5d8b3233360ff6e8d34207f312172fd76703
+  the final patch: 835742 bytes, sha256 890f46bc0d66ee4a
+  (byte for byte git diff pristine v3.5 in the scratch tree)
+
+Against v3.4 (previous-v3.4\images): the bootloaders, tables and flash_args are the same files:
+  korvo1-dualboot/bootloader.bin  b57469cd1542fe83  same
+  korvo1-dualboot/partition-table.bin  d41cba3cf33bedee  same
+  korvo1-dualboot/flash_args  6fc0ab4111fd6303  same
+  korvo1-dualboot/tiny386.bin  v3.4 885616 bytes, v3.5 885616 bytes
+  korvo1-standalone/bootloader.bin  ec0a396b5bd96406  same
+  korvo1-standalone/partition-table.bin  afbe6410c2040c5e  same
+  korvo1-standalone/flash_args  48e461784c407bbc  same
+  korvo1-standalone/tiny386.bin  v3.4 885616 bytes, v3.5 885616 bytes
+  dosboard/bootloader.bin  ec0a396b5bd96406  same
+  dosboard/partition-table.bin  afbe6410c2040c5e  same
+  dosboard/flash_args  48e461784c407bbc  same
+  dosboard/tiny386.bin  v3.4 914688 bytes, v3.5 916576 bytes
+
+The Korvo-1 apps against v3.4's: the bytes of tiny386.bin that differ, and the ELF sections whose
+contents differ (objcopy of each PROGBITS section), and symbols (nm) that differ:
+  korvo1-dualboot/tiny386.bin: 66 bytes differ, at 0x33 ( 66 offsets from 0x33 to 0xd836f )
+    section .flash.appdesc differs: 1 bytes
+    symbols: the same (nm)
+  korvo1-standalone/tiny386.bin: 66 bytes differ, at 0x33 ( 66 offsets from 0x33 to 0xd836f )
+    section .flash.appdesc differs: 1 bytes
+    symbols: the same (nm)
+  (the app description holds the version string at its byte 0x13 into tiny386.bin's first
+  segment and the ELF's SHA-256 at 0x90; the image ends in a checksum and its SHA-256)
+  korvo1-dualboot offsets: 33 b0 b1 b2 b3 b4 b5 b6 b7 b8 b9 ba bb bc bd be bf c0 c1 c2 c3 c4 c5 c6 c7 c8 c9 ca cb cc cd ce cf d834f d8350 d8351 d8352 d8353 d8354 d8355 d8356 d8357 d8358 d8359 d835a d835b d835c d835d d835e d835f d8360 d8361 d8362 d8363 d8364 d8365 d8366 d8367 d8368 d8369 d836a d836b d836c d836d d836e d836f 
+  korvo1-standalone offsets: 33 b0 b1 b2 b3 b4 b5 b6 b7 b8 b9 ba bb bc bd be bf c0 c1 c2 c3 c4 c5 c6 c7 c8 c9 ca cb cc cd ce cf d834f d8350 d8351 d8352 d8353 d8354 d8355 d8356 d8357 d8358 d8359 d835a d835b d835c d835d d835e d835f d8360 d8361 d8362 d8363 d8364 d8365 d8366 d8367 d8368 d8369 d836a d836b d836c d836d d836e d836f 

@@ -1,0 +1,266 @@
+The files v3.8 to v3.9 changed (console.c, status_led.c, display.c, i386.c, i8254.c) and two that
+call into them (crash.c, esp_main.c), compiled again with each rel1 build's own command line plus
+-Wall -Wextra -Wno-unused-parameter (warn39.py), to assembly, thrown away; each beside the same
+file at the v3.8 tag (an export of the tag, its own headers with it).  2026-10-22.
+== build-korvo1
+  esp/main/console.c   v3.9: 0 warnings in the file (exit 0)
+  esp/main/console.c   v3.8: 0 warnings in the file (exit 0)
+  esp/main/status_led.c v3.9: 0 warnings in the file (exit 0)
+  esp/main/status_led.c v3.8: 0 warnings in the file (exit 0)
+  esp/main/display.c   v3.9: 0 warnings in the file (exit 0)
+  esp/main/display.c   v3.8: 0 warnings in the file (exit 0)
+  esp/main/crash.c     v3.9: 0 warnings in the file (exit 0)
+  esp/main/crash.c     v3.8: 0 warnings in the file (exit 0)
+  esp/main/esp_main.c  v3.9: 0 warnings in the file (exit 0)
+  esp/main/esp_main.c  v3.8: 0 warnings in the file (exit 0)
+  i386.c               v3.9: 34 warnings in the file (exit 1)
+      <v3.9>/i386.c:1148:31: error: format '%x' expects argument of type 'unsigned int', but argument 4 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:1148:31: error: format '%x' expects argument of type 'unsigned int', but argument 5 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:1148:31: error: format '%x' expects argument of type 'unsigned int', but argument 6 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:4741:23: error: format '%d' expects argument of type 'int', but argument 4 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5213:31: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 4 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 5 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 6 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 7 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 8 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 9 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 10 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 11 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 12 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 13 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 14 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 15 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 16 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 17 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 18 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 19 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 20 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 21 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 24 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 25 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 26 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 27 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 28 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 29 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 30 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 31 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 32 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 33 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+  i386.c               v3.8: 34 warnings in the file (exit 1)
+      <v3.8>/i386.c:1130:31: error: format '%x' expects argument of type 'unsigned int', but argument 4 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:1130:31: error: format '%x' expects argument of type 'unsigned int', but argument 5 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:1130:31: error: format '%x' expects argument of type 'unsigned int', but argument 6 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:4721:23: error: format '%d' expects argument of type 'int', but argument 4 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5192:31: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 4 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 5 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 6 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 7 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 8 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 9 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 10 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 11 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 12 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 13 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 14 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 15 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 16 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 17 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 18 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 19 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 20 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 21 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 24 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 25 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 26 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 27 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 28 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 29 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 30 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 31 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 32 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 33 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+  i8254.c              v3.9: 0 warnings in the file (exit 0)
+  i8254.c              v3.8: 0 warnings in the file (exit 0)
+total: v3.9 34, v3.8 34
+== build-korvo1-standalone
+  esp/main/console.c   v3.9: 0 warnings in the file (exit 0)
+  esp/main/console.c   v3.8: 0 warnings in the file (exit 0)
+  esp/main/status_led.c v3.9: 0 warnings in the file (exit 0)
+  esp/main/status_led.c v3.8: 0 warnings in the file (exit 0)
+  esp/main/display.c   v3.9: 0 warnings in the file (exit 0)
+  esp/main/display.c   v3.8: 0 warnings in the file (exit 0)
+  esp/main/crash.c     v3.9: 0 warnings in the file (exit 0)
+  esp/main/crash.c     v3.8: 0 warnings in the file (exit 0)
+  esp/main/esp_main.c  v3.9: 0 warnings in the file (exit 0)
+  esp/main/esp_main.c  v3.8: 0 warnings in the file (exit 0)
+  i386.c               v3.9: 34 warnings in the file (exit 1)
+      <v3.9>/i386.c:1148:31: error: format '%x' expects argument of type 'unsigned int', but argument 4 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:1148:31: error: format '%x' expects argument of type 'unsigned int', but argument 5 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:1148:31: error: format '%x' expects argument of type 'unsigned int', but argument 6 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:4741:23: error: format '%d' expects argument of type 'int', but argument 4 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5213:31: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 4 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 5 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 6 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 7 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 8 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 9 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 10 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 11 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 12 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 13 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 14 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 15 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 16 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 17 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 18 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 19 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 20 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 21 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 24 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 25 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 26 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 27 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 28 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 29 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 30 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 31 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 32 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 33 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+  i386.c               v3.8: 34 warnings in the file (exit 1)
+      <v3.8>/i386.c:1130:31: error: format '%x' expects argument of type 'unsigned int', but argument 4 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:1130:31: error: format '%x' expects argument of type 'unsigned int', but argument 5 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:1130:31: error: format '%x' expects argument of type 'unsigned int', but argument 6 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:4721:23: error: format '%d' expects argument of type 'int', but argument 4 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5192:31: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 4 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 5 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 6 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 7 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 8 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 9 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 10 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 11 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 12 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 13 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 14 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 15 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 16 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 17 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 18 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 19 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 20 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 21 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 24 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 25 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 26 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 27 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 28 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 29 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 30 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 31 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 32 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 33 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+  i8254.c              v3.9: 0 warnings in the file (exit 0)
+  i8254.c              v3.8: 0 warnings in the file (exit 0)
+total: v3.9 34, v3.8 34
+== build-dosboard
+  esp/main/console.c   v3.9: 0 warnings in the file (exit 0)
+  esp/main/console.c   v3.8: 0 warnings in the file (exit 0)
+  esp/main/status_led.c v3.9: 0 warnings in the file (exit 0)
+  esp/main/status_led.c v3.8: 0 warnings in the file (exit 0)
+  esp/main/display.c   v3.9: 0 warnings in the file (exit 0)
+  esp/main/display.c   v3.8: 0 warnings in the file (exit 0)
+  esp/main/crash.c     v3.9: 0 warnings in the file (exit 0)
+  esp/main/crash.c     v3.8: 0 warnings in the file (exit 0)
+  esp/main/esp_main.c  v3.9: 0 warnings in the file (exit 0)
+  esp/main/esp_main.c  v3.8: 0 warnings in the file (exit 0)
+  i386.c               v3.9: 34 warnings in the file (exit 1)
+      <v3.9>/i386.c:1148:31: error: format '%x' expects argument of type 'unsigned int', but argument 4 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:1148:31: error: format '%x' expects argument of type 'unsigned int', but argument 5 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:1148:31: error: format '%x' expects argument of type 'unsigned int', but argument 6 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:4741:23: error: format '%d' expects argument of type 'int', but argument 4 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5213:31: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 4 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 5 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 6 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 7 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 8 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 9 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 10 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 11 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 12 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 13 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 14 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 15 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 16 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 17 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 18 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 19 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 20 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 21 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 24 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 25 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 26 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 27 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 28 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 29 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 30 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 31 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 32 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.9>/i386.c:5591:15: error: format '%x' expects argument of type 'unsigned int', but argument 33 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+  i386.c               v3.8: 34 warnings in the file (exit 1)
+      <v3.8>/i386.c:1130:31: error: format '%x' expects argument of type 'unsigned int', but argument 4 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:1130:31: error: format '%x' expects argument of type 'unsigned int', but argument 5 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:1130:31: error: format '%x' expects argument of type 'unsigned int', but argument 6 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:4721:23: error: format '%d' expects argument of type 'int', but argument 4 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5192:31: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 4 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 5 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 6 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 7 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 8 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 9 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 10 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 11 has type 'u32' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 12 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 13 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 14 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 15 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 16 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 17 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 18 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 19 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 20 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 21 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 24 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 25 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 26 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 27 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 28 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 29 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 30 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 31 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 32 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+      <v3.8>/i386.c:5570:15: error: format '%x' expects argument of type 'unsigned int', but argument 33 has type 'uword' {aka 'long unsigned int'} [-Werror=format=]
+  i8254.c              v3.9: 0 warnings in the file (exit 0)
+  i8254.c              v3.8: 0 warnings in the file (exit 0)
+total: v3.9 34, v3.8 34
+
+== compiler warnings in build.sh's own logs, outside ESP-IDF and the managed components
+rel1.log:/home/owner/win95-debug/fix-v39/rel1/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel1.log:/home/owner/win95-debug/fix-v39/rel1/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel2-second-run.log:/home/owner/win95-debug/fix-v39/rel2-second-run/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel2-second-run.log:/home/owner/win95-debug/fix-v39/rel2-second-run/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+
+== the in-tree builds (idf.py, at the v3.9 sources), release and crash-test, warnings outside ESP-IDF
+win95-debug/fix-v39/build-v39k.log:/home/owner/tiny386-idf-scratch/v3/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+win95-debug/fix-v39/build-v39kc.log:/home/owner/tiny386-idf-scratch/v3/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]

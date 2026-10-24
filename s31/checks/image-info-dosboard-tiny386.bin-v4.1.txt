@@ -1,0 +1,46 @@
+esptool v5.4.0
+Image size: 934080 bytes
+
+ESP32-S31 Image Header
+======================
+Image version: 1
+Entry point: 0x2f000d1c
+Segments: 5
+Flash size: 16MB
+Flash freq: 80m
+Flash mode: DIO
+
+ESP32-S31 Extended Image Header
+===============================
+WP pin: 0xee (disabled)
+Flash pins drive settings: clk_drv: 0x0, q_drv: 0x0, d_drv: 0x0, cs0_drv: 0x0, hd_drv: 0x0, wp_drv: 0x0
+Chip ID: 32 (ESP32-S31)
+Minimal chip revision: v0.0, (legacy min_rev = 0)
+Maximal chip revision: v0.99
+
+Segments Information
+====================
+Segment   Length   Load addr   File offs  Memory types
+-------  -------  ----------  ----------  ------------
+      0  0x40b90  0x40070020  0x00000018  DROM, IROM
+      1  0x0f460  0x2f000000  0x00040bb0  DRAM, BYTE_ACCESSIBLE, IRAM
+      2  0x6a038  0x40000020  0x00050018  DROM, IROM
+      3  0x26894  0x2f00f460  0x000ba058  DRAM, BYTE_ACCESSIBLE, IRAM
+      4  0x03798  0x2f035d00  0x000e08f4  DRAM, BYTE_ACCESSIBLE, IRAM
+
+ESP32-S31 Image Footer
+======================
+Checksum: 0x25 (valid)
+Validation hash: 438a85b2d6aaf85d3f23a066f8db02e6fb3fd160f22c3bcaf83169f151390c4d (valid)
+
+Application Information
+=======================
+Project name: tiny386
+App version: v4.1
+Compile time:  
+ELF file SHA256: d1e6aeeea97181ce09043515b9f070291bb09cc0c499a799fa32c0e5eb53aaa5
+ESP-IDF: v6.1-dev-8142-g188e3e55bb
+Minimal eFuse block revision: 0.0
+Maximal eFuse block revision: 0.99
+MMU page size: 64 KB
+Secure version: 0

@@ -1,0 +1,32 @@
+unchanged files:
+  status: pass
+  console: pass
+  floppy: pass
+  disk: pass
+caught: running green ignores the disk light (esp/main/status_code.c): failed status of status
+caught: v3.7's dark blink back (esp/main/status_code.c): failed status of status
+caught: the disk light green, not blue (esp/main/status_code.c): failed status of status
+caught: the disk light over an error (esp/main/status_code.c): failed status of status
+caught: looks every 50 ms (esp/main/status_code.h): failed status of status
+caught: a look always lit (esp/main/status_code.c): failed status of status
+caught: the count never kept (esp/main/status_code.c): failed status of status
+caught: led_task without the disk step (esp/main/status_led.c): failed status of status
+caught: bf_write_async not counted (ide.c): failed status, disk of status, disk
+caught: bf_read_async counted after the range check (ide.c): failed status, disk of status, disk
+caught: the floppy's read not counted (misc.c): failed status, floppy of status, floppy
+caught: the count given after the PC runs (esp/main/esp_main.c): failed status of status
+caught: the first 6 of a kind (esp/main/console.c): failed console of console
+caught: a period of 4 s (esp/main/console.c): failed console of console
+caught: numbers kept in a line's kind (esp/main/console.c): failed console of console
+caught: console_printf() held back too (esp/main/console.c): failed console of console
+caught: the count not reset after it is said (esp/main/console.c): failed console of console
+caught: a place taken without its count said (esp/main/console.c): failed console of console
+caught: the limit's tick never says (esp/main/console.c): failed console of console
+caught: the counts not said when the limit goes off (esp/main/console.c): failed console of console
+caught: the queue sends LF, not CR LF (esp/main/console.c): failed console of console
+caught: the queue overfills the FIFO (esp/main/console.c): failed console of console
+caught: dropped lines not counted (esp/main/console.c): failed console of console
+caught: the queue left as it is when turned off (esp/main/console.c): failed console of console
+caught: the UART written straight while queued (esp/main/console.c): failed console of console
+mutants: 25 of 25 caught by every test named; unchanged files pass: yes
+exit 0

@@ -1,0 +1,20 @@
+### 11. short option forms, checked offline
+== defaults of the global reset options (esptool/__init__.py)
+1:417:    "--before",
+2:418-    type=ResetModeType(["default-reset", "usb-reset", "no-reset", "no-reset-no-sync"]),
+3:419-    default=os.environ.get("ESPTOOL_BEFORE", "default-reset"),
+4:420-    help="Which reset to perform before connecting to the chip.",
+1:423:    "--after",
+2:424-    "-a",
+6:428-    default=os.environ.get("ESPTOOL_AFTER", "hard-reset"),
+7:429-    help="Which reset to perform after operation is finished.",
+== esptool -c esp32s31 -b 921600 merge-bin -o m.bin -fm keep -ff keep -fs keep 0x2000 <dual bootloader> 0x8000 <dual table> 0xe20000 <v2 tiny386>
+esptool v5.4.0
+HINT: Consider using --format hex to avoid flashing unused 0xFF padding between input regions.
+Wrote 0xf89d70 bytes to file 'm.bin', ready to flash to offset 0x0.
+exit 0
+merged length 0xf89d70 (from 0x0); bootloader bytes at 0x2000 unchanged by -fm/-ff/-fs keep: True
+== the same with a wrong flash-mode value, to see the parser reject it
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ Invalid value for '--flash-mode' / '-fm': 'kept' is not one of 'keep',       │
+exit 2

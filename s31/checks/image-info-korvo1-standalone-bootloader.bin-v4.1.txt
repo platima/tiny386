@@ -1,0 +1,32 @@
+esptool v5.4.0
+Image size: 22016 bytes
+
+ESP32-S31 Image Header
+======================
+Image version: 1
+Entry point: 0x2f06a2ba
+Segments: 3
+Flash size: 16MB
+Flash freq: 80m
+Flash mode: DIO
+
+ESP32-S31 Extended Image Header
+===============================
+WP pin: 0xee (disabled)
+Flash pins drive settings: clk_drv: 0x0, q_drv: 0x0, d_drv: 0x0, cs0_drv: 0x0, hd_drv: 0x0, wp_drv: 0x0
+Chip ID: 32 (ESP32-S31)
+Minimal chip revision: v0.0, (legacy min_rev = 0)
+Maximal chip revision: v0.99
+
+Segments Information
+====================
+Segment   Length   Load addr   File offs  Memory types
+-------  -------  ----------  ----------  ------------
+      0  0x016a4  0x2f0740c0  0x00000018  DRAM, BYTE_ACCESSIBLE, IRAM
+      1  0x00d78  0x2f06a2b0  0x000016c4  DRAM, BYTE_ACCESSIBLE, IRAM
+      2  0x03190  0x2f06cfb0  0x00002444  DRAM, BYTE_ACCESSIBLE, IRAM
+
+ESP32-S31 Image Footer
+======================
+Checksum: 0x72 (valid)
+Validation hash: 03fba933f2e46bc4cddad67b315266832308ffbaf3a97318b7edd4516fcec831 (valid)

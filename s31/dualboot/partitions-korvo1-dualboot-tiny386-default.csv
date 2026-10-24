@@ -1,0 +1,16 @@
+# The Korvo-1 dual-boot table with tiny386 as the default: the eight
+# entries of partitions-korvo1-dualboot.csv with the two app subtypes
+# swapped, nothing else.  Under the dual-boot bootloader (be5b725's with the
+# VOL+ test pin on GPIO42) a reset with no key held boots the factory app,
+# tiny386 at 0xE20000, and VOL+ held through RESET boots the test app, the
+# Linux loader at 0x20000.  The labels are kept: neither app looks itself up
+# by label or subtype (dualboot\DUALBOOT.md section 13).
+# Name,   Type, SubType, Offset,   Size,      Flags
+nvs,      data, nvs,     0x11000,  0x6000,
+otadata,  data, ota,     0x17000,  0x2000,
+phy_init, data, phy,     0x19000,  0x1000,
+factory,  app,  test,    0x20000,  0x200000,
+opensbi,  data, 0x40,    0x220000, 0x80000,
+linux,    data, 0x40,    0x2A0000, 0x780000,
+initramfs,data, 0x40,    0xA20000, 0x200000,
+tiny386,  app,  factory, 0xE20000, 0x1E0000,

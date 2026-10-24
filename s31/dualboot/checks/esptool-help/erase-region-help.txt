@@ -1,0 +1,23 @@
+esptool v5.4.0
+                                                                                
+ Usage: esptool erase-region [OPTIONS] ADDRESS SIZE                             
+                                                                                
+ Erase a region of the SPI flash memory.                                        
+                                                                                
+╭─ Flash options ──────────────────────────────────────────────────────────────╮
+│ --spi-connection  -sc  SPI-CONNECTION  Override default SPI flash memory     │
+│                                        connection. Value can be SPI, HSPI or │
+│                                        a comma-separated list of 5 I/O       │
+│                                        numbers to use for SPI flash          │
+│                                        (CLK,Q,D,HD,CS). Not supported with   │
+│                                        ESP8266.                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Arguments ──────────────────────────────────────────────────────────────────╮
+│ *  ADDRESS  INTEGER  [required]                                              │
+│ *  SIZE     INTEGER  [required]                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --force      Erase region even if security features are enabled. Use with    │
+│              caution!                                                        │
+│ --help   -h  Show this message and exit.                                     │
+╰──────────────────────────────────────────────────────────────────────────────╯

@@ -1,0 +1,46 @@
+The files v3.3 and v3.4 changed, compiled again with each rel1 build's own command line plus
+-Wall -Wextra (warn3.py, as for v3.2 and v3.3), to assembly, thrown away; every warning in esp/main printed.
+== korvo1
+status_code.c    0 warnings (exit 0)
+status_led.c     0 warnings (exit 0)
+crash.c          0 warnings (exit 0)
+console.c        0 warnings (exit 0)
+esp_main.c       0 warnings (exit 0)
+i2s.c            1 warnings (exit 0)
+    /home/owner/v34-fw/rel1/tiny386/esp/main/i2s.c:69:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+dosboard.c       not in this build
+ch9350.c         not in this build
+usb_input.c      0 warnings (exit 0)
+total 1
+== dosboard
+status_code.c    0 warnings (exit 0)
+status_led.c     0 warnings (exit 0)
+crash.c          0 warnings (exit 0)
+console.c        0 warnings (exit 0)
+esp_main.c       0 warnings (exit 0)
+i2s.c            0 warnings (exit 0)
+dosboard.c       0 warnings (exit 0)
+ch9350.c         0 warnings (exit 0)
+usb_input.c      not in this build
+total 0
+
+== compiler warnings in build.sh's own logs, outside ESP-IDF and the managed components
+rel1.log:/home/owner/v34-fw/rel1/tiny386/esp/main/i2s.c:69:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel1.log:/home/owner/v34-fw/rel1/tiny386/esp/main/i2s.c:69:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel2-second-run.log:/home/owner/v34-fw/rel2-second-run/tiny386/esp/main/i2s.c:69:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+rel2-second-run.log:/home/owner/v34-fw/rel2-second-run/tiny386/esp/main/i2s.c:69:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+
+== the crash-test builds (in-tree, idf.py -DCRASH_TEST=1), warnings outside ESP-IDF
+v34-fw/build-v34kc.log:/home/owner/tiny386-idf-scratch/v3/tiny386/esp/main/i2s.c:69:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+
+== the crash-test builds' changed files with -Wall -Wextra (in-tree build-v34kc, build-v34dc)
+== korvo1, CRASH_TEST=1
+esp_main.c       0 warnings (exit 0)
+status_led.c     0 warnings (exit 0)
+crash.c          0 warnings (exit 0)
+total 0
+== dosboard, CRASH_TEST=1
+esp_main.c       0 warnings (exit 0)
+status_led.c     0 warnings (exit 0)
+crash.c          0 warnings (exit 0)
+total 0

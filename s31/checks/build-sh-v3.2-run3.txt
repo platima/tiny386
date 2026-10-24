@@ -1,0 +1,119 @@
+build.sh as shipped in this folder, run from nothing on 2026-10-22 into a new folder
+(WSL ~/tiny386-idf-scratch/v3-work-integ/r3/rel), by ~/tiny386-idf-scratch/v3-work-integ/r3.sh.
+
+== start 2026-10-22T06:30:10+08:00
+== build.sh exit 0, 174 s
+/home/owner/tiny386-idf-scratch/v3-work-integ/r3/rel/tiny386/esp/main/i2s.c:19:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+│ DIRAM               │       241290 │     47.9 │         262454 │        503744 │
+Total image size: 867214 bytes (.bin may be padded larger)
+== ESP-IDF build: korvo1-standalone (BOARD=korvo1 -DPARTITION_CSV=partitions.csv)
+/home/owner/tiny386-idf-scratch/v3-work-integ/r3/rel/tiny386/esp/main/i2s.c:19:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+│ DIRAM               │       241290 │     47.9 │         262454 │        503744 │
+Total image size: 867214 bytes (.bin may be padded larger)
+== ESP-IDF build: dosboard (BOARD=dosboard )
+│ DIRAM               │       244320 │     48.5 │         259424 │        503744 │
+Total image size: 896258 bytes (.bin may be padded larger)
+== images
+  korvo1-dualboot/tiny386.bin: 867392 of 1966080 bytes
+  korvo1-standalone/tiny386.bin: 867392 of 1835008 bytes
+  dosboard/tiny386.bin: 896432 of 1835008 bytes
+== built, and not flashed
+== images/korvo1-dualboot (esptool write-flash offsets: flash_args)
+   -fm keep -ff keep -fs keep
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0xe20000 tiny386.bin
+== images/korvo1-standalone (esptool write-flash offsets: flash_args)
+   --flash-mode dio --flash-freq 80m --flash-size 16MB
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0x10000 tiny386.bin
+== images/dosboard (esptool write-flash offsets: flash_args)
+   --flash-mode dio --flash-freq 80m --flash-size 16MB
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0x10000 tiny386.bin
+== the 18 files against v3\images
+same  korvo1-dualboot/flash_args
+same  korvo1-dualboot/bootloader.bin
+same  korvo1-dualboot/partition-table.bin
+same  korvo1-dualboot/tiny386.bin
+same  korvo1-dualboot/tiny386.elf
+same  korvo1-dualboot/SHA256SUMS
+same  korvo1-standalone/flash_args
+same  korvo1-standalone/bootloader.bin
+same  korvo1-standalone/partition-table.bin
+same  korvo1-standalone/tiny386.bin
+same  korvo1-standalone/tiny386.elf
+same  korvo1-standalone/SHA256SUMS
+same  dosboard/flash_args
+same  dosboard/bootloader.bin
+same  dosboard/partition-table.bin
+same  dosboard/tiny386.bin
+same  dosboard/tiny386.elf
+same  dosboard/SHA256SUMS
+files compared 18, different 0
+== tree the patch made
+index tree 0292cb65601fe2dfb29f04fc4e66b5f353ead371  (v3.2 tag tree 0292cb65601fe2dfb29f04fc4e66b5f353ead371)
+M  adlib.c
+A  audio_rate.h
+M  esp/CMakeLists.txt
+ M esp/dependencies.lock
+M  esp/main/CMakeLists.txt
+A  esp/main/board_dosboard.h
+A  esp/main/board_korvo1.h
+A  esp/main/bootmenu.c
+A  esp/main/bootmenu.h
+A  esp/main/ch9350.c
+== app descriptions
+v3.2
+//IDF/components/esp_system/port/soc/esp32s31/clk.c
+/IDF/components/esp_hal_clock/esp32s31/include/hal/clk_tree_ll.h
+v3.2
+//IDF/components/esp_system/port/soc/esp32s31/clk.c
+/IDF/components/esp_hal_clock/esp32s31/include/hal/clk_tree_ll.h
+== warnings outside ESP-IDF
+-- korvo1: 1
+/home/owner/tiny386-idf-scratch/v3-work-integ/r3/rel/tiny386/esp/main/i2s.c:19:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+-- korvo1-standalone: 1
+/home/owner/tiny386-idf-scratch/v3-work-integ/r3/rel/tiny386/esp/main/i2s.c:19:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+-- dosboard: 0
+-- size korvo1
+│ DIRAM               │       241290 │     47.9 │         262454 │        503744 │
+│ LP SRAM             │         8232 │    25.12 │          24536 │         32768 │
+Total image size: 867214 bytes (.bin may be padded larger)
+-- size korvo1-standalone
+│ DIRAM               │       241290 │     47.9 │         262454 │        503744 │
+│ LP SRAM             │         8232 │    25.12 │          24536 │         32768 │
+Total image size: 867214 bytes (.bin may be padded larger)
+-- size dosboard
+│ DIRAM               │       244320 │     48.5 │         259424 │        503744 │
+│ LP SRAM             │         8232 │    25.12 │          24536 │         32768 │
+Total image size: 896258 bytes (.bin may be padded larger)
+== host tests in the tree build.sh made
+run.sh exit 0
+5:PASS ps2 queue lock, i8042.c of this tree
+18:PASS ps2 queue lock test catches the bug in pristine i8042.c
+30:PASS boot console: text, colours, scrolling, ring, hand-over, crash screen
+66:PASS vga.c: retrace against the clock, rows redrawn, clears from the other core, placement
+78:PASS vga.c on the DOS board: text, 16 and 256 colours, VBE whole, scaled and 8-bit, at 800x600
+154:PASS kbd_input.c: scancodes, sequences, typematic, keyboards, lights, hotkey, mouse
+177:PASS PS/2 mouse: backlog, clicks, sample rate, remote mode, reset, mouse off
+181:PASS PS/2 mouse: a reporting thread and the emulator's thread
+186:PASS PS/2 mouse: two threads, the emulator held up: every click through the ring's overflow
+199:PASS hid_parse.c: boot keyboard, wheel mouse, receiver with report IDs, NKRO, vendor, tablet
+401:PASS usb_input.c: interfaces given up, unplugged, queued behind others; lights after an unplug; unplugged while being set up
+428:PASS setup.c: ini search, the menu's list and default, lastboot.txt, paths of the Linux route's inis
+435:PASS bootmenu.c: countdown, keys, wrap, digits
+456:PASS speed.c: instructions a second, BENCH marks, lines as the Linux route prints them
+601:PASS ms7210.c: sequence, wire format, PLL retry, hot plug, EDID, DVI, InfoFrames
+745:PASS ms7210.c: the bus log against encoder.md 8.4, every row in order
+799:PASS ch9350.c: frames into kbd_input.c, as a DOS program reads them from ports 60h and 64h
+815:PASS AUDIO_RATE 44100: PC speaker, AdLib and SB16 pitch
+831:PASS AUDIO_RATE 48000: PC speaker, AdLib and SB16 pitch
+834:PASS storage.c: the card's partitions with ESP-IDF's FatFs, on images laid out as Plat's card
+837:PASS ide.c: disk images through ESP-IDF's FatFs, nothing read or written past their end
+861:PASS misc.c: floppy drives 0 and 1 only, nothing past the image's end, refused writes counted
+863:host tests: 22 passed, 0 failed
+host build warnings: 11
+== end 2026-10-22T06:33:29+08:00

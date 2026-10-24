@@ -1,0 +1,84 @@
+== build ==
+built: BENCH.COM /home/owner/tiny386-idf-scratch/final-r2/lr/tests-out/tiny386-fbtest VGA12.COM VGA12T.COM VGA13.COM 
+
+-- usage --
+PASS  usage
+
+-- no-bios --
+PASS  no-bios
+
+-- no-disk --
+PASS  no-disk
+
+-- no-serial --
+PASS  no-serial
+
+-- bad-floppy --
+PASS  bad-floppy
+
+-- no-memory --
+PASS  no-memory: tiny386: guest memory 2048 KiB + video memory 256 KiB = 2304 KiB, and about 1024 KiB for the emulator
+
+-- no-memory-forced --
+PASS  no-memory-forced
+
+-- none --
+PASS  none: tiny386: 5000652 instructions in 0.2 s of running: 28.042 million a second
+
+-- none-time --
+PASS  none-time
+
+-- none-kips --
+PASS  none-kips: tiny386: 2003393 instructions in 4.1 s of running: 0.491 million a second
+
+-- marks --
+PASS  marks: 9 pieces timed
+
+-- hostbench --
+PASS  hostbench: This build takes them apart first.
+
+-- term-hd --
+PASS  term-hd: FreeDOS from the hard disk to a prompt, and off
+
+-- term-bench-2M --
+PASS  term-bench-2M: BENCH wants 4 MB, and says so
+
+-- term-quit --
+PASS  term-quit: Ctrl+] ends it
+
+-- term-floppy --
+PASS  term-floppy: FreeDOS from the boot floppy to a prompt
+
+-- screen-text --
+PASS  screen-text: picture: 573x397 at (40,42), 1 colours; 18 lines of text read back
+
+-- screen-size --
+PASS  screen-size: a [display] of another size is put right
+
+-- screen-mode13 --
+PASS  screen-mode13: mode 13h: picture: 640x400 at (80,40), 241 colours
+
+-- screen-mode12 --
+PASS  screen-mode12: mode 12h: picture: 640x476 at (80,4), 15 colours
+
+-- screen-mode12-text --
+PASS  screen-mode12-text: text by the BIOS on mode 12h, the quick way and the plain: picture: 640x476 at (80,4), 15 colours
+
+-- quit-key --
+PASS  quit-key: Ctrl+Alt+Backspace
+
+-- sigterm --
+PASS  sigterm
+
+-- kill9 --
+/home/owner/tiny386-idf-scratch/final-r2/lr/release/tests/run-tests.sh: line 189: 43388 Killed                  ( cd "$d" && exec env FAKE_STATE="$d/state" FAKE_LOG="$d/log" FAKE_FB="$d/fb" FAKE_KBD="$d/kbd" FAKE_QEMU="$QEMUPATH" $extra "$QEMUPATH" "$FBTEST" "$@" ) >> "$d/log" 2>&1
+PASS  kill9: the guard put the console back
+
+-- kill9-noguard --
+/home/owner/tiny386-idf-scratch/final-r2/lr/release/tests/run-tests.sh: line 189: 46834 Killed                  ( cd "$d" && exec env FAKE_STATE="$d/state" FAKE_LOG="$d/log" FAKE_FB="$d/fb" FAKE_KBD="$d/kbd" FAKE_QEMU="$QEMUPATH" $extra "$QEMUPATH" "$FBTEST" "$@" ) >> "$d/log" 2>&1
+PASS  kill9-noguard: without the guard the console stays as it was left, and --fix-console puts it back
+
+-- screen-no-memory --
+PASS  screen-no-memory: too little memory is said before the screen is touched
+
+26 passed, 0 failed

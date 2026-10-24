@@ -1,0 +1,100 @@
+old	new	scratch_refs	subject
+941e466c2e0d6b1c9fe1c06e82023eb5661476b1	56d3636ca0983dde7dbf634e2f0d9cf3f46a6dee		v2 baseline: both patches and the four v2 changes (tiny386-idf-v2.patch)
+c6f918f782d07310450f5d40696c043574cb6f7b	42b7e9855f540852d7f82250fccf6df05b8b39eb		DOS board (FIRMWARE-PLAN 5): board header, sdkconfig, 800x600 RGB, MS7210 and CH9350L drivers, board check, AUDIO_RATE, host tests
+1bfe79bb2cbb4d8c8c1b674d99ecdb8992ac53c7	1fe92ce9a66b57a3c5d29243c1db77e46eecbd21	dos-end	hosttest: phase as a plain argument to check_ms7210_table.py
+c2f415f5fd959a90107ca1b71d8530abb3d53d62	bed470d7f3b9302fb1719f364a4741b6687c8761		v2 baseline: both patches and the four v2 changes (tiny386-idf-v2.patch)
+710e53de8166fd2d81af866e304c65735e025abc	7b558ed3aa11f9e870092d735282016bc95c60e6		i8042: give the PS/2 queue's mutex back when the queue is full (FIRMWARE-PLAN 3.3.1), with a host test
+386783aa099f44d6b357f87c691da6b9c2be0cac	6db84d1866fb21f2b19b56cb34a28974016f0c23		vga.c: retrace bits from the clock, only drawn rows to redraw(), clears done on the drawing core (FIRMWARE-PLAN 3.1), with a host test
+a589726e31757fb60ba42d7208b591faee21b319	a8f1ee7102ee3750d2a2a35c681574be98a89a78		Boot console, crash screen, panel first, messages in plain words, sdkconfig of plan section 4 (FIRMWARE-PLAN 3.1, 3.2, 4)
+684f3e94b4878ed7a31d228b0692bdc917204443	a356838152c80d2ff6c0f92b970e9f9daa3bc914		vga.c: a picture larger than the panel scaled down and centred (VGA_SHRINK_LARGE); placement tests and pictures; internal RAM shown once the PC is built
+b6ccddbf0e34366fcdb2839d7bd54d24ede03a66	b46df5924fd7e8304b383473ad290ee723de0cda		Comment rules made of = rather than -
+b8dede7a4b5cfd61daf1d1ba4a1aa40e87ade9dd	29d84738462286296fd2ace7b6eeb1c8d3786634		USB keyboard and mouse (FIRMWARE-PLAN 3.3): kbd_input.c with typematic repeat and the lights, report descriptors, full and low speed through hubs, host tests
+797b0484b78080153f62c77c070d1ec33ff111a0	11f7863bfa1482524e765127167342d35c43fac6		Card and ini (FIRMWARE-PLAN 3.4): every FAT partition mounted, the ini looked for in tiny386/, paths as the Linux route's inis have them, disk writes flushed, the guest given what fits
+285d8daf883ac00f91446d9d2789cebd962ef493	85fc3d9f121000abc896edde023a69cae122faf4		Boot menu: with several inis in the card's tiny386 folder, the keyboard picks one
+6e4dae2061de049b8f14f3822bcc5d24595f9831	6c3d8ddfc17a6054ee47cf193875134cad5868e9		Speed readout (FIRMWARE-PLAN 3.5): instructions a second, BENCH.COM's marks as the Linux route's -marks prints them, Ctrl+Alt+F12
+f08df50c7ea4774e7f797a5c78c21df1183f69be	8bbf0d39c7593b91caefa044f15c20bd93279214		kbd_input.c: the typematic repeat task moved here (kbd_input_start()), so that the DOS board's CH9350L path has it too
+f0e6ba24262a5e5a8d722f640b23ca5fcfc6b2f6	fc97cc854757442d8cae5a00d3e91c43bd0f91a5	core2-end	esp_main.c: the keyboard and mouse reach the PC once it runs, not during the console hold before it
+61f476aea232ffb5507dd010ca6c0cbb7d01e02f	2f6e7712adefe42aa88f5a7f865dbbe0e2ce3eb8		DOS board (FIRMWARE-PLAN 5), from the DOS board work's 42b7e98
+3dd53da5f34d0abb69a320dcf978deb361f61661	5403a356f45a512e787a12fdc1bfed55cb8489b5		hosttest: phase as a plain argument to check_ms7210_table.py
+387939d3a3d1aff95a2f56e01a6ab45fdfe07fc0	6086269159b9894a3ebe24289374e74ef87e69bb		DOS board merged with the core: lcd.h panel file, kbd_input.c for the CH9350L, dosboard.ini
+eb4d5e4e643ec929b04a5de027d57c751d2165ae	6986c28e77a321b5678bc87ba4696426cfef11a2		esp/version.txt: the app version is v3, not what git describe says of the tree it is built in
+3129162f9eb23b9d8fb1ef9c45cf3c15a14978d4	8e7fab00f7d4289b710124fb2bf9984c3b2ec7ef		Comment rules made of = rather than - in the DOS board's files, as the core's are
+2bb1c763dcfb567b07e75a01440de61656b4c77f	62a6b7b6bd5a07a980264899b21c4a52959dc0bc	v3	dosboard.c: the lines kept for the boot console under a lock, made before the first one
+16f9750c27da6c4402b4852a7ccc2bbaa20008d6	bc8ee524e9e74eb0b1cc8f2d487164636e68f258		i8042.c: PS/2 mouse packets made on the emulator's thread, whole or not at all
+7d8588eb396f891780620c4dfe43b4f8fb6d140e	647dd77b068ed057548f1264530f1d2320590c86		usb_input.c: both closes for an interface given up; an unplug acts on its own handle only
+9b6af1ce3cca11d17a8dc432c682d0a2ca6d06ea	00aef458303be85915f3fbd455d4e1586cb1b334		Core fixes from the review: console held, stacks, disk errors, floppies, VBE depth, raw card
+de15941e02ce101de4249c5812bb83fe12487669	32783d960d55aac7daa45313fd464957f6804ff1		DOS board fixes from the review: EDID extension, bounce buffers, PCLK meter, knobs, hot plug
+80e64de595745ddb0d81aeb6f760a5f753b85e9c	6723ed1a98fab15bae2a8a54a6a08321de434814	v3.1	esp/CMakeLists.txt: the dual-boot build refuses idf.py flash; version v3.1
+823d5cdd0acee383f75aa83e0dd89138d5520029	6202d72f1ecf96e2758914f58074afdf64a8d86e	v3.1-tests	tests/host/storage: the card's partitions with ESP-IDF's own FatFs, on images laid out as Plat's card
+e6c8b44e52e903663d65c46efdec34a5516ea4e8	d9ded6beec4f51b041c961f69860e0d2331ded69		usb_input.c: stop setting up an interface the moment it is unplugged
+461a8e4b212d179341bd7e00a6c6518053061694	ea8481163f7a4377d2f277c3c70df6e4d9c0a7d3		i8042.c: clicks kept through the mouse ring's overflow; a reset drops the ring
+79cff6b57b15c5a0af1cc692151988b4026cf794	c42435921b428d62b1a44445d5372c253fe910b8		Core fixes from the second review: disk ends, floppies, the console hold, BENCH marks
+e9539a5904f891f2ff22baa7a134b54f326e4ff1	fd823af407d99c315450280723fa5b43c67d368c		DOS board fixes from the second review: I2S frame, pad pulls, reset watch, PCLK pair, 0x2B
+d3c839cd092939d4b752293d390c17be7b75ec25	f361c28da408139628a5daf1a0ccd9c831d03f8c	v3.2	esp/CMakeLists.txt: dfu-flash and the otadata targets refused too; version v3.2
+8537320f81e88d4040be2354bd49b2b7396b4e9b	50df08573ccf2dcc0ae88db61ad49bd9941ca57f		Status LED: the WS2812 on GPIO37 of both boards, codes, crash pattern, last run
+b13c4a0a16053df165b09b07c877804f365c9200	6b0c8dc19c211c87eb237fa8069a8b95ede71eff		i2s.c: the DOS board's PCM5102A line out, soft mute on GPIO48
+5c6765e0a4aff1d773954a1b3433c41d199d9e27	a0f40a023fe15ee6c46f63f0630199d531b7c670		tests/host: the status LED
+0291ace8b50d4cbf4c3be7788f1273fa9f7d3ad7	67de12d9b1be72a4d6cdb52dbfe6c43dd34cb9ce		esp/version.txt: v3.3, the status LED and the DOS board's line out
+f8c05ece2a89aa22bf91607e0b4ed57b2a390e39	703944bcb1b58c42c9ad2328d8ad2eb2d0868e38		ch9350.c: the comment on a silent chip says what is reported and what is not known
+7e0a36a67e258e9c365e23f463c89f11f41ac6b7	67c32adaf26d2a6c07e9352782c1b60b538654fb	v3.3	tests/host/test_status.c: the stall time checked against the 10 s STATUS-LED.md gives, not against the header
+161ddc20a38a8d5e66c0bc7b0e42e898581bf8a1	4b6fe9b164ff4dec0f5c4786920080377d648c3f		status_bb.h: each store straight after its wait; the bit picked while the line is low
+40704594cc255484ef70bdedd5af303b04725d56	8d4664a2b096d32cb80ee7551ac4c547477720f4		Status LED timing: T1H 700 ns in a 1325 ns bit; yellow 1 and white said exactly
+e0c0bc82600b638d9db94a3881ec878d81d8fe7f	be6b96aeb116e7b1dd22eee25c712c21db94e832		tests/host/test_status.c: the instructions between a wait and its store; high times at the LED
+2177b06be074f17aa0146c041b3dc086be157b66	66a3ae02765bf6dbef2a560b787692ce066a3213		Status LED: the v3.3 review's smaller points, and crash_test = 5
+a33b7cfae24c39f02ebe9cf6564ffed340235b15	fce35ab5f65f6aa5a545e2ed930700b638644fc5	v3.4	esp/version.txt: v3.4, the v3.3 review's fixes
+db8eaca9bf8bfb0f1a5371dae6dcbd350eab5da5	88eb9f2288a359f781762cb6df3d3faf8257b0d1		DOS board rev A2c: pins moved off GPIO2 to 7, the board check before RSTN, the speakers
+b5c15df25a6517750630725a8a9efb7f50330e38	739952a40c3e730403eb36f490202509e365a452		Sound: the mix added in 32 bits and held once, after the level; the DOS board at 1/4
+6c1a69da1553cbef3766a8ea08107b77a2a00227	00625bef265ce5140d22fcc73d0463c9af0217e6		tests/host: the sound mix (16) and the DOS board's pins against its netlist (17)
+76394fa779314b015e1cf67822710836986f4339	09f68dbcf9ae8be839807be1431d9d2fb08531b6		esp/version.txt: v3.5, DOS board rev A2c pins, the speakers, a louder mix
+8b4403f8a41d2d420854bfc7a01ca773183a2015	fc1d4c6185938898218686a0de296ec0483edaf0		tests/host/dosboard/audio_mix_test.c: the default level the loudest that cannot clip
+07e778450e04345fc11fe3662cfdc178861baf9b	7f0070b768bdc1d95866400240eabee3dc295364	v3.5	tests/host/dosboard/audio_mix_test.c: v3.4's path with * 32, not pc.c's << 5
+152a4a992ca04744d242e425aa755c398fda4950	3af470147ef43b511712172bb236b4667b84135a		DOS board check: GPIO46 (R302) decides the fallback reset
+92f61f773adcbd9b613e75fdcd359e4f8b56a714	ffe56f52208e1354f6cb0b96821cb4c107e6b721		audio_mix.c: nothing made for an n of 0 or less; the file modes 644
+25933f62cb193094e1440c6c8cfb9257472daebc	b85968d45fd8f036c1b5b14df43ff911713d192c		tests/host: the board check (18); the mix asked for no block (16, part 6)
+3017d383041b64ddbfb497008af7bb651976a9ce	64730af25bb5f90514b0a39770ee2529fd876e2b		esp/version.txt: v3.6, the v3.5 review's fixes
+aff546d5936bcb2f48b88b094d7b78ada90398bd	d75d91a1fd15c8104420d791f2abca33b5b0a1d0		tests/host/dosboard/board_check_test.c: a camera D0 that changes while it is read
+9d6109e529981ed29c8b6130e06387a849279ce4	b851363e9a33a0a3bc360e51a6dd991f9795cc80	v3.6	board_dosboard.h: the pins both boards share named in the board check's note
+36e98d2f2d4b5eaa8daa5d3873be8f94d660dd2b	999e0b0e59e66e0543e76509a43327d26955bf50		Status LED: the colours at full scale, one brightness for every frame
+e15fdc89e28194d5ce78080fa4c5221230b7e5f7	4984dbbbee187b1bf9c1a77dc72ec4700e7e53f5		esp_main.c: [esp] led_brightness, the status LED's level
+6afa75b04492633e651ffe8f8826f7ab4b804467	cbda6a7616277c187a7c977a96883bb037543983		tests/host: the status LED's brightness (15, part 8)
+012158ee8d694ab62a9694c1490d0bd5f7482afe	5bbaac5c7d4fd79774703f59fb85e7080aa01b42	v3.7	esp/version.txt: v3.7, a dimmer status LED, its brightness in the ini
+f8663e05c3bb1117be1e0788e534b749f4b62903	0bd5f399d0206b5ce2c333daa3cedb508d7a931f		i8254.c, misc.c: missed timer ticks dropped after a hold, not raised back to back
+c5dd715c62f0fd390cd4e510d85a9f8c68f523f4	25bc10e3c2e141b4dfd8b37fe7055c4ccbae50e3		i386.c: the 386's double fault, the stack put back, shutdown, page tables bounded
+fcae04f29b7e27ec3c5fdd541357f9a08642f89a	b959296e1083061a01ac61c11e7079c612c33ba8		disk_image.c: the card's disk images through FatFs itself, mapped, and a card error got over
+938913be72bb6e1819d3ddc315f43d985a039294	af98a3852f7478a895ebc3f600a71f7a723f5347		esp_main.c: [esp] uart_log, fast_seek, timer_catchup; the waits and ticks on the speed screen
+7fe503bd67c929df1324344f95454bc29e1e1a91	f69188f748bfa2dc2cd947f28e2ced8b161e7304		tests/host: the timer after a hold (19), faults in delivery (20), disk_image.c
+40a1ec63d0a640ac2e3a3c645e30ea1fb246eaa7	9d32afdfc1664a6950fd7a68bc26b15486a7bb6f		esp/version.txt: v3.8 (fix 1 of 2: the timer, double faults, the card's images)
+c412ab04dc2ebd529afb43a6637754724a3c149b	09d2a3991f7b3054d941f1212976a9c9aca566ac		i386.c, disk_image.c: what the PC runs showed about vector 8; a static line buffer
+6714724ec279763ab805ed69b55278fcda1d16d0	889fa9432e67a7bffafed28f1976ecdf7267f81f		esp_main.c: [esp] memtest, the PSRAM test before the PC is built
+5c47263fb1b2eacac49265479d517365bc1506b2	27fcc3f47b8c11d86bf87d511fc582b1693cc9cb		ide.c, misc.c: every guest disk, CD and floppy access counted with one store
+77e62c7e991da09d33266d56cb50803038a0f784	751a8dd4ed6d0b858ad96eae9fb1b03a940fbb9e		Status LED: a steady green while the PC runs, a blue flash for each disk access
+c810d927e79d6cf834b3f3ffe69b096635f39022	42764c6feb76cc092668d6810223100e1310b04d		console.c: lines that repeat held back, the UART through a queue; [esp] verbose_log
+3bded9ddcf3817f9e015a92e4d66867529512714	d7a4969f3fcfb839bcdd239c59c582ccb88bcfeb	v3.8	tests/host: the disk light (15, 14, floppy), repeated lines and the UART queue (2)
+90e56eef1cb4e474c50433c7860b4bd228d49ecf	b8df63350a077f6d1d90d124182ce6ec00fa0900		i386.c: the front end's note before the line that names the cause
+cc399afb39b77cd1dc5a936a70cac70ce35c0bcb	3c8db7237d35deff3edd71137334ff1ff0e348e6		console.c, status_led.c, display.c: held lines at a crash, held errors red, the stall line logged
+78fa8286ceef53296993ca42cffdbcc85bf295ae	5ad6e89932f40e1b245b929349ea404cd6152a12		tests/host: held lines at a crash and held errors (2), the note's order (20), the stall line (15)
+d370a7a02556a941da75176f728aa343f2e2d0a4	8d385b4de50a12a02bcbaed1b1044e54c42ec374	integ,v3.9	esp/version.txt: v3.9, the v3.8 reviews' fixes
+d2229a4cd886d3676e984e619ace86b8ea27a2ea	f4de268c8e37daee0175237f639a9baa24513438		Merge upstream tiny386 master (4ce2e06) into v3.9
+e8afd4b42a6b3f2f535dddd19361357ca1ab79cd	151497db78818b9bb852032d8354f5dc0100d2a7		tests/host: the PIT's one-shot modes beside the cap (19), a VBE picture past the end (vga)
+b370a75a3ac720912e74ff8adc07efe7ede7e660	6c220847f9053d607d296f32ba8b93f3cbd9e5f4	v4.0-base	esp/version.txt: v4.0-base, v3.9 merged with upstream 4ce2e06
+be6200913311e75f8056ddd340605486295610b4	938db07b44106b92de9597cb821aef8e519d9d6a		vga.c, vga.h, pc.c, pc.h: VBE pictures drawn from the blocks of video memory written
+574334c204174d1f5d4e2abf4f5591abac49834b	bca21eec8c9da8b8db470a59908b423f99bad376		esp/main: VGA_DIRTY_BLOCKS on both boards; [esp] vbe_blocks; vga_mem_size in whole 64K
+46da1960513487ead637fe7157b3b72e68c4a2c6	a3dd4324419c0b07e0187b5caef610482c7cb2ab		tests/host: VBE pictures from the blocks written against the old loop (test_vbe)
+8d65b1d1dcf696c8779b4a126796677c1cd11771	33ca88d9aeecb8d6a882812386adf42846dc38e4	v4,v4.0	esp/version.txt: v4.0, Windows at the panel's own size (VBE drawn from the blocks written)
+832f430c3b526c063bd9d448c55ea9b8b37ee43a	fecc50720fc95d6a5a03c87eaf6cc36355701dfc		vga.c, vga.h, pc.c: marks only where a picture reads them; chain 4 switched under VBE
+ec1ea2a10dcd482b955d91e4374ccf06486b3e6f	af1fe31b52559cb095516f585997c256a1f0a4a6		i386.c, unaligned.h, board_korvo1.h: what I386_ALIGNED_ONLY does with the board's flags
+3fa82bddde2677cefaebf1e18672593c00b2f48a	c11d27f70d52a8b283f11d30377d0f4fe20ba029		tests/host: test_vbe: no marks outside VBE or with vbe_blocks 0; chain 4 off and on under VBE
+f61337e004cab014ac00a3a2360040bac5773b03	e2c6bacc461d39468ebb257fbc29a13197be1771	v41,v4.1	esp/version.txt: v4.1, the v4.0 reviews' fixes
+411b6bfff2029a8d5ee25dba3a7846df0c056564	11db5752d166a3c0e97a74ea9162956c5380fb38		vga.c: a clear is made by the picture after it, with no black between
+f77fc44c28720f2ddece2f0749321aafc889c42c	ccf1cd5e49957d570974f94f6a195c502b472d4a		tests/host: test_clear: a clear made by the picture after it, no page stored for nothing
+26da49022226effff5474b390f3f11c6b8f92095	c1ef6cd2f6e0f8c3d7d930510ca06367a4fce4b5		esp/main, vga.c: Ctrl+Alt+F11 changes vbe_blocks while the PC runs
+cbabe92c5d949fbadcb916dd680df47ef22ce505	759df2a7811532bd6af082a3c1825d52763cbe0c		tests/host: Ctrl+Alt+F11 beside Ctrl+Alt+F12; vbe_blocks changed while drawing
+6502063092cac3e6c63c3e5f53d2870c44edb6b4	45c7a593b230df3d35ead52fbf71704377774629	v42,v4.2	esp/version.txt: v4.2, no black between a clear and its picture; Ctrl+Alt+F11 for vbe_blocks
+e24e7b24f061d76b91bd461f21afa0cd7620ba36	462a3bcebd7bbfe22291bed499d890b898c770a2		perfport.h, perfport.c, pc.c, vga.c, vga.h, i8042.c, i8042.h: an information port at 0F1F8h
+4940f137046e202fd61dfcd5027226454fb6227d	4057c122aff15f6ca77b27724ca8b92cba4c3149		esp/main: the board's values for the information port
+32191dcc25e8df449bce5d964d5c0c7491ee61c7	a477b5baba8b0d1df862f800802ece62c30a745a		tests/host: the information port
+1ea0539e0b348e70e64dbaa7c90e15dac21b3015	e2e5cb7946325364e499e807e4be58684f7bf7cf		perfport.c, perfport.h, tests/host: the port's 1.1, the panel's frames a second and the second after a pause
+6e9a6f1fed17449277726eb39990bf85d0a70c5f	774de188c5de588abb9bff79b97367e8b6256f2f	perfport	esp/version.txt: v4.1-perfport
+c044193d1f646abcdf705cf038d9aa04d0b606ee	5d32d715ce1a6f0a36b488d10fafa449c55168dd		Merge branch 'perfport' into v43: the information port at 0F1F8h with v4.2
+b267cd97167f93b6fae2b27e5a3003c94bfeee01	fda4938ed5da624257d24e275a8b47f53e41db62		tests/host: the information port and Ctrl+Alt+F11 together (test_port_blocks)
+0f87c1ce4cb5ac846b39778ab1e10f7f123a1854	a3d2f7539cb1f87c6e725a12ca385e6bfe3ea9d8	v43,v4.3	esp/version.txt: v4.3, v4.2 with the information port at 0F1F8h

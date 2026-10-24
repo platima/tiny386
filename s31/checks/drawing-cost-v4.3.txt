@@ -1,0 +1,126 @@
+The drawing's host time on this PC, one run at a time, two rounds (p43.sh in checks\win95-v4.3\): v4.3
+(with the port: pc_vga_step() draws through perfport_redraw() and times each picture) and v4.2,
+both built in the v4.1 work's harness (h41), the same images and options; host microseconds a
+periodic picture.  2026-10-24.
+
+P1-v43-n16               desktop (desktop seen at t=220 s) | drawing: 11276 pictures, 293.4 ms of host time in all, 26.0 us a picture
+P1-v43-n16-mouse         desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 327.6 ms of host time in all, 23.5 us a picture
+P1-v43-n16dib-mouse      desktop (desktop seen at t=609 s) | drawing: 24190 pictures, 376.3 ms of host time in all, 15.6 us a picture
+P1-v43-n32-mouse         desktop (desktop seen at t=304 s) | drawing: 14071 pictures, 397.9 ms of host time in all, 28.3 us a picture
+P1-v43-dos16-mouse       desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 327.8 ms of host time in all, 23.5 us a picture
+P1-v43-vga               desktop (desktop seen at t=210 s) | drawing: 10947 pictures, 418.8 ms of host time in all, 38.3 us a picture
+P1-v43-vga-mouse         desktop (desktop seen at t=229 s) | drawing: 11585 pictures, 437.7 ms of host time in all, 37.8 us a picture
+P1-v42-n16               desktop (desktop seen at t=220 s) | drawing: 11276 pictures, 295.2 ms of host time in all, 26.2 us a picture
+P1-v42-n16-mouse         desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 327.5 ms of host time in all, 23.5 us a picture
+P1-v42-n16dib-mouse      desktop (desktop seen at t=609 s) | drawing: 24190 pictures, 376.3 ms of host time in all, 15.6 us a picture
+P1-v42-n32-mouse         desktop (desktop seen at t=304 s) | drawing: 14071 pictures, 403.5 ms of host time in all, 28.7 us a picture
+P1-v42-dos16-mouse       desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 334.6 ms of host time in all, 24.0 us a picture
+P1-v42-vga               desktop (desktop seen at t=210 s) | drawing: 10947 pictures, 421.5 ms of host time in all, 38.5 us a picture
+P1-v42-vga-mouse         desktop (desktop seen at t=229 s) | drawing: 11585 pictures, 438.2 ms of host time in all, 37.8 us a picture
+P2-v43-n16               desktop (desktop seen at t=220 s) | drawing: 11276 pictures, 299.7 ms of host time in all, 26.6 us a picture
+P2-v43-n16-mouse         desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 336.9 ms of host time in all, 24.2 us a picture
+P2-v43-n16dib-mouse      desktop (desktop seen at t=609 s) | drawing: 24190 pictures, 379.9 ms of host time in all, 15.7 us a picture
+P2-v43-n32-mouse         desktop (desktop seen at t=304 s) | drawing: 14071 pictures, 400.7 ms of host time in all, 28.5 us a picture
+P2-v43-dos16-mouse       desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 333.1 ms of host time in all, 23.9 us a picture
+P2-v43-vga               desktop (desktop seen at t=210 s) | drawing: 10947 pictures, 423.7 ms of host time in all, 38.7 us a picture
+P2-v43-vga-mouse         desktop (desktop seen at t=229 s) | drawing: 11585 pictures, 439.8 ms of host time in all, 38.0 us a picture
+P2-v42-n16               desktop (desktop seen at t=220 s) | drawing: 11276 pictures, 293.2 ms of host time in all, 26.0 us a picture
+P2-v42-n16-mouse         desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 329.9 ms of host time in all, 23.7 us a picture
+P2-v42-n16dib-mouse      desktop (desktop seen at t=609 s) | drawing: 24190 pictures, 382.9 ms of host time in all, 15.8 us a picture
+P2-v42-n32-mouse         desktop (desktop seen at t=304 s) | drawing: 14071 pictures, 412.2 ms of host time in all, 29.3 us a picture
+P2-v42-dos16-mouse       desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 341.6 ms of host time in all, 24.5 us a picture
+P2-v42-vga               desktop (desktop seen at t=210 s) | drawing: 10947 pictures, 419.7 ms of host time in all, 38.3 us a picture
+P2-v42-vga-mouse         desktop (desktop seen at t=229 s) | drawing: 11585 pictures, 439.6 ms of host time in all, 37.9 us a picture
+END lines: v4.3's the same as v4.2's in 14 of 14 pairs
+
+== the built Korvo-1 image, v4.2 (previous-v4.2\images) against v4.3 (rel1): instructions of each
+== function, and whether it is the same with every number (addresses, offsets) taken out (dis43.sh)
+v4.2: /mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/previous-v4.2/images/korvo1-dualboot/tiny386.elf (v4.2)
+v4.3: /home/owner/v43/merge/rel/rel1/images/korvo1-dualboot/tiny386.elf (v4.3)
+FUNCTION                     V4.2   V4.3 THE SAME WITH NUMBERS TAKEN OUT
+iomem_write8                   23     23 yes
+iomem_write16                  32     32 yes
+iomem_write32                  32     32 yes
+iomem_write_string             55     55 yes
+vga_mem_write                 185    185 yes
+vga_mem_write16                81     81 yes
+vga_mem_write32                92     92 yes
+vga_mem_write_string           82     82 yes
+pc_io_read                    305    317 no
+pc_io_read16                   83     96 no
+pc_io_read32                   67     77 no
+pc_io_write                   386    400 no
+pc_io_write16                  65     74 no
+pc_io_write32                  44     53 no
+pc_vga_step                    25     39 no
+vga_refresh                   835    835 yes
+vga_graphic_refresh          1961   1989 no
+vga_vbe_refresh                 0      0 (not in v4.3, or inlined)
+vga_text_refresh                0      0 (not in v4.3, or inlined)
+vga_graphic_refresh_shrunk      0      0 (not in v4.3, or inlined)
+vga_take_marks                151    171 no
+vga_set_dirty_blocks            8      8 yes
+perfport_redraw                 0     14 (not in v4.2, or inlined)
+perfport_picture                0     70 (not in v4.2, or inlined)
+perfport_io_read                0     93 (not in v4.2, or inlined)
+perfport_io_write               0     27 (not in v4.2, or inlined)
+vga_get_info                    0     96 (not in v4.2, or inlined)
+== pc_io_write16, v4.2 against v4.3 (numbers taken out), the lines that differ:
+> mv	aN,aN
+> bge	aN,aN,A
+> lui	aN,N
+> addi	aN,aN,N 
+> beq	aN,aN,A
+< mv	aN,aN
+< j	A
+< lui	aN,N
+< addi	aN,aN,N 
+< beq	aN,aN,A
+< blt	aN,aN,A
+< li	aN,N
+< beq	aN,aN,A
+< addi	aN,aN,N
+< li	aN,N
+< bltu	aN,aN,A
+< mv	aN,aN
+< lw	aN,N(aN)
+> li	aN,N
+> blt	aN,aN,A
+> li	aN,N
+> blt	aN,aN,A
+> li	aN,N
+> bne	aN,aN,A
+> lw	aN,N(aN)
+> mv	aN,aN
+> j	A
+< lw	aN,N(aN)
+> lui	aN,N
+> addi	aN,aN,N 
+> add	aN,aN,aN
+> li	aN,N
+> bltu	aN,aN,A
+> mv	aN,aN
+> li	aN,N
+> j	A
+> lw	aN,N(aN)
+== pc_vga_step, v4.2 against v4.3 (numbers taken out), the lines that differ:
+> sw	sN,N(sp)
+> jal	A
+> mv	sN,aN
+< lw	aN,N(sN)
+< lw	aN,N(sN)
+> lui	aN,N
+> mv	aN,sN
+> addi	aN,aN,N 
+> jal	A
+> jal	A
+> sub	aN,aN,sN
+> mv	aN,sN
+< bne	aN,aN,A
+> beq	aN,aN,A
+> lw	ra,N(sp)
+> lw	sN,N(sp)
+> lw	sN,N(sp)
+> addi	sp,sp,N
+> ret
+> lw	sN,N(sp)

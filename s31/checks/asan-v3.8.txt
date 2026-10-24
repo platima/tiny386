@@ -1,0 +1,21 @@
+Tests 2 (console), 15 (status LED) and the floppy test, and the logging benchmark, under
+AddressSanitizer and UBSan (-fsanitize=address,undefined, recovery off), address-space
+randomisation off (setarch -R: gcc 12's ASan loops at start on this WSL kernel otherwise, as fix 1
+found), 2026-10-22, the scratch tree at v3.8's sources.  First with leak detection, then with
+detect_leaks=0; the leaks are the tests' own and v3.7's tests show the same, byte for byte.
+
+== with leak detection (asan.sh)
+console: 0 UBSan reports, 0 ASan errors; SUMMARY: AddressSanitizer: 14200 byte(s) leaked in 3 allocation(s).; last line: SUMMARY: AddressSanitizer: 14200 byte(s) leaked in 3 allocation(s).
+status: 0 UBSan reports, 0 ASan errors; no leak summary; last line: status LED: 48907 checks, 0 failed
+floppy: 0 UBSan reports, 0 ASan errors; SUMMARY: AddressSanitizer: 56 byte(s) leaked in 1 allocation(s).; last line: SUMMARY: AddressSanitizer: 56 byte(s) leaked in 1 allocation(s).
+bench: 0 UBSan reports, 0 ASan errors; SUMMARY: AddressSanitizer: 380800 byte(s) leaked in 80 allocation(s).; last line: SUMMARY: AddressSanitizer: 380800 byte(s) leaked in 80 allocation(s).
+
+== detect_leaks=0, and the leaks against v3.7's tests (asan2.sh)
+console: exit 0, 0 reports; test_console: all checks passed
+status: exit 0, 0 reports; status LED: 48907 checks, 0 failed
+floppy: exit 0, 0 reports; test_floppy: 23 checks, 0 failed
+bench: exit 0, 0 reports;   limit on : 144 lines out (99880 of the 100000 held back, 24 count lines added), 7554 bytes to the UART; on the PC 213 ns a line in console.c (median of 7: 21.32 ms in all); at 86.8 us a byte the UART takes 0.66 s
+== leaks: v3.7's tests at the v3.7 tag
+v3.7 console: exit 1, SUMMARY: AddressSanitizer: 14200 byte(s) leaked in 3 allocation(s).
+v3.7 floppy: exit 1, SUMMARY: AddressSanitizer: 56 byte(s) leaked in 1 allocation(s).
+this tree: console SUMMARY: AddressSanitizer: 14200 byte(s) leaked in 3 allocation(s).; floppy SUMMARY: AddressSanitizer: 56 byte(s) leaked in 1 allocation(s).

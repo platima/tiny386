@@ -1,0 +1,116 @@
+BVBE480.COM (checks/vbe480/bvbe480.S, unchanged) in the PC harness (~/v4-work/v41/h, headless.c
+as checks/vbe480/headless-v4.1.diff has it), FreeDOS 4M, gen 4, no FPU, card/tiny386's
+vgabios.bin and bios.bin; each @shot's picture as the periodic drawing leaves it, held against a
+full redraw, and against the picture vbe480check.py (v4.1's, which also mends a log line split by
+the harness) works out.  w41 is the v4.1 tag, v40 the v4.0 tag, both built with this harness.
+-vgathread: the drawing in a second thread; -vbe-blocks 0: [esp] vbe_blocks = 0.  2026-10-23.
+
+vbe480-v40-dosboard-1152K 800x600, 1152 KiB of video memory: 55 pictures, every one right [stopped: guest-done] 
+vbe480-v40-dosboard-1536K 800x600, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-v40-dosboard-1M 800x600, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v40-dosboard-2M 800x600, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-v40-dosboard-768K 800x600, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-v40-korvo1-1152K 800x480, 1152 KiB of video memory: 55 pictures, every one right [stopped: guest-done] 
+vbe480-v40-korvo1-1536K 800x480, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-v40-korvo1-1M 800x480, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v40-korvo1-2M 800x480, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-v40-korvo1-768K 800x480, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-w41-dosboard-1152K 800x600, 1152 KiB of video memory: 55 pictures, every one right [stopped: guest-done] 
+vbe480-w41-dosboard-1536K 800x600, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-w41-dosboard-1536K-vgathread 800x600, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-w41-dosboard-1M 800x600, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-w41-dosboard-1M-vbeblocks0 800x600, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-w41-dosboard-1M-vgathread 800x600, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-w41-dosboard-2M 800x600, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-w41-dosboard-2M-vgathread 800x600, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-w41-dosboard-768K 800x600, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-w41-dosboard-768K-vgathread 800x600, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-w41-korvo1-1152K 800x480, 1152 KiB of video memory: 55 pictures, every one right [stopped: guest-done] 
+vbe480-w41-korvo1-1536K 800x480, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-w41-korvo1-1536K-vgathread 800x480, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-w41-korvo1-1M 800x480, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-w41-korvo1-1M-vbeblocks0 800x480, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-w41-korvo1-1M-vgathread 800x480, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-w41-korvo1-2M 800x480, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-w41-korvo1-2M-vgathread 800x480, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-w41-korvo1-768K 800x480, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-w41-korvo1-768K-vbeblocks0 800x480, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-w41-korvo1-768K-vgathread 800x480, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+
+== END lines (virtual time, instruction count, registers), w41 against v40, the same runs:
+  dosboard-1152K: the same
+  dosboard-1536K: the same
+  dosboard-1M: the same
+  dosboard-2M: the same
+  dosboard-768K: the same
+  korvo1-1152K: the same
+  korvo1-1536K: the same
+  korvo1-1M: the same
+  korvo1-2M: the same
+  korvo1-768K: the same
+
+== the review's split line: v4.0's checker and v4.1's on the emulator review's 1152K log
+  v4.0's: vbe480-wt-korvo1-1152K 800x480, 1152 KiB of video memory: 55 pictures, 1 WRONG
+  v4.1's: vbe480-wt-korvo1-1152K 800x480, 1152 KiB of video memory: 55 pictures, every one right
+
+== every picture of the Korvo-1 at 1152K, v4.1
+m01a0-lfb 800x480x8: right (0 pixels differ; none from a full redraw)
+m01a0-poke 800x480x8: right (0 pixels differ; none from a full redraw)
+m01a0-win 800x480x8: right (0 pixels differ; none from a full redraw)
+m01a0-start16 800x480x8: right (0 pixels differ; none from a full redraw)
+m01a0-pal2 800x480x8: right (0 pixels differ; none from a full redraw)
+m01a1-lfb 800x480x15: right (0 pixels differ; none from a full redraw)
+m01a1-poke 800x480x15: right (0 pixels differ; none from a full redraw)
+m01a1-win 800x480x15: right (0 pixels differ; none from a full redraw)
+m01a1-start16 800x480x15: right (0 pixels differ; none from a full redraw)
+m01a2-lfb 800x480x16: right (0 pixels differ; none from a full redraw)
+m01a2-poke 800x480x16: right (0 pixels differ; none from a full redraw)
+m01a2-win 800x480x16: right (0 pixels differ; none from a full redraw)
+m01a2-start16 800x480x16: right (0 pixels differ; none from a full redraw)
+m01a3-lfb 800x480x24: right (0 pixels differ; none from a full redraw)
+m01a3-poke 800x480x24: right (0 pixels differ; none from a full redraw)
+m01a3-win 800x480x24: right (0 pixels differ; none from a full redraw)
+m01a4 800x480x32: not listed (1179648 bytes of video memory), as it should be
+m0103-lfb 800x600x8: right (0 pixels differ; none from a full redraw)
+m0103-poke 800x600x8: right (0 pixels differ; none from a full redraw)
+m0103-win 800x600x8: right (0 pixels differ; none from a full redraw)
+m0103-start16 800x600x8: right (0 pixels differ; none from a full redraw)
+m0103-pal2 800x600x8: right (0 pixels differ; none from a full redraw)
+m0113-lfb 800x600x15: right (0 pixels differ; none from a full redraw)
+m0113-poke 800x600x15: right (0 pixels differ; none from a full redraw)
+m0113-win 800x600x15: right (0 pixels differ; none from a full redraw)
+m0113-start16 800x600x15: right (0 pixels differ; none from a full redraw)
+m0114-lfb 800x600x16: right (0 pixels differ; none from a full redraw)
+m0114-poke 800x600x16: right (0 pixels differ; none from a full redraw)
+m0114-win 800x600x16: right (0 pixels differ; none from a full redraw)
+m0114-start16 800x600x16: right (0 pixels differ; none from a full redraw)
+m0115 800x600x24: not listed (1179648 bytes of video memory), as it should be
+m0143 800x600x32: not listed (1179648 bytes of video memory), as it should be
+m0101-lfb 640x480x8: right (0 pixels differ; none from a full redraw)
+m0101-poke 640x480x8: right (0 pixels differ; none from a full redraw)
+m0101-win 640x480x8: right (0 pixels differ; none from a full redraw)
+m0101-start16 640x480x8: right (0 pixels differ; none from a full redraw)
+m0101-pal2 640x480x8: right (0 pixels differ; none from a full redraw)
+m0110-lfb 640x480x15: right (0 pixels differ; none from a full redraw)
+m0110-poke 640x480x15: right (0 pixels differ; none from a full redraw)
+m0110-win 640x480x15: right (0 pixels differ; none from a full redraw)
+m0110-start16 640x480x15: right (0 pixels differ; none from a full redraw)
+m0111-lfb 640x480x16: right (0 pixels differ; none from a full redraw)
+m0111-poke 640x480x16: right (0 pixels differ; none from a full redraw)
+m0111-win 640x480x16: right (0 pixels differ; none from a full redraw)
+m0111-start16 640x480x16: right (0 pixels differ; none from a full redraw)
+m0112-lfb 640x480x24: right (0 pixels differ; none from a full redraw)
+m0112-poke 640x480x24: right (0 pixels differ; none from a full redraw)
+m0112-win 640x480x24: right (0 pixels differ; none from a full redraw)
+m0112-start16 640x480x24: right (0 pixels differ; none from a full redraw)
+m0142 640x480x32: not listed (1179648 bytes of video memory), as it should be
+m0146-lfb 320x200x8: right (0 pixels differ; none from a full redraw)
+m0146-poke 320x200x8: right (0 pixels differ; none from a full redraw)
+m0146-win 320x200x8: right (0 pixels differ; none from a full redraw)
+m0146-start16 320x200x8: right (0 pixels differ; none from a full redraw)
+m0146-pal2 320x200x8: right (0 pixels differ; none from a full redraw)
+m010e-lfb 320x200x16: right (0 pixels differ; none from a full redraw)
+m010e-poke 320x200x16: right (0 pixels differ; none from a full redraw)
+m010e-win 320x200x16: right (0 pixels differ; none from a full redraw)
+m010e-start16 320x200x16: right (0 pixels differ; none from a full redraw)
+vbe480-w41-korvo1-1152K 800x480, 1152 KiB of video memory: 55 pictures, every one right

@@ -1,0 +1,69 @@
+### 2. decoded tables (gen_esp32part.py, ESP-IDF 188e3e55)
+== be5b725
+# ESP-IDF Partition Table
+# Name, Type, SubType, Offset, Size, Flags
+nvs,data,nvs,0x11000,24K,
+otadata,data,ota,0x17000,8K,
+phy_init,data,phy,0x19000,4K,
+factory,app,factory,0x20000,2M,
+opensbi,data,64,0x220000,512K,
+linux,data,64,0x2a0000,7680K,
+initramfs,data,64,0xa20000,2M,
+Parsing binary partition input...
+Verifying table...
+== release
+# ESP-IDF Partition Table
+# Name, Type, SubType, Offset, Size, Flags
+nvs,data,nvs,0x11000,24K,
+otadata,data,ota,0x17000,8K,
+phy_init,data,phy,0x19000,4K,
+factory,app,factory,0x20000,2M,
+opensbi,data,64,0x220000,512K,
+linux,data,64,0x2a0000,7680K,
+initramfs,data,64,0xa20000,2M,
+Parsing binary partition input...
+Verifying table...
+== ref
+# ESP-IDF Partition Table
+# Name, Type, SubType, Offset, Size, Flags
+nvs,data,nvs,0x11000,24K,
+otadata,data,ota,0x17000,8K,
+phy_init,data,phy,0x19000,4K,
+factory,app,factory,0x20000,2M,
+opensbi,data,64,0x220000,512K,
+linux,data,64,0x2a0000,7680K,
+initramfs,data,64,0xa20000,2M,
+Parsing binary partition input...
+Verifying table...
+== dual
+# ESP-IDF Partition Table
+# Name, Type, SubType, Offset, Size, Flags
+nvs,data,nvs,0x11000,24K,
+otadata,data,ota,0x17000,8K,
+phy_init,data,phy,0x19000,4K,
+factory,app,factory,0x20000,2M,
+opensbi,data,64,0x220000,512K,
+linux,data,64,0x2a0000,7680K,
+initramfs,data,64,0xa20000,2M,
+tiny386,app,test,0xe20000,1920K,
+Parsing binary partition input...
+Verifying table...
+== v2-standalone
+# ESP-IDF Partition Table
+# Name, Type, SubType, Offset, Size, Flags
+nvs,data,nvs,0x9000,24K,
+phy_init,data,phy,0xf000,4K,
+factory,app,factory,0x10000,1792K,
+bios.bin,data,undefined,0x1d0000,128K,
+vgabios.bin,data,undefined,0x1f0000,60K,
+linuxstart.bin,data,undefined,0x1ff000,4K,
+vmlinux.bin,data,undefined,0x200000,4M,
+storage,data,fat,0x600000,10M,
+Parsing binary partition input...
+Verifying table...
+== diff be5b725 release
+  no difference
+== diff be5b725 dual
+9a10
+> tiny386,app,test,0xe20000,1920K,
+gen_esp32part on the CSV gives the build output, byte for byte

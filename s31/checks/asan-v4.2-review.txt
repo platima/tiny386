@@ -1,0 +1,31 @@
+test_vbe and test_clear at tag v4.2 (git archive, ~/flicker/apply42/t-v4.2), both boards, under
+AddressSanitizer and UBSan (recovery off; test_clear with handle_segv=0), address-space randomisation
+off (setarch -R); then test_vbe on the Korvo-1 under ThreadSanitizer.  The fix agent's asan.sh with
+my paths (tests.sh, part 3).  2026-10-23.
+
+test_vbe korvo1: exit 0: test_vbe: all 6851 checks passed; sanitizer reports: 0
+test_clear korvo1: exit 0: test_clear: all 163 checks passed; sanitizer reports: 0
+test_vbe dosboard: exit 0: test_vbe: all 6851 checks passed; sanitizer reports: 0
+test_clear dosboard: exit 0: test_clear: all 163 checks passed; sanitizer reports: 0
+== asan done 2026-10-23 22:05:45
+tsan: exit 66: test_vbe: all 6851 checks passed; reports: 19; 5163 s
+      2 SUMMARY: ThreadSanitizer: data race tests/host/test_vbe.c:689 in writer
+      2 SUMMARY: ThreadSanitizer: data race vga.c:1525 in vbe_row
+      2 SUMMARY: ThreadSanitizer: data race vga.c:1534 in vbe_row
+      6 SUMMARY: ThreadSanitizer: data race vga.c:1545 in vbe_row
+      4 SUMMARY: ThreadSanitizer: data race vga.c:1554 in vbe_row
+      3 SUMMARY: ThreadSanitizer: data race vga.c:1674 in vga_pixel
+== all done 2026-10-23 23:31:49
+
+==== ThreadSanitizer: the reports by place and kind
+      1   Previous read of size 1:
+      1   Previous read of size 4:
+      3   Read of size 1:
+     14   Read of size 4:
+==== the end of its output
+the bank window
+marks only where a picture reads them (v4.1)
+chain 4 switched under VBE (v4.1)
+vbe_blocks changed while the PC runs (v4.2)
+two threads
+test_vbe: all 6851 checks passed

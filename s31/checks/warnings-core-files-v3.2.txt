@@ -1,0 +1,38 @@
+47
+The shared core files changed in round 2, compiled with each build's own command line plus
+-Wall -Wextra -Wno-unused-parameter (to assembly, thrown away): v3.2's file, then v3.1's
+(its own headers beside it), to tell what is new.  Made by final-r2 warn4.py.
+== build-korvo1
+ide.c (this tree): exit 0, 0 warnings or errors in the file
+ide.c (<v3.1 files>/ide.c): exit 0, 0 warnings or errors in the file
+misc.c (this tree): exit 0, 0 warnings or errors in the file
+misc.c (<v3.1 files>/misc.c): exit 0, 0 warnings or errors in the file
+i8042.c (this tree): exit 1, 1 warnings or errors in the file
+    <v3.2 tree>/i8042.c:269:62: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uint32_t' {aka 'long unsigned int'} [-Werror=format=]
+i8042.c (<v3.1 files>/i8042.c): exit 1, 1 warnings or errors in the file
+    <v3.1 files>/i8042.c:269:62: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uint32_t' {aka 'long unsigned int'} [-Werror=format=]
+vga.c (this tree): exit 0, 3 warnings or errors in the file
+    <v3.2 tree>/vga.c:501:13: warning: 'scale_2_1' defined but not used [-Wunused-function]
+    <v3.2 tree>/vga.c:479:13: warning: 'scale_3_3' defined but not used [-Wunused-function]
+    <v3.2 tree>/vga.c:439:13: warning: 'scale_3_2' defined but not used [-Wunused-function]
+vga.c (<v3.1 files>/vga.c): exit 0, 3 warnings or errors in the file
+    <v3.1 files>/vga.c:500:13: warning: 'scale_2_1' defined but not used [-Wunused-function]
+    <v3.1 files>/vga.c:478:13: warning: 'scale_3_3' defined but not used [-Wunused-function]
+    <v3.1 files>/vga.c:438:13: warning: 'scale_3_2' defined but not used [-Wunused-function]
+== build-dosboard
+ide.c (this tree): exit 0, 0 warnings or errors in the file
+ide.c (<v3.1 files>/ide.c): exit 0, 0 warnings or errors in the file
+misc.c (this tree): exit 0, 0 warnings or errors in the file
+misc.c (<v3.1 files>/misc.c): exit 0, 0 warnings or errors in the file
+i8042.c (this tree): exit 1, 1 warnings or errors in the file
+    <v3.2 tree>/i8042.c:269:62: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uint32_t' {aka 'long unsigned int'} [-Werror=format=]
+i8042.c (<v3.1 files>/i8042.c): exit 1, 1 warnings or errors in the file
+    <v3.1 files>/i8042.c:269:62: error: format '%x' expects argument of type 'unsigned int', but argument 3 has type 'uint32_t' {aka 'long unsigned int'} [-Werror=format=]
+vga.c (this tree): exit 0, 3 warnings or errors in the file
+    <v3.2 tree>/vga.c:501:13: warning: 'scale_2_1' defined but not used [-Wunused-function]
+    <v3.2 tree>/vga.c:479:13: warning: 'scale_3_3' defined but not used [-Wunused-function]
+    <v3.2 tree>/vga.c:439:13: warning: 'scale_3_2' defined but not used [-Wunused-function]
+vga.c (<v3.1 files>/vga.c): exit 0, 3 warnings or errors in the file
+    <v3.1 files>/vga.c:500:13: warning: 'scale_2_1' defined but not used [-Wunused-function]
+    <v3.1 files>/vga.c:478:13: warning: 'scale_3_3' defined but not used [-Wunused-function]
+    <v3.1 files>/vga.c:438:13: warning: 'scale_3_2' defined but not used [-Wunused-function]

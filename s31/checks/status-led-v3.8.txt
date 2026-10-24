@@ -1,0 +1,230 @@
+The status LED's brightness (v3.7; this run v3.8) in the three images built by build.sh in rel1 (WSL
+~/win95-debug/feat), read with riscv32-esp-elf-objdump, 2026-10-22.  Internal RAM is
+0x2f000000 up (IRAM and DRAM), the LP SRAM 0x2e000000 up, flash 0x40000000 up.
+
+==== korvo1-dualboot
+-- where they are (nm):
+   2f026b82 T status_led_panic
+   2f026cfe T status_led_halt
+   2f026e08 T status_error_pattern
+   2f026e78 T status_panic_pattern
+   2f026eb8 T status_frame_grb
+   2f026f4e T status_bb_timing
+   2f0367c8 d s_cpu_us
+   2f0367cc d s_bb
+   2f0367e4 d s_level
+   400252d0 T status_led_brightness
+   4002a88e T status_brightness_set
+   4002a8a4 T status_brightness
+   of the panic path's: outside internal RAM: none
+-- s_level's four bytes as the image holds them (objdump -s, little-endian), the default:
+    2f0367e4 09000000                             ....            
+-- status_frame_grb: calls: 
+   2f026eb8:	lui	a5,0x2f036
+   2f026ebc:	lw	a7,2020(a5) # 2f0367e4 <s_level>
+   2f026ec0:	li	t4,255
+   2f026ec4:	li	a3,0
+   2f026ec6:	minu	t3,a7,t4
+   2f026eca:	li	a5,0
+   2f026ecc:	li	t1,24
+   2f026ece:	srl	a4,a0,a5
+   2f026ed2:	zext.b	a4,a4
+   2f026ed4:	mul	a1,t3,a4
+   2f026ed8:	snez	a2,a7
+   2f026edc:	addi	a1,a1,127
+   2f026ee0:	sltiu	a6,a1,255
+   2f026ee4:	beqz	a4,2f026f0e <status_frame_grb+0x56>
+   2f026ee6:	beqz	a6,2f026f0e <status_frame_grb+0x56>
+   2f026eea:	sll	a2,a2,a5
+   2f026eee:	addi	a5,a5,8
+   2f026ef0:	or	a3,a3,a2
+   2f026ef2:	bne	a5,t1,2f026ece <status_frame_grb+0x16>
+   2f026ef6:	srli	a0,a3,0x10
+   2f026efa:	zext.b	a4,a3
+   2f026efe:	lui	a5,0xff0
+   2f026f02:	slli	a0,a0,0x8
+   2f026f04:	slli	a3,a3,0x8
+   2f026f06:	or	a0,a0,a4
+   2f026f08:	and	a3,a3,a5
+   2f026f0a:	or	a0,a0,a3
+   2f026f0c:	ret
+   2f026f0e:	divu	a2,a1,t4
+   2f026f12:	j	2f026eea <status_frame_grb+0x32>
+   calls of a division routine: 0; divide or multiply-high instructions: 1
+-- status_scale: no symbol (inlined)
+-- the functions that make frames, and whether they call status_frame_grb (send_rgb() is
+   compiled as send_rgb.part.0, which led_task and status_led_init call):
+   status_led_panic: calls status_frame_grb; calls: audio_panic_quiet esp_rom_get_cpu_ticks_per_us rom_gpio_set_output_level status_bb_timing status_frame_grb status_panic_pattern status_record_put 
+   status_led_halt: calls status_frame_grb; calls: status_frame_grb status_panic_pattern 
+   led_task: does not call status_frame_grb; calls: console_uart_printf __divdi3 esp_timer_get_time rmt_tx_wait_all_done send_rgb.part.0 status_brightness status_disk_step status_pattern status_record_put status_state_error status_watch_step vPortExitCriticalMultiCore xPortEnterCriticalTimeout xTaskDelayUntil xTaskGetTickCount 
+   status_led_init: does not call status_frame_grb; calls: esp_reset_reason esp_timer_get_time rmt_del_channel rmt_del_encoder rmt_enable rmt_new_copy_encoder rmt_new_tx_channel rmt_tx_wait_all_done send_rgb.part.0 status_pattern status_record_put status_record_valid status_replay_setup status_state_stage vPortExitCriticalMultiCore xPortEnterCriticalTimeout xTaskCreatePinnedToCore 
+   send_rgb.part.0: calls status_frame_grb; calls: rmt_transmit status_brightness status_frame_grb status_rmt_frame 
+-- status_led_report's format string (strings):
+   Status LED on GPIO%d: colours and blinks as in STATUS-LED.md, brightness %u of 255 ([esp] led_brightness).
+-- the ini key (strings): 1 string esp:led_brightness
+
+==== korvo1-standalone
+-- where they are (nm):
+   2f026b82 T status_led_panic
+   2f026cfe T status_led_halt
+   2f026e08 T status_error_pattern
+   2f026e78 T status_panic_pattern
+   2f026eb8 T status_frame_grb
+   2f026f4e T status_bb_timing
+   2f0367c8 d s_cpu_us
+   2f0367cc d s_bb
+   2f0367e4 d s_level
+   400252d0 T status_led_brightness
+   4002a88e T status_brightness_set
+   4002a8a4 T status_brightness
+   of the panic path's: outside internal RAM: none
+-- s_level's four bytes as the image holds them (objdump -s, little-endian), the default:
+    2f0367e4 09000000                             ....            
+-- status_frame_grb: calls: 
+   2f026eb8:	lui	a5,0x2f036
+   2f026ebc:	lw	a7,2020(a5) # 2f0367e4 <s_level>
+   2f026ec0:	li	t4,255
+   2f026ec4:	li	a3,0
+   2f026ec6:	minu	t3,a7,t4
+   2f026eca:	li	a5,0
+   2f026ecc:	li	t1,24
+   2f026ece:	srl	a4,a0,a5
+   2f026ed2:	zext.b	a4,a4
+   2f026ed4:	mul	a1,t3,a4
+   2f026ed8:	snez	a2,a7
+   2f026edc:	addi	a1,a1,127
+   2f026ee0:	sltiu	a6,a1,255
+   2f026ee4:	beqz	a4,2f026f0e <status_frame_grb+0x56>
+   2f026ee6:	beqz	a6,2f026f0e <status_frame_grb+0x56>
+   2f026eea:	sll	a2,a2,a5
+   2f026eee:	addi	a5,a5,8
+   2f026ef0:	or	a3,a3,a2
+   2f026ef2:	bne	a5,t1,2f026ece <status_frame_grb+0x16>
+   2f026ef6:	srli	a0,a3,0x10
+   2f026efa:	zext.b	a4,a3
+   2f026efe:	lui	a5,0xff0
+   2f026f02:	slli	a0,a0,0x8
+   2f026f04:	slli	a3,a3,0x8
+   2f026f06:	or	a0,a0,a4
+   2f026f08:	and	a3,a3,a5
+   2f026f0a:	or	a0,a0,a3
+   2f026f0c:	ret
+   2f026f0e:	divu	a2,a1,t4
+   2f026f12:	j	2f026eea <status_frame_grb+0x32>
+   calls of a division routine: 0; divide or multiply-high instructions: 1
+-- status_scale: no symbol (inlined)
+-- the functions that make frames, and whether they call status_frame_grb (send_rgb() is
+   compiled as send_rgb.part.0, which led_task and status_led_init call):
+   status_led_panic: calls status_frame_grb; calls: audio_panic_quiet esp_rom_get_cpu_ticks_per_us rom_gpio_set_output_level status_bb_timing status_frame_grb status_panic_pattern status_record_put 
+   status_led_halt: calls status_frame_grb; calls: status_frame_grb status_panic_pattern 
+   led_task: does not call status_frame_grb; calls: console_uart_printf __divdi3 esp_timer_get_time rmt_tx_wait_all_done send_rgb.part.0 status_brightness status_disk_step status_pattern status_record_put status_state_error status_watch_step vPortExitCriticalMultiCore xPortEnterCriticalTimeout xTaskDelayUntil xTaskGetTickCount 
+   status_led_init: does not call status_frame_grb; calls: esp_reset_reason esp_timer_get_time rmt_del_channel rmt_del_encoder rmt_enable rmt_new_copy_encoder rmt_new_tx_channel rmt_tx_wait_all_done send_rgb.part.0 status_pattern status_record_put status_record_valid status_replay_setup status_state_stage vPortExitCriticalMultiCore xPortEnterCriticalTimeout xTaskCreatePinnedToCore 
+   send_rgb.part.0: calls status_frame_grb; calls: rmt_transmit status_brightness status_frame_grb status_rmt_frame 
+-- status_led_report's format string (strings):
+   Status LED on GPIO%d: colours and blinks as in STATUS-LED.md, brightness %u of 255 ([esp] led_brightness).
+-- the ini key (strings): 1 string esp:led_brightness
+
+==== dosboard
+-- where they are (nm):
+   2f026bce T status_led_panic
+   2f026d4a T status_led_halt
+   2f026e54 T status_error_pattern
+   2f026ec4 T status_panic_pattern
+   2f026f04 T status_frame_grb
+   2f026f9a T status_bb_timing
+   2f03745c d s_cpu_us
+   2f037460 d s_bb
+   2f037478 d s_level
+   40028dee T status_led_brightness
+   4003095a T status_brightness_set
+   40030970 T status_brightness
+   of the panic path's: outside internal RAM: none
+-- s_level's four bytes as the image holds them (objdump -s, little-endian), the default:
+    2f037478 09000000                             ....            
+-- status_frame_grb: calls: 
+   2f026f04:	lui	a5,0x2f037
+   2f026f08:	lw	a7,1144(a5) # 2f037478 <s_level>
+   2f026f0c:	li	t4,255
+   2f026f10:	li	a3,0
+   2f026f12:	minu	t3,a7,t4
+   2f026f16:	li	a5,0
+   2f026f18:	li	t1,24
+   2f026f1a:	srl	a4,a0,a5
+   2f026f1e:	zext.b	a4,a4
+   2f026f20:	mul	a1,t3,a4
+   2f026f24:	snez	a2,a7
+   2f026f28:	addi	a1,a1,127
+   2f026f2c:	sltiu	a6,a1,255
+   2f026f30:	beqz	a4,2f026f5a <status_frame_grb+0x56>
+   2f026f32:	beqz	a6,2f026f5a <status_frame_grb+0x56>
+   2f026f36:	sll	a2,a2,a5
+   2f026f3a:	addi	a5,a5,8
+   2f026f3c:	or	a3,a3,a2
+   2f026f3e:	bne	a5,t1,2f026f1a <status_frame_grb+0x16>
+   2f026f42:	srli	a0,a3,0x10
+   2f026f46:	zext.b	a4,a3
+   2f026f4a:	lui	a5,0xff0
+   2f026f4e:	slli	a0,a0,0x8
+   2f026f50:	slli	a3,a3,0x8
+   2f026f52:	or	a0,a0,a4
+   2f026f54:	and	a3,a3,a5
+   2f026f56:	or	a0,a0,a3
+   2f026f58:	ret
+   2f026f5a:	divu	a2,a1,t4
+   2f026f5e:	j	2f026f36 <status_frame_grb+0x32>
+   calls of a division routine: 0; divide or multiply-high instructions: 1
+-- status_scale: no symbol (inlined)
+-- the functions that make frames, and whether they call status_frame_grb (send_rgb() is
+   compiled as send_rgb.part.0, which led_task and status_led_init call):
+   status_led_panic: calls status_frame_grb; calls: audio_panic_quiet esp_rom_get_cpu_ticks_per_us rom_gpio_set_output_level status_bb_timing status_frame_grb status_panic_pattern status_record_put 
+   status_led_halt: calls status_frame_grb; calls: status_frame_grb status_panic_pattern 
+   led_task: does not call status_frame_grb; calls: console_uart_printf __divdi3 esp_timer_get_time rmt_tx_wait_all_done send_rgb.part.0 status_brightness status_disk_step status_pattern status_record_put status_state_error status_watch_step vPortExitCriticalMultiCore xPortEnterCriticalTimeout xTaskDelayUntil xTaskGetTickCount 
+   status_led_init: does not call status_frame_grb; calls: esp_reset_reason esp_timer_get_time rmt_del_channel rmt_del_encoder rmt_enable rmt_new_copy_encoder rmt_new_tx_channel rmt_tx_wait_all_done send_rgb.part.0 status_pattern status_record_put status_record_valid status_replay_setup status_state_stage vPortExitCriticalMultiCore xPortEnterCriticalTimeout xTaskCreatePinnedToCore 
+   send_rgb.part.0: calls status_frame_grb; calls: rmt_transmit status_brightness status_frame_grb status_rmt_frame 
+-- status_led_report's format string (strings):
+   Status LED on GPIO%d: colours and blinks as in STATUS-LED.md, brightness %u of 255 ([esp] led_brightness).
+-- the ini key (strings): 1 string esp:led_brightness
+
+==== v3.8: the disk light in the built code
+-- korvo1-dualboot
+   2f03ce0c B ide_activity
+   2f03ce1c B emulink_activity
+   2f03cf20 b s_disk_count
+   4000d706 t disk_activity
+   40025034 t led_task
+   400252d4 T status_led_disk_counter
+   4002aabc T status_disk_step
+   bf_read_async: instructions that name ide_activity or emulink_activity: 1
+   bf_write_async: instructions that name ide_activity or emulink_activity: 1
+   emulink_data_read_string: instructions that name ide_activity or emulink_activity: 1
+   emulink_data_write_string: instructions that name ide_activity or emulink_activity: 1
+   led_task calls: console_uart_printf __divdi3 esp_timer_get_time rmt_tx_wait_all_done s_chan s_disk_count send_rgb.part.0 s_lock s_rec s_sent_level s_sent_rgb s_state s_t0_us status_brightness status_disk_step status_led_beats status_pattern status_record_put status_state_error status_watch_step vPortExitCriticalMultiCore xPortEnterCriticalTimeout xTaskDelayUntil xTaskGetTickCount 
+   STATUS_TICK_MS in led_task: the delay passed to vTaskDelayUntil: li	a1,2 
+-- korvo1-standalone
+   2f03ce0c B ide_activity
+   2f03ce1c B emulink_activity
+   2f03cf20 b s_disk_count
+   4000d706 t disk_activity
+   40025034 t led_task
+   400252d4 T status_led_disk_counter
+   4002aabc T status_disk_step
+   bf_read_async: instructions that name ide_activity or emulink_activity: 1
+   bf_write_async: instructions that name ide_activity or emulink_activity: 1
+   emulink_data_read_string: instructions that name ide_activity or emulink_activity: 1
+   emulink_data_write_string: instructions that name ide_activity or emulink_activity: 1
+   led_task calls: console_uart_printf __divdi3 esp_timer_get_time rmt_tx_wait_all_done s_chan s_disk_count send_rgb.part.0 s_lock s_rec s_sent_level s_sent_rgb s_state s_t0_us status_brightness status_disk_step status_led_beats status_pattern status_record_put status_state_error status_watch_step vPortExitCriticalMultiCore xPortEnterCriticalTimeout xTaskDelayUntil xTaskGetTickCount 
+   STATUS_TICK_MS in led_task: the delay passed to vTaskDelayUntil: li	a1,2 
+-- dosboard
+   2f03d970 B ide_activity
+   2f03d980 B emulink_activity
+   2f03da84 b s_disk_count
+   40010a80 t disk_activity
+   40028b52 t led_task
+   40028df2 T status_led_disk_counter
+   40030b88 T status_disk_step
+   bf_read_async: instructions that name ide_activity or emulink_activity: 1
+   bf_write_async: instructions that name ide_activity or emulink_activity: 1
+   emulink_data_read_string: instructions that name ide_activity or emulink_activity: 1
+   emulink_data_write_string: instructions that name ide_activity or emulink_activity: 1
+   led_task calls: console_uart_printf __divdi3 esp_timer_get_time rmt_tx_wait_all_done s_chan s_disk_count send_rgb.part.0 s_lock s_rec s_sent_level s_sent_rgb s_state s_t0_us status_brightness status_disk_step status_led_beats status_pattern status_record_put status_state_error status_watch_step vPortExitCriticalMultiCore xPortEnterCriticalTimeout xTaskDelayUntil xTaskGetTickCount 
+   STATUS_TICK_MS in led_task: the delay passed to vTaskDelayUntil: li	a1,2 

@@ -1,0 +1,113 @@
+### 13. odds and ends checked for DUALBOOT.md
+== v2 tree esp/main: flash writes, OTA calls, partition lookups
+~/tiny386-idf-scratch/v2/tiny386/esp/main/storage.c:284:		esp_vfs_fat_spiflash_mount_rw_wl("/spiflash", "storage",
+~/tiny386-idf-scratch/v2/tiny386/esp/main/wifi.c:19:#include "nvs_flash.h"
+~/tiny386-idf-scratch/v2/tiny386/esp/main/wifi.c:247:	esp_err_t ret = nvs_flash_init();
+~/tiny386-idf-scratch/v2/tiny386/esp/main/wifi.c:249:		ESP_ERROR_CHECK(nvs_flash_erase());
+~/tiny386-idf-scratch/v2/tiny386/esp/main/wifi.c:250:		ret = nvs_flash_init();
+== v2 tree: who calls load_rom, and with what names
+~/tiny386-idf-scratch/v2/tiny386/main.c:33:int load_rom(void *phys_mem, const char *file, uword addr, int backward)
+~/tiny386-idf-scratch/v2/tiny386/main.c:37:		fprintf(stderr, "load_rom: open %s failed: %s\n", file, strerror(errno));
+~/tiny386-idf-scratch/v2/tiny386/main.c:43:	fprintf(stderr, "load_rom: %s, len %d\n", file, len);
+~/tiny386-idf-scratch/v2/tiny386/pc.c:935:		load_rom(pc->phys_mem, pc->bios, 0x100000, 1);
+~/tiny386-idf-scratch/v2/tiny386/pc.c:937:		load_rom(pc->phys_mem, pc->vga_bios, 0xc0000, 0);
+~/tiny386-idf-scratch/v2/tiny386/pc.c:941:		int kernel_size = load_rom(pc->phys_mem, pc->kernel, 0x00100000, 0);
+~/tiny386-idf-scratch/v2/tiny386/pc.c:944:			initrd_size = load_rom(pc->phys_mem, pc->initrd, 0x00400000, 0);
+~/tiny386-idf-scratch/v2/tiny386/pc.c:950:		load_rom(pc->phys_mem, pc->linuxstart, start_addr, 0);
+~/tiny386-idf-scratch/v2/tiny386/esp/main/esp_main.c:59:int load_rom(void *phys_mem, const char *file, uword addr, int backward)
+~/tiny386-idf-scratch/v2/tiny386/pc.c:777:	pc->bios = conf->bios;
+~/tiny386-idf-scratch/v2/tiny386/pc.c:778:	pc->vga_bios = conf->vga_bios;
+~/tiny386-idf-scratch/v2/tiny386/pc.c:780:	if (!pc->bios) pc->bios = "bios.bin";
+~/tiny386-idf-scratch/v2/tiny386/pc.c:781:	if (!pc->vga_bios) pc->vga_bios = "vgabios.bin";
+~/tiny386-idf-scratch/v2/tiny386/pc.c:983:			conf->bios = strdup(value);
+~/tiny386-idf-scratch/v2/tiny386/pc.c:985:			conf->vga_bios = strdup(value);
+== GPIO42 in the v2 tree
+~/tiny386-idf-scratch/v2/tiny386/esp/main/board_jc4880p443.h:22:#define SD_D3 42
+~/tiny386-idf-scratch/v2/tiny386/esp/main/board_jc3248w535.h:19:#define I2S_BCLK 42
+~/tiny386-idf-scratch/v2/tiny386/esp/main/lcd_elecrow7s3.c:51:#define LCD_GPIO_DE     42
+~/tiny386-idf-scratch/v2/tiny386/esp/main/usb_hid.c:282:        case 0xE1: return 42;     // Left Shift
+~/tiny386-idf-scratch/v2/tiny386/esp/main/usb_hid.c:441:        case 0xE1: return 42;   // KEY_LEFTSHIFT
+~/tiny386-idf-scratch/v2/tiny386/esp/main/lcd_st7701.c:248:			.hsync_back_porch = 42,
+~/tiny386-idf-scratch/v2/tiny386/esp/main/lcd_st7701.c:249:			.hsync_front_porch = 42,
+== be5b725 Linux kernel patches: any ADC or key driver (adc-keys, saradc, gpio-keys)
+  none
+== fork c288bc9 kernel patches, same search
+0001-riscv-esp32s31-soc-support.patch
+0002-mmc-dw-mshc-esp32s31-binding.patch
+0003-mmc-dw_mmc-add-esp32s31-support.patch
+  none
+== fork c288bc9 vs be5b725 bootloader sdkconfig, CONFIG_SOC_ lines left out
+17,18d16
+< # CONFIG_BOOTLOADER_APP_ROLLBACK_CONFIRM_BY_APP is not set
+< CONFIG_BOOTLOADER_APP_ROLLBACK_CONFIRM_ON_STARTUP=y
+20d17
+< CONFIG_BOOTLOADER_APP_ROLLBACK=y
+73d69
+< # CONFIG_COMPILER_CXX_ATOMIC_LOCK_POLICY is not set
+79,81d74
+< # CONFIG_COMPILER_CXX_TRIVIAL_AUTO_VAR_INIT_PATTERN is not set
+< CONFIG_COMPILER_CXX_TRIVIAL_AUTO_VAR_INIT_UNINITIALIZED=y
+< # CONFIG_COMPILER_CXX_TRIVIAL_AUTO_VAR_INIT_ZERO is not set
+91d83
+< # CONFIG_COMPILER_LTO_LINKTIME is not set
+116d107
+< # CONFIG_COMPILER_USE_LLD is not set
+128d118
+< # CONFIG_EFUSE_ENABLE_STAGED_TOKEN_API is not set
+133c123
+< # CONFIG_ESP32_PHY_CALIBRATION_AND_DATA_STORAGE is not set
+---
+> CONFIG_ESP32_PHY_CALIBRATION_AND_DATA_STORAGE=y
+193d182
+< # CONFIG_ESP_BUS_ENABLE_AUTO_GATE is not set
+208d196
+< # CONFIG_ESP_CRYPTO_CLK_ON_DEMAND is not set
+210d197
+< # CONFIG_ESP_DEBUG_INCLUDE_OCD_STUB_BINS is not set
+218d204
+< CONFIG_ESP_ENABLE_PVT=y
+261c247
+< # CONFIG_ESP_PHY_CALIBRATION_AND_DATA_STORAGE is not set
+---
+> CONFIG_ESP_PHY_CALIBRATION_AND_DATA_STORAGE=y
+267d252
+< # CONFIG_ESP_PHY_HW_SWITCH_RF is not set
+292d276
+< CONFIG_ESP_ROM_HAS_LIBGCC=y
+495,496d478
+< # CONFIG_FREERTOS_PLACE_TASK_STACKS_IN_EXT_RAM is not set
+< CONFIG_FREERTOS_PORT_THREAD_SAFE_CLAIM=y
+559c541
+< CONFIG_IDF_INIT_VERSION="6.2.0"
+---
+> CONFIG_IDF_INIT_VERSION="6.1.0"
+780c762
+< CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY=y
+---
+> # CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY is not set
+798d779
+< # CONFIG_MBEDTLS_CONSTANT_TIME_PRIME_GEN is not set
+911c892
+< CONFIG_MBEDTLS_X509_TRUSTED_CERT_CALLBACK=y
+---
+> # CONFIG_MBEDTLS_X509_TRUSTED_CERT_CALLBACK is not set
+991d971
+< CONFIG_SECURE_ROM_DL_MODE_ENABLED=y
+1104d1083
+< # CONFIG_UHCI_RECV_FUNC_IN_IRAM is not set
+== the same keys that a second-stage bootloader uses, both files
+  same: CONFIG_BOOTLOADER_LOG_LEVEL=3
+  same: CONFIG_ESPTOOLPY_FLASHMODE="dio"
+  same: CONFIG_ESPTOOLPY_FLASHFREQ="80m"
+  same: CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+  same: CONFIG_SPIRAM_BOOT_HW_INIT=y
+  same: CONFIG_SPIRAM_BOOT_INIT=y
+  same: CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE=y
+  same: CONFIG_PARTITION_TABLE_OFFSET=0x8000
+  same: CONFIG_BOOTLOADER_WDT_TIME_MS=9000
+  same: CONFIG_BOOTLOADER_RESERVE_RTC_SIZE=0
+  same: 
+  same: # CONFIG_FLASH_ENCRYPTION_ENABLED is not set
+  same: CONFIG_MMU_PAGE_SIZE=0x10000
+  same: # CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE is not set
+  same: CONFIG_BOOTLOADER_COMPILE_TIME_DATE=y

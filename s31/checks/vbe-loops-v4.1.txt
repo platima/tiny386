@@ -1,0 +1,246 @@
+What a store into video memory costs in the built code: images/korvo1-dualboot/tiny386.elf of v4.1,
+previous-v4.0's and previous-v3.9's, riscv32-esp-elf-objdump, 2026-10-23.
+
+== vga_mem_write(), the chain-4 byte store through the 64 KiB window at A0000h (memory map 1: mode
+== 13h's, and the VBE bank window's), instructions from entry to return, counted on the listings
+== below:
+   v3.9  26 (no mark)
+   v4.0  34, one of them fence rw,w, in every chain-4 mode
+   v4.1  31 with VBE off (mode 13h): five more than v3.9, lui and add for the address of the VBE
+         enable register (more than 2 KiB into the state), lhu, andi, beqz; no fence, no map store
+   v4.1  33 with VBE on and vbe_blocks 0: also lw of vga_dirty_blocks and bnez, no mark
+   v4.1  39 with VBE on and vbe_blocks 1: then v4.0's mark (lw, fence rw,w, srli, add, li, sb, ret)
+
+== iomem_write16(), a 16-bit store into the linear frame buffer (Windows' driver), one block:
+   v3.9  12;  v4.0  18 (one fence);  v4.1  20 with vbe_blocks 1 (lw of vga_dirty_blocks, bnez, then
+   the mark), 12 with vbe_blocks 0 (v3.9's own count)
+
+---- v3.9: vga_mem_write(), its first 40 instructions (entry, the memory map, the chain-4 path)
+2f0264b6:	lbu	a5,345(a0)
+2f0264ba:	andi	a5,a5,2
+2f0264bc:	beqz	a5,2f0265c2 <vga_mem_write+0x10c>
+2f0264c0:	lbu	a4,52(a0)
+2f0264c4:	slli	a5,a1,0xf
+2f0264c8:	li	a3,1
+2f0264ca:	srli	a4,a4,0x2
+2f0264cc:	andi	a4,a4,3
+2f0264ce:	srli	a5,a5,0xf
+2f0264d0:	beq	a4,a3,2f0265d0 <vga_mem_write+0x11a>
+2f0264d4:	li	a3,2
+2f0264d6:	beq	a4,a3,2f026656 <vga_mem_write+0x1a0>
+2f0264da:	bnez	a4,2f0265c4 <vga_mem_write+0x10e>
+2f0264dc:	lbu	a4,41(a0)
+2f0264e0:	lbu	a3,39(a0)
+2f0264e4:	andi	a4,a4,8
+2f0264e6:	beqz	a4,2f0264fa <vga_mem_write+0x44>
+2f0264e8:	andi	a4,a5,3
+2f0264ec:	bext	a4,a3,a4
+2f0264f0:	beqz	a4,2f0265c2 <vga_mem_write+0x10c>
+2f0264f2:	lw	a4,28(a0)
+2f0264f4:	add	a5,a5,a4
+2f0264f6:	sb	a2,0(a5)
+2f0264f8:	ret
+2f0264fa:	lbu	a4,51(a0)
+2f0264fe:	andi	a1,a4,16
+2f026502:	bnez	a1,2f0265e0 <vga_mem_write+0x12a>
+2f026504:	andi	a4,a4,3
+2f026506:	li	a6,2
+2f026508:	lw	a1,1132(a0)
+2f02650c:	beq	a4,a6,2f02669a <vga_mem_write+0x1e4>
+2f026510:	li	a6,3
+2f026512:	beq	a4,a6,2f026662 <vga_mem_write+0x1ac>
+2f026516:	li	a6,1
+2f026518:	beq	a4,a6,2f02659e <vga_mem_write+0xe8>
+2f02651c:	lbu	a4,49(a0)
+2f026520:	li	a6,8
+2f026522:	lbu	t3,46(a0)
+2f026526:	andi	a7,a4,7
+2f02652a:	sub	a6,a6,a7
+---- v3.9: iomem_write16()
+40018c76:	lw	a5,116(a0)
+40018c78:	bltu	a1,a5,40018c98 <iomem_write16+0x22>
+40018c7c:	sub	a1,a1,a5
+40018c7e:	lw	a5,44(a0)
+40018c80:	addi	a4,a1,1
+40018c84:	bgeu	a4,a5,40018c96 <iomem_write16+0x20>
+40018c88:	lw	a5,40(a0)
+40018c8a:	add	a5,a5,a1
+40018c8c:	bexti	a4,a5,0x0
+40018c90:	sh	a2,0(a5)
+40018c92:	bnez	a4,40018ca8 <iomem_write16+0x32>
+40018c94:	ret
+40018c96:	ret
+40018c98:	lw	a0,28(a0)
+40018c9a:	lui	a5,0xfff60
+40018c9e:	add	a1,a1,a5
+40018ca0:	auipc	t1,0xef00e
+40018ca4:	jr	-1502(t1) # 2f0266c2 <vga_mem_write16>
+40018ca8:	ret
+
+---- v4.0: vga_mem_write(), its first 40 instructions (entry, the memory map, the chain-4 path)
+2f0264fe:	lbu	a5,345(a0)
+2f026502:	andi	a5,a5,2
+2f026504:	beqz	a5,2f026538 <vga_mem_write+0x3a>
+2f026506:	lbu	a4,52(a0)
+2f02650a:	slli	a5,a1,0xf
+2f02650e:	li	a3,1
+2f026510:	srli	a4,a4,0x2
+2f026512:	andi	a4,a4,3
+2f026514:	srli	a5,a5,0xf
+2f026516:	beq	a4,a3,2f026626 <vga_mem_write+0x128>
+2f02651a:	li	a3,2
+2f02651c:	beq	a4,a3,2f0266b2 <vga_mem_write+0x1b4>
+2f026520:	bnez	a4,2f02661a <vga_mem_write+0x11c>
+2f026522:	lbu	a3,41(a0)
+2f026526:	lbu	a1,39(a0)
+2f02652a:	andi	a3,a3,8
+2f02652c:	beqz	a3,2f026556 <vga_mem_write+0x58>
+2f02652e:	andi	a4,a5,3
+2f026532:	bext	a4,a1,a4
+2f026536:	bnez	a4,2f02653a <vga_mem_write+0x3c>
+2f026538:	ret
+2f02653a:	lw	a3,28(a0)
+2f02653c:	lui	a4,0x4
+2f02653e:	add	a4,a4,a0
+2f026540:	add	a3,a3,a5
+2f026542:	sb	a2,0(a3)
+2f026544:	lw	a4,1952(a4) # 47a0 <_rtc_slow_length+0x2784>
+2f026548:	fence	rw,w
+2f02654c:	srli	a5,a5,0xa
+2f02654e:	add	a5,a5,a4
+2f026550:	li	a4,1
+2f026552:	sb	a4,0(a5)
+2f026554:	ret
+2f026556:	lbu	a4,51(a0)
+2f02655a:	andi	a3,a4,16
+2f02655e:	bnez	a3,2f026636 <vga_mem_write+0x138>
+2f026560:	andi	a4,a4,3
+2f026562:	li	a6,2
+2f026564:	lw	a3,1132(a0)
+2f026568:	beq	a4,a6,2f0266f6 <vga_mem_write+0x1f8>
+---- v4.0: iomem_write16()
+40018e7c:	lw	a5,124(a0)
+40018e7e:	bltu	a1,a5,40018ec0 <iomem_write16+0x44>
+40018e82:	sub	a1,a1,a5
+40018e84:	lw	a5,44(a0)
+40018e86:	addi	a4,a1,1 # fff60001 <_picolibc_reent_stub_end+0xbfeb6ec9>
+40018e8a:	bgeu	a4,a5,40018ebe <iomem_write16+0x42>
+40018e8e:	lw	a5,40(a0)
+40018e90:	srli	a4,a4,0xa
+40018e92:	add	a5,a5,a1
+40018e94:	sh	a2,0(a5)
+40018e96:	lw	a5,48(a0)
+40018e98:	srli	a1,a1,0xa
+40018e9a:	fence	rw,w
+40018e9e:	li	a3,1
+40018ea0:	add	a2,a5,a1
+40018ea4:	sb	a3,0(a2)
+40018ea6:	bgeu	a1,a4,40018ebe <iomem_write16+0x42>
+40018eaa:	addi	a2,a5,1
+40018eae:	add	a5,a1,a2
+40018eb2:	add	a4,a4,a2
+40018eb4:	sb	a3,0(a5)
+40018eb6:	addi	a5,a5,1
+40018eb8:	bne	a5,a4,40018eb4 <iomem_write16+0x38>
+40018ebc:	ret
+40018ebe:	ret
+40018ec0:	lw	a0,28(a0)
+40018ec2:	lui	a5,0xfff60
+40018ec6:	add	a1,a1,a5
+40018ec8:	auipc	t1,0xef00e
+40018ecc:	jr	-1962(t1) # 2f02671e <vga_mem_write16>
+
+---- v4.1: vga_mem_write(), its first 40 instructions (entry, the memory map, the chain-4 path)
+2f02650a:	lbu	a5,345(a0)
+2f02650e:	andi	a5,a5,2
+2f026510:	beqz	a5,2f026560 <vga_mem_write+0x56>
+2f026512:	lbu	a4,52(a0)
+2f026516:	slli	a5,a1,0xf
+2f02651a:	li	a3,1
+2f02651c:	srli	a4,a4,0x2
+2f02651e:	andi	a4,a4,3
+2f026520:	srli	a5,a5,0xf
+2f026522:	beq	a4,a3,2f026638 <vga_mem_write+0x12e>
+2f026526:	li	a3,2
+2f026528:	beq	a4,a3,2f0266d4 <vga_mem_write+0x1ca>
+2f02652c:	bnez	a4,2f02662c <vga_mem_write+0x122>
+2f026530:	lbu	a4,41(a0)
+2f026534:	lbu	a3,39(a0)
+2f026538:	andi	a4,a4,8
+2f02653a:	beqz	a4,2f026562 <vga_mem_write+0x58>
+2f02653c:	andi	a4,a5,3
+2f026540:	bext	a4,a3,a4
+2f026544:	beqz	a4,2f026560 <vga_mem_write+0x56>
+2f026546:	lw	a3,28(a0)
+2f026548:	lui	a4,0x4
+2f02654a:	add	a4,a4,a0
+2f02654c:	add	a3,a3,a5
+2f02654e:	sb	a2,0(a3)
+2f026550:	lhu	a3,1776(a4) # 46f0 <_rtc_slow_length+0x26d4>
+2f026554:	andi	a3,a3,1
+2f026556:	beqz	a3,2f026560 <vga_mem_write+0x56>
+2f026558:	lw	a3,-1740(gp) # 2f0351bc <vga_dirty_blocks>
+2f02655c:	bnez	a3,2f0266c2 <vga_mem_write+0x1b8>
+2f026560:	ret
+2f026562:	lbu	a4,51(a0)
+2f026566:	andi	a1,a4,16
+2f02656a:	bnez	a1,2f026648 <vga_mem_write+0x13e>
+2f02656c:	andi	a4,a4,3
+2f02656e:	li	a6,2
+2f026570:	lw	a1,1132(a0)
+2f026574:	beq	a4,a6,2f026718 <vga_mem_write+0x20e>
+2f026578:	li	a6,3
+2f02657a:	beq	a4,a6,2f0266e0 <vga_mem_write+0x1d6>
+---- v4.1: iomem_write16()
+40018ebe:	lw	a5,124(a0)
+40018ec0:	bltu	a1,a5,40018ede <iomem_write16+0x20>
+40018ec4:	lw	a4,44(a0)
+40018ec6:	sub	a1,a1,a5
+40018ec8:	addi	a5,a1,1 # fff60001 <_picolibc_reent_stub_end+0xbfeb6ec9>
+40018ecc:	bgeu	a5,a4,40018edc <iomem_write16+0x1e>
+40018ed0:	lw	a4,40(a0)
+40018ed2:	add	a4,a4,a1
+40018ed4:	sh	a2,0(a4)
+40018ed6:	lw	a4,-1740(gp) # 2f0351bc <vga_dirty_blocks>
+40018eda:	bnez	a4,40018eee <iomem_write16+0x30>
+40018edc:	ret
+40018ede:	lw	a0,28(a0)
+40018ee0:	lui	a5,0xfff60
+40018ee4:	add	a1,a1,a5
+40018ee6:	auipc	t1,0xef00e
+40018eea:	jr	-1958(t1) # 2f026740 <vga_mem_write16>
+40018eee:	lw	a3,48(a0)
+40018ef0:	srli	a1,a1,0xa
+40018ef2:	srli	a5,a5,0xa
+40018ef4:	fence	rw,w
+40018ef8:	li	a4,1
+40018efa:	add	a2,a3,a1
+40018efe:	sb	a4,0(a2)
+40018f00:	bgeu	a1,a5,40018edc <iomem_write16+0x1e>
+40018f04:	addi	a3,a3,1
+40018f06:	add	a1,a1,a3
+40018f08:	add	a5,a5,a3
+40018f0a:	sb	a4,0(a1)
+40018f0c:	addi	a1,a1,1
+40018f0e:	bne	a1,a5,40018f0a <iomem_write16+0x4c>
+40018f12:	ret
+
+== the conversion loops of vbe_row() (inlined into vga_graphic_refresh()), v4.1 against v4.0:
+== loops.py (the VBE step's) on each image's listing, the bodies compared with addresses taken out
+   loops in v4.0: 28, in v4.1: 28; their bodies: the same, instruction for instruction, but for offsets into the VGA state (below)
+   every line that differs once the addresses are taken out (v4.0 <, v4.1 >): the state's fields
+   after the two new counts (vbe_whole_req, vbe_whole_seen) are 8 bytes further on
+     11c11
+     <       lw       a5,1960(t4)
+     ---
+     >       lw       a5,1968(t4)
+     297c297
+     <       lbu      a2,1928(a5) # 4788 <_rtc_slow_length+0x276c>
+     ---
+     >       lbu      a2,1936(a5) # 4790 <_rtc_slow_length+0x2774>
+     301c301
+     <       sb       zero,1928(a5)
+     ---
+     >       sb       zero,1936(a5)
+   (so vbe-loops-v4.0.txt's counts a pixel stand, the screen showing the value already: 8 bits
+   6.5, 15 bits 5, 16 bits 3, 24 bits 13, 32 bits 12.5)

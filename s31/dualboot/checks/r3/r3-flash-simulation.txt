@@ -1,0 +1,228 @@
+Write lists: from the .bat files (check-r3.py, write-lists.json).
+tiny386 image: images/korvo1-dualboot/tiny386.bin, 865904 bytes, sha edef0eee9cc42239
+Start: be5b725 flash.bin (0xc20000 bytes) at 0x0, marker 0x5A from 0xc20000 to the end
+  table at 0x8000: 7 entries, sha256 520538d3a006f75c: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000
+  bootloader at 0x2000: be5b725
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  GPIO42 held low:     -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+
+== 1. flash-dualboot.bat (all) over Linux be5b725
+  esptool run 1, dualboot-run1:
+    write 0x0e20000 images/korvo1-dualboot/tiny386.bin                         865904 bytes, erased 0x0e20000 to 0x0ef3fff
+  esptool run 2, dualboot-run2:
+    write 0x0002000 images/korvo1-dualboot/bootloader.bin                       22352 bytes, erased 0x0002000 to 0x0007fff
+    write 0x0008000 images/korvo1-dualboot/partition-table.bin                   3072 bytes, erased 0x0008000 to 0x0008fff
+  changed against the state before (4 KiB granules): 0x0002000 to 0x0008fff, 0x0e20000 to 0x0ef3fff
+  Linux partitions changed: none; 0xE20000 to the end: changed
+  table at 0x8000: 8 entries, sha256 d41cba3cf33bedee: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000, tiny386@0xe20000
+  bootloader at 0x2000: dual-boot (test pin GPIO42)
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  GPIO42 held low:     -> test 'tiny386' at 0xe20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0xbd (valid); Validation hash: 4287a56672463516c45b37ba0950c90ba557c1430f43d9d3be082fe65499815a (valid); Project name: tiny386; App version: v3.1
+  check: tiny386 at 0xE20000 = the file: True; 865904 of 1966080 bytes, 1100176 spare (56.0 per cent)
+  check: nothing from 0x9000 to 0xE1FFFF changed: True
+
+== 1a. run 1 only (run 2 not started or failed at once)
+  esptool run 1, dualboot-run1:
+    write 0x0e20000 images/korvo1-dualboot/tiny386.bin                         865904 bytes, erased 0x0e20000 to 0x0ef3fff
+  changed against the state before (4 KiB granules): 0x0e20000 to 0x0ef3fff
+  Linux partitions changed: none; 0xE20000 to the end: changed
+  table at 0x8000: 7 entries, sha256 520538d3a006f75c: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000
+  bootloader at 0x2000: be5b725
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  GPIO42 held low:     -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+
+== 1b. run 1 cut short half way through tiny386
+  esptool run 1, dualboot-run1:
+    write 0x0e20000 images/korvo1-dualboot/tiny386.bin                      CUT SHORT after 432952 of 865904 bytes
+  changed against the state before (4 KiB granules): 0x0e20000 to 0x0ef3fff
+  Linux partitions changed: none; 0xE20000 to the end: changed
+  table at 0x8000: 7 entries, sha256 520538d3a006f75c: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000
+  bootloader at 0x2000: be5b725
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  GPIO42 held low:     -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+
+== 1c. run 2 cut short inside the bootloader (4 KiB of it written)
+  esptool run 1, dualboot-run2:
+    write 0x0002000 images/korvo1-dualboot/bootloader.bin                   CUT SHORT after 4096 of 22352 bytes
+  changed against the state before (4 KiB granules): 0x0002000 to 0x0007fff
+  Linux partitions changed: none; 0xE20000 to the end: unchanged
+  table at 0x8000: 7 entries, sha256 520538d3a006f75c: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000
+  bootloader at 0x2000: none of the known ones
+  GPIO42 high (no key): -> no valid bootloader at 0x2000: ROM download mode needed
+  GPIO42 held low:     -> no valid bootloader at 0x2000: ROM download mode needed
+
+== 1d. run 2 stopped between its two files (bootloader written, Linux table still there)
+  esptool run 1, dualboot-run2-bootloader-only:
+    write 0x0002000 images/korvo1-dualboot/bootloader.bin                       22352 bytes, erased 0x0002000 to 0x0007fff
+  changed against the state before (4 KiB granules): 0x0002000 to 0x0007fff
+  Linux partitions changed: none; 0xE20000 to the end: unchanged
+  table at 0x8000: 7 entries, sha256 520538d3a006f75c: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000
+  bootloader at 0x2000: dual-boot (test pin GPIO42)
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  GPIO42 held low:     -> resets while the key is held (no test partition)
+
+== 1e. run 2 cut short at the start of the table (its sector erased, nothing written)
+  esptool run 1, dualboot-run2:
+    write 0x0002000 images/korvo1-dualboot/bootloader.bin                       22352 bytes, erased 0x0002000 to 0x0007fff
+    write 0x0008000 images/korvo1-dualboot/partition-table.bin              CUT SHORT after 0 of 3072 bytes
+  changed against the state before (4 KiB granules): 0x0002000 to 0x0008fff
+  Linux partitions changed: none; 0xE20000 to the end: unchanged
+  table at 0x8000: 0 entries, sha256 1a7493ff2f2bde5f: 
+  bootloader at 0x2000: dual-boot (test pin GPIO42)
+  GPIO42 high (no key): -> no partition table: the bootloader stops
+  GPIO42 held low:     -> no partition table: the bootloader stops
+
+== 2. flash-dualboot.bat app (the same file again)
+  esptool run 1, dualboot-app:
+    write 0x0e20000 images/korvo1-dualboot/tiny386.bin                         865904 bytes, erased 0x0e20000 to 0x0ef3fff
+  changed against the state before (4 KiB granules): nothing
+  Linux partitions changed: none; 0xE20000 to the end: unchanged
+  table at 0x8000: 8 entries, sha256 d41cba3cf33bedee: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000, tiny386@0xe20000
+  bootloader at 0x2000: dual-boot (test pin GPIO42)
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  GPIO42 held low:     -> test 'tiny386' at 0xe20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0xbd (valid); Validation hash: 4287a56672463516c45b37ba0950c90ba557c1430f43d9d3be082fe65499815a (valid); Project name: tiny386; App version: v3.1
+
+== 2a. flash-dualboot.bat all again over the dual boot
+  esptool run 1, dualboot-run1:
+    write 0x0e20000 images/korvo1-dualboot/tiny386.bin                         865904 bytes, erased 0x0e20000 to 0x0ef3fff
+  esptool run 2, dualboot-run2:
+    write 0x0002000 images/korvo1-dualboot/bootloader.bin                       22352 bytes, erased 0x0002000 to 0x0007fff
+    write 0x0008000 images/korvo1-dualboot/partition-table.bin                   3072 bytes, erased 0x0008000 to 0x0008fff
+  changed against the state before (4 KiB granules): nothing
+  Linux partitions changed: none; 0xE20000 to the end: unchanged
+  table at 0x8000: 8 entries, sha256 d41cba3cf33bedee: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000, tiny386@0xe20000
+  bootloader at 0x2000: dual-boot (test pin GPIO42)
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  GPIO42 held low:     -> test 'tiny386' at 0xe20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0xbd (valid); Validation hash: 4287a56672463516c45b37ba0950c90ba557c1430f43d9d3be082fe65499815a (valid); Project name: tiny386; App version: v3.1
+
+== 3. back-to-linux.bat (small be5b725, the default) after 1
+  esptool run 1, linux-be5b725-small:
+    write 0x0002000 main-be5b725/esp32s31-linux-main-be5b725-flash/bootloader.bin     22000 bytes, erased 0x0002000 to 0x0007fff
+    write 0x0008000 main-be5b725/esp32s31-linux-main-be5b725-flash/partition-table.bin      3072 bytes, erased 0x0008000 to 0x0008fff
+  changed against the state before (4 KiB granules): 0x0002000 to 0x0008fff
+  Linux partitions changed: none; 0xE20000 to the end: unchanged
+  table at 0x8000: 7 entries, sha256 520538d3a006f75c: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000
+  bootloader at 0x2000: be5b725
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  GPIO42 held low:     -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  check: 0x0 to 0xC1FFFF = the start state: True; tiny386 still at 0xE20000: True
+  check: the whole flash = the start state but 0xE20000 up: True
+
+== 4. back-to-linux.bat small release after 1
+  esptool run 1, linux-release-small:
+    write 0x0002000 dualboot/linux-v2026.09.20/bootloader/bootloader/bootloader.bin     23024 bytes, erased 0x0002000 to 0x0007fff
+    write 0x0008000 dualboot/linux-v2026.09.20/bootloader/partition_table/partition-table.bin      3072 bytes, erased 0x0008000 to 0x0008fff
+  changed against the state before (4 KiB granules): 0x0002000 to 0x0008fff
+  Linux partitions changed: none; 0xE20000 to the end: unchanged
+  table at 0x8000: 7 entries, sha256 520538d3a006f75c: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000
+  bootloader at 0x2000: release v2026.09.20
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  GPIO42 held low:     -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+
+== 5. back-to-linux.bat full release after 1
+  esptool run 1, linux-release-full:
+    write 0x0002000 dualboot/linux-v2026.09.20/bootloader/bootloader/bootloader.bin     23024 bytes, erased 0x0002000 to 0x0007fff
+    write 0x0008000 dualboot/linux-v2026.09.20/bootloader/partition_table/partition-table.bin      3072 bytes, erased 0x0008000 to 0x0008fff
+    write 0x0009000 dualboot/blank-0x9000-0x1ffff.bin                           94208 bytes, erased 0x0009000 to 0x001ffff
+    write 0x0020000 dualboot/linux-v2026.09.20/bootloader/s31-linux-loader.bin    768096 bytes, erased 0x0020000 to 0x00dbfff
+    write 0x0220000 dualboot/linux-v2026.09.20/opensbi.bin                     134012 bytes, erased 0x0220000 to 0x0240fff
+    write 0x02a0000 dualboot/linux-v2026.09.20/Image                          4008448 bytes, erased 0x02a0000 to 0x0672fff
+    write 0x0a1fff4 dualboot/linux-v2026.09.20/linux.size                          12 bytes, erased 0x0a1f000 to 0x0a1ffff
+    write 0x0a20000 dualboot/linux-v2026.09.20/initramfs.cpio                 2097152 bytes, erased 0x0a20000 to 0x0c1ffff
+  changed against the state before (4 KiB granules): 0x0002000 to 0x0008fff, 0x0020000 to 0x00dbfff, 0x0220000 to 0x023efff, 0x0240000 to 0x0240fff, 0x02a0000 to 0x0672fff, 0x0a1f000 to 0x0b94fff
+  Linux partitions changed: factory, opensbi, linux, initramfs; 0xE20000 to the end: unchanged
+  table at 0x8000: 7 entries, sha256 520538d3a006f75c: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000
+  bootloader at 0x2000: release v2026.09.20
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0xa3 (valid); Validation hash: 2fa40c49191c6caea5e601b52c63d7a99864e719ccc3aec40f8630b61f97546d (valid); Project name: s31-linux-loader; App version: c288bc9
+  GPIO42 held low:     -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0xa3 (valid); Validation hash: 2fa40c49191c6caea5e601b52c63d7a99864e719ccc3aec40f8630b61f97546d (valid); Project name: s31-linux-loader; App version: c288bc9
+  check: tiny386 still at 0xE20000: True
+
+== 6. back-to-linux.bat full (be5b725 flash.bin) after 1
+  esptool run 1, linux-be5b725-full:
+    write 0x0000000 main-be5b725/esp32s31-linux-main-be5b725-flash/flash.bin  12713984 bytes, erased 0x0000000 to 0x0c1ffff
+  changed against the state before (4 KiB granules): 0x0002000 to 0x0008fff
+  Linux partitions changed: none; 0xE20000 to the end: unchanged
+  table at 0x8000: 7 entries, sha256 520538d3a006f75c: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000
+  bootloader at 0x2000: be5b725
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  GPIO42 held low:     -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  check: 0x0 to 0xC1FFFF = the start state: True
+
+== 7. flash-standalone.bat over Linux be5b725
+  esptool run 1, standalone:
+    write 0x0002000 images/korvo1-standalone/bootloader.bin                     22016 bytes, erased 0x0002000 to 0x0007fff
+    write 0x0008000 images/korvo1-standalone/partition-table.bin                 3072 bytes, erased 0x0008000 to 0x0008fff
+    write 0x0010000 images/korvo1-standalone/tiny386.bin                       865904 bytes, erased 0x0010000 to 0x00e3fff
+  changed against the state before (4 KiB granules): 0x0002000 to 0x0008fff, 0x0010000 to 0x00e3fff
+  Linux partitions changed: nvs, otadata, phy_init, factory; 0xE20000 to the end: unchanged
+  table at 0x8000: 8 entries, sha256 afbe6410c2040c5e: nvs@0x9000, phy_init@0xf000, factory@0x10000, bios.bin@0x1d0000, vgabios.bin@0x1f0000, linuxstart.bin@0x1ff000, vmlinux.bin@0x200000, storage@0x600000
+  bootloader at 0x2000: tiny386 own
+  GPIO42 high (no key): -> factory 'factory' at 0x10000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0xa3 (valid); Validation hash: fd6b1009ff8b8e28e89f8bee30878f5ccf6c27a9e213036d88d6d5bbb995f014 (valid); Project name: tiny386; App version: v3.1
+  GPIO42 held low:     -> factory 'factory' at 0x10000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0xa3 (valid); Validation hash: fd6b1009ff8b8e28e89f8bee30878f5ccf6c27a9e213036d88d6d5bbb995f014 (valid); Project name: tiny386; App version: v3.1
+
+== 8. standalone, then back-to-linux.bat full (be5b725)
+  esptool run 1, linux-be5b725-full:
+    write 0x0000000 main-be5b725/esp32s31-linux-main-be5b725-flash/flash.bin  12713984 bytes, erased 0x0000000 to 0x0c1ffff
+  changed against the state before (4 KiB granules): 0x0002000 to 0x0008fff, 0x0010000 to 0x00e3fff
+  Linux partitions changed: nvs, otadata, phy_init, factory; 0xE20000 to the end: unchanged
+  table at 0x8000: 7 entries, sha256 520538d3a006f75c: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000
+  bootloader at 0x2000: be5b725
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  GPIO42 held low:     -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  check: 0x0 to 0xC1FFFF = the start state: True
+
+== 9. standalone, then back-to-linux.bat full release
+  esptool run 1, linux-release-full:
+    write 0x0002000 dualboot/linux-v2026.09.20/bootloader/bootloader/bootloader.bin     23024 bytes, erased 0x0002000 to 0x0007fff
+    write 0x0008000 dualboot/linux-v2026.09.20/bootloader/partition_table/partition-table.bin      3072 bytes, erased 0x0008000 to 0x0008fff
+    write 0x0009000 dualboot/blank-0x9000-0x1ffff.bin                           94208 bytes, erased 0x0009000 to 0x001ffff
+    write 0x0020000 dualboot/linux-v2026.09.20/bootloader/s31-linux-loader.bin    768096 bytes, erased 0x0020000 to 0x00dbfff
+    write 0x0220000 dualboot/linux-v2026.09.20/opensbi.bin                     134012 bytes, erased 0x0220000 to 0x0240fff
+    write 0x02a0000 dualboot/linux-v2026.09.20/Image                          4008448 bytes, erased 0x02a0000 to 0x0672fff
+    write 0x0a1fff4 dualboot/linux-v2026.09.20/linux.size                          12 bytes, erased 0x0a1f000 to 0x0a1ffff
+    write 0x0a20000 dualboot/linux-v2026.09.20/initramfs.cpio                 2097152 bytes, erased 0x0a20000 to 0x0c1ffff
+  changed against the state before (4 KiB granules): 0x0002000 to 0x0008fff, 0x0010000 to 0x00dbfff, 0x0220000 to 0x023efff, 0x0240000 to 0x0240fff, 0x02a0000 to 0x0672fff, 0x0a1f000 to 0x0b94fff
+  Linux partitions changed: nvs, otadata, phy_init, factory, opensbi, linux, initramfs; 0xE20000 to the end: unchanged
+  table at 0x8000: 7 entries, sha256 520538d3a006f75c: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000
+  bootloader at 0x2000: release v2026.09.20
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0xa3 (valid); Validation hash: 2fa40c49191c6caea5e601b52c63d7a99864e719ccc3aec40f8630b61f97546d (valid); Project name: s31-linux-loader; App version: c288bc9
+  GPIO42 held low:     -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0xa3 (valid); Validation hash: 2fa40c49191c6caea5e601b52c63d7a99864e719ccc3aec40f8630b61f97546d (valid); Project name: s31-linux-loader; App version: c288bc9
+
+== 10. flash-standalone.bat over the dual boot (1)
+  esptool run 1, standalone:
+    write 0x0002000 images/korvo1-standalone/bootloader.bin                     22016 bytes, erased 0x0002000 to 0x0007fff
+    write 0x0008000 images/korvo1-standalone/partition-table.bin                 3072 bytes, erased 0x0008000 to 0x0008fff
+    write 0x0010000 images/korvo1-standalone/tiny386.bin                       865904 bytes, erased 0x0010000 to 0x00e3fff
+  changed against the state before (4 KiB granules): 0x0002000 to 0x0008fff, 0x0010000 to 0x00e3fff
+  Linux partitions changed: nvs, otadata, phy_init, factory; 0xE20000 to the end: unchanged
+  table at 0x8000: 8 entries, sha256 afbe6410c2040c5e: nvs@0x9000, phy_init@0xf000, factory@0x10000, bios.bin@0x1d0000, vgabios.bin@0x1f0000, linuxstart.bin@0x1ff000, vmlinux.bin@0x200000, storage@0x600000
+  bootloader at 0x2000: tiny386 own
+  GPIO42 high (no key): -> factory 'factory' at 0x10000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0xa3 (valid); Validation hash: fd6b1009ff8b8e28e89f8bee30878f5ccf6c27a9e213036d88d6d5bbb995f014 (valid); Project name: tiny386; App version: v3.1
+  GPIO42 held low:     -> factory 'factory' at 0x10000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0xa3 (valid); Validation hash: fd6b1009ff8b8e28e89f8bee30878f5ccf6c27a9e213036d88d6d5bbb995f014 (valid); Project name: tiny386; App version: v3.1
+
+== 11. standalone over the dual boot, then back-to-linux.bat full (be5b725)
+  esptool run 1, linux-be5b725-full:
+    write 0x0000000 main-be5b725/esp32s31-linux-main-be5b725-flash/flash.bin  12713984 bytes, erased 0x0000000 to 0x0c1ffff
+  changed against the state before (4 KiB granules): 0x0002000 to 0x0008fff, 0x0010000 to 0x00e3fff
+  Linux partitions changed: nvs, otadata, phy_init, factory; 0xE20000 to the end: unchanged
+  table at 0x8000: 7 entries, sha256 520538d3a006f75c: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000
+  bootloader at 0x2000: be5b725
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+  GPIO42 held low:     -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0x30 (valid); Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid); Project name: s31-linux-loader; App version: v0.1.0-1-gbe5b725
+
+== 12. flash-dualboot.bat after 5 (release Linux)
+  esptool run 1, dualboot-run1:
+    write 0x0e20000 images/korvo1-dualboot/tiny386.bin                         865904 bytes, erased 0x0e20000 to 0x0ef3fff
+  esptool run 2, dualboot-run2:
+    write 0x0002000 images/korvo1-dualboot/bootloader.bin                       22352 bytes, erased 0x0002000 to 0x0007fff
+    write 0x0008000 images/korvo1-dualboot/partition-table.bin                   3072 bytes, erased 0x0008000 to 0x0008fff
+  changed against the state before (4 KiB granules): 0x0002000 to 0x0008fff
+  Linux partitions changed: none; 0xE20000 to the end: unchanged
+  table at 0x8000: 8 entries, sha256 d41cba3cf33bedee: nvs@0x11000, otadata@0x17000, phy_init@0x19000, factory@0x20000, opensbi@0x220000, linux@0x2a0000, initramfs@0xa20000, tiny386@0xe20000
+  bootloader at 0x2000: dual-boot (test pin GPIO42)
+  GPIO42 high (no key): -> factory 'factory' at 0x20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0xa3 (valid); Validation hash: 2fa40c49191c6caea5e601b52c63d7a99864e719ccc3aec40f8630b61f97546d (valid); Project name: s31-linux-loader; App version: c288bc9
+  GPIO42 held low:     -> test 'tiny386' at 0xe20000: valid (exit 0); Chip ID: 32 (ESP32-S31); Checksum: 0xbd (valid); Validation hash: 4287a56672463516c45b37ba0950c90ba557c1430f43d9d3be082fe65499815a (valid); Project name: tiny386; App version: v3.1
+
+== esptool merge-bin of the dual-boot writes (exit 0)
+  merged image 16777216 bytes; equal to this model on an erased chip: True
+simulate-r3.py exit 0

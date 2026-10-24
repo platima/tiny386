@@ -1,0 +1,48 @@
+Host tests 16 and 18 under AddressSanitizer and UBSan (host gcc 12, -fsanitize=address,undefined -fno-sanitize-recover=all,
+-O1 -g), run with address randomisation off (setarch -R).  The scratch tree at
+9d6109e (v3.6; changes not committed:  M esp/dependencies.lock ), 2026-10-22.
+
+== 1. audio_mix_test (parts 1 to 6) with esp/main/audio_mix.c as v3.6 has it
+exit 0 (the leak check off for this run, so that the program's own lines are flushed)
+audio_mix_test: AUDIO_RATE 48000, AUDIO_MIX_MAX 128
+  6. n of 1, 0, -1, -2, -128, -129 and INT_MIN: nothing made, nothing asked, 0 returned; n of 2 still asks the devices
+audio_mix_test: 7753038 checks, 0 failed: PASS
+sanitizer reports: 0
+   again with the leak check on: what leaks, by where it was allocated
+exit 1
+SUMMARY: AddressSanitizer: 491580 byte(s) leaked in 15 allocation(s).
+Direct leak of 491580 byte(s) in 15 object(s) allocated from:
+leak records: 1; of them allocated in OPLOpenTable (fmopl.c): 1
+(v3.5's run: the same table, 14 times; part 6 makes one more AdLib, so one more table)
+
+== 2. the same test against audio_mix.c at v3.5, where part 6 has to fail
+exit 1
+==302==ERROR: AddressSanitizer: negative-size-param: (size=-2)
+    #1 ADDR in audio_mix_devices tiny386-idf-scratch/v36-work/asan/audio_mix-v3.5.c:64
+    #2 ADDR in main tiny386-idf-scratch/v3/tiny386/tests/host/dosboard/audio_mix_test.c:426
+part 6 lines printed: 0
+   without sanitisers, as run.sh builds it:
+/home/owner/tiny386-idf-scratch/v36-work/asan.sh: line 55:   319 Segmentation fault      (core dumped) ( $O/t35plain > $O/out35plain.txt 2>&1 )
+exit 139 (139: killed by SIGSEGV)
+
+== 3. board_check_test with dosboard.c and ms7210.c as v3.6 has them
+exit 0
+board_check_test: 17 of 17 cases as expected: PASS
+    K1: stopped; GPIO46 read high; GPIO49 never driven; 7 GPIO calls; as expected
+    K2: stopped; GPIO46 read high; GPIO49 never driven; 7 GPIO calls; as expected
+    K3: stopped; GPIO46 read high; GPIO49 never driven; 7 GPIO calls; as expected
+    K4: stopped; GPIO46 read low; GPIO49 driven; 14 GPIO calls; as expected
+    K5: stopped; GPIO46 read high; GPIO49 never driven; 7 GPIO calls; as expected
+    K6: stopped; GPIO46 read high; GPIO49 never driven; 7 GPIO calls; as expected
+    D1: taken; GPIO46 not read; GPIO49 driven; 14 GPIO calls; as expected
+    D2: taken; GPIO46 read low; GPIO49 driven; 20 GPIO calls; as expected
+    D3: taken; GPIO46 read low; GPIO49 driven; 22 GPIO calls; as expected
+    D4: taken; GPIO46 read low; GPIO49 driven; 20 GPIO calls; as expected
+    D5: taken; GPIO46 read low; GPIO49 driven; 20 GPIO calls; as expected
+    D6: stopped; GPIO46 read high; GPIO49 never driven; 7 GPIO calls; as expected
+    D7: taken; GPIO46 not read; GPIO49 driven; 14 GPIO calls; as expected
+    D8: stopped; GPIO46 not read; GPIO49 never driven; 1 GPIO calls; as expected
+    D9: stopped; GPIO46 not read; GPIO49 never driven; 1 GPIO calls; as expected
+    D10: stopped; GPIO46 not read; GPIO49 driven; 9 GPIO calls; as expected
+    D11: stopped; GPIO46 read low; GPIO49 driven; 14 GPIO calls; as expected
+sanitizer reports (each case is a child process, which reports its own, leaks included): 0

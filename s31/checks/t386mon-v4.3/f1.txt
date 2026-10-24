@@ -1,0 +1,13 @@
+# T386MON from B:, Log now before and after each Ctrl+Alt+F11 (the run's -f11 400,430,460), then
+# Windows shut down with it open
+330 ctrl+esc
+332 r
+334 text B:\T386MON.EXE
+340 enter
+390 f6
+415 f6
+445 f6
+475 f6
+490 ctrl+esc
+492 u
+496 enter

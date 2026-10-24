@@ -1,0 +1,74 @@
+test_vbe (tests/host/test_vbe.c at tag v4.1), both boards, under AddressSanitizer and UBSan
+(-fsanitize=address,undefined, recovery off), address-space randomisation off (setarch -R),
+the reference loop's vga.c built the same way; then the Korvo-1 build under ThreadSanitizer.  Built
+without -DWITH_BASE, so v4.0-base's five bank checks are not in these runs.  2026-10-23.
+
+korvo1: exit 0: test_vbe: all 6827 checks passed
+0
+dosboard: exit 0: test_vbe: all 6827 checks passed
+0
+tsan: exit 66: test_vbe: all 6827 checks passed
+19
+WARNING: ThreadSanitizer: data race (pid=3724)
+  Read of size 4 at 0x7ffff21ed37c by main thread:
+    #0 vbe_row /home/owner/v4-work/v41/tree/vga.c:1430 (test_vbe-tsan+0x7b22)
+    #1 vga_vbe_refresh /home/owner/v4-work/v41/tree/vga.c:1519 (test_vbe-tsan+0x7b22)
+    #2 vga_graphic_refresh /home/owner/v4-work/v41/tree/vga.c:2012 (test_vbe-tsan+0x7b22)
+    #3 vga_refresh /home/owner/v4-work/v41/tree/vga.c:2489 (test_vbe-tsan+0x9c7c)
+    #4 two_threads /home/owner/v4-work/v41/tree/tests/host/test_vbe.c:647 (test_vbe-tsan+0x3807)
+    #5 main /home/owner/v4-work/v41/tree/tests/host/test_vbe.c:736 (test_vbe-tsan+0x4bad)
+
+  Previous atomic write of size 1 at 0x7ffff21ed37e by thread T1:
+    #0 writer /home/owner/v4-work/v41/tree/tests/host/test_vbe.c:620 (test_vbe-tsan+0x358a)
+
+  Location is heap block of size 2113536 at 0x7ffff21ed000 allocated by main thread:
+--
+WARNING: ThreadSanitizer: data race (pid=3724)
+  Read of size 4 at 0x7ffff21ed380 by main thread:
+    #0 vbe_row /home/owner/v4-work/v41/tree/vga.c:1430 (test_vbe-tsan+0x7b22)
+    #1 vga_vbe_refresh /home/owner/v4-work/v41/tree/vga.c:1519 (test_vbe-tsan+0x7b22)
+    #2 vga_graphic_refresh /home/owner/v4-work/v41/tree/vga.c:2012 (test_vbe-tsan+0x7b22)
+    #3 vga_refresh /home/owner/v4-work/v41/tree/vga.c:2489 (test_vbe-tsan+0x9c7c)
+    #4 two_threads /home/owner/v4-work/v41/tree/tests/host/test_vbe.c:647 (test_vbe-tsan+0x3807)
+    #5 main /home/owner/v4-work/v41/tree/tests/host/test_vbe.c:736 (test_vbe-tsan+0x4bad)
+
+  Previous atomic write of size 1 at 0x7ffff21ed381 by thread T1:
+    [failed to restore the stack]
+
+  Location is heap block of size 2113536 at 0x7ffff21ed000 allocated by main thread:
+--
+WARNING: ThreadSanitizer: data race (pid=3724)
+  Atomic write of size 1 at 0x7ffff2241133 by thread T1:
+    #0 writer /home/owner/v4-work/v41/tree/tests/host/test_vbe.c:620 (test_vbe-tsan+0x358a)
+
+  Previous read of size 4 at 0x7ffff2241130 by main thread:
+    [failed to restore the stack]
+
+  Location is heap block of size 2113536 at 0x7ffff21ed000 allocated by main thread:
+    #0 calloc ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:667 (libtsan.so.2+0x3ee50)
+    #1 inst_init /home/owner/v4-work/v41/tree/tests/host/test_vbe.c:191 (test_vbe-tsan+0x2cd4)
+    #2 two_threads /home/owner/v4-work/v41/tree/tests/host/test_vbe.c:631 (test_vbe-tsan+0x36a5)
+    #3 main /home/owner/v4-work/v41/tree/tests/host/test_vbe.c:736 (test_vbe-tsan+0x4bad)
+
+== ThreadSanitizer: the reports, by where they are (every one a read of guest video memory by
+== the drawing against the writer thread's store into it, the race the design allows: the
+== block's mark is set again after the store; none on the mark map or the row marks)
+      2 SUMMARY: ThreadSanitizer: data race /home/owner/v4-work/v41/tree/tests/host/test_vbe.c:620 in writer
+      2 SUMMARY: ThreadSanitizer: data race /home/owner/v4-work/v41/tree/vga.c:1430 in vbe_row
+      2 SUMMARY: ThreadSanitizer: data race /home/owner/v4-work/v41/tree/vga.c:1439 in vbe_row
+      6 SUMMARY: ThreadSanitizer: data race /home/owner/v4-work/v41/tree/vga.c:1450 in vbe_row
+      4 SUMMARY: ThreadSanitizer: data race /home/owner/v4-work/v41/tree/vga.c:1459 in vbe_row
+      3 SUMMARY: ThreadSanitizer: data race /home/owner/v4-work/v41/tree/vga.c:1579 in vga_pixel
+      1   Previous read of size 1 by main thread:
+      1   Previous read of size 4 by main thread:
+      3   Read of size 1 by main thread:
+     14   Read of size 4 by main thread:
+== the end of the ThreadSanitizer run's output
+VBE pictures from the blocks written against every pixel every time, on a 800x480 screen
+ThreadSanitizer: reported 19 warnings
+ame in every picture
+the bank window
+marks only where a picture reads them (v4.1)
+chain 4 switched under VBE (v4.1)
+two threads
+test_vbe: all 6827 checks passed

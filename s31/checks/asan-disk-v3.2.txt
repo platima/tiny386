@@ -1,0 +1,15 @@
+tests/host/disk/test_ide_fatfs.c and ESP-IDF's FatFs built with -fsanitize=address,undefined,
+run three times with address randomisation off (setarch -R), on a 64 MiB FAT32 volume holding
+FREEDOS.IMG (8 MiB) and FLUSH.IMG (1 MiB).  v3.2, 2026-10-21.  (Made by final-r2 look4.sh.)
+run 1: 0
+g.img: FREEDOS.IMG 8388608 bytes, 110589 free clusters
+  the image has 16384 sectors
+test_ide_fatfs: 30 checks, 0 failed
+run 2: 0
+g.img: FREEDOS.IMG 8388608 bytes, 110589 free clusters
+  the image has 16384 sectors
+test_ide_fatfs: 30 checks, 0 failed
+run 3: 0
+g.img: FREEDOS.IMG 8388608 bytes, 110589 free clusters
+  the image has 16384 sectors
+test_ide_fatfs: 30 checks, 0 failed

@@ -1,0 +1,40 @@
+The files v4.2 changed that the boards compile (vga.c, esp/main/kbd_input.c, speed.c, esp_main.c),
+compiled again with each in-tree build's own command (compile_commands.json, ~/flicker/fix/tree/esp/
+build-k for the Korvo-1, build-d for the DOS board) plus -Wall -Wextra -Wno-error, to /dev/null, each
+beside the same file at v4.1 compiled the same way (warnings-wall-wextra-v4.2.py), 2026-10-23.
+
+build-k vga.c                  v4.2: exit 0, 3 warnings; v4.1: exit 0, 3 warnings
+build-k esp/main/kbd_input.c   v4.2: exit 0, 0 warnings; v4.1: exit 0, 0 warnings
+build-k esp/main/speed.c       v4.2: exit 0, 0 warnings; v4.1: exit 0, 0 warnings
+build-k esp/main/esp_main.c    v4.2: exit 0, 0 warnings; v4.1: exit 0, 0 warnings
+build-d vga.c                  v4.2: exit 0, 3 warnings; v4.1: exit 0, 3 warnings
+build-d esp/main/kbd_input.c   v4.2: exit 0, 0 warnings; v4.1: exit 0, 0 warnings
+build-d esp/main/speed.c       v4.2: exit 0, 0 warnings; v4.1: exit 0, 0 warnings
+build-d esp/main/esp_main.c    v4.2: exit 0, 0 warnings; v4.1: exit 0, 0 warnings
+
+== compiler warnings in build.sh's own logs, outside ESP-IDF and the managed components
+flicker/fix/rel/rel1.log:/home/owner/flicker/fix/rel/rel1/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+flicker/fix/rel/rel1.log:/home/owner/flicker/fix/rel/rel1/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+flicker/fix/rel/rel2-second-run.log:/home/owner/flicker/fix/rel/rel2-second-run/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+flicker/fix/rel/rel2-second-run.log:/home/owner/flicker/fix/rel/rel2-second-run/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+
+== the in-tree builds (idf.py at the v4.2 sources), release and crash-test, warnings outside ESP-IDF
+flicker/fix/builds/build-k.log:/home/owner/flicker/fix/tree/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+flicker/fix/builds/build-ks.log:/home/owner/flicker/fix/tree/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+flicker/fix/builds/build-kc.log:/home/owner/flicker/fix/tree/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+== their exit codes and sizes
+== k (korvo1 ) exit 0, 68 s
+│ DIRAM               │       249980 │    49.62 │         253764 │        503744 │
+Total image size: 903138 bytes (.bin may be padded larger)
+== ks (korvo1 -DPARTITION_CSV=partitions.csv) exit 0, 54 s
+│ DIRAM               │       249980 │    49.62 │         253764 │        503744 │
+Total image size: 903138 bytes (.bin may be padded larger)
+== d (dosboard ) exit 0, 87 s
+│ DIRAM               │       252978 │    50.22 │         250766 │        503744 │
+Total image size: 934812 bytes (.bin may be padded larger)
+== kc (korvo1 -DCRASH_TEST=1) exit 0, 204 s
+│ DIRAM               │       249980 │    49.62 │         253764 │        503744 │
+Total image size: 903706 bytes (.bin may be padded larger)
+== dc (dosboard -DCRASH_TEST=1) exit 0, 57 s
+│ DIRAM               │       252978 │    50.22 │         250766 │        503744 │
+Total image size: 935380 bytes (.bin may be padded larger)

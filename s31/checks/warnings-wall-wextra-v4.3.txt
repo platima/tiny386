@@ -1,0 +1,50 @@
+The files v4.3 changed that the boards compile (vga.c, pc.c, i8042.c, perfport.c (new), esp/main/speed.c,
+disk_image.c, status_led.c), compiled again with each in-tree build's own command
+(compile_commands.json, ~/v43/merge/tree/esp/build-k for the Korvo-1, build-d for the DOS board)
+plus -Wall -Wextra -Wno-error, to /dev/null, each beside the same file at v4.2 compiled the same way
+(warnings-wall-wextra-v4.3.py), 2026-10-24.
+
+build-k vga.c                  v4.3: exit 0, 3 warnings; v4.2: exit 0, 3 warnings
+build-k pc.c                   v4.3: exit 0, 1 warnings; v4.2: exit 0, 1 warnings
+build-k i8042.c                v4.3: exit 0, 1 warnings; v4.2: exit 0, 1 warnings
+build-k perfport.c             v4.3: exit 0, 0 warnings (new in v4.3)
+build-k esp/main/speed.c       v4.3: exit 0, 0 warnings; v4.2: exit 0, 0 warnings
+build-k esp/main/disk_image.c  v4.3: exit 0, 0 warnings; v4.2: exit 0, 0 warnings
+build-k esp/main/status_led.c  v4.3: exit 0, 0 warnings; v4.2: exit 0, 0 warnings
+build-d vga.c                  v4.3: exit 0, 3 warnings; v4.2: exit 0, 3 warnings
+build-d pc.c                   v4.3: exit 0, 1 warnings; v4.2: exit 0, 1 warnings
+build-d i8042.c                v4.3: exit 0, 1 warnings; v4.2: exit 0, 1 warnings
+build-d perfport.c             v4.3: exit 0, 0 warnings (new in v4.3)
+build-d esp/main/speed.c       v4.3: exit 0, 0 warnings; v4.2: exit 0, 0 warnings
+build-d esp/main/disk_image.c  v4.3: exit 0, 0 warnings; v4.2: exit 0, 0 warnings
+build-d esp/main/status_led.c  v4.3: exit 0, 0 warnings; v4.2: exit 0, 0 warnings
+
+== compiler warnings in build.sh's own logs, outside ESP-IDF and the managed components
+v43/merge/rel/rel1.log:/home/owner/v43/merge/rel/rel1/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+v43/merge/rel/rel1.log:/home/owner/v43/merge/rel/rel1/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+v43/merge/rel/rel2-second-run.log:/home/owner/v43/merge/rel/rel2-second-run/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+v43/merge/rel/rel2-second-run.log:/home/owner/v43/merge/rel/rel2-second-run/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+
+== the in-tree builds (idf.py at the v4.3 sources), release and crash-test, warnings outside ESP-IDF
+v43/merge/builds/build-k.log:/home/owner/v43/merge/tree/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+v43/merge/builds/build-ks.log:/home/owner/v43/merge/tree/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+v43/merge/builds/build-kc.log:/home/owner/v43/merge/tree/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+== their exit codes and sizes
+== k (korvo1 ) exit 0, 55 s
+│ DIRAM               │       250644 │    49.76 │         253100 │        503744 │
+Total image size: 906416 bytes (.bin may be padded larger)
+== ks (korvo1 -DPARTITION_CSV=partitions.csv) exit 0, 51 s
+│ DIRAM               │       250644 │    49.76 │         253100 │        503744 │
+Total image size: 906416 bytes (.bin may be padded larger)
+== d (dosboard ) exit 0, 52 s
+│ DIRAM               │       253642 │    50.35 │         250102 │        503744 │
+Total image size: 938090 bytes (.bin may be padded larger)
+== kc (korvo1 -DCRASH_TEST=1) exit 0, 52 s
+│ DIRAM               │       250644 │    49.76 │         253100 │        503744 │
+Total image size: 906984 bytes (.bin may be padded larger)
+== dc (dosboard -DCRASH_TEST=1) exit 0, 53 s
+│ DIRAM               │       253642 │    50.35 │         250102 │        503744 │
+Total image size: 938658 bytes (.bin may be padded larger)
+
+== the harness builds of v4.3 (gcc on this PC; -Wno-all as the harness builds the core)
+      6 warnings: 0

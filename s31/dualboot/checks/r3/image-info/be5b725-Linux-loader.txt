@@ -1,0 +1,46 @@
+esptool v5.4.0
+Image size: 740992 bytes
+
+ESP32-S31 Image Header
+======================
+Image version: 1
+Entry point: 0x2f000a2a
+Segments: 5
+Flash size: 16MB
+Flash freq: 80m
+Flash mode: DIO
+
+ESP32-S31 Extended Image Header
+===============================
+WP pin: 0xee (disabled)
+Flash pins drive settings: clk_drv: 0x0, q_drv: 0x0, d_drv: 0x0, cs0_drv: 0x0, hd_drv: 0x0, wp_drv: 0x0
+Chip ID: 32 (ESP32-S31)
+Minimal chip revision: v0.0, (legacy min_rev = 0)
+Maximal chip revision: v0.99
+
+Segments Information
+====================
+Segment   Length   Load addr   File offs  Memory types
+-------  -------  ----------  ----------  ------------
+      0  0x1b20c  0x40090020  0x00000018  DROM, IROM
+      1  0x04de4  0x2f000000  0x0001b22c  DRAM, BYTE_ACCESSIBLE, IRAM
+      2  0x827b4  0x40000020  0x00020018  DROM, IROM
+      3  0x0ddb0  0x2f004de4  0x000a27d4  DRAM, BYTE_ACCESSIBLE, IRAM
+      4  0x048c0  0x2f012c00  0x000b058c  DRAM, BYTE_ACCESSIBLE, IRAM
+
+ESP32-S31 Image Footer
+======================
+Checksum: 0x30 (valid)
+Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid)
+
+Application Information
+=======================
+Project name: s31-linux-loader
+App version: v0.1.0-1-gbe5b725
+Compile time: Sep 27 2026 08:05:39
+ELF file SHA256: 5c8116e829c2e61b36c7b613abc37490ecfc3edeb1d48df4b11458e4f321fc2c
+ESP-IDF: v6.1-dev-8142-g188e3e55bb
+Minimal eFuse block revision: 0.0
+Maximal eFuse block revision: 0.99
+MMU page size: 64 KB
+Secure version: 0

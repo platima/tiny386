@@ -1,0 +1,7 @@
+96a97,102
+>     # perfport (the information port at 0F1F8h): main/CMakeLists.txt adds
+>     # perfport.c and TINY386_PERFPORT; headless.c fills the host's part
+>     if [ -f "$TREE/perfport.c" ] && [ -z "${NO_PERFPORT:-}" ]; then
+>         SRCS="$SRCS perfport.c"
+>         V3DEFS="$V3DEFS -DTINY386_PERFPORT"
+>     fi

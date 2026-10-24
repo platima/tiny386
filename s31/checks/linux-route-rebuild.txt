@@ -1,0 +1,21 @@
+The Linux route (..\..\tiny386) rebuilt from copies, with the v3.1 core files put in.
+Made by v3-final/lr.sh; nothing in ~/tiny386-scratch or the release folder was written.
+
+release tiny386-korvo:          dd34a04fd0eb000f65187e086363d32a1c8ffccdd8615a0f283e30d6868a0a71  -
+rebuilt from the copy as it was: dd34a04fd0eb000f65187e086363d32a1c8ffccdd8615a0f283e30d6868a0a71  -
+rebuilt with the v3.1 core files: dd34a04fd0eb000f65187e086363d32a1c8ffccdd8615a0f283e30d6868a0a71  -
+
+Files of the Linux route's tree that the v3.1 tree has differently (copied in for the rebuild):
+  adlib.c  v3.1 sha256 777bf38b65393069
+  i8042.c  v3.1 sha256 57746a99e4fd463a
+  ide.c  v3.1 sha256 e810a6c7826b1520
+  misc.c  v3.1 sha256 639ed0f60f40285d
+  pcspk.c  v3.1 sha256 b929d447b3ddb926
+  sb16.c  v3.1 sha256 a411d41f512a4f29
+  vga.c  v3.1 sha256 6b9e47cdaf31b7d0
+  i8042.h  v3.1 sha256 81d1c3b4619c405d
+  ide.h  v3.1 sha256 6684c9c2070260ff
+  audio_rate.h  v3.1 sha256 92d282907dd4e2d7
+
+Objects that differ between the two rebuilds (obj-tiny386-korvo-ref against obj-tiny386-korvo-v3):
+  0 of 21

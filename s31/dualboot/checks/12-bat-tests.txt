@@ -1,0 +1,220 @@
+### 12. the .bat files' logic, tested without the .bat files and without esptool
+Harnesses built by make_harness.py and make_flow.py from the v3 .bat files: the
+subroutines and argument loops verbatim, and the main flow up to the Y/N check
+verbatim with the esptool write cut out.  esptool is a stub (fake-esptool.cmd)
+that prints the image-info output captured in WSL.  Run on Windows 11 cmd.exe.
+
+######## t-dualboot.cmd
+== esptool 5.4.0 RESULT ok 
+== esptool 6.0.1 RESULT ok 
+== esptool 5.10.0 RESULT ok 
+== esptool 5.3.2, too old RESULT fail
+== esptool 4.8.1, too old RESULT fail
+== esptool missing RESULT fail
+== hash, dual-boot bootloader RESULT ok 
+== hash, dual-boot table RESULT ok 
+== hash, wrong file RESULT fail
+== hash, missing file RESULT fail
+== image, good RESULT ok 
+== image, invalid hash RESULT fail
+== image, not an image RESULT fail
+== image, too big RESULT fail
+== image, missing RESULT fail
+== args: [] PORT=[COM10] MODE=[all] SCOPE=[full] LSET=[release]
+== args: [COM7] PORT=[COM7] MODE=[all] SCOPE=[full] LSET=[release]
+== args: [app] PORT=[COM10] MODE=[app] SCOPE=[full] LSET=[release]
+== args: [COM7 app] PORT=[COM7] MODE=[app] SCOPE=[full] LSET=[release]
+== args: [app COM3] PORT=[COM3] MODE=[app] SCOPE=[full] LSET=[release]
+== args: [ALL com4] PORT=[com4] MODE=[all] SCOPE=[full] LSET=[release]
+######## t-standalone.cmd
+== bootloader, v2 RESULT ok 
+== bootloader, too big RESULT fail
+== bootloader, invalid RESULT fail
+== table, v2 RESULT ok 
+== table, wrong size RESULT fail
+== image, good, standalone size RESULT ok 
+######## t-back.cmd
+== release bootloader RESULT ok 
+== release Image RESULT ok 
+== blank RESULT ok 
+== be5b725 flash.bin by the relative path RESULT ok 
+== args: [] PORT=[COM10] MODE=[all] SCOPE=[full] LSET=[release]
+== args: [small] PORT=[COM10] MODE=[all] SCOPE=[small] LSET=[release]
+== args: [COM5 small be5b725] PORT=[COM5] MODE=[all] SCOPE=[small] LSET=[be5b725]
+== args: [be5b725] PORT=[COM10] MODE=[all] SCOPE=[full] LSET=[be5b725]
+== args: [full release COM9] PORT=[COM9] MODE=[all] SCOPE=[full] LSET=[release]
+
+######## main flow
+######## dualboot all, answer Y
+
+tiny386 dual boot for the Korvo-1, mode all, port COM10
+
+Checking the files ...
+  esptool 5.4.0
+  bootloader.bin: SHA-256 as built (b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f)
+  partition-table.bin: SHA-256 as built (d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346)
+  tiny386.bin: 1482096 bytes, a valid ESP32-S31 app image:
+Validation hash: 673e9c09f9fd7de56a9c628d82d3e6cd9498360308dc02645c03b1151dd76189 (valid)
+Project name: tiny386
+App version: pristine-dirty
+ESP-IDF: v6.1-dev-8142-g188e3e55bb
+
+Will write to the board on COM10:
+  0x002000  dualboot\bootloader.bin       the dual-boot bootloader, tiny386 while GPIO42 is held low
+  0x008000  dualboot\partition-table.bin  the Linux table plus tiny386 at 0xE20000
+  0xE20000  D:\Repos\esp32-s31-linux-release\tiny386-idf\v2\images\tiny386.bin
+            tiny386, 1482096 of 1966080 bytes
+Only the 4 KB sectors these files cover are erased.  Linux, 0x11000 to
+0xC1FFFF, is left as it is.
+
+Command:
+  <stub> -c esp32s31 -p COM10 -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep 0x2000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\bootloader.bin" 0x8000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\partition-table.bin" 0xE20000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v2\images\tiny386.bin"
+
+Type Y and press Enter to write, anything else stops: WOULD WRITE: <stub> -c esp32s31 -p COM10 -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep 0x2000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\bootloader.bin" 0x8000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\partition-table.bin" 0xE20000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v2\images\tiny386.bin"
+exit 0
+######## dualboot app COM7, answer N
+
+tiny386 dual boot for the Korvo-1, mode app, port COM7
+
+Checking the files ...
+  esptool 5.4.0
+  tiny386.bin: 1482096 bytes, a valid ESP32-S31 app image:
+Validation hash: 673e9c09f9fd7de56a9c628d82d3e6cd9498360308dc02645c03b1151dd76189 (valid)
+Project name: tiny386
+App version: pristine-dirty
+ESP-IDF: v6.1-dev-8142-g188e3e55bb
+
+Will write to the board on COM7:
+  0xE20000  D:\Repos\esp32-s31-linux-release\tiny386-idf\v2\images\tiny386.bin
+            tiny386, 1482096 of 1966080 bytes
+Only the 4 KB sectors these files cover are erased.  Linux, 0x11000 to
+0xC1FFFF, is left as it is.
+
+Command:
+  <stub> -c esp32s31 -p COM7 -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep 0xE20000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v2\images\tiny386.bin"
+
+Type Y and press Enter to write, anything else stops: Stopped.  Nothing was written.
+exit 1
+######## standalone, answer Y
+
+tiny386 standalone for the Korvo-1, port COM10
+
+Checking the files ...
+  esptool 5.4.0
+  bootloader.bin: 22016 bytes, a valid ESP32-S31 image
+  partition-table.bin: 3072 bytes
+  tiny386.bin: 1482096 bytes, a valid ESP32-S31 app image:
+Validation hash: 673e9c09f9fd7de56a9c628d82d3e6cd9498360308dc02645c03b1151dd76189 (valid)
+Project name: tiny386
+App version: pristine-dirty
+ESP-IDF: v6.1-dev-8142-g188e3e55bb
+
+Will write to the board on COM10:
+  0x002000  D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\..\v2\images\bootloader\bootloader.bin
+  0x008000  D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\..\v2\images\partition_table\partition-table.bin
+  0x010000  D:\Repos\esp32-s31-linux-release\tiny386-idf\v2\images\tiny386.bin
+            tiny386, 1482096 of 1835008 bytes
+
+THIS REPLACES LINUX.  It overwrites the Linux bootloader and partition
+table, and erases 0x10000 onwards for tiny386, which covers Linux's nvs,
+otadata, phy_init and the Linux loader.  Back to Linux afterwards:
+  back-to-linux.bat COM10 full
+
+Command:
+  <stub> -c esp32s31 -p COM10 -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep 0x2000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\..\v2\images\bootloader\bootloader.bin" 0x8000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\..\v2\images\partition_table\partition-table.bin" 0x10000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v2\images\tiny386.bin"
+
+Type Y and press Enter to write, anything else stops: WOULD WRITE: <stub> -c esp32s31 -p COM10 -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep 0x2000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\..\v2\images\bootloader\bootloader.bin" 0x8000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\..\v2\images\partition_table\partition-table.bin" 0x10000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v2\images\tiny386.bin"
+exit 0
+######## back-to-linux default, answer Y
+
+Back to Linux on the Korvo-1: full, release files, port COM10
+
+Checking the files ...
+  esptool 5.4.0
+  bootloader.bin: SHA-256 matches
+  partition-table.bin: SHA-256 matches
+  blank-0x9000-0x1ffff.bin: SHA-256 matches
+  s31-linux-loader.bin: SHA-256 matches
+  opensbi.bin: SHA-256 matches
+  Image: SHA-256 matches
+  linux.size: SHA-256 matches
+  initramfs.cpio: SHA-256 matches
+
+Will write to the board on COM10:
+  the release v2026.09.20 set: bootloader, table, loader, OpenSBI, kernel, initramfs
+  and 0xFF over 0x9000 to 0x1FFFF: nvs, otadata and phy_init left blank
+Nothing at or above 0xC20000 is erased or written: a tiny386 at 0xE20000 stays.
+
+Command:
+  <stub> -c esp32s31 -p COM10 -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep 0x2000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\bootloader\bootloader\bootloader.bin" 0x8000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\bootloader\partition_table\partition-table.bin" 0x9000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\blank-0x9000-0x1ffff.bin" 0x20000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\bootloader\s31-linux-loader.bin" 0x220000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\opensbi.bin" 0x2a0000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\Image" 0xa1fff4 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\linux.size" 0xa20000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\initramfs.cpio"
+
+Type Y and press Enter to write, anything else stops: WOULD WRITE: <stub> -c esp32s31 -p COM10 -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep 0x2000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\bootloader\bootloader\bootloader.bin" 0x8000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\bootloader\partition_table\partition-table.bin" 0x9000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\blank-0x9000-0x1ffff.bin" 0x20000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\bootloader\s31-linux-loader.bin" 0x220000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\opensbi.bin" 0x2a0000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\Image" 0xa1fff4 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\linux.size" 0xa20000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\initramfs.cpio"
+exit 0
+######## back-to-linux small be5b725, answer y
+
+Back to Linux on the Korvo-1: small, be5b725 files, port COM10
+
+Checking the files ...
+  esptool 5.4.0
+  bootloader.bin: SHA-256 matches
+  partition-table.bin: SHA-256 matches
+
+Will write to the board on COM10:
+  the Linux bootloader at 0x2000 and the Linux partition table at 0x8000
+  This undoes flash-dualboot.bat only.  After flash-standalone.bat use full.
+Nothing at or above 0xC20000 is erased or written: a tiny386 at 0xE20000 stays.
+
+Command:
+  <stub> -c esp32s31 -p COM10 -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep 0x2000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\..\..\main-be5b725\esp32s31-linux-main-be5b725-flash\bootloader.bin" 0x8000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\..\..\main-be5b725\esp32s31-linux-main-be5b725-flash\partition-table.bin"
+
+Type Y and press Enter to write, anything else stops: WOULD WRITE: <stub> -c esp32s31 -p COM10 -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep 0x2000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\..\..\main-be5b725\esp32s31-linux-main-be5b725-flash\bootloader.bin" 0x8000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\..\..\main-be5b725\esp32s31-linux-main-be5b725-flash\partition-table.bin"
+exit 0
+######## back-to-linux full be5b725 COM4, answer Y
+
+Back to Linux on the Korvo-1: full, be5b725 files, port COM4
+
+Checking the files ...
+  esptool 5.4.0
+  flash.bin: SHA-256 matches
+
+Will write to the board on COM4:
+  be5b725's flash.bin over 0x0 to 0xC1FFFF, about 12.7 MB
+Nothing at or above 0xC20000 is erased or written: a tiny386 at 0xE20000 stays.
+
+Command:
+  <stub> -c esp32s31 -p COM4 -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep 0x0 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\..\..\main-be5b725\esp32s31-linux-main-be5b725-flash\flash.bin"
+
+Type Y and press Enter to write, anything else stops: WOULD WRITE: <stub> -c esp32s31 -p COM4 -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep 0x0 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\..\..\main-be5b725\esp32s31-linux-main-be5b725-flash\flash.bin"
+exit 0
+######## back-to-linux release small, empty answer
+
+Back to Linux on the Korvo-1: small, release files, port COM10
+
+Checking the files ...
+  esptool 5.4.0
+  bootloader.bin: SHA-256 matches
+  partition-table.bin: SHA-256 matches
+
+Will write to the board on COM10:
+  the Linux bootloader at 0x2000 and the Linux partition table at 0x8000
+  This undoes flash-dualboot.bat only.  After flash-standalone.bat use full.
+Nothing at or above 0xC20000 is erased or written: a tiny386 at 0xE20000 stays.
+
+Command:
+  <stub> -c esp32s31 -p COM10 -b 921600 -a hard-reset write-flash -fm keep -ff keep -fs keep 0x2000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\bootloader\bootloader\bootloader.bin" 0x8000 "D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\dualboot\linux-v2026.09.20\bootloader\partition_table\partition-table.bin"
+
+Type Y and press Enter to write, anything else stops: Stopped.  Nothing was written.
+exit 1
+######## dualboot with TINY386_BIN unset (default path v3\images)
+
+tiny386 dual boot for the Korvo-1, mode all, port COM10
+
+Checking the files ...
+  esptool 5.4.0
+  bootloader.bin: SHA-256 as built (b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f)
+  partition-table.bin: SHA-256 as built (d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346)
+  tiny386 image not found: D:\Repos\esp32-s31-linux-release\tiny386-idf\v3\images\tiny386.bin
+  Set TINY386_BIN in flash-paths.cmd to the tiny386.bin to write.
+
+Stopped before writing anything.
+exit 1

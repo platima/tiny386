@@ -1,0 +1,21 @@
+Host test 18 (board_check_test.c) against faulty copies of dosboard.c (v3.6), 2026-10-22: each
+fault is one change to the file (board-check-mutants-v3.6.py), built as run.sh builds the test.
+A fault is caught when the test fails.  The unchanged file first, which has to pass.
+  unchanged: exit 0, board_check_test: 17 of 17 cases as expected: PASS
+  no-pullup: caught, cases failed: K1 K2 K3 K4 K5 K6 D2 D3 D4 D5 D6 D11 (GPIO46 read with no pull-up (floating pins read as nothing pulls them))
+  pulldown: caught, cases failed: K1 K2 K3 K4 K5 K6 D2 D3 D4 D5 D6 D11 (GPIO46 read with the pull-down in place of the pull-up)
+  not-restored: caught, cases failed: K1 K2 K3 K4 K5 K6 D2 D3 D4 D5 D6 D11 (GPIO46 left with its pull-up on)
+  inverted: caught, cases failed: K1 K2 K3 K4 K5 K6 D2 D3 D4 D5 D6 D11 (the strap's sense inverted)
+  no-gate: caught, cases failed: K1 K2 K3 K5 K6 D6 (no strap gate: the reset tried whatever GPIO46 reads)
+  v35-stop: caught, cases failed: K4 D4 D5 (a Korvo-1 address stops the check even with GPIO46 low (v3.5's rule))
+  strap-first: caught, cases failed: K6 D1 D7 D8 D10 (GPIO46 read before the first probe, on every board)
+  output46: caught, cases failed: K1 K2 K3 K4 K5 K6 D2 D3 D4 D5 D6 D11 (GPIO46 read as an input and output)
+  rstn-order: caught, cases failed: K4 D1 D2 D3 D4 D5 D7 D10 D11 (RSTN made an output before it is set high)
+  rstn-early: caught, cases failed: K1 K2 K3 K4 K5 K6 D1 D2 D3 D4 D5 D6 D7 D8 D10 D11 (RSTN taken before the first probe (as v3.4 did))
+  mute-order: caught, cases failed: D1 D2 D3 D4 D5 D7 (GPIO48 made an output before it is set low)
+  mute-high: caught, cases failed: D1 D2 D3 D4 D5 D7 (GPIO48 set high by the board check)
+  msg-strap: caught, cases failed: K3 K5 K6 D6 (the halt message without GPIO46)
+  no-note: caught, cases failed: D4 D5 (no console note for a device on J202)
+  one-read-high: caught, cases failed: K6 (a single high read among low ones ignored (any low read taken as low))
+  no-reset-46: caught, cases failed: K1 K2 K3 K4 K5 K6 D2 D3 D4 D5 D6 D11 (no strap read at all, the fallback as v3.5 had it (Korvo-1 addresses stop it))
+16 of 16 faults caught

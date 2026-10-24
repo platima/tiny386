@@ -1,0 +1,17 @@
+MODE13X.COM (checks\mode13x\) and the Linux route's BMODES.COM under FreeDOS 4M, gen 4, no FPU, in the
+flicker harness with -board (every picture against the reference, the count of black), v4.3 (r43)
+against apply42's v4.2 runs (r42).  fhchk-v4.3.sh part 4 (checks\flicker\).  2026-10-24.
+
+==== 4. MODE13X and BMODES
+== m13x-256K: v4.3 against v4.2: END same; 8 shots, 0 differ
+   421 pictures; 421 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first 
+   black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 7 steps; vga_black() made 49824 pixels black in 3 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   every board line v4.2's
+== m13x-768K: v4.3 against v4.2: END same; 8 shots, 0 differ
+   421 pictures; 421 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first 
+   black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 7 steps; vga_black() made 49824 pixels black in 3 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   every board line v4.2's
+== bmodes-256K: v4.3 against v4.2: END same; 15 shots, 0 differ
+   433 pictures; 433 checked against the reference: 0 differ (0 pixels, 0 of them black where the reference is not), first 
+   black between two pictures (apply42): clears made around a picture (VGA_CLEAR_AROUND) in 12 steps; vga_black() made 110364 pixels black in 3 steps, 0 of them (in 0 steps) not black once the picture was done; a clear's memset() made 0 panel pixels black, 0 of them (in 0 steps) not black once the picture was done; first at step 0
+   every board line v4.2's

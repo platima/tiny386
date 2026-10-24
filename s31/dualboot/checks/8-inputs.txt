@@ -1,0 +1,28 @@
+### 8. the copied inputs against their originals
+== release zip
+12eb3efd854504748032cabc30dcfa1815f3df42877ff930f64c653f6753eade  /mnt/d/Repos/esp32-s31-linux-release/esp32-s31-linux-flash-v2026.09.20.zip
+12eb3efd854504748032cabc30dcfa1815f3df42877ff930f64c653f6753eade  /mnt/d/Repos/esp32-s31-linux-release/esp32-s31-linux-flash-v2026.09.20.zip
+  same  d04e9f631b9cfeabd9ec4be21196c5edc181bd4bb857591557189832d3b64f52  Image
+  same  0e0a90b415952475af61c9a76184c69d7b8f805be7dde960b933b8ee0b926a4c  linux.size
+  same  3eeafc1002ae31227598b716a1d5b593d43331b95afddbc20078431de6152e3c  flash.bat
+  same  9426b1aaf1ee2746afcf193a52ad12d4c6daab1e7256d691241de5d1eb0cf7dd  initramfs.cpio
+  same  c8c51fdf3de3668ccedb630ca0815065badd6d7cb425043ce534d60d6353b42f  opensbi.bin
+  same  c1af4169ad043b413b3e80457fa7ad72b8b9e49abbeb9f93e50f85fc4747e9ba  flash.sh
+  same  a064c58f8c2b40f289cb27f3ed288834955442e7ca7a301e9e1a10a3d50d7603  bootloader/s31-linux-loader.bin
+  same  520538d3a006f75c6f02a5a2f13ef1287c9903b118acaa82a74b774862bf16da  bootloader/partition_table/partition-table.bin
+  same  41d5a68752936c7b65dadb3081e4ebefc649af76cc1af450bda508e3b3455d1b  bootloader/bootloader/bootloader.bin
+== be5b725 package
+  same  547c6a5b30551de678c14fa979ed6d50821d346988b111d531b09610b157a6fe  bootloader.bin
+  same  520538d3a006f75c6f02a5a2f13ef1287c9903b118acaa82a74b774862bf16da  partition-table.bin
+  same  f8f95a8cab8b99d4807a35cfba72153d17fc6467db68197480848d1f2d7295c8  s31-linux-loader.bin
+  same  b9362b5ff38e71a3bbc03d20d10ecb825f339d32c4be2aa6a342ce13274b187e  opensbi.bin
+  same  319fc1cc7ed9a69d1c7ce92d9560238c292d65162da15fd891066bbc7e29e4af  Image
+  same  853e2c0dc5400a29ad91799804a1ecae91650be37f303a4af6951bee249badb5  linux.size
+  same  57fca8f577f28c37731310e552d66f69a8d5179bc7263b4b3b52326acb694c04  initramfs.cpio
+  same  f48b83f750dc96f635bf222afa6bbd60114d4d14bbbc7533bebff864ae5fb1a1  flash.bin
+  same  9365d2527d56c618954a70ab28b21abb1952c8f90319ee613ee06927c2030e42  flash_args
+== v2 images
+  same  ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  bootloader/bootloader.bin
+  same  afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  partition_table/partition-table.bin
+  same  56e7dbe8849d4af4bade19e63f9470fd2fe1c60c12ed760283cc3cc41976038f  tiny386.bin
+  same  9405984b6f70c6807bad62aa15258e75558ac0389925688402c00e72da186f0a  flash_args

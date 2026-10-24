@@ -1,0 +1,180 @@
+The Linux route (D:\Repos\esp32-s31-linux-release\tiny386) built with research\win95-core-v3.9.patch
+after its own patch, both variants, and its own tests (WSL ~/win95-debug/fix-v39: lr.sh,
+lrbuild39.sh made from the emulator review's lrbuild.sh, run-tests-v39.sh made from the route's
+run-tests.sh with its one pkill by pattern replaced by a line that records PIDs), 2026-10-23.
+
+49,51c49,51
+< if [ "${V38:-0}" = 1 ]; then
+<     echo "== v3.8 core patch (research/win95-core-v3.8.patch) =="
+<     CP=/mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/research/win95-core-v3.8.patch
+---
+> if [ "${V39:-0}" = 1 ]; then
+>     echo "== v3.9 core patch (research/win95-core-v3.9.patch) =="
+>     CP=/home/owner/win95-debug/fix-v39/win95-core-v3.9.patch
+55c55
+<         if [ "$(git -C "$V3" show v3.8:$f | sha256sum)" = "$(sha256sum < $f)" ]; then echo "$f: the same as v3.8's"; else echo "$f: DIFFERS from v3.8's"; exit 1; fi
+---
+>         if [ "$(git -C "$V3" show v3.9:$f | sha256sum)" = "$(sha256sum < $f)" ]; then echo "$f: the same as v3.9's"; else echo "$f: DIFFERS from v3.9's"; exit 1; fi
+206c206
+< " " ")" >> /home/owner/win95-debug/review-emulator-and-windows/guard-left.txt; }
+---
+> " " ")" >> /home/owner/win95-debug/fix-v39/guard-left.txt; }
+no pkill or killall left
+dl/SDL-1.2.15.tar.gz: OK
+== v3.9 core patch (research/win95-core-v3.9.patch) ==
+i386.c: the same as v3.9's
+i386.h: the same as v3.9's
+i8254.c: the same as v3.9's
+i8254.h: the same as v3.9's
+ i386.c  | 291 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++-------
+ i386.h  |   3 +
+ i8254.c |  29 +++++++
+ i8254.h |   6 ++
+ misc.c  |  40 +++++++++
+ 5 files changed, 338 insertions(+), 31 deletions(-)
+warnings: 5
+-rwxr-xr-x 1 owner owner 591508 Oct 22 23:41 tiny386-korvo
+216287736691e26ec80a1d10a895544255c80601ebb18ef0f405be48dd591fd2  tiny386-korvo
+
+real	0m25.048s
+user	0m28.396s
+sys	0m3.499s
+=====
+dl/SDL-1.2.15.tar.gz: OK
+== v3.9 core patch (research/win95-core-v3.9.patch) ==
+i386.c: the same as v3.9's
+i386.h: the same as v3.9's
+i8254.c: the same as v3.9's
+i8254.h: the same as v3.9's
+ i386.c  | 291 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++-------
+ i386.h  |   3 +
+ i8254.c |  29 +++++++
+ i8254.h |   6 ++
+ misc.c  |  40 +++++++++
+ 5 files changed, 338 insertions(+), 31 deletions(-)
+warnings: 5
+-rwxr-xr-x 1 owner owner 603796 Oct 22 23:41 tiny386-korvo-ua
+3818f5dbaa2eea75ed4ed9dd3b729c6452d8e737b623fa934cb23066198314a7  tiny386-korvo-ua
+
+real	0m25.896s
+user	0m29.260s
+sys	0m3.553s
+same warnings as the review's baseline
+tests start Thu Oct 22 11:41:30 PM AWST 2026
+v39 exit 0 Thu Oct 22 11:45:48 PM AWST 2026
+v39-ua exit 0 Thu Oct 22 11:50:02 PM AWST 2026
+== v39
+PASS  usage
+PASS  no-bios
+PASS  no-disk
+PASS  no-serial
+PASS  bad-floppy
+PASS  no-memory: tiny386: guest memory 2048 KiB + video memory 256 KiB = 2304 KiB, and about 1024 KiB for the emulator
+PASS  no-memory-forced
+PASS  none: tiny386: 5000692 instructions in 0.2 s of running: 23.263 million a second
+PASS  none-time
+PASS  none-kips: tiny386: 2003361 instructions in 4.1 s of running: 0.494 million a second
+PASS  marks: 9 pieces timed
+PASS  hostbench: This build takes them apart first.
+PASS  term-hd: FreeDOS from the hard disk to a prompt, and off
+PASS  term-bench-2M: BENCH wants 4 MB, and says so
+PASS  term-quit: Ctrl+] ends it
+PASS  term-floppy: FreeDOS from the boot floppy to a prompt
+PASS  screen-text: picture: 573x397 at (40,42), 1 colours; 18 lines of text read back
+PASS  screen-size: a [display] of another size is put right
+PASS  screen-mode13: mode 13h: picture: 640x400 at (80,40), 241 colours
+PASS  screen-mode12: mode 12h: picture: 640x476 at (80,4), 15 colours
+PASS  screen-mode12-text: text by the BIOS on mode 12h, the quick way and the plain: picture: 640x476 at (80,4), 15 colours
+PASS  quit-key: Ctrl+Alt+Backspace
+PASS  sigterm
+PASS  kill9: the guard put the console back
+PASS  kill9-noguard: without the guard the console stays as it was left, and --fix-console puts it back
+PASS  screen-no-memory: too little memory is said before the screen is touched
+26 passed, 0 failed
+== v39-ua
+PASS  usage
+PASS  no-bios
+PASS  no-disk
+PASS  no-serial
+PASS  bad-floppy
+PASS  no-memory: tiny386: guest memory 2048 KiB + video memory 256 KiB = 2304 KiB, and about 1024 KiB for the emulator
+PASS  no-memory-forced
+PASS  none: tiny386: 5000442 instructions in 0.2 s of running: 21.216 million a second
+PASS  none-time
+PASS  none-kips: tiny386: 2003393 instructions in 4.1 s of running: 0.492 million a second
+PASS  marks: 9 pieces timed
+PASS  hostbench: This build leaves them to the processor.
+PASS  term-hd: FreeDOS from the hard disk to a prompt, and off
+PASS  term-bench-2M: BENCH wants 4 MB, and says so
+PASS  term-quit: Ctrl+] ends it
+PASS  term-floppy: FreeDOS from the boot floppy to a prompt
+PASS  screen-text: picture: 573x394 at (40,42), 1 colours; 18 lines of text read back
+PASS  screen-size: a [display] of another size is put right
+PASS  screen-mode13: mode 13h: picture: 640x400 at (80,40), 241 colours
+PASS  screen-mode12: mode 12h: picture: 640x476 at (80,4), 15 colours
+PASS  screen-mode12-text: text by the BIOS on mode 12h, the quick way and the plain: picture: 640x476 at (80,4), 15 colours
+PASS  quit-key: Ctrl+Alt+Backspace
+PASS  sigterm
+PASS  kill9: the guard put the console back
+PASS  kill9-noguard: without the guard the console stays as it was left, and --fix-console puts it back
+PASS  screen-no-memory: too little memory is said before the screen is touched
+26 passed, 0 failed
+no console guard running
+
+==== the tests, each case
+== v39
+PASS  usage
+PASS  no-bios
+PASS  no-disk
+PASS  no-serial
+PASS  bad-floppy
+PASS  no-memory: tiny386: guest memory 2048 KiB + video memory 256 KiB = 2304 KiB, and about 1024 KiB for the emulator
+PASS  no-memory-forced
+PASS  none: tiny386: 5000692 instructions in 0.2 s of running: 23.263 million a second
+PASS  none-time
+PASS  none-kips: tiny386: 2003361 instructions in 4.1 s of running: 0.494 million a second
+PASS  marks: 9 pieces timed
+PASS  hostbench: This build takes them apart first.
+PASS  term-hd: FreeDOS from the hard disk to a prompt, and off
+PASS  term-bench-2M: BENCH wants 4 MB, and says so
+PASS  term-quit: Ctrl+] ends it
+PASS  term-floppy: FreeDOS from the boot floppy to a prompt
+PASS  screen-text: picture: 573x397 at (40,42), 1 colours; 18 lines of text read back
+PASS  screen-size: a [display] of another size is put right
+PASS  screen-mode13: mode 13h: picture: 640x400 at (80,40), 241 colours
+PASS  screen-mode12: mode 12h: picture: 640x476 at (80,4), 15 colours
+PASS  screen-mode12-text: text by the BIOS on mode 12h, the quick way and the plain: picture: 640x476 at (80,4), 15 colours
+PASS  quit-key: Ctrl+Alt+Backspace
+PASS  sigterm
+PASS  kill9: the guard put the console back
+PASS  kill9-noguard: without the guard the console stays as it was left, and --fix-console puts it back
+PASS  screen-no-memory: too little memory is said before the screen is touched
+26 passed, 0 failed
+== v39-ua
+PASS  usage
+PASS  no-bios
+PASS  no-disk
+PASS  no-serial
+PASS  bad-floppy
+PASS  no-memory: tiny386: guest memory 2048 KiB + video memory 256 KiB = 2304 KiB, and about 1024 KiB for the emulator
+PASS  no-memory-forced
+PASS  none: tiny386: 5000442 instructions in 0.2 s of running: 21.216 million a second
+PASS  none-time
+PASS  none-kips: tiny386: 2003393 instructions in 4.1 s of running: 0.492 million a second
+PASS  marks: 9 pieces timed
+PASS  hostbench: This build leaves them to the processor.
+PASS  term-hd: FreeDOS from the hard disk to a prompt, and off
+PASS  term-bench-2M: BENCH wants 4 MB, and says so
+PASS  term-quit: Ctrl+] ends it
+PASS  term-floppy: FreeDOS from the boot floppy to a prompt
+PASS  screen-text: picture: 573x394 at (40,42), 1 colours; 18 lines of text read back
+PASS  screen-size: a [display] of another size is put right
+PASS  screen-mode13: mode 13h: picture: 640x400 at (80,40), 241 colours
+PASS  screen-mode12: mode 12h: picture: 640x476 at (80,4), 15 colours
+PASS  screen-mode12-text: text by the BIOS on mode 12h, the quick way and the plain: picture: 640x476 at (80,4), 15 colours
+PASS  quit-key: Ctrl+Alt+Backspace
+PASS  sigterm
+PASS  kill9: the guard put the console back
+PASS  kill9-noguard: without the guard the console stays as it was left, and --fix-console puts it back
+PASS  screen-no-memory: too little memory is said before the screen is touched
+26 passed, 0 failed

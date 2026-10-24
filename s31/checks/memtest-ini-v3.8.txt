@@ -1,0 +1,32 @@
+psram_test() and ini_whole() cut out of esp_main.c at tag v3.8 (3bded9d) and run on the PC with
+fix 1's harness (~/win95-debug/fix/memtest_harness.c), 2026-10-22.  verbose_log, new in fix 2, is
+read through the same ini_whole(name, value, 0, 1, ...) as uart_log.
+677:	} else if (NAME("uart_log")) {
+678-		ini_whole(name, value, 0, 1, &conf->uart_log);
+679:	} else if (NAME("verbose_log")) {
+680-		ini_whole(name, value, 0, 1, &conf->verbose_log);
+75
+  ok: memtest = 0: nothing done
+    [0] PSRAM test ([esp] memtest = 2): 14336 KiB, the emulator's pool...
+    [1] PSRAM test: 2 passes over 14336 KiB, every word right (1 ms).
+  ok: 2 passes over a good pool
+  ok: the pool zeroed after
+    [0] PSRAM test ([esp] memtest = 1): 14336 KiB, the emulator's pool...
+    [3] PSRAM test: 1 word wrong in 1 pass; the first at d8e5eb10, 6be084b9 written, 6be184b9 read; bits wrong anywhere 00010000. The board's PSRAM does not keep what it is given.
+  ok: a bit that flipped is found: PSRAM test: 1 word wrong in 1 pass; the first at d8e5eb10, 6be084b9 written, 6be184b9 read; bits wrong anywhere 00010000. The board's PSRAM does not keep what it is given.
+  ok: ini_whole("2", 0 to 10) from 0: 2 (2 wanted)
+  ok: ini_whole("0", 0 to 10) from 5: 0 (0 wanted)
+    [2] test.ini: key = 11 is not a whole number from 0 to 10; 0 is used.
+  ok: ini_whole("11", 0 to 10) from 0: 0 (0 wanted)
+    [2] test.ini: key = -1 is not a whole number from 0 to 10; 3 is used.
+  ok: ini_whole("-1", 0 to 10) from 3: 3 (3 wanted)
+    [2] test.ini: key = x is not a whole number from 0 to 1; 1 is used.
+  ok: ini_whole("x", 0 to 1) from 1: 1 (1 wanted)
+  ok: ini_whole("1 ", 0 to 1) from 0: 1 (1 wanted)
+    [2] test.ini: key =  is not a whole number from 0 to 1; 1 is used.
+  ok: ini_whole("", 0 to 1) from 1: 1 (1 wanted)
+  ok: ini_whole("1000", 0 to 1000) from 1: 1000 (1000 wanted)
+    [2] test.ini: key = 0x10 is not a whole number from 0 to 1000; 1 is used.
+  ok: ini_whole("0x10", 0 to 1000) from 1: 1 (1 wanted)
+memtest harness: 0 failed
+exit 0

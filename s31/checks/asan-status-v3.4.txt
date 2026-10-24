@@ -1,0 +1,7 @@
+tests/host/test_status.c with esp/main/status_code.c at v3.4 (a33b7cf), built with
+-fsanitize=address,undefined -fno-sanitize-recover=all (host gcc), run with address randomisation off (setarch -R).
+exit 0
+bit-bang: v3.3's layout and times at 80 MHz: T1H 562.5 ns as sent, under the WS2812B-2020's 580 (the v3.3 review's finding, seen)
+bit-bang: cycles at 80 MHz: T0H 27, T0 104, T1H 56, T1 106, reset 24000; at 320 MHz four times as many
+status LED: 34460 checks, 0 failed
+sanitizer reports: 0

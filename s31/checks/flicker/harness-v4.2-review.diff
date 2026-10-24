@@ -1,0 +1,217 @@
+--- /home/owner/flicker/fix/h/harness/instr_vga.py	2026-10-23 19:10:29.685859997 +0800
++++ harness/instr_vga.py	2026-10-23 21:52:58.872210426 +0800
+@@ -25,7 +25,8 @@
+ /* ---- flicker harness hooks (instr_vga.py) ---- */
+ void pcr_ev(int kind, long a, long b, long c);
+ enum { PCR_EV_CLEARED = 1, PCR_EV_CLEAR_SITE, PCR_EV_ASK_FORCE, PCR_EV_ASK_CRT,
+-       PCR_EV_ASK_WHOLE, PCR_EV_VGA_W, PCR_EV_VBE_W, PCR_EV_3DA };
++       PCR_EV_ASK_WHOLE, PCR_EV_VGA_W, PCR_EV_VBE_W, PCR_EV_3DA, PCR_EV_AROUND };
++void pcr_black(const uint16_t *d, int n);
+ static void pcr_vga_w(VGAState *s, uint32_t addr, uint32_t val);
+ void pcr_vwrite(int lfb, uint32_t addr, uint32_t len);
+ '''
+@@ -38,6 +39,18 @@
+ k = src.index('    simplefb_clear(s->fb_dev);\n', m.end()) + len('    simplefb_clear(s->fb_dev);\n')
+ src = src[:k] + '    pcr_ev(PCR_EV_CLEARED, 0, 0, 0);\n' + src[k:]
+ 
++# v4.2's VGA_CLEAR_AROUND (apply42): what vga_black() makes black, and each clear that
++# vga_clear_around() takes (v4.1's vga.c has neither; nothing is added then)
++n_black = 0
++m = re.search(r'static void vga_black\(uint16_t \*d, int n\)\n\{\n', src)
++if m:
++    src = src[:m.end()] + '    pcr_black(d, n);\n' + src[m.end():]
++    m = re.search(r'static void vga_clear_around\(VGAState \*s, int x, int y, int w, int h\)\n\{\n', src)
++    must(m, "vga_black() but no vga_clear_around()")
++    k = src.index('    s->clear_around = false;\n', m.end()) + len('    s->clear_around = false;\n')
++    src = src[:k] + '    pcr_ev(PCR_EV_AROUND, x, y, (long) w * 65536 + h);\n' + src[k:]
++    n_black = 1
++
+ # every call of vga_clear_screen(s);
+ n_sites = 0
+ def site(mo):
+@@ -183,4 +196,5 @@
+ '''
+ src += tail
+ open(p, 'w').write(src)
+-print("instr_vga.py: %d clear sites, %d requests, %d window stores hooked" % (n_sites, n_ask, n_mw))
++print("instr_vga.py: %d clear sites, %d requests, %d window stores hooked, vga_black() %s"
++      % (n_sites, n_ask, n_mw, "hooked" if n_black else "not there"))
+--- /home/owner/flicker/fix/h/harness/headless.c	2026-10-23 20:15:05.522071500 +0800
++++ harness/headless.c	2026-10-23 21:52:58.873052398 +0800
+@@ -444,6 +444,7 @@
+    pcr_ev(), PCR_EV_CLEARED). */
+ static uint16_t *panel;
+ static int in_board_step, in_reference;
++static void bk_done(void);     /* apply42: see pcr_black() */
+ static uint64_t board_flush_rows, board_bands;
+ static pthread_mutex_t ev_lock = PTHREAD_MUTEX_INITIALIZER;
+ static void redraw(void *opaque, int x, int y, int w, int h)
+@@ -805,6 +806,7 @@
+ 	int was = in_board_step;
+ 	in_board_step = opt_board;
+ 	vga_refresh(g_pc->vga, redraw, NULL, 0);
++	bk_done();
+ 	in_board_step = was;
+ 	snprintf(file, sizeof(file), "shot-%s", name);
+ 	save_ppm(file);
+@@ -850,9 +852,9 @@
+ void pcr_vga_info(VGAState *s, struct pcr_vga_info *o);
+ void pcr_vga_reference(VGAState *s, uint8_t *out);
+ enum { PCR_EV_CLEARED = 1, PCR_EV_CLEAR_SITE, PCR_EV_ASK_FORCE, PCR_EV_ASK_CRT,
+-       PCR_EV_ASK_WHOLE, PCR_EV_VGA_W, PCR_EV_VBE_W, PCR_EV_3DA };
++       PCR_EV_ASK_WHOLE, PCR_EV_VGA_W, PCR_EV_VBE_W, PCR_EV_3DA, PCR_EV_AROUND };
+ static const char *const ev_name[] = { "?", "CLEARED", "CLEAR_SITE", "ASK_FORCE",
+-	"ASK_CRT", "ASK_WHOLE", "VGA", "VBE", "3DA" };
++	"ASK_CRT", "ASK_WHOLE", "VGA", "VBE", "3DA", "AROUND" };
+ 
+ /* The guest's stores into video memory (instr_pc.py, instr_vga.py): runs
+    of stores with less than -burst-gap guest instructions between them are
+@@ -928,9 +930,68 @@
+ 	unsigned ask_force, ask_crt, ask_whole, cleared, n3da;
+ 	int sites[4], nsites;
+ 	long flash;             /* panel pixels a clear turned black */
++	/* apply42: clears vga_clear_around() took; pixels vga_black() made black, and
++	   of those, and of the memset()'s, the ones not black once the picture was done */
++	unsigned around;
++	long vb_px, vb_mid, mem_mid;
+ };
+ static struct pcr_acc acc;
+ 
++/* apply42 (the review of v4.2, finding 1): each pixel made black while a
++   picture is drawn, taken to reach the panel at once (the worst case: the
++   cache writes it back before the picture is done).  A clear's memset()
++   (v4.1, or VGA_NO_CLEAR_AROUND) notes the panel pixels it turns black
++   (pcr_ev(), PCR_EV_CLEARED); VGA_CLEAR_AROUND's vga_black() (v4.2) the
++   pixels it is about to make black (pcr_black()).  When the picture is
++   done (bk_done(), straight after the drawing), a noted pixel that is not
++   black in it was black between the old picture and the new one. */
++#define BK_MEMSET 0x80000000u
++static uint32_t *bk_idx;
++static size_t bk_n, bk_cap;
++static void bk_push(uint32_t v)         /* the caller holds ev_lock */
++{
++	if (bk_n == bk_cap) {
++		bk_cap = bk_cap ? bk_cap * 2 : 65536;
++		bk_idx = realloc(bk_idx, bk_cap * sizeof(*bk_idx));
++		if (!bk_idx) {
++			fprintf(stderr, "bk_push: out of memory\n");
++			exit(2);
++		}
++	}
++	bk_idx[bk_n++] = v;
++}
++void pcr_black(const uint16_t *d, int n)
++{
++	if (!opt_board || in_reference || in_snapshot || !in_board_step || n <= 0)
++		return;
++	const uint16_t *f = (const uint16_t *) fb;
++	if (d < f || d + n > f + (size_t) fb_w * fb_h)
++		return;
++	pthread_mutex_lock(&ev_lock);
++	for (int i = 0; i < n; i++)
++		if (d[i]) {
++			bk_push((uint32_t) (d - f) + (uint32_t) i);
++			acc.vb_px++;
++		}
++	pthread_mutex_unlock(&ev_lock);
++}
++static void bk_done(void)
++{
++	const uint16_t *f = (const uint16_t *) fb;
++	pthread_mutex_lock(&ev_lock);
++	for (size_t i = 0; i < bk_n; i++) {
++		uint32_t v = bk_idx[i];
++		if (f[v & ~BK_MEMSET]) {
++			if (v & BK_MEMSET)
++				acc.mem_mid++;
++			else
++				acc.vb_mid++;
++		}
++	}
++	bk_n = 0;
++	pthread_mutex_unlock(&ev_lock);
++}
++
+ #define HIST 16
+ static uint16_t *h_panel[HIST], *h_ref[HIST], *h_mid[HIST], *refbuf;
+ static int h_has_mid[HIST], h_has_ref[HIST], h_mx[HIST], h_my[HIST];
+@@ -945,6 +1006,8 @@
+ 	tot_blipnr_px, tot_rblip_steps, tot_unfl_steps, tot_fbbad, tot_checks, tot_lost_steps,
+ 	tot_lost_px, tot_transient_steps;
+ static uint64_t first_bad_step, first_flash_step;
++static uint64_t tot_around_steps, tot_vb_steps, tot_vb_px, tot_vb_mid_steps, tot_vb_mid_px,
++	tot_mem_mid_steps, tot_mem_mid_px, first_mid_step;      /* apply42 */
+ 
+ static void board_mid_saved(void)
+ {
+@@ -979,7 +1042,10 @@
+ 			size_t n = (size_t) (fb_h - keep) * fb_w;
+ 			long f = 0;
+ 			for (size_t i = 0; i < n; i++)
+-				f += panel[i] != 0;
++				if (panel[i]) {
++					f++;
++					bk_push((uint32_t) i | BK_MEMSET);
++				}
+ 			memset(panel, 0, n * 2);
+ 			acc.flash += f;
+ 			board_mid_saved();
+@@ -992,6 +1058,7 @@
+ 	case PCR_EV_ASK_FORCE: acc.ask_force++; break;
+ 	case PCR_EV_ASK_CRT: acc.ask_crt++; break;
+ 	case PCR_EV_ASK_WHOLE: acc.ask_whole++; break;
++	case PCR_EV_AROUND: acc.around++; break;
+ 	case PCR_EV_VBE_W: acc.vbe_w++; break;
+ 	case PCR_EV_VGA_W:
+ 		acc.vga_w++;
+@@ -1175,6 +1242,7 @@
+ 	board_flush_rows = board_bands = 0;
+ 	in_board_step = 1;
+ 	pc_vga_step(g_pc);
++	bk_done();
+ 	in_board_step = 0;
+ }
+ 
+@@ -1315,6 +1383,25 @@
+ 	tot_steps++;
+ 	if (a.cleared)
+ 		tot_clear_steps++;
++	if (a.around)
++		tot_around_steps++;
++	if (a.vb_px) {
++		tot_vb_steps++;
++		tot_vb_px += a.vb_px;
++	}
++	if (a.vb_mid || a.mem_mid) {
++		if (!first_mid_step)
++			first_mid_step = step_no;
++		if (a.vb_mid) {
++			tot_vb_mid_steps++;
++			tot_vb_mid_px += a.vb_mid;
++			strip_trigger("black-between", 0);
++		}
++		if (a.mem_mid) {
++			tot_mem_mid_steps++;
++			tot_mem_mid_px += a.mem_mid;
++		}
++	}
+ 	if (a.flash) {
+ 		tot_flash_steps++;
+ 		tot_flash_px += a.flash;
+@@ -1458,6 +1545,16 @@
+ 		(unsigned long long) tot_clear_steps, (unsigned long long) tot_flash_steps,
+ 		(unsigned long long) tot_flash_px, (unsigned long long) first_flash_step,
+ 		(unsigned long long) tot_blank_steps);
++	fprintf(hout, "[harness] board: black between two pictures (apply42): clears made around a "
++		"picture (VGA_CLEAR_AROUND) in %llu steps; vga_black() made %llu pixels black in %llu "
++		"steps, %llu of them (in %llu steps) not black once the picture was done; a clear's "
++		"memset() made %llu panel pixels black, %llu of them (in %llu steps) not black once "
++		"the picture was done; first at step %llu\n",
++		(unsigned long long) tot_around_steps, (unsigned long long) tot_vb_px,
++		(unsigned long long) tot_vb_steps, (unsigned long long) tot_vb_mid_px,
++		(unsigned long long) tot_vb_mid_steps, (unsigned long long) tot_flash_px,
++		(unsigned long long) tot_mem_mid_px, (unsigned long long) tot_mem_mid_steps,
++		(unsigned long long) first_mid_step);
+ 	fprintf(hout, "[harness] board: blips (a pixel other for one picture) in %llu pictures, %llu "
+ 		"pixels; in the reference too: %llu pictures; not in the reference: %llu pictures, %llu "
+ 		"pixels\n", (unsigned long long) tot_blip_steps, (unsigned long long) tot_blip_px,

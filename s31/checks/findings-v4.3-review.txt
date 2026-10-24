@@ -1,0 +1,59 @@
+The review of v4.3 (REVIEW-v43.md): each finding checked before it was acted on, 2026-10-24.
+Reads the scratch tree (tags only) and the reviewer's folder ~/v43/review; writes only in ~/v43/apply.
+
+== finding 1: how many files git merged by itself
+  the branch (6e9a6f1) against v4.1: 18 files
+  v4.2 against v4.1: 12 files
+  changed on both sides: esp/main/speed.c esp/version.txt tests/host/run.sh vga.c vga.h 
+  the branch's alone: 13
+  conflicted (checks/merge-v4.3.txt): esp/version.txt, tests/host/run.sh
+  so merged by git by itself: 16 of the branch's files (13 the branch's alone, 3 changed on both sides: esp/main/speed.c vga.c vga.h )
+  files either side changed: 25
+
+== finding 2: what PROTOCOL.md said before this step
+  32:* The firmware side is on the branch `perfport` of the scratch tree (WSL
+  34:  (f61337e), commits listed in section 10; it calls itself `v4.1-perfport`. It is not in any
+  214:| 70h to 77h | FIRMWARE | text | Y | Y | the firmware's version (`esp/version.txt`: "v4.1-perfport" on the branch; the harness: "pc-harness") |
+  341:| Board builds in the tree (`esp/build-pk`, `esp/build-pd`) | exit 0; only the old `i2s.c` warning on the Korvo-1; both images carry "v4.1-perfport" |
+  366:`v4.1-perfport`). `git diff v4.1 perfport` is `checks\fix\perfport-v4.1.patch`, and 1.1's part
+
+== finding 3: the text screen at Windows' shut down from 16 colours (the reviewer's runs on the board model)
+  fb-vga: 8 pictures differ from the guest's screen (steps 19393 to 19400, t 583.8981 to 584.1087 s), 0 of them with a pixel black; the last differs in 89955 pixels, rows 40 to 439
+    [harness] END t=587.652 s insns=802947841 idle=371480944 stall=0.4 s wall=35.0 s cs:eip=f000:0000b9a0 esp=0000ffa8 ss=e000 cr0=00000000 cr3=00000000 f
+  fbp-vga: 8 pictures differ from the guest's screen (steps 19393 to 19400, t 583.8981 to 584.1087 s), 0 of them with a pixel black; the last differs in 89955 pixels, rows 40 to 439
+    [harness] END t=587.652 s insns=802947841 idle=371480944 stall=0.4 s wall=34.1 s cs:eip=f000:0000b9a0 esp=0000ffa8 ss=e000 cr0=00000000 cr3=00000000 f
+  fb42-vga: 4 pictures differ from the guest's screen (steps 19363 to 19366, t 583.7123 to 583.8024 s), 0 of them with a pixel black; the last differs in 89955 pixels, rows 40 to 439
+    [harness] END t=587.349 s insns=1027812116 idle=146003760 stall=0.4 s wall=35.0 s cs:eip=f000:0000b9a0 esp=0000ffa8 ss=e000 cr0=00000000 cr3=00000000 
+  the END lines of fb-vga and fbp-vga, the host's wall time taken out: the same
+    fb-vga: T386MON.LOG d3cd5a5d0fb052d1
+    fbp-vga: T386MON.LOG d3cd5a5d0fb052d1
+
+== finding 4: the harness's own pictures in the port's VBE counts
+  snapshot() in the reviewer's T386MON harness copy:
+    650:static void snapshot(const char *name);
+    683:static void snapshot(const char *name)
+    689:	vga_refresh(g_pc->vga, redraw, NULL, 1);
+    711:	vga_refresh(g_pc->vga, redraw, NULL, 1);
+    733:	vga_refresh(g_pc->vga, redraw, NULL, 0);
+  the same calls in the earlier harness copies:
+    /home/owner/perfapp/pfix/h/harness/headless.c: 2 full redraws
+    /home/owner/flicker/apply42/h/harness/headless.c: 2 full redraws
+    /home/owner/win95-debug/pc-repro/harness/headless.c: 1 full redraws
+  run rv-f11n16 (-snap 5, port read each second): VBE_WHOLE where it rises, 431 to 460 s (blocks on from 430.001 to 460.020)
+    t=431.000 pictures 14304 vbe 11335 whole 81 (was 79)
+    t=436.000 pictures 14470 vbe 11502 whole 82 (was 81)
+    t=441.000 pictures 14637 vbe 11670 whole 83 (was 82)
+    t=446.000 pictures 14803 vbe 11837 whole 84 (was 83)
+    t=451.000 pictures 14970 vbe 12005 whole 85 (was 84)
+    t=456.000 pictures 15137 vbe 12173 whole 86 (was 85)
+    t=460.020 pictures 15271 vbe 12308 whole 87 (was 86)
+  on the board only pc_vga_step() calls vga_refresh():
+    v4.3:pc.c:636:		vga_refresh(pc->vga, perfport_redraw, pc, pc->full_update != 0);
+    v4.3:pc.c:639:		vga_refresh(pc->vga, pc->redraw, pc->redraw_data,
+
+== finding 5: vga_dirty_blocks
+    perfport.c:236:	PERFPORT_PUT(v, ok, PP_I_VBE_BLOCKS_ON, vga_dirty_blocks);
+    vga.c:45:int vga_dirty_blocks = 1;
+    vga.c:51:    __atomic_store_n(&vga_dirty_blocks, on ? 1 : 0, __ATOMIC_RELAXED);
+
+== finding 6: REVIEW-v43.md in the top list before this step: 0

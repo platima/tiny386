@@ -1,0 +1,36 @@
+CONFIG_IDF_TARGET="esp32s31"
+CONFIG_FREERTOS_UNICORE=y
+CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_320=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_OFFSET=0x8000
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_250M=y
+CONFIG_SPIRAM_BOOT_HW_INIT=y
+CONFIG_SPIRAM_BOOT_INIT=y
+CONFIG_SPIRAM_USE_MEMMAP=y
+CONFIG_SPIRAM_MEMTEST=y
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+# NVS is off, so the PHY calibration data cannot be kept.  Request a full
+# calibration at each boot, and do not fail the NVS lookup.
+# CONFIG_ESP_PHY_CALIBRATION_AND_DATA_STORAGE is not set
+# GPIO33/34 are LCD data pins and also the USB Serial/JTAG D-/D+ pins.  The
+# loader does not start the display when a secondary console uses them.
+# This selects the display.  For JTAG and no display, set
+# CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y.
+# Flash and the Linux console use the CP2102N bridge in the two cases.
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+# Dual boot with tiny386 (tiny386-idf v3, DUALBOOT.md): Linux by default,
+# the "test" app partition (tiny386 at 0xE20000) while GPIO42 is held low
+# for a second after reset.  GPIO42 is the Korvo-1's ADC key line; the
+# key at 0.38 V (the bottom of the ladder) reads low.
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions-korvo1-dualboot.csv"
+CONFIG_BOOTLOADER_APP_TEST=y
+CONFIG_BOOTLOADER_NUM_PIN_APP_TEST=42
+CONFIG_BOOTLOADER_APP_TEST_PIN_LOW=y
+CONFIG_BOOTLOADER_HOLD_TIME_GPIO=1

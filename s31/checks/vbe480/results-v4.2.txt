@@ -1,0 +1,50 @@
+BVBE480.COM (checks/vbe480/bvbe480.S, unchanged) in the v4.1 work's PC harness, copied (~/flicker/fix/h41,
+headless.c as checks/vbe480/headless-v4.1.diff has it), FreeDOS 4M, gen 4, no FPU, card/tiny386's
+vgabios.bin and bios.bin; each @shot's picture as the periodic drawing leaves it, held against a full
+redraw and against the picture v4.1's vbe480check.py works out.  v42 is tag v4.2 built with that
+harness; the END lines are held against v4.1's own runs (~/v4-work/v41/h).  2026-10-23.
+
+==== 3. BVBE480: v4.2's 31 runs, and END lines against v4.1's
+vbe480-v42-dosboard-1152K 800x600, 1152 KiB of video memory: 55 pictures, every one right [stopped: guest-done] 
+vbe480-v42-dosboard-1536K 800x600, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-v42-dosboard-1536K-vgathread 800x600, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-v42-dosboard-1M 800x600, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v42-dosboard-1M-vbeblocks0 800x600, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v42-dosboard-1M-vgathread 800x600, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v42-dosboard-2M 800x600, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-v42-dosboard-2M-vgathread 800x600, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-v42-dosboard-768K 800x600, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-v42-dosboard-768K-vgathread 800x600, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-v42-korvo1-1152K 800x480, 1152 KiB of video memory: 55 pictures, every one right [stopped: guest-done] 
+vbe480-v42-korvo1-1536K 800x480, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-v42-korvo1-1536K-vgathread 800x480, 1536 KiB of video memory: 67 pictures, every one right [stopped: guest-done] 
+vbe480-v42-korvo1-1M 800x480, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v42-korvo1-1M-vbeblocks0 800x480, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v42-korvo1-1M-vgathread 800x480, 1024 KiB of video memory: 52 pictures, every one right [stopped: guest-done] 
+vbe480-v42-korvo1-2M 800x480, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-v42-korvo1-2M-vgathread 800x480, 2048 KiB of video memory: 72 pictures, every one right [stopped: guest-done] 
+vbe480-v42-korvo1-768K 800x480, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-v42-korvo1-768K-vbeblocks0 800x480, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+vbe480-v42-korvo1-768K-vgathread 800x480, 768 KiB of video memory: 38 pictures, every one right [stopped: guest-done] 
+  dosboard-1152K: END the same as v4.1's
+  dosboard-1536K: END the same as v4.1's
+  dosboard-1536K-vgathread: END the same as v4.1's
+  dosboard-1M: END the same as v4.1's
+  dosboard-1M-vbeblocks0: END the same as v4.1's
+  dosboard-1M-vgathread: END the same as v4.1's
+  dosboard-2M: END the same as v4.1's
+  dosboard-2M-vgathread: END the same as v4.1's
+  dosboard-768K: END the same as v4.1's
+  dosboard-768K-vgathread: END the same as v4.1's
+  korvo1-1152K: END the same as v4.1's
+  korvo1-1536K: END the same as v4.1's
+  korvo1-1536K-vgathread: END the same as v4.1's
+  korvo1-1M: END the same as v4.1's
+  korvo1-1M-vbeblocks0: END the same as v4.1's
+  korvo1-1M-vgathread: END the same as v4.1's
+  korvo1-2M: END the same as v4.1's
+  korvo1-2M-vgathread: END the same as v4.1's
+  korvo1-768K: END the same as v4.1's
+  korvo1-768K-vbeblocks0: END the same as v4.1's
+  korvo1-768K-vgathread: END the same as v4.1's
+

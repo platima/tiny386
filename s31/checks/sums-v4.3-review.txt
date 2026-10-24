@@ -1,0 +1,43 @@
+SHA256SUMS of tiny386-idf v4.3 made again after the review of v4.3 (BUILD-NOTES.md 28), and every
+checksum list in the package checked, 2026-10-24.
+
+== the top SHA256SUMS: 174 lines
+    174 OK
+== against v4.3's list as first made (173 lines): files whose hash changed
+  BUILD-NOTES.md
+  README.md
+  REVIEW-RESOLUTION.md
+  TEST-PLAN.md
+== new in the list
+  REVIEW-v43.md
+== the images, patches, build.sh and card files: unchanged since v4.3's list
+  checked: 45 files, 0 changed
+== not in the list: research/FLICKER-PLAT-NOTES.md (Plat's reports, added to as they come)
+
+== each image folder's own list
+  images/dosboard/: 5 OK, 0 not
+  images/korvo1-dualboot/: 5 OK, 0 not
+  images/korvo1-dualboot-tiny386-default/: 4 OK, 0 not
+  images/korvo1-standalone/: 5 OK, 0 not
+
+== every previous list, file by file: where each file is found with its hash
+== (the folder itself first, then v3\, then the places README.md names)
+  previous-v4.2: 170 files: itself 29; v3 141; not found 0
+  previous-v4.1: 72 files: itself 29; v3 43; not found 0
+  previous-v4.0: 64 files: itself 33; v3 31; not found 0
+  previous-v3.9: 50 files: itself 27; previous-v4.0 2; v3 21; not found 0
+  previous-v3.8: 45 files: itself 30; previous-v3.9 1; previous-v4.0 1; v3 13; not found 0
+  previous-v3.7: 41 files: checks/bootswap/scripts-before 4; itself 25; previous-v3.8 1; previous-v3.9 1; v3 10; not found 0
+  previous-v3.6: 41 files: checks/bootswap/scripts-before 4; itself 25; previous-v3.8 1; previous-v3.9 1; v3 10; not found 0
+  previous-v3.5: 40 files: checks/bootswap/scripts-before 4; itself 25; previous-v3.6 2; previous-v3.9 1; v3 8; not found 0
+  previous-v3.4: 40 files: checks/bootswap/scripts-before 4; itself 25; previous-v3.5 1; previous-v3.6 2; previous-v3.9 1; v3 7; not found 0
+  previous-v3.3: 39 files: checks/bootswap/scripts-before 4; itself 25; previous-v3.4 1; previous-v3.6 2; previous-v3.9 1; v3 6; not found 0
+  previous-v3.2: 37 files: checks/bootswap/scripts-before 4; itself 23; previous-v3.3 1; previous-v3.6 2; previous-v3.9 1; v3 6; not found 0
+
+== the T386MON folder (..\t386mon): its SHA256SUMS made again, every file but itself, in its order
+  before: 161 lines; 159 OK
+  new files: 0
+  the list: 161 lines; 161 OK
+  files whose hash changed: PROTOCOL.md README.md 
+  files in the folder not in the list: 0
+  perfport.h against the tag's: the same

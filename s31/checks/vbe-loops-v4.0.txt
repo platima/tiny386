@@ -1,0 +1,201 @@
+The conversion loops of vbe_row(), as the Korvo-1 build compiles them (inlined into
+vga_graphic_refresh() in images/korvo1-dualboot/tiny386.elf; the same code as the in-tree build
+~/v4-work/vbe/tree/esp/build-k), from riscv32-esp-elf-objdump.  Each loop's body, a store and
+the flag after it skipped when the screen has the value already.  2026-10-23.
+loop 4001c850..4001c866: 8 instructions
+    4001c850  lw       a6,0(a3)
+    4001c854  lw       a7,0(a4)
+    4001c858  addi     a3,a3,4
+    4001c85a  beq      a6,a7,4001c864 <vga_graphic_refresh+0x1450>
+    4001c85e  sw       a6,0(a4)
+    4001c862  mv       a0,s11
+    4001c864  addi     a4,a4,4
+    4001c866  bne      a1,a3,4001c850 <vga_graphic_refresh+0x143c>
+loop 4001c9c8..4001c9ec: 12 instructions
+    4001c9c8  lw       t5,0(a3)
+    4001c9cc  lw       t4,0(a4)
+    4001c9d0  addi     a3,a3,4
+    4001c9d2  slli     a1,t5,0x1
+    4001c9d6  and      a1,a1,t3
+    4001c9da  and      t5,t5,a7
+    4001c9de  or       a1,a1,t5
+    4001c9e2  beq      a1,t4,4001c9ea <vga_graphic_refresh+0x15d6>
+    4001c9e6  sw       a1,0(a4)
+    4001c9e8  mv       a0,s11
+    4001c9ea  addi     a4,a4,4
+    4001c9ec  bne      a6,a3,4001c9c8 <vga_graphic_refresh+0x15b4>
+loop 4001c916..4001c972: 30 instructions
+    4001c916  lw       a1,0(a3)
+    4001c918  lw       t2,0(a4)
+    4001c91c  addi     a3,a3,4
+    4001c91e  srli     a6,a1,0x6
+    4001c922  andi     a6,a6,1020
+    4001c926  srli     a7,a1,0xe
+    4001c92a  srli     t4,a1,0x18
+    4001c92e  add      a6,a6,t3
+    4001c930  zext.b   a1,a1
+    4001c932  lw       a6,0(a6)
+    4001c936  sh2add   a1,a1,t3
+    4001c93a  lw       a1,0(a1)
+    4001c93c  slli     a6,a6,0x10
+    4001c93e  andi     a7,a7,1020
+    4001c942  or       a6,a6,a1
+    4001c946  sh2add   t4,t4,t3
+    4001c94a  add      a7,a7,t3
+    4001c94c  beq      a6,t2,4001c956 <vga_graphic_refresh+0x1542>
+    4001c950  sw       a6,0(a4)
+    4001c954  mv       a0,s11
+    4001c956  lw       a1,0(t4)
+    4001c95a  lw       a7,0(a7)
+    4001c95e  lw       a6,4(a4)
+    4001c962  slli     a1,a1,0x10
+    4001c964  or       a1,a1,a7
+    4001c968  beq      a1,a6,4001c970 <vga_graphic_refresh+0x155c>
+    4001c96c  sw       a1,4(a4)
+    4001c96e  mv       a0,s11
+    4001c970  addi     a4,a4,8
+    4001c972  bne      a4,t5,4001c916 <vga_graphic_refresh+0x1502>
+loop 4001ca04..4001ca5c: 27 instructions
+    4001ca04  lw       a6,4(a3)
+    4001ca08  lw       a1,0(a3)
+    4001ca0a  addi     a3,a3,8
+    4001ca0c  srli     t3,a6,0x8
+    4001ca10  srli     t4,a6,0x5
+    4001ca14  andi     t4,t4,2016
+    4001ca18  and      t3,t3,s3
+    4001ca1c  srli     a6,a6,0x3
+    4001ca20  or       t3,t3,t4
+    4001ca24  andi     a6,a6,31
+    4001ca28  srli     t4,a1,0x8
+    4001ca2c  or       a6,t3,a6
+    4001ca30  srli     t3,a1,0x5
+    4001ca34  andi     t3,t3,2016
+    4001ca38  and      t4,t4,s3
+    4001ca3c  srli     a1,a1,0x3
+    4001ca3e  or       t4,t4,t3
+    4001ca42  andi     a1,a1,31
+    4001ca44  lw       t3,0(a4)
+    4001ca48  slli     a6,a6,0x10
+    4001ca4a  or       a1,t4,a1
+    4001ca4e  or       a1,a6,a1
+    4001ca52  beq      a1,t3,4001ca5a <vga_graphic_refresh+0x1646>
+    4001ca56  sw       a1,0(a4)
+    4001ca58  mv       a0,s11
+    4001ca5a  addi     a4,a4,4
+    4001ca5c  bne      a3,a7,4001ca04 <vga_graphic_refresh+0x15f0>
+loop 4001ca70..4001cb3a: 56 instructions
+    4001ca70  lw       t3,0(a3)
+    4001ca74  lw       a7,4(a3)
+    4001ca78  lw       t4,0(a4)
+    4001ca7c  srli     t5,t3,0x18
+    4001ca80  slli     a1,a7,0x8
+    4001ca84  or       t5,t5,a1
+    4001ca88  srli     t2,t5,0x5
+    4001ca8c  srli     a1,a1,0x8
+    4001ca8e  andi     t2,t2,2016
+    4001ca92  and      a1,a1,s3
+    4001ca96  srli     t5,t5,0x3
+    4001ca9a  or       a1,a1,t2
+    4001ca9e  andi     t5,t5,31
+    4001caa2  srli     t2,t3,0x8
+    4001caa6  or       a1,a1,t5
+    4001caaa  srli     t5,t3,0x5
+    4001caae  and      t2,t2,s3
+    4001cab2  andi     t5,t5,2016
+    4001cab6  srli     t3,t3,0x3
+    4001caba  andi     t3,t3,31
+    4001cabe  or       t5,t2,t5
+    4001cac2  or       t5,t5,t3
+    4001cac6  slli     a1,a1,0x10
+    4001cac8  or       a1,a1,t5
+    4001cacc  lw       t3,8(a3)
+    4001cad0  srli     a7,a7,0x10
+    4001cad4  beq      a1,t4,4001cadc <vga_graphic_refresh+0x16c8>
+    4001cad8  sw       a1,0(a4)
+    4001cada  mv       a0,s11
+    4001cadc  slli     a1,t3,0x10
+    4001cae0  or       a1,a7,a1
+    4001cae4  srli     a7,a1,0x8
+    4001cae8  srli     t5,a1,0x5
+    4001caec  srli     t4,a1,0x3
+    4001caf0  and      a7,a7,s3
+    4001caf4  andi     t5,t5,2016
+    4001caf8  andi     t4,t4,31
+    4001cafc  or       a7,a7,t5
+    4001cb00  srli     a1,t3,0x10
+    4001cb04  or       a7,a7,t4
+    4001cb08  srli     t4,t3,0xd
+    4001cb0c  and      a1,a1,s3
+    4001cb10  andi     t4,t4,2016
+    4001cb14  srli     t3,t3,0xb
+    4001cb18  andi     t3,t3,31
+    4001cb1c  or       a1,a1,t4
+    4001cb20  or       a1,a1,t3
+    4001cb24  lw       t3,4(a4)
+    4001cb28  slli     a1,a1,0x10
+    4001cb2a  or       a1,a1,a7
+    4001cb2e  addi     a3,a3,12
+    4001cb30  beq      a1,t3,4001cb38 <vga_graphic_refresh+0x1724>
+    4001cb34  sw       a1,4(a4)
+    4001cb36  mv       a0,s11
+    4001cb38  addi     a4,a4,8
+    4001cb3a  bne      a4,a6,4001ca70 <vga_graphic_refresh+0x165c>
+
+== divisions in vga_take_marks() (once a marked block, not a pixel):
+6
+== the mark in iomem_write16() (pc.c, the linear frame buffer):
+40018e7c:	lw	a5,124(a0)
+40018e7e:	bltu	a1,a5,40018ec0 <iomem_write16+0x44>
+40018e82:	sub	a1,a1,a5
+40018e84:	lw	a5,44(a0)
+40018e86:	addi	a4,a1,1
+40018e8a:	bgeu	a4,a5,40018ebe <iomem_write16+0x42>
+40018e8e:	lw	a5,40(a0)
+40018e90:	srli	a4,a4,0xa
+40018e92:	add	a5,a5,a1
+40018e94:	sh	a2,0(a5)
+40018e96:	lw	a5,48(a0)
+40018e98:	srli	a1,a1,0xa
+40018e9a:	fence	rw,w
+40018e9e:	li	a3,1
+40018ea0:	add	a2,a5,a1
+40018ea4:	sb	a3,0(a2)
+40018ea6:	bgeu	a1,a4,40018ebe <iomem_write16+0x42>
+40018eaa:	addi	a2,a5,1
+40018eae:	add	a5,a1,a2
+40018eb2:	add	a4,a4,a2
+40018eb4:	sb	a3,0(a5)
+40018eb6:	addi	a5,a5,1
+40018eb8:	bne	a5,a4,40018eb4 <iomem_write16+0x38>
+40018ebc:	ret
+40018ebe:	ret
+40018ec0:	lw	a0,28(a0)
+40018ec2:	lui	a5,0xfff60
+40018ec6:	add	a1,a1,a5
+40018ec8:	auipc	t1,0xef00e
+40018ecc:	jr	-1962(t1) # 2f02671e <vga_mem_write16>
+
+== iomem_write16() in v3.9, for comparison (previous-v3.9/images/korvo1-dualboot/tiny386.elf, the
+same objdump; WSL ~/v4-work/vbe/dis39.sh):
+40018c76:	lw	a5,116(a0)
+40018c78:	bltu	a1,a5,40018c98 <iomem_write16+0x22>
+40018c7c:	sub	a1,a1,a5
+40018c7e:	lw	a5,44(a0)
+40018c80:	addi	a4,a1,1
+40018c84:	bgeu	a4,a5,40018c96 <iomem_write16+0x20>
+40018c88:	lw	a5,40(a0)
+40018c8a:	add	a5,a5,a1
+40018c8c:	bexti	a4,a5,0x0
+40018c90:	sh	a2,0(a5)
+40018c92:	bnez	a4,40018ca8 <iomem_write16+0x32>
+40018c94:	ret
+40018c96:	ret
+40018c98:	lw	a0,28(a0)
+40018c9a:	lui	a5,0xfff60
+40018c9e:	add	a1,a1,a5
+40018ca0:	auipc	t1,0xef00e
+40018ca4:	jr	-1502(t1) # 2f0266c2 <vga_mem_write16>
+40018ca8:	ret
+A 16-bit store into the frame buffer, in range and within one 1 KiB block: v3.9 runs 12
+instructions (40018c76 to 40018c94), v4.0 18 (40018e7c to 40018ea6 and the ret at 40018ebc), one
+of them the fence.

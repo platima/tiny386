@@ -1,0 +1,37 @@
+tests/host/test_ps2_mouse.c, TWO_THREADS, built with -fsanitize=thread (host gcc), run with
+address randomisation off (setarch -R); three runs as is and three with STALLS (the emulator's
+thread held up 120 ms at a time, so the ring's overflow and its edges are used while the other
+thread reports).  No ThreadSanitizer warning means no data race seen.  v3.2, 2026-10-21.
+== plain run 1
+two threads: a reporting task and the emulator:
+  4000 reports in, 288 packets out; 4000 right, 8000 down (sent 4000, 8000); 10 presses seen
+test_ps2_mouse (two threads): 6 checks, 0 failed
+exit 0
+== plain run 2
+two threads: a reporting task and the emulator:
+  4000 reports in, 289 packets out; 4000 right, 8000 down (sent 4000, 8000); 10 presses seen
+test_ps2_mouse (two threads): 6 checks, 0 failed
+exit 0
+== plain run 3
+two threads: a reporting task and the emulator:
+  4000 reports in, 287 packets out; 4000 right, 8000 down (sent 4000, 8000); 10 presses seen
+test_ps2_mouse (two threads): 6 checks, 0 failed
+exit 0
+== STALLS run 1
+two threads: a reporting task and the emulator:
+  4000 reports in, 154 packets out; 3735 right, 5976 down (sent 4000, 8000); 10 presses seen
+  6 stalls of 120 ms
+test_ps2_mouse (two threads): 7 checks, 0 failed
+exit 0
+== STALLS run 2
+two threads: a reporting task and the emulator:
+  4000 reports in, 154 packets out; 3722 right, 5974 down (sent 4000, 8000); 10 presses seen
+  6 stalls of 120 ms
+test_ps2_mouse (two threads): 7 checks, 0 failed
+exit 0
+== STALLS run 3
+two threads: a reporting task and the emulator:
+  4000 reports in, 155 packets out; 3724 right, 5980 down (sent 4000, 8000); 10 presses seen
+  6 stalls of 120 ms
+test_ps2_mouse (two threads): 7 checks, 0 failed
+exit 0

@@ -1,0 +1,89 @@
+stubs/sdkconfig.h: the same FatFs lines as /home/owner/tiny386-idf-scratch/v3-work-integ/resume/rel1/tiny386/esp/build-korvo1/config/sdkconfig.h
+== Plat's card
+plat: /home/owner/tiny386-idf-scratch/v3-work-integ/resume/st-sdkcheck/card-plat.img, 1581056 sectors
+  storage_sd_mount_others(): 3 partitions, 10 sector reads
+    partition 1: type 0C, 64 MiB, FAT, at /sdcard, label KORVO_SD
+    partition 2: type 83, 192 MiB, not FAT
+    partition 3: type 0C, 512 MiB, FAT, at /sdcard3, label WIN9X
+    /mnt/win: /sdcard3
+  14 sector writes, 0 outside p1 and p3
+  plat: 45 checks, 0 failed
+  ok: plat: test_storage
+  ok: plat: the MBR is as it was
+  ok: plat: p2 (ext4) is as it was, every sector
+  ok: plat: fsck.fat -n finds p1 clean (/home/owner/tiny386-idf-scratch/v3-work-integ/resume/st-sdkcheck/plat-p1.img: 4 files, 4/128992 clusters)
+  ok: plat: fsck.fat -n finds p3 clean (/home/owner/tiny386-idf-scratch/v3-work-integ/resume/st-sdkcheck/plat-p3.img: 4 files, 1027/130811 clusters)
+  ok: plat: win95.img as mtools reads it: the pattern, with the 4 KiB written at 1 MiB
+  ok: plat: NEW.TXT on p3 as mtools reads it
+  ok: plat: tiny386/lastboot.txt on p1 as mtools reads it
+== Plat's card, p3 with p1's serial number
+sameserial: /home/owner/tiny386-idf-scratch/v3-work-integ/resume/st-sdkcheck/card-sameserial.img, 1581056 sectors
+  storage_sd_mount_others(): 3 partitions, 10 sector reads
+    partition 1: type 0C, 64 MiB, FAT, at /sdcard, label KORVO_SD
+    partition 2: type 83, 192 MiB, not FAT
+    partition 3: type 0C, 512 MiB, FAT, at /sdcard3, label WIN9X
+    /mnt/win: /sdcard3
+  14 sector writes, 0 outside p1 and p3
+  sameserial: 45 checks, 0 failed
+  ok: sameserial: test_storage
+  ok: sameserial: the MBR is as it was
+  ok: sameserial: p2 (ext4) is as it was, every sector
+  ok: sameserial: fsck.fat -n finds p1 clean (/home/owner/tiny386-idf-scratch/v3-work-integ/resume/st-sdkcheck/sameserial-p1.img: 4 files, 4/128992 clusters)
+  ok: sameserial: fsck.fat -n finds p3 clean (/home/owner/tiny386-idf-scratch/v3-work-integ/resume/st-sdkcheck/sameserial-p3.img: 4 files, 1027/130811 clusters)
+  ok: sameserial: win95.img as mtools reads it: the pattern, with the 4 KiB written at 1 MiB
+  ok: sameserial: NEW.TXT on p3 as mtools reads it
+  ok: sameserial: tiny386/lastboot.txt on p1 as mtools reads it
+== Plat's card, p3 labelled DATA
+nolabel: /home/owner/tiny386-idf-scratch/v3-work-integ/resume/st-sdkcheck/card-nolabel.img, 1581056 sectors
+  storage_sd_mount_others(): 3 partitions, 10 sector reads
+    partition 1: type 0C, 64 MiB, FAT, at /sdcard, label KORVO_SD
+    partition 2: type 83, 192 MiB, not FAT
+    partition 3: type 0C, 512 MiB, FAT, at /sdcard3, label DATA
+    /mnt/win: /sdcard3
+  nolabel: 26 checks, 0 failed
+  ok: nolabel: test_storage
+== Plat's card, no logical drive left
+nodrive: /home/owner/tiny386-idf-scratch/v3-work-integ/resume/st-sdkcheck/card-nodrive.img, 1581056 sectors
+  storage_sd_mount_others(): 3 partitions, 6 sector reads
+    partition 1: type 0C, 64 MiB, FAT, at /sdcard, label KORVO_SD
+    partition 2: type 83, 192 MiB, not FAT
+    partition 3: type 0C, 512 MiB, FAT
+    partition 3 not mounted: no logical drive left (CONFIG_FATFS_VOLUME_COUNT)
+    /mnt/win: (none)
+  nodrive: 4 checks, 0 failed
+  ok: nodrive: test_storage
+== Plat's card, p3 exFAT
+exfat: /home/owner/tiny386-idf-scratch/v3-work-integ/resume/st-sdkcheck/card-exfat.img, 1581056 sectors
+  storage_sd_mount_others(): 3 partitions, 6 sector reads
+    partition 1: type 0C, 64 MiB, FAT, at /sdcard, label KORVO_SD
+    partition 2: type 83, 192 MiB, not FAT
+    partition 3: type 07, 512 MiB, not FAT
+    /mnt/win: (none)
+  exfat: 23 checks, 0 failed
+  ok: exfat: test_storage
+== four FAT partitions
+four: /home/owner/tiny386-idf-scratch/v3-work-integ/resume/st-sdkcheck/card-four.img, 1515520 sectors
+  storage_sd_mount_others(): 4 partitions, 18 sector reads
+    partition 1: type 0C, 64 MiB, FAT, at /sdcard, label KORVO_SD
+    partition 2: type 0E, 32 MiB, FAT, at /sdcard2, label P2
+    partition 3: type 0C, 512 MiB, FAT, at /sdcard3, label WIN9X
+    partition 4: type 0C, 128 MiB, FAT, at /sdcard4, label P4
+    /mnt/win: /sdcard3
+  four: 40 checks, 0 failed
+  ok: four: test_storage
+== no partition table
+superfloppy: /home/owner/tiny386-idf-scratch/v3-work-integ/resume/st-sdkcheck/card-superfloppy.img, 262144 sectors
+  storage_sd_mount_others(): 1 partitions, 3 sector reads
+    partition 0: type 00, 128 MiB, FAT, at /sdcard, label KORVO_SD
+    /mnt/win: (none)
+  superfloppy: 12 checks, 0 failed
+  ok: superfloppy: test_storage
+== p1 Linux, p2 FAT32
+p1linux: /home/owner/tiny386-idf-scratch/v3-work-integ/resume/st-sdkcheck/card-p1linux.img, 270336 sectors
+  storage_sd_mount_others(): 2 partitions, 5 sector reads
+    partition 1: type 83, 64 MiB, not FAT
+    partition 2: type 0C, 64 MiB, FAT, at /sdcard, label KORVO_SD
+    /mnt/win: (none)
+  p1linux: 18 checks, 0 failed
+  ok: p1linux: test_storage
+storage: 22 passed, 0 failed

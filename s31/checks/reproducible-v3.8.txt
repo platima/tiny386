@@ -1,0 +1,115 @@
+Two runs of build.sh from nothing (WSL ~/win95-debug/feat), 2026-10-22, each with the staged
+build.sh and the patch git diff pristine v3.8 (tag v3.8 at 3bded9d):
+rel1 and rel2-second-run, each in a folder of its own with its own clone.
+
+The 22 files of the four image sets, each against rel1:
+  dosboard/flash_args: same
+  korvo1-dualboot/flash_args: same
+  korvo1-dualboot-tiny386-default/flash_args: same
+  korvo1-standalone/flash_args: same
+  dosboard/bootloader.bin: same
+  korvo1-dualboot/bootloader.bin: same
+  korvo1-dualboot-tiny386-default/bootloader.bin: same
+  korvo1-standalone/bootloader.bin: same
+  dosboard/partition-table.bin: same
+  korvo1-dualboot/partition-table.bin: same
+  korvo1-dualboot-tiny386-default/partition-table.bin: same
+  korvo1-standalone/partition-table.bin: same
+  dosboard/tiny386.bin: same
+  korvo1-dualboot/tiny386.bin: same
+  korvo1-dualboot-tiny386-default/tiny386.bin: same
+  korvo1-standalone/tiny386.bin: same
+  dosboard/tiny386.elf: same
+  korvo1-dualboot/tiny386.elf: same
+  korvo1-standalone/tiny386.elf: same
+  dosboard/SHA256SUMS: same
+  korvo1-dualboot/SHA256SUMS: same
+  korvo1-dualboot-tiny386-default/SHA256SUMS: same
+  korvo1-standalone/SHA256SUMS: same
+  ELF files that hold their own work folder's name: 0 (of 6)
+
+korvo1-dualboot-tiny386-default against korvo1-dualboot (rel1): the same bootloader, app and
+flash_args, and the tiny386-default table:
+  bootloader.bin: the same
+  tiny386.bin: the same
+  flash_args: the same
+  partition-table.bin: 5b90d4166afc39d72a1d6c7b16f3a2e4a5cc0193a3e0eb50990a4dbb9da58226, dualboot\partition-table-tiny386-default.bin byte for byte
+  against the set the boot swap made by hand (v3\images\korvo1-dualboot-tiny386-default, before
+  this round's install): bootloader.bin same; partition-table.bin same; flash_args same;  tiny386.bin is now v3.8's
+
+The patch applied to a fresh clone (git apply, index and files) gives the v3.8 tag's tree:
+  rel1  index tree c9db351d8ed542a52c19e4dd31c7c3d208c28062   v3.8 tag tree c9db351d8ed542a52c19e4dd31c7c3d208c28062
+  rel2  index tree c9db351d8ed542a52c19e4dd31c7c3d208c28062
+  the patch: 1019448 bytes, sha256 650e90a715fabbe8
+  (byte for byte git diff pristine v3.8 in the scratch tree)
+  the file modes of the files v3.8 changed, in the tree applied from the patch (rel1):      42 644 
+
+Against v3.7 (previous-v3.7\images): the bootloaders, partition tables and flash_args are the same
+files, byte for byte (cmp), with their SHA-256:
+  korvo1-dualboot/bootloader.bin  b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  same
+  korvo1-dualboot/partition-table.bin  d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346  same
+  korvo1-dualboot/flash_args  6fc0ab4111fd630343b9fce8d41df17e6af26eeda1cfc2993742b8c2fde56518  same
+  korvo1-dualboot/tiny386.bin  v3.7 886144 bytes, v3.8 899024 bytes
+  korvo1-standalone/bootloader.bin  ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  same
+  korvo1-standalone/partition-table.bin  afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  same
+  korvo1-standalone/flash_args  48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  same
+  korvo1-standalone/tiny386.bin  v3.7 886144 bytes, v3.8 899024 bytes
+  dosboard/bootloader.bin  ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  same
+  dosboard/partition-table.bin  afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  same
+  dosboard/flash_args  48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  same
+  dosboard/tiny386.bin  v3.7 917808 bytes, v3.8 930720 bytes
+  the dual-boot pair and the tiny386-default table against the SHA-256 build.sh and flash-dualboot.bat pin:
+    build.sh: DB_BL_SHA=b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f
+    build.sh: DB_PT_SHA=d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346
+    build.sh: DB_PT386_SHA=5b90d4166afc39d72a1d6c7b16f3a2e4a5cc0193a3e0eb50990a4dbb9da58226
+    flash-dualboot.bat: set "BL_SHA=b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f"
+    flash-dualboot.bat: set "PT_SHA=d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346"
+    flash-dualboot.bat: set "PT_DUAL386=5b90d4166afc39d72a1d6c7b16f3a2e4a5cc0193a3e0eb50990a4dbb9da58226"
+
+The apps against v3.7's: the ELF sections whose contents differ (objcopy of each PROGBITS
+section), and the symbols (nm) that differ:
+  korvo1-dualboot/tiny386.bin: v3.7 886144, v3.8 899024 bytes
+    section .iram0.text differs: 216186 and 217014 bytes
+    section .dram0.data differs: 13998 and 14038 bytes
+    section .flash.text differs: 425428 and 434366 bytes
+    section .flash.appdesc differs: 256 and 256 bytes
+    section .flash.rodata differs: 230080 and 233160 bytes
+    section .flash.tdata differs: 16 and 16 bytes
+    symbol names that differ (< v3.7 only, > v3.8 only): 6 gone, 66 new
+      > abort_note > access_image > bf_rw < bf_rw_files < call_isr > call_isr1 > console_log_limit > console_log_stats > console_log_tick > console_uart_async > conso
+      le_uart_quiet < cpu_abort.constprop.0 > cpu_abort_note > deliver > disk_activity > disk_image_error > disk_image_fast_seek > disk_image_get_stats > disk_image_l
+      ine > disk_image_open > disk_image_read > disk_image_say > disk_image_sync > disk_image_write > doubles.2 > emulink_activity > fr_words < grid_put_line > i8254_
+      dropped > i8254_max_owed > i8254_owed_max > ide_activity > ini_whole.constprop.0 > lim_pass.part.0 > lim_say > lim_say_due > line.0 > lldt_check > make_map > n.
+      6 > names.1 < nest.16 > nest.18 < pfxlabel.17 > pfxlabel.19 > reopen > rw_once > say > s_buf > s_disk_count > s_error > s_img > s_lim > s_lim_holding > s_lim_on
+       > s_lim_total > speed_health > status_disk_step > status_led_disk_counter > storage_fatfs_path > s_uart_quiet > s_uq > s_uq_dropped > s_uq_mux > s_uq_on > s_uq
+      _r > s_uq_said > s_uq_task > s_uq_w > uq_out > uq_put > uq_task 
+  korvo1-standalone/tiny386.bin: v3.7 886144, v3.8 899024 bytes
+    section .iram0.text differs: 216186 and 217014 bytes
+    section .dram0.data differs: 13998 and 14038 bytes
+    section .flash.text differs: 425428 and 434366 bytes
+    section .flash.appdesc differs: 256 and 256 bytes
+    section .flash.rodata differs: 230080 and 233160 bytes
+    section .flash.tdata differs: 16 and 16 bytes
+    symbol names that differ (< v3.7 only, > v3.8 only): 6 gone, 66 new
+      > abort_note > access_image > bf_rw < bf_rw_files < call_isr > call_isr1 > console_log_limit > console_log_stats > console_log_tick > console_uart_async > conso
+      le_uart_quiet < cpu_abort.constprop.0 > cpu_abort_note > deliver > disk_activity > disk_image_error > disk_image_fast_seek > disk_image_get_stats > disk_image_l
+      ine > disk_image_open > disk_image_read > disk_image_say > disk_image_sync > disk_image_write > doubles.2 > emulink_activity > fr_words < grid_put_line > i8254_
+      dropped > i8254_max_owed > i8254_owed_max > ide_activity > ini_whole.constprop.0 > lim_pass.part.0 > lim_say > lim_say_due > line.0 > lldt_check > make_map > n.
+      6 > names.1 < nest.16 > nest.18 < pfxlabel.17 > pfxlabel.19 > reopen > rw_once > say > s_buf > s_disk_count > s_error > s_img > s_lim > s_lim_holding > s_lim_on
+       > s_lim_total > speed_health > status_disk_step > status_led_disk_counter > storage_fatfs_path > s_uart_quiet > s_uq > s_uq_dropped > s_uq_mux > s_uq_on > s_uq
+      _r > s_uq_said > s_uq_task > s_uq_w > uq_out > uq_put > uq_task 
+  dosboard/tiny386.bin: v3.7 917808, v3.8 930720 bytes
+    section .iram0.text differs: 219428 and 220252 bytes
+    section .dram0.data differs: 14182 and 14222 bytes
+    section .flash.text differs: 422324 and 431286 bytes
+    section .flash.appdesc differs: 256 and 256 bytes
+    section .flash.rodata differs: 261420 and 264500 bytes
+    section .flash.tdata differs: 24 and 24 bytes
+    symbol names that differ (< v3.7 only, > v3.8 only): 6 gone, 66 new
+      > abort_note > access_image > bf_rw < bf_rw_files < call_isr > call_isr1 > console_log_limit > console_log_stats > console_log_tick > console_uart_async > conso
+      le_uart_quiet < cpu_abort.constprop.0 > cpu_abort_note > deliver > disk_activity > disk_image_error > disk_image_fast_seek > disk_image_get_stats > disk_image_l
+      ine > disk_image_open > disk_image_read > disk_image_say > disk_image_sync > disk_image_write > doubles.2 > emulink_activity > fr_words < grid_put_line > i8254_
+      dropped > i8254_max_owed > i8254_owed_max > ide_activity > ini_whole.constprop.0 > lim_pass.part.0 > lim_say > lim_say_due > line.0 > lldt_check > make_map > n.
+      6 > names.1 < nest.16 > nest.18 < pfxlabel.17 > pfxlabel.19 > reopen > rw_once > say > s_buf > s_disk_count > s_error > s_img > s_lim > s_lim_holding > s_lim_on
+       > s_lim_total > speed_health > status_disk_step > status_led_disk_counter > storage_fatfs_path > s_uart_quiet > s_uq > s_uq_dropped > s_uq_mux > s_uq_on > s_uq
+      _r > s_uq_said > s_uq_task > s_uq_w > uq_out > uq_put > uq_task 

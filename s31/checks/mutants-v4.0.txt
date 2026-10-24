@@ -1,0 +1,26 @@
+v4.0's checks of the VBE drawing against faults put one at a time into copies of the tree at tag
+v4.0 (mutants-v4.0.py and mutants-v4.0-one.sh beside this file), 2026-10-23: vga.c's faults
+against test_vbe (the Korvo-1 header; the reference loop from the unchanged tree), and if it
+passes, test_vbe under AddressSanitizer, then BVBE480 in the PC harness (Korvo-1, 1M); pc.c's
+against BVBE480; the LFB read fault against Windows 95 at 800x480x16, END line and final picture
+held against the unchanged tree's run.
+
+write16-unmarked         caught by test_vbe (97 checks), BVBE480 (12 WRONG)
+write32-unmarked         caught by test_vbe (97 checks), BVBE480 (12 WRONG)
+string-unmarked          caught by test_vbe (96 checks), BVBE480 (12 WRONG)
+write8-unmarked          caught by test_vbe (96 checks), BVBE480 (12 WRONG)
+block-first-row-only     caught by test_vbe (100 checks), BVBE480 (24 WRONG)
+block-hi-not-clipped     caught by test_vbe under AddressSanitizer (ERROR: AddressSanitizer: heap-buffer-overflow)
+palette-change-missed    caught by test_vbe (17 checks), BVBE480 (1 WRONG)
+start-change-missed      caught by test_vbe (85 checks)
+rgb24-pixels-swapped     caught by test_vbe (27 checks), BVBE480 (4 WRONG)
+rgb15-bit15-kept         caught by test_vbe (33 checks), BVBE480 (6 WRONG)
+rgb32-green-low-bit      caught by test_vbe (51 checks), BVBE480 (4 WRONG)
+band-dropped             caught by test_vbe (3572 checks)
+shrunk-rows-unmapped     caught by test_vbe (it crashed, status 139), BVBE480 (9 WRONG)
+bank-mask-again          caught by test_vbe (78 checks)
+lfb-write8-unmarked      caught by BVBE480 (12 WRONG)
+lfb-write16-unmarked     caught by BVBE480 (12 WRONG)
+lfb-write32-unmarked     caught by BVBE480 (12 WRONG)
+lfb-string-unmarked      caught by BVBE480 (12 WRONG)
+lfb-read16-wrong         caught by Windows 95 at 800x480x16 (outcome: desktop (desktop seen at t=220 s), END same)

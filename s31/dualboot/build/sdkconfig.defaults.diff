@@ -1,0 +1,15 @@
+--- src/linux-be5b725/bootloader/sdkconfig.defaults	2026-09-27 08:00:35.553370605 +0800
++++ dual/bootloader/sdkconfig.defaults	2026-10-21 15:12:05.576805101 +0800
+@@ -25,3 +25,12 @@
+ # CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y.
+ # Flash and the Linux console use the CP2102N bridge in the two cases.
+ CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
++# Dual boot with tiny386 (tiny386-idf v3, DUALBOOT.md): Linux by default,
++# the "test" app partition (tiny386 at 0xE20000) while GPIO42 is held low
++# for a second after reset.  GPIO42 is the Korvo-1's ADC key line; the
++# key at 0.38 V (the bottom of the ladder) reads low.
++CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions-korvo1-dualboot.csv"
++CONFIG_BOOTLOADER_APP_TEST=y
++CONFIG_BOOTLOADER_NUM_PIN_APP_TEST=42
++CONFIG_BOOTLOADER_APP_TEST_PIN_LOW=y
++CONFIG_BOOTLOADER_HOLD_TIME_GPIO=1

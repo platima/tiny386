@@ -1,0 +1,61 @@
+== tiny386 4ce2e06ccbaef6af2485fd31ae7c2e44856e7764
+ [1;32mDEP[0m	[1;37mi386.c fpu.c ini.c i8259.c i8254.c ide.c vga.c vgafont.c i8042.c misc.c adlib.c ne2000.c i8257.c sb16.c pcspk.c fmopl.c pc.c pci.c win32.c term.c osd/microui.c osd/osd.c[0m [1;32m->[0m [1;37m.depends[0m
+cc -DGENTABLE fmopl.c -o fmoplgen -lm && ./fmoplgen > fmopl.inc && rm -f ./fmoplgen
+== ESP-IDF build: korvo1 (BOARD=korvo1 )
+/home/owner/v4-work/v41/rel/rel2-second-run/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+│ DIRAM               │       249948 │    49.62 │         253796 │        503744 │
+Total image size: 902216 bytes (.bin may be padded larger)
+== ESP-IDF build: korvo1-standalone (BOARD=korvo1 -DPARTITION_CSV=partitions.csv)
+/home/owner/v4-work/v41/rel/rel2-second-run/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+│ DIRAM               │       249948 │    49.62 │         253796 │        503744 │
+Total image size: 902216 bytes (.bin may be padded larger)
+== ESP-IDF build: dosboard (BOARD=dosboard )
+│ DIRAM               │       252946 │    50.21 │         250798 │        503744 │
+Total image size: 933902 bytes (.bin may be padded larger)
+== images
+  korvo1-dualboot/tiny386.bin: 902384 of 1966080 bytes
+  korvo1-standalone/tiny386.bin: 902384 of 1835008 bytes
+  dosboard/tiny386.bin: 934080 of 1835008 bytes
+  korvo1-dualboot/tiny386.elf: the LED's bit-bang stores each straight after its wait
+  korvo1-standalone/tiny386.elf: the LED's bit-bang stores each straight after its wait
+  dosboard/tiny386.elf: the LED's bit-bang stores each straight after its wait
+== built, and not flashed
+== images/korvo1-dualboot (esptool write-flash offsets: flash_args)
+   -fm keep -ff keep -fs keep
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0xe20000 tiny386.bin
+   6fc0ab4111fd630343b9fce8d41df17e6af26eeda1cfc2993742b8c2fde56518  flash_args
+   b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  bootloader.bin
+   d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346  partition-table.bin
+   55107710e187505f88556c1cee357d1adf0f861c80eca48b4ebaca3f02f47f68  tiny386.bin
+   6e5c93d46926a6f31eeaa0b818924a6fd1a62bc57d1db43afa889462290e0557  tiny386.elf
+== images/korvo1-dualboot-tiny386-default (esptool write-flash offsets: flash_args)
+   -fm keep -ff keep -fs keep
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0xe20000 tiny386.bin
+   6fc0ab4111fd630343b9fce8d41df17e6af26eeda1cfc2993742b8c2fde56518  flash_args
+   b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  bootloader.bin
+   5b90d4166afc39d72a1d6c7b16f3a2e4a5cc0193a3e0eb50990a4dbb9da58226  partition-table.bin
+   55107710e187505f88556c1cee357d1adf0f861c80eca48b4ebaca3f02f47f68  tiny386.bin
+== images/korvo1-standalone (esptool write-flash offsets: flash_args)
+   --flash-mode dio --flash-freq 80m --flash-size 16MB
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0x10000 tiny386.bin
+   48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  flash_args
+   ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  bootloader.bin
+   afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  partition-table.bin
+   5e7457db6dd94beca157194da36bc93516a119773e930c84dd127193ab429f0e  tiny386.bin
+   49898a7d3e7add0593c289f1d00d2087c6680a537c770af9e76566902dff1780  tiny386.elf
+== images/dosboard (esptool write-flash offsets: flash_args)
+   --flash-mode dio --flash-freq 80m --flash-size 16MB
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0x10000 tiny386.bin
+   48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  flash_args
+   ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  bootloader.bin
+   afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  partition-table.bin
+   8a08b86043655972e483fda18eddbfc8844d3a4106fbf5300200326781434939  tiny386.bin
+   d1e6aeeea97181ce09043515b9f070291bb09cc0c499a799fa32c0e5eb53aaa5  tiny386.elf

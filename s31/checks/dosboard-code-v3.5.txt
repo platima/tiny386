@@ -1,0 +1,52 @@
+The DOS board image (rel1, build.sh with the v3.5 patch; the same bytes in all four runs), read with
+riscv32-esp-elf-objdump, 2026-10-22.
+
+1. board_early_init(): the calls it makes, in the order of the code.  The first GPIO call
+   (gpio_set_level, gpio_config) comes after the first probe_ms7210() and after
+   i2c_master_probe() (the Korvo-1 devices); before them only the I2C bus is set up.
+   heap_caps_calloc fprintf i2c_new_master_bus i2c_master_bus_add_device i2c_master_bus_add_device i2c_master_bus_add_device probe_ms7210 i2c_master_probe fwrite gpio_set_level gpio_config probe_ms7210 gpio_set_level gpio_set_level gpio_config gpio_set_level gpio_config gpio_get_level dosboard_note gpio_get_level wrong_board wrong_board 
+
+2. probe_ms7210(): i2c_readdress ms7210_probe fprintf i2c_readdress ms7210_default_cfg ms7210_probe 
+
+3. io_rstn(), the MS7210 driver's reset callback: GPIO49 is driven only once s_rstn_ours is set
+   4002152e:	lui	a5,0x2f03d
+   40021532:	lbu	a5,-1451(a5) # 2f03ca55 <s_rstn_ours>
+   40021536:	bnez	a5,4002153a <io_rstn+0xc>
+   40021538:	ret
+   4002153a:	li	a0,49
+   4002153e:	j	4004b0c6 <gpio_set_level>
+
+4. wrong_board(): i2c_master_bus_rm_device i2c_master_bus_rm_device i2c_master_bus_rm_device i2c_del_master_bus status_led_fatal snprintf gpio_reset_pin fprintf vTaskDelay snprintf snprintf 
+
+5. i2s_task(): fprintf xEventGroupWaitBits i2s_channel_enable esp_timer_get_time esp_timer_get_time audio_mix_pc i2s_channel_write esp_timer_get_time console_uart_printf gpio_set_level console_uart_printf 
+   audio_mix_pc(): audio_mix_devices 
+   audio_mix_devices(): memset memset adlib_callback sb16_audio_callback pcspk_get_active_out audio_mix_block memset pcspk_callback 
+
+6. The panic path's sound mute, as in v3.4: audio_panic_quiet in internal RAM (0x2f000000 up)
+   and called from status_led_panic:
+   2f0032b2 T audio_panic_quiet
+   2f0034d0 T status_led_panic
+   2f036d2b d s_i2s_running
+   status_led_panic() calls: status_record_put esp_rom_get_cpu_ticks_per_us status_bb_timing rom_gpio_set_output_level status_panic_pattern audio_panic_quiet 
+
+7. The status LED's bit-bang layout, build.sh's own check (bb_layout()) in each image:
+   == korvo1-dualboot
+     status_led_panic: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+     status_led_halt: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+   == korvo1-standalone
+     status_led_panic: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+     status_led_halt: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+   == dosboard
+     status_led_panic: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+     status_led_halt: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+
+8. GPIO numbers the DOS board code loads as constants before calling gpio_set_level or
+   gpio_config's mask, in dosboard.c's and ch9350.c's functions (li a0,N before a gpio call):
+   board_early_init: 38 48 49 
+   io_rstn: 49 
+   wrong_board: 49 
+   ch9350_setup: 46 56 
+   chip_reset: 
+   line_out_init: 
+   i2s_task: 48 
+   audio_panic_quiet: 

@@ -1,0 +1,38 @@
+Two runs of build.sh from nothing: rel1 and rel2-second-run, different folders (v3-final).
+same  korvo1-dualboot/flash_args
+same  korvo1-dualboot/bootloader.bin
+same  korvo1-dualboot/partition-table.bin
+same  korvo1-dualboot/tiny386.bin
+same  korvo1-dualboot/tiny386.elf
+same  korvo1-dualboot/SHA256SUMS
+same  korvo1-standalone/flash_args
+same  korvo1-standalone/bootloader.bin
+same  korvo1-standalone/partition-table.bin
+same  korvo1-standalone/tiny386.bin
+same  korvo1-standalone/tiny386.elf
+same  korvo1-standalone/SHA256SUMS
+same  dosboard/flash_args
+same  dosboard/bootloader.bin
+same  dosboard/partition-table.bin
+same  dosboard/tiny386.bin
+same  dosboard/tiny386.elf
+same  dosboard/SHA256SUMS
+
+The patch applied to a fresh clone (git apply --index) gives the v3.1 tree:
+  rel1 index tree  e5f89dcb241810c4afd5bf35f61f656940700944
+  v3.1 tag tree    e5f89dcb241810c4afd5bf35f61f656940700944
+
+korvo1-dualboot/tiny386.bin against korvo1-standalone/tiny386.bin, the offsets (hex) that differ:
+b0 b1 b2 b3 b4 b5 b6 b7 b8 b9 ba bb bc bd be bf c0 c1 c2 c3 c4 c5 c6 c7 c8 c9 ca cb cc cd ce cf d364f d3650 d3651 d3652 d3653 d3654 d3655 d3656 d3657 d3658 d3659 d365a d365b d365c d365d d365e d365f d3660 d3661 d3662 d3663 d3664 d3665 d3666 d3667 d3668 d3669 d366a d366b d366c d366d d366e d366f 
+(the ELF SHA-256 in esp_app_desc_t, the checksum byte and the image's own SHA-256 at the end;
+ file size 0xD3670)
+
+The images in v3\images are rel1's: dosboard ok, korvo1-dualboot ok, korvo1-standalone ok, 
+
+Against v3 (before the review): the bootloaders and tables are the same files:
+  korvo1-dualboot/bootloader.bin  b57469cd1542fe83
+  korvo1-dualboot/partition-table.bin  d41cba3cf33bedee
+  korvo1-standalone/bootloader.bin  ec0a396b5bd96406
+  korvo1-standalone/partition-table.bin  afbe6410c2040c5e
+  dosboard/bootloader.bin  ec0a396b5bd96406
+  dosboard/partition-table.bin  afbe6410c2040c5e

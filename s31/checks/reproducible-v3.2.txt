@@ -1,0 +1,42 @@
+Two runs of build.sh from nothing, with the v3.2 patch: rel1 and rel2-second-run, different
+folders (WSL ~/tiny386-idf-scratch/final-r2), 2026-10-21.
+same  korvo1-dualboot/flash_args
+same  korvo1-dualboot/bootloader.bin
+same  korvo1-dualboot/partition-table.bin
+same  korvo1-dualboot/tiny386.bin
+same  korvo1-dualboot/tiny386.elf
+same  korvo1-dualboot/SHA256SUMS
+same  korvo1-standalone/flash_args
+same  korvo1-standalone/bootloader.bin
+same  korvo1-standalone/partition-table.bin
+same  korvo1-standalone/tiny386.bin
+same  korvo1-standalone/tiny386.elf
+same  korvo1-standalone/SHA256SUMS
+same  dosboard/flash_args
+same  dosboard/bootloader.bin
+same  dosboard/partition-table.bin
+same  dosboard/tiny386.bin
+same  dosboard/tiny386.elf
+same  dosboard/SHA256SUMS
+
+The patch applied to a fresh clone (git apply, index and files) gives the v3.2 tree:
+  rel1 index tree  0292cb65601fe2dfb29f04fc4e66b5f353ead371
+  rel2 index tree  0292cb65601fe2dfb29f04fc4e66b5f353ead371
+  v3.2 tag tree    0292cb65601fe2dfb29f04fc4e66b5f353ead371
+
+korvo1-dualboot/tiny386.bin against korvo1-standalone/tiny386.bin, the offsets (hex) that differ:
+b0 b1 b2 b3 b5 b6 b7 b8 b9 ba bb bc bd be bf c0 c1 c2 c3 c4 c5 c6 c7 c8 c9 ca cb cc cd ce cf d3c1f d3c20 d3c21 d3c22 d3c23 d3c24 d3c25 d3c26 d3c27 d3c28 d3c29 d3c2a d3c2b d3c2c d3c2d d3c2e d3c2f d3c30 d3c31 d3c32 d3c33 d3c34 d3c35 d3c36 d3c37 d3c38 d3c39 d3c3a d3c3b d3c3c d3c3d d3c3e d3c3f 
+(the ELF SHA-256 in esp_app_desc_t, the checksum byte and the image's own SHA-256 at the end;
+ file size 0xD3C40)
+
+Against v3.1 (the images in v3\images before this round): the bootloaders and tables are the same files:
+  korvo1-dualboot/bootloader.bin  b57469cd1542fe83  same
+  korvo1-dualboot/partition-table.bin  d41cba3cf33bedee  same
+  korvo1-dualboot/tiny386.bin  v3.1 865904 bytes, v3.2 867392 bytes
+  korvo1-standalone/bootloader.bin  ec0a396b5bd96406  same
+  korvo1-standalone/partition-table.bin  afbe6410c2040c5e  same
+  korvo1-standalone/tiny386.bin  v3.1 865904 bytes, v3.2 867392 bytes
+  dosboard/bootloader.bin  ec0a396b5bd96406  same
+  dosboard/partition-table.bin  afbe6410c2040c5e  same
+  dosboard/tiny386.bin  v3.1 894128 bytes, v3.2 896432 bytes
+The images in v3\images are rel1's: dosboard ok, korvo1-dualboot ok, korvo1-standalone ok, 

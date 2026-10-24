@@ -1,0 +1,323 @@
+### 6. esptool image-info (esptool 5.4.0)
+
+=================== dual/build/bootloader/bootloader/bootloader.bin
+b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  dual/build/bootloader/bootloader/bootloader.bin
+esptool v5.4.0
+Image size: 22352 bytes
+
+ESP32-S31 Image Header
+======================
+Image version: 1
+Entry point: 0x2f06a2ba
+Segments: 3
+Flash size: 16MB
+Flash freq: 80m
+Flash mode: DIO
+
+ESP32-S31 Extended Image Header
+===============================
+WP pin: 0xee (disabled)
+Flash pins drive settings: clk_drv: 0x0, q_drv: 0x0, d_drv: 0x0, cs0_drv: 0x0, hd_drv: 0x0, wp_drv: 0x0
+Chip ID: 32 (ESP32-S31)
+Minimal chip revision: v0.0, (legacy min_rev = 0)
+Maximal chip revision: v0.99
+
+Segments Information
+====================
+Segment   Length   Load addr   File offs  Memory types
+-------  -------  ----------  ----------  ------------
+      0  0x0175c  0x2f0740c0  0x00000018  DRAM, BYTE_ACCESSIBLE, IRAM
+      1  0x00e48  0x2f06a2b0  0x0000177c  DRAM, BYTE_ACCESSIBLE, IRAM
+      2  0x0314c  0x2f06cfb0  0x000025cc  DRAM, BYTE_ACCESSIBLE, IRAM
+
+ESP32-S31 Image Footer
+======================
+Checksum: 0xe8 (valid)
+Validation hash: b008dfc52dbcb5a40e73393173795a179cd5794478d1528cdd9fef26fd3465aa (valid)
+
+=================== ref/build/bootloader/bootloader/bootloader.bin
+f627d2c5cbc67f81f34133fdca0b21e1b6c54182d1c0bcbddedb200f540ce5f4  ref/build/bootloader/bootloader/bootloader.bin
+esptool v5.4.0
+Image size: 22000 bytes
+
+ESP32-S31 Image Header
+======================
+Image version: 1
+Entry point: 0x2f06a2ba
+Segments: 3
+Flash size: 16MB
+Flash freq: 80m
+Flash mode: DIO
+
+ESP32-S31 Extended Image Header
+===============================
+WP pin: 0xee (disabled)
+Flash pins drive settings: clk_drv: 0x0, q_drv: 0x0, d_drv: 0x0, cs0_drv: 0x0, hd_drv: 0x0, wp_drv: 0x0
+Chip ID: 32 (ESP32-S31)
+Minimal chip revision: v0.0, (legacy min_rev = 0)
+Maximal chip revision: v0.99
+
+Segments Information
+====================
+Segment   Length   Load addr   File offs  Memory types
+-------  -------  ----------  ----------  ------------
+      0  0x016e4  0x2f0740c0  0x00000018  DRAM, BYTE_ACCESSIBLE, IRAM
+      1  0x00d6c  0x2f06a2b0  0x00001704  DRAM, BYTE_ACCESSIBLE, IRAM
+      2  0x0314c  0x2f06cfb0  0x00002478  DRAM, BYTE_ACCESSIBLE, IRAM
+
+ESP32-S31 Image Footer
+======================
+Checksum: 0x93 (valid)
+Validation hash: f37dafac999e94e66a516db9ce6085d5882cc633cf5b1d834799b6fdd17af190 (valid)
+
+=================== inputs/be5b725/bootloader.bin
+547c6a5b30551de678c14fa979ed6d50821d346988b111d531b09610b157a6fe  inputs/be5b725/bootloader.bin
+esptool v5.4.0
+Image size: 22000 bytes
+
+ESP32-S31 Image Header
+======================
+Image version: 1
+Entry point: 0x2f06a2ba
+Segments: 3
+Flash size: 16MB
+Flash freq: 80m
+Flash mode: DIO
+
+ESP32-S31 Extended Image Header
+===============================
+WP pin: 0xee (disabled)
+Flash pins drive settings: clk_drv: 0x0, q_drv: 0x0, d_drv: 0x0, cs0_drv: 0x0, hd_drv: 0x0, wp_drv: 0x0
+Chip ID: 32 (ESP32-S31)
+Minimal chip revision: v0.0, (legacy min_rev = 0)
+Maximal chip revision: v0.99
+
+Segments Information
+====================
+Segment   Length   Load addr   File offs  Memory types
+-------  -------  ----------  ----------  ------------
+      0  0x016e4  0x2f0740c0  0x00000018  DRAM, BYTE_ACCESSIBLE, IRAM
+      1  0x00d6c  0x2f06a2b0  0x00001704  DRAM, BYTE_ACCESSIBLE, IRAM
+      2  0x0314c  0x2f06cfb0  0x00002478  DRAM, BYTE_ACCESSIBLE, IRAM
+
+ESP32-S31 Image Footer
+======================
+Checksum: 0x83 (valid)
+Validation hash: f7871e55fdbe1368d89488007f75b537f36f15489849ddfa0f2ceb74dca591cb (valid)
+
+=================== inputs/release-v2026.09.20/bootloader/bootloader/bootloader.bin
+41d5a68752936c7b65dadb3081e4ebefc649af76cc1af450bda508e3b3455d1b  inputs/release-v2026.09.20/bootloader/bootloader/bootloader.bin
+esptool v5.4.0
+Image size: 23024 bytes
+
+ESP32-S31 Image Header
+======================
+Image version: 1
+Entry point: 0x2f06a2ba
+Segments: 3
+Flash size: 16MB
+Flash freq: 80m
+Flash mode: DIO
+
+ESP32-S31 Extended Image Header
+===============================
+WP pin: 0xee (disabled)
+Flash pins drive settings: clk_drv: 0x0, q_drv: 0x0, d_drv: 0x0, cs0_drv: 0x0, hd_drv: 0x0, wp_drv: 0x0
+Chip ID: 32 (ESP32-S31)
+Minimal chip revision: v0.0, (legacy min_rev = 0)
+Maximal chip revision: v0.99
+
+Segments Information
+====================
+Segment   Length   Load addr   File offs  Memory types
+-------  -------  ----------  ----------  ------------
+      0  0x017e0  0x2f0740c0  0x00000018  DRAM, BYTE_ACCESSIBLE, IRAM
+      1  0x00d9c  0x2f06a2b0  0x00001800  DRAM, BYTE_ACCESSIBLE, IRAM
+      2  0x0341c  0x2f06cfb0  0x000025a4  DRAM, BYTE_ACCESSIBLE, IRAM
+
+ESP32-S31 Image Footer
+======================
+Checksum: 0x6d (valid)
+Validation hash: f00bbaf94b84a4c50440198412dcdf08c984688cc6e1308ae58182737ba7926d (valid)
+
+=================== inputs/v2/bootloader/bootloader.bin
+ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  inputs/v2/bootloader/bootloader.bin
+esptool v5.4.0
+Image size: 22016 bytes
+
+ESP32-S31 Image Header
+======================
+Image version: 1
+Entry point: 0x2f06a2ba
+Segments: 3
+Flash size: 16MB
+Flash freq: 80m
+Flash mode: DIO
+
+ESP32-S31 Extended Image Header
+===============================
+WP pin: 0xee (disabled)
+Flash pins drive settings: clk_drv: 0x0, q_drv: 0x0, d_drv: 0x0, cs0_drv: 0x0, hd_drv: 0x0, wp_drv: 0x0
+Chip ID: 32 (ESP32-S31)
+Minimal chip revision: v0.0, (legacy min_rev = 0)
+Maximal chip revision: v0.99
+
+Segments Information
+====================
+Segment   Length   Load addr   File offs  Memory types
+-------  -------  ----------  ----------  ------------
+      0  0x016a4  0x2f0740c0  0x00000018  DRAM, BYTE_ACCESSIBLE, IRAM
+      1  0x00d78  0x2f06a2b0  0x000016c4  DRAM, BYTE_ACCESSIBLE, IRAM
+      2  0x03190  0x2f06cfb0  0x00002444  DRAM, BYTE_ACCESSIBLE, IRAM
+
+ESP32-S31 Image Footer
+======================
+Checksum: 0x72 (valid)
+Validation hash: 03fba933f2e46bc4cddad67b315266832308ffbaf3a97318b7edd4516fcec831 (valid)
+
+=================== inputs/v2/tiny386.bin
+56e7dbe8849d4af4bade19e63f9470fd2fe1c60c12ed760283cc3cc41976038f  inputs/v2/tiny386.bin
+esptool v5.4.0
+Image size: 1482096 bytes
+
+ESP32-S31 Image Header
+======================
+Image version: 1
+Entry point: 0x2f000d20
+Segments: 5
+Flash size: 16MB
+Flash freq: 80m
+Flash mode: DIO
+
+ESP32-S31 Extended Image Header
+===============================
+WP pin: 0xee (disabled)
+Flash pins drive settings: clk_drv: 0x0, q_drv: 0x0, d_drv: 0x0, cs0_drv: 0x0, hd_drv: 0x0, wp_drv: 0x0
+Chip ID: 32 (ESP32-S31)
+Minimal chip revision: v0.0, (legacy min_rev = 0)
+Maximal chip revision: v0.99
+
+Segments Information
+====================
+Segment   Length   Load addr   File offs  Memory types
+-------  -------  ----------  ----------  ------------
+      0  0x4731c  0x400f0020  0x00000018  DROM, IROM
+      1  0x08cd4  0x2f000000  0x0004733c  DRAM, BYTE_ACCESSIBLE, IRAM
+      2  0xe48b8  0x40000020  0x00050018  DROM, IROM
+      3  0x30298  0x2f008cd4  0x001348d8  DRAM, BYTE_ACCESSIBLE, IRAM
+      4  0x051c0  0x2f038f80  0x00164b78  DRAM, BYTE_ACCESSIBLE, IRAM
+
+ESP32-S31 Image Footer
+======================
+Checksum: 0xe6 (valid)
+Validation hash: 673e9c09f9fd7de56a9c628d82d3e6cd9498360308dc02645c03b1151dd76189 (valid)
+
+Application Information
+=======================
+Project name: tiny386
+App version: pristine-dirty
+Compile time:  
+ELF file SHA256: f073784de2668fade9092c68b26aef6a882c0b221690c92c68bc101fbe143f80
+ESP-IDF: v6.1-dev-8142-g188e3e55bb
+Minimal eFuse block revision: 0.0
+Maximal eFuse block revision: 0.99
+MMU page size: 64 KB
+Secure version: 0
+
+=================== inputs/be5b725/s31-linux-loader.bin
+f8f95a8cab8b99d4807a35cfba72153d17fc6467db68197480848d1f2d7295c8  inputs/be5b725/s31-linux-loader.bin
+esptool v5.4.0
+Image size: 740992 bytes
+
+ESP32-S31 Image Header
+======================
+Image version: 1
+Entry point: 0x2f000a2a
+Segments: 5
+Flash size: 16MB
+Flash freq: 80m
+Flash mode: DIO
+
+ESP32-S31 Extended Image Header
+===============================
+WP pin: 0xee (disabled)
+Flash pins drive settings: clk_drv: 0x0, q_drv: 0x0, d_drv: 0x0, cs0_drv: 0x0, hd_drv: 0x0, wp_drv: 0x0
+Chip ID: 32 (ESP32-S31)
+Minimal chip revision: v0.0, (legacy min_rev = 0)
+Maximal chip revision: v0.99
+
+Segments Information
+====================
+Segment   Length   Load addr   File offs  Memory types
+-------  -------  ----------  ----------  ------------
+      0  0x1b20c  0x40090020  0x00000018  DROM, IROM
+      1  0x04de4  0x2f000000  0x0001b22c  DRAM, BYTE_ACCESSIBLE, IRAM
+      2  0x827b4  0x40000020  0x00020018  DROM, IROM
+      3  0x0ddb0  0x2f004de4  0x000a27d4  DRAM, BYTE_ACCESSIBLE, IRAM
+      4  0x048c0  0x2f012c00  0x000b058c  DRAM, BYTE_ACCESSIBLE, IRAM
+
+ESP32-S31 Image Footer
+======================
+Checksum: 0x30 (valid)
+Validation hash: 29ee1894948580cee59b25a5e1b1a3210648c62453ab16d978b3f35026bd5b63 (valid)
+
+Application Information
+=======================
+Project name: s31-linux-loader
+App version: v0.1.0-1-gbe5b725
+Compile time: Sep 27 2026 08:05:39
+ELF file SHA256: 5c8116e829c2e61b36c7b613abc37490ecfc3edeb1d48df4b11458e4f321fc2c
+ESP-IDF: v6.1-dev-8142-g188e3e55bb
+Minimal eFuse block revision: 0.0
+Maximal eFuse block revision: 0.99
+MMU page size: 64 KB
+Secure version: 0
+
+=================== inputs/release-v2026.09.20/bootloader/s31-linux-loader.bin
+a064c58f8c2b40f289cb27f3ed288834955442e7ca7a301e9e1a10a3d50d7603  inputs/release-v2026.09.20/bootloader/s31-linux-loader.bin
+esptool v5.4.0
+Image size: 768096 bytes
+
+ESP32-S31 Image Header
+======================
+Image version: 1
+Entry point: 0x2f00074e
+Segments: 5
+Flash size: 16MB
+Flash freq: 80m
+Flash mode: DIO
+
+ESP32-S31 Extended Image Header
+===============================
+WP pin: 0xee (disabled)
+Flash pins drive settings: clk_drv: 0x0, q_drv: 0x0, d_drv: 0x0, cs0_drv: 0x0, hd_drv: 0x0, wp_drv: 0x0
+Chip ID: 32 (ESP32-S31)
+Minimal chip revision: v0.0, (legacy min_rev = 0)
+Maximal chip revision: v0.99
+
+Segments Information
+====================
+Segment   Length   Load addr   File offs  Memory types
+-------  -------  ----------  ----------  ------------
+      0  0x1a6f4  0x40090020  0x00000018  DROM, IROM
+      1  0x058fc  0x2f000000  0x0001a714  DRAM, BYTE_ACCESSIBLE, IRAM
+      2  0x89914  0x40000020  0x00020018  DROM, IROM
+      3  0x0cf40  0x2f0058fc  0x000a9934  DRAM, BYTE_ACCESSIBLE, IRAM
+      4  0x04fb8  0x2f012880  0x000b687c  DRAM, BYTE_ACCESSIBLE, IRAM
+
+ESP32-S31 Image Footer
+======================
+Checksum: 0xa3 (valid)
+Validation hash: 2fa40c49191c6caea5e601b52c63d7a99864e719ccc3aec40f8630b61f97546d (valid)
+
+Application Information
+=======================
+Project name: s31-linux-loader
+App version: c288bc9
+Compile time: Sep 19 2026 09:06:18
+ELF file SHA256: 3197df5ab587e55fdc7c1d9edbc71b617724d214446c9ef584259ee7609e8078
+ESP-IDF: v6.1
+Minimal eFuse block revision: 0.0
+Maximal eFuse block revision: 0.99
+MMU page size: 64 KB
+Secure version: 0

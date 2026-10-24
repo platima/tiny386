@@ -1,0 +1,13 @@
+Host test 15 (test_status) under AddressSanitizer and UBSan (host gcc 12, -fsanitize=address,undefined -fno-sanitize-recover=all,
+-O1 -g), run with address randomisation off (setarch -R), with esp/main given so that the source
+checks run too.  The scratch tree at 012158e (v3.7;
+changes not committed:  M esp/dependencies.lock ), 2026-10-22.
+
+exit 0
+brightness: every channel value at every level 0 to 255 as the model has it (0 levels wrong), and never darker one level up
+brightness: the default, 9 of 255: white 050505 (0.125 of v3.6's) blue 000008 (0.133 of v3.6's) cyan 000606 (0.133 of v3.6's) magenta 060006 (0.120 of v3.6's) green 000600 (0.120 of v3.6's) red 090000 (0.129 of v3.6's) yellow 080500 (0.137 of v3.6's)
+brightness: at every level 1 to 255 each colour keeps its lit channels and differs from the others; from 9 up its channels' ratios are within 14.1% of the table's (the most off: yellow at 11; yellow at the default 8:5, the table's 219:128)
+brightness: 40 frames of the crash patterns, bit-banged and RMT, at 5 levels: the same scaled bits
+brightness: status_led.c makes its 1 RMT and 2 bit-banged frames through status_frame_grb() and calls status_grb() nowhere; status_code.c has the scale, status_frame_grb() and the level in internal RAM, the scale in 32 bits
+status LED: 47085 checks, 0 failed
+sanitizer reports: 0

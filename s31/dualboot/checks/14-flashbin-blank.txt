@@ -1,0 +1,12 @@
+### 14. be5b725 flash.bin: regions that are all 0xFF
+flash.bin length 0xc20000
+  0x0..0x1FFF                                                    all 0xFF: True
+  after the bootloader..0x7FFF                                   all 0xFF: True
+  after the table..0x8FFF                                        all 0xFF: True
+  gap 0x9000..0x10FFF                                            all 0xFF: True
+  nvs                                                            all 0xFF: True
+  otadata                                                        all 0xFF: True
+  phy_init                                                       all 0xFF: True
+  gap 0x1A000..0x1FFFF                                           all 0xFF: True
+  factory after the loader (0xd4e80..0x21FFFF)                   all 0xFF: True
+  v2 table's bios.bin and vgabios.bin (0x1D0000..0x1FFFFF)       all 0xFF: True

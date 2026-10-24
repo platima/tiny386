@@ -1,0 +1,177 @@
+The tiny386-by-default dual-boot table, made and checked 2026-10-22 19:44 in WSL by
+table-check.sh (v3/checks/bootswap/scripts).  ESP-IDF: ~/esp/esp-idf at 188e3e55bb,
+0 files changed in it; gen_esp32part.py run as the dual-boot work ran it
+(--flash-size 16MB, MD5 entry on by default).
+
+### 1. the CSV: the dual-boot CSV with the two app subtypes swapped
+diff dualboot/partitions-korvo1-dualboot.csv dualboot/partitions-korvo1-dualboot-tiny386-default.csv
+(comment lines at the top of the new file left out):
+1d0
+< # Name,   Type, SubType, Offset,   Size,      Flags
+5c4
+< factory,  app,  factory, 0x20000,  0x200000,
+---
+> factory,  app,  test,    0x20000,  0x200000,
+9c8
+< tiny386,  app,  test,    0xE20000, 0x1E0000,
+---
+> tiny386,  app,  factory, 0xE20000, 0x1E0000,
+
+### 2. the same invocation on the existing dual-boot CSV gives the existing table
+gen_esp32part exit 0
+  Parsing CSV input...
+  Verifying table...
+  equal to dualboot/partition-table.bin, byte for byte
+  equal to images/korvo1-dualboot/partition-table.bin, byte for byte
+
+### 3. the new table
+gen_esp32part exit 0
+  Parsing CSV input...
+  Verifying table...
+  WARNING: Partition has name 'factory' which is a partition subtype, but this partition has non-matching type 0x0 and subtype 0x20. Mistake in partition table?
+  (the WARNING is about the label: the Linux loader keeps its label "factory" with subtype test.
+  gen_esp32part.py lines 586 to 594 print it and go on; neither app reads its own label: dualboot/DUALBOOT.md 13.2.)
+  the comment lines make no difference: the CSV without them gives the same bytes
+
+### 4. decoded with gen_esp32part.py
+== linux: /mnt/d/Repos/esp32-s31-linux-release/main-be5b725/esp32s31-linux-main-be5b725-flash/partition-table.bin (exit 0)
+nvs,data,nvs,0x11000,24K,
+otadata,data,ota,0x17000,8K,
+phy_init,data,phy,0x19000,4K,
+factory,app,factory,0x20000,2M,
+opensbi,data,64,0x220000,512K,
+linux,data,64,0x2a0000,7680K,
+initramfs,data,64,0xa20000,2M,
+  Parsing binary partition input...
+  Verifying table...
+== dual: /mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/images/korvo1-dualboot/partition-table.bin (exit 0)
+nvs,data,nvs,0x11000,24K,
+otadata,data,ota,0x17000,8K,
+phy_init,data,phy,0x19000,4K,
+factory,app,factory,0x20000,2M,
+opensbi,data,64,0x220000,512K,
+linux,data,64,0x2a0000,7680K,
+initramfs,data,64,0xa20000,2M,
+tiny386,app,test,0xe20000,1920K,
+  Parsing binary partition input...
+  Verifying table...
+== dual386: partition-table-tiny386-default.bin (exit 0)
+nvs,data,nvs,0x11000,24K,
+otadata,data,ota,0x17000,8K,
+phy_init,data,phy,0x19000,4K,
+factory,app,test,0x20000,2M,
+opensbi,data,64,0x220000,512K,
+linux,data,64,0x2a0000,7680K,
+initramfs,data,64,0xa20000,2M,
+tiny386,app,factory,0xe20000,1920K,
+  Parsing binary partition input...
+  Verifying table...
+  WARNING: Partition has name 'factory' which is a partition subtype, but this partition has non-matching type 0x0 and subtype 0x20. Mistake in partition table?
+
+== diff decoded linux decoded dual386 (Linux table against the new one)
+6c6
+< factory,app,factory,0x20000,2M,
+---
+> factory,app,test,0x20000,2M,
+9a10
+> tiny386,app,factory,0xe20000,1920K,
+== diff decoded dual decoded dual386 (Linux-by-default dual boot against the new one)
+6c6
+< factory,app,factory,0x20000,2M,
+---
+> factory,app,test,0x20000,2M,
+10c10
+< tiny386,app,test,0xe20000,1920K,
+---
+> tiny386,app,factory,0xe20000,1920K,
+
+### 5. bytes
+  520538d3a006f75c6f02a5a2f13ef1287c9903b118acaa82a74b774862bf16da   3072 bytes  /mnt/d/Repos/esp32-s31-linux-release/main-be5b725/esp32s31-linux-main-be5b725-flash/partition-table.bin
+  d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346   3072 bytes  /mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/images/korvo1-dualboot/partition-table.bin
+  5b90d4166afc39d72a1d6c7b16f3a2e4a5cc0193a3e0eb50990a4dbb9da58226   3072 bytes  partition-table-tiny386-default.bin
+Differing bytes, dual (Linux by default) against dual386 (tiny386 by default), cmp -l
+(offset in the table, then the two values in octal):
+  0x063  0  40
+  0x0e3  40  0
+  0x110  337  305
+  0x111  15  357
+  0x112  302  216
+  0x113  210  247
+  0x114  344  206
+  0x115  342  50
+  0x116  306  272
+  0x117  334  271
+  0x119  203  76
+  0x11a  153  217
+  0x11b  256  63
+  0x11c  101  135
+  0x11d  354  36
+  0x11e  115  231
+  0x11f  257  236
+Offsets: entry N starts at 32*(N-1); byte 3 of an entry is its subtype (magic 2 bytes, type, subtype).
+  0x063 = entry 4 (factory, 0x20000) subtype: 0x00 factory -> 0x20 test
+  0x0e3 = entry 8 (tiny386, 0xE20000) subtype: 0x20 test -> 0x00 factory
+  0x110 to 0x11f = the MD5 entry's digest (entry 9, digest at offset 16 of it)
+First 224 bytes against Linux's table (the seven Linux entries):
+/mnt/d/Repos/esp32-s31-linux-release/main-be5b725/esp32s31-linux-main-be5b725-flash/partition-table.bin partition-table-tiny386-default.bin differ: byte 100, line 1
+  0x063  0  40
+Bytes 0x120 to 0xBFF (after the MD5 entry) all 0xFF in the new table:
+   True 3072
+The MD5 entry checked as the bootloader checks it (esp_partition_table_verify, flash_partitions.c
+lines 33 to 57: MD5 over the entries before it, compared with bytes 16 to 31 of the 0xEBEB entry):
+  partition-table.bin: 8 entries, MD5 entry right, terminating 0xFF entry after it: True
+  partition-table-tiny386-default.bin: 8 entries, MD5 entry right, terminating 0xFF entry after it: True
+Hex, first 0x120 bytes, dual then dual386:
+00000000: aa50 0102 0010 0100 0060 0000 6e76 7300  .P.......`..nvs.
+00000010: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00000020: aa50 0100 0070 0100 0020 0000 6f74 6164  .P...p... ..otad
+00000030: 6174 6100 0000 0000 0000 0000 0000 0000  ata.............
+00000040: aa50 0101 0090 0100 0010 0000 7068 795f  .P..........phy_
+00000050: 696e 6974 0000 0000 0000 0000 0000 0000  init............
+00000060: aa50 0000 0000 0200 0000 2000 6661 6374  .P........ .fact
+00000070: 6f72 7900 0000 0000 0000 0000 0000 0000  ory.............
+00000080: aa50 0140 0000 2200 0000 0800 6f70 656e  .P.@..".....open
+00000090: 7362 6900 0000 0000 0000 0000 0000 0000  sbi.............
+000000a0: aa50 0140 0000 2a00 0000 7800 6c69 6e75  .P.@..*...x.linu
+000000b0: 7800 0000 0000 0000 0000 0000 0000 0000  x...............
+000000c0: aa50 0140 0000 a200 0000 2000 696e 6974  .P.@...... .init
+000000d0: 7261 6d66 7300 0000 0000 0000 0000 0000  ramfs...........
+000000e0: aa50 0020 0000 e200 0000 1e00 7469 6e79  .P. ........tiny
+000000f0: 3338 3600 0000 0000 0000 0000 0000 0000  386.............
+00000100: ebeb ffff ffff ffff ffff ffff ffff ffff  ................
+00000110: df0d c288 e4e2 c6dc 0083 6bae 41ec 4daf  ..........k.A.M.
+
+00000000: aa50 0102 0010 0100 0060 0000 6e76 7300  .P.......`..nvs.
+00000010: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00000020: aa50 0100 0070 0100 0020 0000 6f74 6164  .P...p... ..otad
+00000030: 6174 6100 0000 0000 0000 0000 0000 0000  ata.............
+00000040: aa50 0101 0090 0100 0010 0000 7068 795f  .P..........phy_
+00000050: 696e 6974 0000 0000 0000 0000 0000 0000  init............
+00000060: aa50 0020 0000 0200 0000 2000 6661 6374  .P. ...... .fact
+00000070: 6f72 7900 0000 0000 0000 0000 0000 0000  ory.............
+00000080: aa50 0140 0000 2200 0000 0800 6f70 656e  .P.@..".....open
+00000090: 7362 6900 0000 0000 0000 0000 0000 0000  sbi.............
+000000a0: aa50 0140 0000 2a00 0000 7800 6c69 6e75  .P.@..*...x.linu
+000000b0: 7800 0000 0000 0000 0000 0000 0000 0000  x...............
+000000c0: aa50 0140 0000 a200 0000 2000 696e 6974  .P.@...... .init
+000000d0: 7261 6d66 7300 0000 0000 0000 0000 0000  ramfs...........
+000000e0: aa50 0000 0000 e200 0000 1e00 7469 6e79  .P..........tiny
+000000f0: 3338 3600 0000 0000 0000 0000 0000 0000  386.............
+00000100: ebeb ffff ffff ffff ffff ffff ffff ffff  ................
+00000110: c5ef 8ea7 8628 bab9 003e 8f33 5d1e 999e  .....(...>.3]...
+
+### 6. the bootloader beside it
+  b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  22352 bytes  /mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/dualboot/bootloader.bin
+  b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  22352 bytes  /mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/images/korvo1-dualboot/bootloader.bin
+
+### 7. the copies in the package
+  /mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/dualboot/partition-table-tiny386-default.bin: the table made in section 3, byte for byte
+  /mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/images/korvo1-dualboot-tiny386-default/partition-table.bin: the table made in section 3, byte for byte
+  images/korvo1-dualboot-tiny386-default/bootloader.bin = images/korvo1-dualboot/bootloader.bin = dualboot/bootloader.bin: yes
+  images/korvo1-dualboot-tiny386-default/tiny386.bin = images/korvo1-dualboot/tiny386.bin (App version v3.7)
+  flash_args the same as korvo1-dualboot (same offsets)
+  SHA256SUMS in that folder:
+    flash_args: OK
+    bootloader.bin: OK
+    partition-table.bin: OK
+    tiny386.bin: OK

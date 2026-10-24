@@ -1,0 +1,110 @@
+The drawing's host time on this PC, one run at a time, two rounds (p.sh): v4.2 and v4.1 built with the
+v4.1 work's harness, the same images and options; host microseconds a periodic picture.  2026-10-23.
+
+P1-v42-n16               desktop (desktop seen at t=220 s) | drawing: 11276 pictures, 297.5 ms of host time in all, 26.4 us a picture
+P1-v42-n16-mouse         desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 338.0 ms of host time in all, 24.3 us a picture
+P1-v42-n16dib-mouse      desktop (desktop seen at t=609 s) | drawing: 24190 pictures, 394.0 ms of host time in all, 16.3 us a picture
+P1-v42-n32-mouse         desktop (desktop seen at t=304 s) | drawing: 14071 pictures, 406.8 ms of host time in all, 28.9 us a picture
+P1-v42-dos16-mouse       desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 336.9 ms of host time in all, 24.2 us a picture
+P1-v42-vga               desktop (desktop seen at t=210 s) | drawing: 10947 pictures, 433.8 ms of host time in all, 39.6 us a picture
+P1-v42-vga-mouse         desktop (desktop seen at t=229 s) | drawing: 11585 pictures, 443.5 ms of host time in all, 38.3 us a picture
+P1-w41-n16               desktop (desktop seen at t=220 s) | drawing: 11276 pictures, 302.1 ms of host time in all, 26.8 us a picture
+P1-w41-n16-mouse         desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 334.7 ms of host time in all, 24.0 us a picture
+P1-w41-n16dib-mouse      desktop (desktop seen at t=609 s) | drawing: 24190 pictures, 386.5 ms of host time in all, 16.0 us a picture
+P1-w41-n32-mouse         desktop (desktop seen at t=304 s) | drawing: 14071 pictures, 409.8 ms of host time in all, 29.1 us a picture
+P1-w41-dos16-mouse       desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 339.8 ms of host time in all, 24.4 us a picture
+P1-w41-vga               desktop (desktop seen at t=210 s) | drawing: 10947 pictures, 428.5 ms of host time in all, 39.1 us a picture
+P1-w41-vga-mouse         desktop (desktop seen at t=229 s) | drawing: 11585 pictures, 440.2 ms of host time in all, 38.0 us a picture
+P2-v42-n16               desktop (desktop seen at t=220 s) | drawing: 11276 pictures, 297.9 ms of host time in all, 26.4 us a picture
+P2-v42-n16-mouse         desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 332.7 ms of host time in all, 23.9 us a picture
+P2-v42-n16dib-mouse      desktop (desktop seen at t=609 s) | drawing: 24190 pictures, 388.1 ms of host time in all, 16.0 us a picture
+P2-v42-n32-mouse         desktop (desktop seen at t=304 s) | drawing: 14071 pictures, 411.1 ms of host time in all, 29.2 us a picture
+P2-v42-dos16-mouse       desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 331.2 ms of host time in all, 23.8 us a picture
+P2-v42-vga               desktop (desktop seen at t=210 s) | drawing: 10947 pictures, 426.3 ms of host time in all, 38.9 us a picture
+P2-v42-vga-mouse         desktop (desktop seen at t=229 s) | drawing: 11585 pictures, 437.8 ms of host time in all, 37.8 us a picture
+P2-w41-n16               desktop (desktop seen at t=220 s) | drawing: 11276 pictures, 296.3 ms of host time in all, 26.3 us a picture
+P2-w41-n16-mouse         desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 333.4 ms of host time in all, 23.9 us a picture
+P2-w41-n16dib-mouse      desktop (desktop seen at t=609 s) | drawing: 24190 pictures, 385.9 ms of host time in all, 16.0 us a picture
+P2-w41-n32-mouse         desktop (desktop seen at t=304 s) | drawing: 14071 pictures, 408.2 ms of host time in all, 29.0 us a picture
+P2-w41-dos16-mouse       desktop (desktop seen at t=300 s) | drawing: 13939 pictures, 357.0 ms of host time in all, 25.6 us a picture
+P2-w41-vga               desktop (desktop seen at t=210 s) | drawing: 10947 pictures, 451.5 ms of host time in all, 41.2 us a picture
+P2-w41-vga-mouse         desktop (desktop seen at t=229 s) | drawing: 11585 pictures, 446.7 ms of host time in all, 38.6 us a picture
+
+== the built Korvo-1 image, v4.1 (images\ before v4.2) against v4.2 (rel1): instructions of each
+== function, and whether it is the same with every number (addresses, offsets) taken out (dis42.sh)
+FUNCTION                   V4.1   V4.2 THE SAME WITH NUMBERS TAKEN OUT
+iomem_write8                 23     23 yes
+iomem_write16                32     32 yes
+iomem_write32                32     32 yes
+iomem_write_string           55     55 yes
+vga_mem_write               185    185 yes
+vga_mem_write16              81     81 yes
+vga_mem_write32              92     92 yes
+vga_mem_write_string         82     82 yes
+vga_refresh                 818    835 no
+vga_graphic_refresh        1960   1961 no
+vga_vbe_refresh               0      0 (not in v4.1, or inlined)
+vga_text_refresh              0      0 (not in v4.1, or inlined)
+vga_graphic_refresh_shrunk      0      0 (not in v4.1, or inlined)
+vga_set_dirty_blocks          0      8 (not in v4.1, or inlined)
+== vga_refresh, v4.1 against v4.2 (numbers taken out):
+6d5
+< sw	sN,N(sp)
+16c15
+< li	sN,N
+---
+> li	aN,N
+18,20c17,19
+< lbu	sN,N(aN)
+< andi	sN,sN,N
+< addi	sN,sN,N
+---
+> lbu	aN,N(aN)
+> andi	aN,aN,N
+> addi	aN,aN,N
+29c28
+< lui	sN,N
+---
+> lui	aN,N
+32,33c31,32
+< add	sN,sN,sN
+< lw	aN,N(sN) 
+---
+> add	aN,aN,sN
+> lw	aN,N(aN) 
+35c34
+< addi	aN,sN,N
+---
+> addi	aN,aN,N
+38c37
+< sw	aN,N(sN)
+---
+> sw	aN,N(aN)
+41,42d39
+< sw	aN,N(sN)
+< lw	aN,N(sN)
+44,51d40
+< li	sN,N
+< lw	aN,N(aN)
+< lw	aN,N(aN)
+< lw	aN,N(aN)
+< mul	aN,aN,aN
+< slli	aN,aN,N
+< auipc	ra,N
+< jalr	N(ra) 
+53,58c42,49
+< sb	zero,N(sN)
+< sw	zero,N(sN)
+< sb	zero,N(sN)
+< sh	aN,N(sN)
+< sb	sN,N(sN)
+< sb	sN,N(sN)
+---
+> li	sN,N
+> sw	aN,N(aN)
+> sb	zero,N(aN)
+> sw	zero,N(aN)
+> sb	zero,N(aN)
+> sh	aN,N(aN)
+> sh	aN,N(aN)
+> sb	sN,N(aN)

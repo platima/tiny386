@@ -1,0 +1,6 @@
+tests/host/test_status.c with esp/main/status_code.c, built with -fsanitize=address,undefined
+-fno-sanitize-recover=all (host gcc), run with address randomisation off (setarch -R).
+exit 0
+bit-bang: cycles at 80 MHz: T0H 27, T0 104, T1H 53, T1 104, reset 24000; at 320 MHz four times as many
+status LED: 18011 checks, 0 failed
+0

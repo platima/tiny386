@@ -1,0 +1,43 @@
+BENCH.COM under FreeDOS 4M, gen 4, no FPU, in the PC harness (-marks), the merge step's image
+(~/v4-work/merge/pc/img-bench/freedos-bench.img), this tree (wt) and v4.0-base (v40b), each with
+v4.0's vgabios.bin (new) and the release's (old).  2026-10-23.
+
+== VGA BIOS new: the marks' instruction counts, this tree | v4.0-base
+mark a1 at insns=11801744	mark a1 at insns=11801744
+mark a2 at insns=13898896	mark a2 at insns=13898896
+mark a3 at insns=15668880	mark a3 at insns=15668880
+mark a4 at insns=18224784	mark a4 at insns=18224784
+mark a5 at insns=18246805	mark a5 at insns=18246805
+mark a6 at insns=23960646	mark a6 at insns=23960646
+mark a7 at insns=25960518	mark a7 at insns=25960518
+mark a8 at insns=27729990	mark a8 at insns=27729990
+mark a9 at insns=30330438	mark a9 at insns=30330438
+mark af at insns=31357510	mark af at insns=31357510
+END the same
+final picture the same
+
+== VGA BIOS old: the marks' instruction counts, this tree | v4.0-base
+mark a1 at insns=11790158	mark a1 at insns=11790158
+mark a2 at insns=13887310	mark a2 at insns=13887310
+mark a3 at insns=15657294	mark a3 at insns=15657294
+mark a4 at insns=18213198	mark a4 at insns=18213198
+mark a5 at insns=18235219	mark a5 at insns=18235219
+mark a6 at insns=23949062	mark a6 at insns=23949062
+mark a7 at insns=25948934	mark a7 at insns=25948934
+mark a8 at insns=27718406	mark a8 at insns=27718406
+mark a9 at insns=30318854	mark a9 at insns=30318854
+mark af at insns=31345926	mark af at insns=31345926
+END the same
+final picture the same
+
+== v4.0-base with the old VGA BIOS against the merge step's own run of it
+mark a1 at insns=11790158	mark a1 at insns=11790158
+mark a2 at insns=13887310	mark a2 at insns=13887310
+mark a3 at insns=15657294	mark a3 at insns=15657294
+mark a4 at insns=18213198	mark a4 at insns=18213198
+mark a5 at insns=18235219	mark a5 at insns=18235219
+mark a6 at insns=23949062	mark a6 at insns=23949062
+mark a7 at insns=25948934	mark a7 at insns=25948934
+mark a8 at insns=27718406	mark a8 at insns=27718406
+mark a9 at insns=30318854	mark a9 at insns=30318854
+mark af at insns=31345926	mark af at insns=31345926

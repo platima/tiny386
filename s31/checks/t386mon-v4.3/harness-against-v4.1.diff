@@ -1,0 +1,285 @@
+--- /home/owner/v4-work/v41/h/harness/build.sh	2026-10-22 20:57:56.790854855 +0800
++++ /home/owner/v43/merge/ph/harness/build.sh	2026-10-23 23:49:01.311593942 +0800
+@@ -94,6 +94,12 @@
+     V3DEFS=""
+     # v3 (kbd_input.c in the tree): main/CMakeLists.txt adds these two
+     [ -f "$TREE/esp/main/kbd_input.c" ] && V3DEFS="-DPS2_KBD_HOOKS -DNO_WIFI"
++    # perfport (the information port at 0F1F8h): main/CMakeLists.txt adds
++    # perfport.c and TINY386_PERFPORT; headless.c fills the host's part
++    if [ -f "$TREE/perfport.c" ] && [ -z "${NO_PERFPORT:-}" ]; then
++        SRCS="$SRCS perfport.c"
++        V3DEFS="$V3DEFS -DTINY386_PERFPORT"
++    fi
+     DEFS="-DFLAV_ESP -DHARNESS_FLAVOUR='\"esp-$BOARD\"' -include $OUT/board.h -I$H/shim
+           $V3DEFS -DI386_ENABLE_FPU -DUSE_FMOPL -D_GNU_SOURCE"
+     OPT="-O2"
+--- /home/owner/v4-work/v41/h/harness/headless.c	2026-10-23 11:40:35.691796632 +0800
++++ /home/owner/v43/merge/ph/harness/headless.c	2026-10-23 23:49:01.318522827 +0800
+@@ -44,6 +44,9 @@
+ #include <sys/stat.h>
+ #include "pc.h"
+ #include "iohook_stats.h"
++#ifdef TINY386_PERFPORT
++#include "perfport.h"
++#endif
+ 
+ #ifndef HARNESS_FLAVOUR
+ #define HARNESS_FLAVOUR "unknown"
+@@ -83,6 +86,13 @@
+ static int opt_marks = 0;               /* BENCH.COM's marks at 0000:04F0 (v4 merge) */
+ static int opt_audit = 0;               /* v4.0: every Nth picture held against a full redraw */
+ static int opt_vbe_blocks = -1;         /* v4.0: vga_dirty_blocks, where the tree has it */
++static double opt_perfport = 0;         /* perfport: a line of the port's values every S virtual s */
++/* v4.3: -f11 T,T,...: Ctrl+Alt+F11 at these virtual seconds, as the board's speed.c takes it
++   (vga_set_dirty_blocks(!vga_dirty_blocks), between two pictures), each followed by a
++   perfport line read as a guest reads the port */
++static double opt_f11[16];
++static int n_f11;
++extern void vga_set_dirty_blocks(int on) __attribute__((weak));
+ extern int vga_dirty_blocks __attribute__((weak));
+ struct key_ev { double t; int sc; int down; };
+ static struct key_ev keys[2048];  /* v4.0: 64 was too few for a guest test's keys */
+@@ -512,12 +522,24 @@
+ 	return strstr(buf, needle) != NULL;
+ }
+ 
++/* perfport's harness: in time order among those still to come, so that a
++   dialog's Enter is not left behind a -keyfile's later keys */
++static void put_key(struct key_ev e)
++{
++	int i = nkeys++;
++	while (i > next_key && keys[i - 1].t > e.t) {
++		keys[i] = keys[i - 1];
++		i--;
++	}
++	keys[i] = e;
++}
++
+ static void add_key(double t, int sc)
+ {
+ 	if (nkeys + 2 > 2048)
+ 		return;
+-	keys[nkeys++] = (struct key_ev) { t, sc, 1 };
+-	keys[nkeys++] = (struct key_ev) { t + 0.1, sc, 0 };
++	put_key((struct key_ev) { t, sc, 1 });
++	put_key((struct key_ev) { t + 0.1, sc, 0 });
+ }
+ 
+ /* -bootmenu N: F8 while "Starting Windows 95..." is up, then item N of the
+@@ -820,6 +842,121 @@
+ 		ide_error_count ? ide_error_count() : 0);
+ }
+ 
++/* ==== perfport: the host's part of the information port ==== */
++#ifdef TINY386_PERFPORT
++static unsigned pp_flushes;             /* the run loop's ide_flush() calls */
++/* the last whole virtual second, as speed.c counts on the board: running
++   is the guest's instructions, halted the idle steps' worth */
++static uint64_t pp_win_t0, pp_win_insns, pp_win_idle;
++static uint32_t pp_kips, pp_halt_pct, pp_seconds;
++static void pp_window(uint64_t t)
++{
++	if (t - pp_win_t0 < 1000000)
++		return;
++	uint64_t di = guest_insns() - pp_win_insns, dh = idle_insns - pp_win_idle;
++	uint64_t run_us = di * 1000000ull / opt_ips, halt_us = dh * 1000000ull / opt_ips;
++	pp_kips = run_us ? (uint32_t) (di * 1000 / run_us) : 0;
++	pp_halt_pct = run_us + halt_us ? (uint32_t) (halt_us * 100 / (run_us + halt_us)) : 0;
++	pp_seconds++;
++	pp_win_t0 = t;
++	pp_win_insns = guest_insns();
++	pp_win_idle = idle_insns;
++}
++
++extern volatile unsigned ide_activity __attribute__((weak));
++extern volatile unsigned emulink_activity __attribute__((weak));
++
++static void pp_fill(void *opaque, uint32_t *v, uint32_t *ok)
++{
++	(void) opaque;
++	uint64_t now = vnow_us();
++	PERFPORT_PUT(v, ok, PP_I_SOURCE, PP_SOURCE_HARNESS);
++	PERFPORT_PUT(v, ok, PP_I_UPTIME_MS, (uint32_t) (now / 1000));
++	PERFPORT_PUT(v, ok, PP_I_PC_UPTIME_MS,
++		     (uint32_t) ((uint32_t) now - (uint32_t) g_pc->boot_start_time) / 1000);
++	uint64_t n = guest_insns();
++	PERFPORT_PUT(v, ok, PP_I_INSNS_LO, (uint32_t) n);
++	PERFPORT_PUT(v, ok, PP_I_INSNS_HI, (uint32_t) (n >> 32));
++	PERFPORT_PUT(v, ok, PP_I_KIPS, pp_kips);
++	PERFPORT_PUT(v, ok, PP_I_HALT_PCT, pp_halt_pct);
++	PERFPORT_PUT(v, ok, PP_I_RUN_MS, (uint32_t) (n * 1000 / opt_ips));
++	PERFPORT_PUT(v, ok, PP_I_HALT_MS, (uint32_t) (idle_insns * 1000 / opt_ips));
++	PERFPORT_PUT(v, ok, PP_I_SECONDS, pp_seconds);
++	if (opt_vga_ms > 0)
++		PERFPORT_PUT(v, ok, PP_I_FRAME_MS, (uint32_t) opt_vga_ms);
++	/* the disk: through the card's FatFs as on the board (-card), else the
++	   host's stdio, counted by iohook.c */
++#ifdef PCR_HAVE_DISK_IMAGE
++	if (pcr_card_image && disk_image_get_stats) {
++		struct disk_image_stats d;
++		disk_image_get_stats(&d, false);
++		PERFPORT_PUT(v, ok, PP_I_DISK_READS, d.reads);
++		PERFPORT_PUT(v, ok, PP_I_DISK_WRITES, d.writes);
++		PERFPORT_PUT(v, ok, PP_I_DISK_READ_SECTORS, d.rsectors);
++		PERFPORT_PUT(v, ok, PP_I_DISK_WRITE_SECTORS, d.wsectors);
++		PERFPORT_PUT(v, ok, PP_I_DISK_BUSY_US, d.busy_us);
++		PERFPORT_PUT(v, ok, PP_I_DISK_LONGEST_US, d.longest_us);
++		PERFPORT_PUT(v, ok, PP_I_DISK_OVER_TICK, d.over_tick);
++		PERFPORT_PUT(v, ok, PP_I_DISK_ERRORS, d.errors);
++		PERFPORT_PUT(v, ok, PP_I_DISK_RECOVERED, d.recovered);
++	} else
++#endif
++	{
++		PERFPORT_PUT(v, ok, PP_I_DISK_READS, pcr_io.reads);
++		PERFPORT_PUT(v, ok, PP_I_DISK_WRITES, pcr_io.writes);
++		PERFPORT_PUT(v, ok, PP_I_DISK_READ_SECTORS, pcr_io.rbytes / 512);
++		PERFPORT_PUT(v, ok, PP_I_DISK_WRITE_SECTORS, pcr_io.wbytes / 512);
++		PERFPORT_PUT(v, ok, PP_I_DISK_BUSY_US, stall_ns_disk / 1000);
++		PERFPORT_PUT(v, ok, PP_I_DISK_ERRORS, pcr_io.errors);
++	}
++	PERFPORT_PUT(v, ok, PP_I_DISK_REFUSED, ide_error_count ? ide_error_count() : 0);
++	PERFPORT_PUT(v, ok, PP_I_DISK_FLUSHES, pp_flushes);
++	if (&ide_activity && &emulink_activity)
++		PERFPORT_PUT(v, ok, PP_I_DISK_ACTIVITY, ide_activity + emulink_activity);
++	perfport_put_text(v, ok, PP_I_FIRMWARE, "pc-harness");
++	perfport_put_text(v, ok, PP_I_BOARD, "PC harness, " HARNESS_FLAVOUR);
++}
++
++/* the port read as a guest reads it: a snapshot, then every index */
++static void pp_read(uint32_t *v)
++{
++	perfport_io_write(g_pc, PP_PORT_CMD - PP_PORT_BASE, PP_CMD_SNAPSHOT, 2);
++	for (int i = 0; i < PP_COUNT; i++) {
++		perfport_io_write(g_pc, 0, (uint32_t) i, 2);
++		v[i] = perfport_io_read(g_pc, PP_PORT_DATA - PP_PORT_BASE, 4);
++	}
++}
++
++static void pp_line(const char *why)
++{
++	uint32_t v[PP_COUNT];
++	pp_read(v);
++	char fw[33], board[33];
++	memcpy(fw, &v[PP_I_FIRMWARE], 32);
++	memcpy(board, &v[PP_I_BOARD], 32);
++	fw[32] = board[32] = 0;
++	fprintf(hout, "[harness] perfport %s t=%.3f: magic %08x version %08x snaps %u src %u "
++		"insns %llu kips %u halt %u%% pictures %u (%u last s, draw %u us avg %u max) changed %u (%u last s) "
++		"flushes %u rows %u vbe %u whole %u blocks %u rows %u blocks_on %u mode %u %ux%ux%u "
++		"bios %02x screen %ux%u mem %uK vga %uK disk r %u w %u rs %u ws %u "
++		"timer owed %u dropped %u keys %u mouse %u/%u io %u snap %u us "
++		"valid %08x %08x %08x %08x \"%s\" \"%s\"\n",
++		why, vnow_us() / 1e6, v[PP_I_MAGIC], v[PP_I_VERSION], v[PP_I_SNAPSHOTS],
++		v[PP_I_SOURCE],
++		(unsigned long long) v[PP_I_INSNS_LO] | (unsigned long long) v[PP_I_INSNS_HI] << 32,
++		v[PP_I_KIPS], v[PP_I_HALT_PCT], v[PP_I_PICTURES], v[PP_I_PICTURES_1S],
++		v[PP_I_DRAW_AVG_US_1S], v[PP_I_DRAW_MAX_US_1S], v[PP_I_CHANGED], v[PP_I_CHANGED_1S], v[PP_I_FLUSHES],
++		v[PP_I_FLUSH_ROWS], v[PP_I_VBE_PICTURES], v[PP_I_VBE_WHOLE], v[PP_I_VBE_BLOCKS],
++		v[PP_I_VBE_ROWS], v[PP_I_VBE_BLOCKS_ON], v[PP_I_MODE_KIND], v[PP_I_MODE_WIDTH], v[PP_I_MODE_HEIGHT],
++		v[PP_I_MODE_BPP], v[PP_I_BIOS_MODE], v[PP_I_SCREEN_WIDTH], v[PP_I_SCREEN_HEIGHT],
++		v[PP_I_GUEST_MEM_KB], v[PP_I_VGA_MEM_KB], v[PP_I_DISK_READS], v[PP_I_DISK_WRITES],
++		v[PP_I_DISK_READ_SECTORS], v[PP_I_DISK_WRITE_SECTORS], v[PP_I_TIMER_OWED_MAX],
++		v[PP_I_TIMER_DROPPED], v[PP_I_KEY_EVENTS], v[PP_I_MOUSE_REPORTS],
++		v[PP_I_MOUSE_PACKETS], v[PP_I_PORT_IO], v[PP_I_SNAP_US], v[PP_I_VALID0],
++		v[PP_I_VALID1], v[PP_I_VALID2], v[PP_I_VALID3], fw, board);
++}
++#endif
++
+ static volatile int in_fatal;
+ static void fatal_signal(int sig)
+ {
+@@ -889,7 +1026,11 @@
+ 		"  -audit N      every Nth periodic picture held against a full redraw\n"
+ 		"                (not with -vgathread); a guest's \"@shot NAME\" on port\n"
+ 		"                402h always is, and is saved as shot-NAME; \"@done\" stops\n"
+-		"  -vbe-blocks N vga_dirty_blocks = N (v4.0: 0 draws VBE pictures in full)\n");
++		"  -vbe-blocks N vga_dirty_blocks = N (v4.0: 0 draws VBE pictures in full)\n"
++		"  -f11 T,T...   Ctrl+Alt+F11 (vbe_blocks the other way) at these virtual s, as\n"
++		"                the board's speed.c does it between two pictures (v4.2 on)\n"
++		"  -perfport S   the information port's values, read as a guest reads them,\n"
++		"                every S virtual seconds (and at the end in any case)\n");
+ 	exit(1);
+ }
+ 
+@@ -951,6 +1092,17 @@
+ 		else if (!strcmp(a, "-marks")) opt_marks = 1;
+ 		else if (!strcmp(a, "-audit")) opt_audit = atoi(ARG());
+ 		else if (!strcmp(a, "-vbe-blocks")) opt_vbe_blocks = atoi(ARG());
++		else if (!strcmp(a, "-perfport")) opt_perfport = atof(ARG());
++		else if (!strcmp(a, "-f11")) {
++			char *q = ARG();
++			while (q && *q && n_f11 < 16) {
++				opt_f11[n_f11++] = strtod(q, &q);
++				if (*q == ',')
++					q++;
++				else
++					break;
++			}
++		}
+ 		else if (!strcmp(a, "-keyfile")) {
+ 			/* v4.0: lines "T SC D": scancode SC (hex, set 1) down (D 1) or
+ 			   up (0) at T virtual seconds, in time order */
+@@ -1043,6 +1195,11 @@
+ #endif
+ 	load_bios_and_reset(pc);
+ 	pc->boot_start_time = get_uticks();
++#ifdef TINY386_PERFPORT
++	perfport_set_fill(pp_fill, NULL);
++	uint64_t next_pp = opt_perfport > 0 ? (uint64_t) (opt_perfport * 1e6) : UINT64_MAX;
++	int f11_next = 0;
++#endif
+ 
+ 	pthread_t vt, mt;
+ 	if (opt_vgathread)
+@@ -1083,6 +1240,13 @@
+ 		if (after == before)
+ 			idle_insns += opt_idle;
+ 		uint64_t t = vnow_us();
++#ifdef TINY386_PERFPORT
++		pp_window(t);
++		if (t >= next_pp) {
++			pp_line("every");
++			next_pp += (uint64_t) (opt_perfport * 1e6);
++		}
++#endif
+ 		if (opt_marks) {
+ 			int mk = ((const uint8_t *) pc->phys_mem)[0x4f0];
+ 			if (mk != last_mark) {
+@@ -1125,6 +1289,17 @@
+ 			draw_us += real_us() - d0;
+ 			rows_picture_done();
+ 			next_vga = t + vga_period;
++#ifdef TINY386_PERFPORT
++			while (f11_next < n_f11 && t >= (uint64_t) (opt_f11[f11_next] * 1e6)) {
++				f11_next++;
++				if (&vga_set_dirty_blocks && &vga_dirty_blocks) {
++					vga_set_dirty_blocks(!vga_dirty_blocks);
++					fprintf(hout, "[harness] Ctrl+Alt+F11 at t=%.3f: vbe_blocks = %d now\n",
++						t / 1e6, vga_dirty_blocks);
++					pp_line("f11");
++				}
++			}
++#endif
+ 			if (opt_audit > 0 && rows_pics % opt_audit == 0) {
+ 				long d = audit_screen();
+ 				if (d && audit_bad <= 20)
+@@ -1153,6 +1328,9 @@
+ 				if (emulink_flush)
+ 					emulink_flush(pc->emulink);
+ 				unflushed = 0;
++#ifdef TINY386_PERFPORT
++				pp_flushes++;
++#endif
+ 			}
+ 		}
+ 		if (opt_bootmenu && t >= next_menu_poll) {
+@@ -1222,6 +1400,9 @@
+ 			emulink_flush(pc->emulink);
+ 	}
+ 	state_line("END");
++#ifdef TINY386_PERFPORT
++	pp_line("END");
++#endif
+ 	fprintf(hout, "[harness] rows changed a picture: %llu pictures, %llu rows in all (%.1f a picture); "
+ 		"none %llu, 1-8 %llu, 9-32 %llu, 33-128 %llu, 129-479 %llu, 480 or more %llu\n",
+ 		(unsigned long long) rows_pics, (unsigned long long) rows_total,

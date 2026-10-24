@@ -1,0 +1,32 @@
+The crash-test builds (idf.py -DCRASH_TEST=1), in the scratch tree at v3.4 (a33b7cf),
+build-v34kc (BOARD=korvo1, the dual-boot table) and build-v34dc (BOARD=dosboard), 2026-10-22.
+Built only, to show that crash_test = 5 compiles and links and that its panic path is laid
+out as the release images' is.  Not flashed, not run, not shipped.
+== build-v34kc
+tiny386.bin binary size 0xd85e0 bytes. Smallest app partition is 0x1e0000 bytes. 0x107a20 bytes (55%) free.
+Project build complete. To flash, run:
+== build-v34dc
+tiny386.bin binary size 0xdf770 bytes. Smallest app partition is 0x1c0000 bytes. 0xe0890 bytes (50%) free.
+Project build complete. To flash, run:
+
+== v34kc
+  status_led_panic: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+  status_led_halt: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+2f02d07a T rtc_clk_cpu_freq_mhz_to_config
+2f02d128 T rtc_clk_cpu_freq_set_config
+4001d48a T status_led_test_early
+crash_test = 5: no 80 MHz setting here; not crashing.
+crash_test = 5: the CPU to 80 MHz, then crashing on purpose as if before tiny386 started (yellow 1).
+== v34dc
+  status_led_panic: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+  status_led_halt: 1 wait(s) straight before the rising store, 1 before the falling one, 1 before anything else: as status_bb.h has it
+2f02ce90 T rtc_clk_cpu_freq_mhz_to_config
+2f02cf3e T rtc_clk_cpu_freq_set_config
+40020ec4 T status_led_test_early
+crash_test = 5: no 80 MHz setting here; not crashing.
+crash_test = 5: the CPU to 80 MHz, then crashing on purpose as if before tiny386 started (yellow 1).
+== release builds: no crash test code
+0
+0
+0
+0
