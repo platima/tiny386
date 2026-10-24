@@ -69,8 +69,8 @@ exit 0
    p1: as newcard.sh made it, every sector (6ca3c7c7b6ac1d0f)
    p2: as newcard.sh made it, every sector (bc14540515edb18a)
    IOS.LOG's units through real-mode drivers (00 and 01 the floppies; C: is 02):
-      Unit number 00 going through real mode drivers.
-      Unit number 01 going through real mode drivers.
+      unit 00: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
+      unit 01: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
 == pp-sd64: outcome: desktop (desktop seen at t=223 s)
    END t=343.039 s insns=588632128 idle=61980864 stall=17.7 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=00499000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
    sectors changed: 6864 in 138 ranges
@@ -82,8 +82,8 @@ exit 0
    p1: as newcard.sh made it, every sector (94d23651852ebf9b)
    p2: as newcard.sh made it, every sector (bc14540515edb18a)
    IOS.LOG's units through real-mode drivers (00 and 01 the floppies; C: is 02):
-      Unit number 00 going through real mode drivers.
-      Unit number 01 going through real mode drivers.
+      unit 00: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
+      unit 01: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
 == pp-filecard: outcome: desktop (desktop seen at t=224 s)
    END t=344.289 s insns=589837629 idle=61926656 stall=18.4 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=00499000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
    sectors changed: 7220 in 153 ranges
@@ -93,12 +93,12 @@ exit 0
    END t=330.030 s insns=587292185 idle=71945744 stall=0.4 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=00499000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
    sectors changed: 6533 in 139 ranges
    IOS.LOG's units through real-mode drivers:
-      Unit number 00 going through real mode drivers.
-      Unit number 01 going through real mode drivers.
+      unit 00: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
+      unit 01: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
 -- the pristine image's own IOS.LOG (from the install, before fill_cmos):
-      Unit number 00 going through real mode drivers.
-      Unit number 01 going through real mode drivers.
-      Unit number 02 going through real mode drivers.
+      unit 00: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
+      unit 01: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
+      unit 02: through real-mode drivers (paraphrased from IOS.LOG, v4.5)
 -- the sectors each run changed, against the plain file's (the first 40 ranges):
    pp-sd512: the same first ranges as pp-file
    pp-sd64: first ranges differ (Windows' own timing)

@@ -1,0 +1,57 @@
+BUILD-NOTES 31.6: newcard.sh and export-root.sh of v4.5 with made-up inputs only (stand-in
+images made by mkfs.fat and mkfs.ext4, no Windows content), WSL ~/org2/v45/nc (nc-test.sh), 2026-10-24.
+
+== a (--win95 w06.img): exit 0
+     p3 Windows (06)    from    1056768,     131072 sectors (64 MiB)
+     p3's type: 0e, not the image's 06: p3 ends past the 504 MiB CHS reaches in the guest, and with type 06 Windows 95's boot sector would read by CHS
+     NOTE: the volume's boot sector says "mkfs.fat", not Windows 95 OSR2's MSWIN4.1; a boot sector older than OSR2 reads by CHS only, and p3 ends past 504 MiB. If Windows does not start from p3, make the card again with --p1-mib 64, which puts p3 lower.
+     the table written: p1 0C, p2 83, p3 0E; disk signature ed2d6832
+   == a.img: ready
+   table: p1 0C from 8192, p2 83 from 1187840, p3 0E from 1056768
+== b (--win95 w06.img --p1-mib 64): exit 0
+     p3 Windows (06)    from     139264,     131072 sectors (64 MiB)
+     the table written: p1 0C, p2 83, p3 06; disk signature 72d0ee4e
+   == b.img: ready
+   table: p1 0C from 8192, p2 83 from 270336, p3 06 from 139264
+== c (--win95 w06osr2.img): exit 0
+     p3 Windows (06)    from    1056768,     131072 sectors (64 MiB)
+     p3's type: 0e, not the image's 06: p3 ends past the 504 MiB CHS reaches in the guest, and with type 06 Windows 95's boot sector would read by CHS
+     the table written: p1 0C, p2 83, p3 0E; disk signature e6f89cfe
+   == c.img: ready
+   table: p1 0C from 8192, p2 83 from 1187840, p3 0E from 1056768
+== d (--win95 w0e.img): exit 0
+     p3 Windows (0e)    from    1056768,     131072 sectors (64 MiB)
+     the table written: p1 0C, p2 83, p3 0E; disk signature 8772aa11
+   == d.img: ready
+   table: p1 0C from 8192, p2 83 from 1187840, p3 0E from 1056768
+== e (--win95 w0b.img): exit 0
+     p3 Windows (0b)    from    1056768,     131072 sectors (64 MiB)
+     p3's type: 0c, not the image's 0b: p3 ends past the 504 MiB CHS reaches in the guest, and with type 0b Windows 95's boot sector would read by CHS
+     the table written: p1 0C, p2 83, p3 0C; disk signature fca6a8fb
+   == e.img: ready
+   table: p1 0C from 8192, p2 83 from 1187840, p3 0C from 1056768
+== f (--win95 w0b.img --p1-mib 64): exit 0
+     p3 Windows (0b)    from     139264,     131072 sectors (64 MiB)
+     the table written: p1 0C, p2 83, p3 0B; disk signature 5e7d5618
+   == f.img: ready
+   table: p1 0C from 8192, p2 83 from 270336, p3 0B from 139264
+a.log b.log c.log d.log e.log f.log HELLO.TXT p1 root.img w06.img w06osr2.img w0b.img w0e.img 
+== export-root.sh in its test mode (files for the card), dash and bash
+  dash, not mounted (no device number): exit 1: export-root.sh: the root shows as /dev/root, and without /home/owner/org2/v45/nc2/ex/devp2's device number and /home/owner/org2/v45/nc2/ex/mountinfo-root it cannot be told whether it is /home/owner/org2/v45/nc2/ex/devp2: not copied, in case it is and is in use 
+  dash, /dev/root, mountinfo says 179:2 is /: exit 0: (test mode: /home/owner/org2/v45/nc2/ex/devp2 is mounted at /, which would be made read-only while it is copied) done: shut down (poweroff), then copy korvo-root.img and korvo-mbr.bin off the card's WIN9X drive on the PC 
+    both files byte for byte
+  dash, /dev/root, 179:2 not in mountinfo (another root): exit 0: done: shut down (poweroff), then copy korvo-root.img and korvo-mbr.bin off the card's WIN9X drive on the PC 
+    both files byte for byte
+  dash, /dev/root, no mountinfo to tell: exit 1: export-root.sh: the root shows as /dev/root, and without /home/owner/org2/v45/nc2/ex/devp2's device number and /home/owner/org2/v45/nc2/ex/none it cannot be told whether it is /home/owner/org2/v45/nc2/ex/devp2: not copied, in case it is and is in use 
+  dash, /dev/root, no device number, no mountinfo: exit 1: export-root.sh: the root shows as /dev/root, and without /home/owner/org2/v45/nc2/ex/devp2's device number and /home/owner/org2/v45/nc2/ex/none it cannot be told whether it is /home/owner/org2/v45/nc2/ex/devp2: not copied, in case it is and is in use 
+  dash, p2 in /proc/mounts by name: exit 0: (test mode: /home/owner/org2/v45/nc2/ex/devp2 is mounted at /, which would be made read-only while it is copied) done: shut down (poweroff), then copy korvo-root.img and korvo-mbr.bin off the card's WIN9X drive on the PC 
+    both files byte for byte
+  bash, not mounted (no device number): exit 1: export-root.sh: the root shows as /dev/root, and without /home/owner/org2/v45/nc2/ex/devp2's device number and /home/owner/org2/v45/nc2/ex/mountinfo-root it cannot be told whether it is /home/owner/org2/v45/nc2/ex/devp2: not copied, in case it is and is in use 
+  bash, /dev/root, mountinfo says 179:2 is /: exit 0: (test mode: /home/owner/org2/v45/nc2/ex/devp2 is mounted at /, which would be made read-only while it is copied) done: shut down (poweroff), then copy korvo-root.img and korvo-mbr.bin off the card's WIN9X drive on the PC 
+    both files byte for byte
+  bash, /dev/root, 179:2 not in mountinfo (another root): exit 0: done: shut down (poweroff), then copy korvo-root.img and korvo-mbr.bin off the card's WIN9X drive on the PC 
+    both files byte for byte
+  bash, /dev/root, no mountinfo to tell: exit 1: export-root.sh: the root shows as /dev/root, and without /home/owner/org2/v45/nc2/ex/devp2's device number and /home/owner/org2/v45/nc2/ex/none it cannot be told whether it is /home/owner/org2/v45/nc2/ex/devp2: not copied, in case it is and is in use 
+  bash, /dev/root, no device number, no mountinfo: exit 1: export-root.sh: the root shows as /dev/root, and without /home/owner/org2/v45/nc2/ex/devp2's device number and /home/owner/org2/v45/nc2/ex/none it cannot be told whether it is /home/owner/org2/v45/nc2/ex/devp2: not copied, in case it is and is in use 
+  bash, p2 in /proc/mounts by name: exit 0: (test mode: /home/owner/org2/v45/nc2/ex/devp2 is mounted at /, which would be made read-only while it is copied) done: shut down (poweroff), then copy korvo-root.img and korvo-mbr.bin off the card's WIN9X drive on the PC 
+    both files byte for byte

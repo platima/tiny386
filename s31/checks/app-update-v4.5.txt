@@ -1,0 +1,24 @@
+v4.4 to v4.5 on the Korvo-1's dual boot, simulated (app-update-v4.5.py, beside this file in checks/,
+made from app-update-v4.4.py with each version moved on by one), 2026-10-24: the dual-boot set
+written with the v4.4 images over be5b725's flash, then the one write flash-dualboot.bat COM10 app
+makes (bat-harness-v4.4.txt case 8: 0xE20000 only; the scripts unchanged since) with the v4.5 image.  esptool write-flash's
+semantics as dualboot/scripts/simulate-flash.py models them.  Reads only.
+
+Start: be5b725 flash.bin (0xc20000 bytes) at 0x0, marker 0x5A from 0xc20000 to the end
+== 1. flash-dualboot.bat COM10 (all) with the v4.4 images (previous-v4.4\images\korvo1-dualboot)
+    write 0x0002000 previous-v4.4/images/korvo1-dualboot/bootloader.bin              22352 bytes, erased 0x0002000 to 0x0007fff
+    write 0x0008000 previous-v4.4/images/korvo1-dualboot/partition-table.bin          3072 bytes, erased 0x0008000 to 0x0008fff
+    write 0x0e20000 previous-v4.4/images/korvo1-dualboot/tiny386.bin                929456 bytes, erased 0x0e20000 to 0x0f02fff
+== 2. flash-dualboot.bat COM10 app with the v4.5 image (images\korvo1-dualboot\tiny386.bin)
+    write 0x0e20000 images/korvo1-dualboot/tiny386.bin                              932272 bytes, erased 0x0e20000 to 0x0f03fff
+  bytes changed against step 1 (4 KiB granules):
+    0x0e20000 to 0x0e4afff
+    0x0e4d000 to 0x0e52fff
+    0x0e55000 to 0x0f03fff
+  every change inside the tiny386 partition (0xE20000 to 0xFFFFFF): True
+  0x0000000 to 0x0E1FFFF (the bootloader, the table and all of Linux) the same as after step 1: True
+  bootloader at 0x2000: sha256 b57469cd1542fe83; the v4.5 set's bootloader.bin: True; v4.4's: True
+  partition table at 0x8000: sha256 d41cba3cf33bedee; the v4.5 set's partition-table.bin: True; v4.4's: True
+  tiny386 at 0xE20000 is the v4.5 file: True (932272 bytes, sha256 35378fec69fcdf85)
+  the same as writing the whole set with the v4.5 images from be5b725: True
+exit 0

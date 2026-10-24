@@ -4715,6 +4715,9 @@ looked at, and none is a binary, a picture or anything of Windows'.
   read back, takes the name; `X` and `X.t386old`: the old one removed; `X.t386old` alone: back to
   `X`). Only names with those two endings are touched; `X.t386new` alone is left. Inis up to
   32 KiB; the two copies in PSRAM.
+  (v4.5: a cut in power inside a FatFs rename can leave two names on one chain, so v4.5 renames
+  nothing: a whole copy with a check line beside the ini, then the ini rewritten in place, then the
+  copy removed; 31.2.)
 * **When** (`speed.c`, `esp_main.c`): Ctrl+Alt+F11 changes the setting at once, as since v4.2,
   and asks for the save; `run_pc()`, on the emulator's core between two steps, first puts the
   guest's unflushed disk writes on the card (as at a quiet moment), then saves, so the save never
@@ -4919,7 +4922,11 @@ photos [inferred: the band is rows of the two pictures].
   | 1536K | | | 14,864 | 15,616 | 14,592 |
 
   Plat has 13M at 320K and at 768K (Windows' 12,824 KB in his log), which puts his pool at 14,352
-  to 14,671 KiB [inferred]; then at 768K double buffering leaves him 12M.
+  to 14,671 KiB [inferred]; then at 768K double buffering leaves him 12M. (v4.5: `TEST-PLAN.md`
+  16c said 13M rather than 14M; both now say only that it costs 1M or nothing, and that the boot
+  console's "Emulator memory" and `mem_size` lines, which 16c asks Plat to photograph, decide it:
+  his pool itself is [unknown], and `win95-14m.ini` says 14M fits beside 320K only if the pool
+  allows. 31.5.)
 * **Time**: each changed row copied, 1,600 bytes read and written again, on top of its drawing:
   for a whole-screen picture 750 KiB more, so the full copy's 41 ms becomes perhaps 55 to 65
   [inferred]; and a picture reaches the panel at its next frame, up to 28 ms later than now.
@@ -5171,7 +5178,9 @@ go to Plat's fork at the end (30.13).
   device) lays out p1 `KORVO_SD`, then p3 Windows' own FAT16 volume taken out of `win95.img`
   sector for sector, then p2 Linux's root copied from the old card; the table lists them p1, p2, p3,
   so Linux's `root=/dev/mmcblk0p2` holds. `export-root.sh` copies the root off the old card on the
-  board's Linux. `s31/newcard/README.md` is the procedure; the old card is never written.
+  board's Linux. `s31/newcard/README.md` is the procedure. The old card's table, Linux root and
+  `win95.img` are not changed; it gets files added to its two FAT partitions (v4.5: "never
+  written", as this line said, was not so; 31.6).
 * **Proved on the PC** (30.5): Windows 95 reached the desktop from p3 of card images `newcard.sh`
   made from a copy of the pristine `win95.img`, with p3 at 516 MiB and at 68 MiB, writing what it
   writes from `win95.img`, the card's table, p1 and p2 unchanged to the sector.
@@ -5212,7 +5221,9 @@ them (30.3), and keeps:
   the SD host reaches by DMA; a card error is tried once more and counted with the images'
   (`disk_image_count()`: the speed screen's Disk line and the information port see them);
 * everything else: zeros on reading, refused on writing, every sector of a write inside the
-  partition or none of it. A refused write is the guest's mistake, said on the console (the first
+  partition or none of it, for each transfer of up to four sectors as `ide.c` passes them (v4.5:
+  so a guest command that runs across the partition's end has its sectors inside written and then
+  fails; 31.4). A refused write is the guest's mistake, said on the console (the first
   four, then every hundredth) and not counted as the card's;
 * the size: to the partition's end, rounded up to a whole cylinder of 16 x 63. The card's size
   would add only sectors that read zeros and refuse writes, and would hand Windows 95 a disk over
@@ -5279,7 +5290,9 @@ together, so p3 may be mounted by Linux too (it is an ordinary FAT16 volume) [in
 Step 5's refusals and warnings are cases of `test_sd_part.c` on made-up sectors (40 checks; swap,
 LVM and EFI go the way Linux's type does and are not each tried, nor is the FAT16-for-FAT32 warning),
 and the mounted partition, p1, Linux's root and the empty slot also on card images there and on
-the harness, each stopping the PC with its line [verified]. Steps 1 to 4 are `esp_main.c`'s own and
+the harness, each stopping the PC with its line [verified]. (v4.5: steps 1 to 3 are now
+`sd_part_ini_check()` in `sd_part.c`, in test 14b, and the kernel, initrd and linuxstart keys are
+among the files checked; 31.4.) Steps 1 to 4 are `esp_main.c`'s own and
 in no host test: they were read, and the board's console is where they show [inferred].
 
 ### 30.4 The new card [verified: `newcard.sh` on the PC; the board unknown]
@@ -5541,3 +5554,338 @@ copy of `win95.img`: never to leave WSL), `ph/` and `fh/` (the harness copies, t
 `rel/` (the stage and the two `build.sh` runs), `bt-c3/` (the in-tree builds), `chk/` (the checks),
 `t-final`, `t-part1`, the scripts and their outputs. On Windows the session's scratch folder `v44s\`
 holds the scripts as written and the batch harness's copy. Nothing started for this is still running.
+
+## 31. v4.5: the two reviews of v4.4 (2026-10-24)
+
+Two reviewers read tag `s31-v4.4` and its package, each with a lens of its own:
+`REVIEW-v44-display.md` (the keys' saves, the double buffering, the pacing, the drawing, the grey
+screen) and `REVIEW-v44-storage-and-safety.md` (`hda = sd:N`, the guest's disk, the refusals, the
+new card, the dual-boot images, the push). No blocker and no major finding; eight minor findings
+and thirteen notes, each checked against the tag before it was acted on [verified:
+`checks\findings-v4.4-review.txt`]. Four minor findings needed the firmware changed, so this is
+v4.5, a new tag: `s31-v4.4` was already on github.com/platima/tiny386 with its images in the
+package, and a published tag is never moved. `REVIEW-RESOLUTION.md` round 11 has every finding and
+what became of it. Same branch, a new work branch `s31-v4.5` in WSL `~/fw/wt-v45` of the canonical
+repository `~/fw/tiny386-s31`, every commit by Platima with his GitHub noreply address and the
+Co-Authored-By line. Nothing was flashed, no serial port was opened, and nothing of v4.4 or v4.5 has
+run on a board.
+
+### 31.0 In one screen
+
+* **The ini saved without renaming anything** (31.2): a whole copy of the new text with a check
+  line beside the ini, then the ini rewritten in place, then the copy removed. A cut in power at any
+  step leaves the ini whole, as it was or saved, and never two names on one chain of clusters, which
+  a cut inside v4.4's FatFs renames could [verified: a cut at each step on the PC; FatFs on a card
+  unknown].
+* **Double buffering** (31.3): Ctrl+Alt+F9 on the speed screen no longer leaves the console's text
+  round a picture narrower than the panel; the speed screen counts the swaps and those the panel
+  did not report; a panel that cannot even be started again is said in red, and the console stops
+  drawing into a freed buffer [verified: the review's model, code; the board unknown].
+* **`sd:N`** (31.4): refuses the old card's WIN9X partition (its label, or `win95.img` or
+  `korvo-root.img` on it); a type 00 entry with a size counts as a partition; the guest's disk is
+  capped at 28-bit LBA's 0FFFFFFFh sectors; a yellow note for a type Windows 95 reads by CHS past
+  504 MiB; the ini's own checks moved into `sd_part.c` and tested [verified: host test 14b, the
+  harness].
+* **The new card** (31.6): `newcard.sh` gives p3 type 0E (0C) past 504 MiB; `export-root.sh` finds
+  the root by its device number; the docs say what the procedure adds to the old card, and three
+  things more to know [verified: stand-in images, test mode; the board unknown].
+* **Checks** (31.7 to 31.10): 53 host tests pass, also in a clone with only the fork's tags; the
+  release built twice from nothing gives the same bytes, and the same as an in-tree build; on the
+  PC harness Windows 95 from p3 gives v4.4's END lines and writes to the sector; the dual-boot
+  checks give v4.4's results; no new warning.
+
+### 31.1 The commits [verified: `git log esp32-s31..s31-v4.5`]
+
+| Commit | What |
+|-|-|
+| 71f9ba0 | `esp/main`: double buffering after the speed screen, its counts, a panel that does not come back (`speed.c`, `lcd.h`, `lcd_korvo1.c`, `esp_main.c`) (31.3) |
+| 9bf35d0 | `esp/main`, `tests/host`: the ini saved with no rename (`setup.c`, `setup.h`, `esp_main.c`, `test_ini_edit.c`, `run.sh` 6b) (31.2) |
+| 076114f | `esp/main`, `tests/host`: `sd:N` refuses the WIN9X partition; the review's notes on `sd_part.c` (`sd_part.c`, `sd_part.h`, `esp_main.c`, `tests/host/sdpart`) (31.4) |
+| 39c3d99 | `tests/host`: `run.sh` finds pristine and v4.0-base by their commits, and says when it skips (31.7) |
+| 8123d17 | `s31/newcard`: p3's type past CHS; the root found by its device number (31.6) |
+| 6755352 | `esp/version.txt`: `v4.5` |
+| (the tag) | `s31/`: this section, round 11 of `REVIEW-RESOLUTION.md`, the two reviews, `TEST-PLAN.md` 16, `FIRMWARE.md`, `FLASH.txt`, `README.md`, `build.sh`'s first comment, `newcard/README.md`, `card/tiny386/win95-sd.ini`, the corrections in 29.2, 29.6, 30.0, 30.2 and 30.3, and the checks (31.14) |
+
+`git diff --stat esp32-s31 6755352 -- . ':!s31'`: 13 files changed, 846 lines added, 172 taken out.
+Every commit's files were looked at: no binary, no picture, nothing of Windows'.
+
+### 31.2 The ini saved with no rename (display finding 2) [verified: code, `test_ini_edit.c`; the board unknown]
+
+**Why.** ESP-IDF's FatFs `f_rename()` registers the new directory entry, copying the old one's
+start cluster, and only then removes the old entry, between its own comments "Start of critical
+section where an interruption can cause a cross-link" and "End of the critical section". When the
+two entries are in different sectors, a cut between the two writes leaves both names on one chain.
+v4.4 renamed twice, and its tidy then removed the leftover name, which frees the clusters the ini
+still uses [verified: `ff.c`, the tag's `setup.c`]. `f_unlink()` removes the entry before the
+chain, so a cut there leaves lost clusters at worst.
+
+**v4.5's save** (`setup.c`, `setup_ini_save()`):
+
+1. the new text into `NAME.ini.t386new`, followed by a line `;t386new LLLLLLLL CCCCCCCC` (between
+   CR LF), the text's length and CRC-32 in hex, flushed, synced and read back;
+2. the ini itself rewritten in place (`fopen "wb"`: FatFs keeps the name and its entry, frees the
+   old chain and writes a new one), flushed, synced and read back;
+3. `NAME.ini.t386new` removed. It was never renamed, so it shares no cluster with anything.
+
+Before step 1 the save tidies its own ini's leftovers (a whole copy is put in place first, so a
+second save never starts from a half-written ini), and it refuses, saying why, while what v4.4 may
+have left wants a check.
+
+**v4.5's tidy** (`setup_ini_tidy()`, which `setup_find()` runs for each folder at start-up), for
+each `X` with a leftover:
+
+| Found | Means | Done |
+|-|-|-|
+| `X`, `X.t386new` whole (its line checks) | a cut in step 2 or 3 | `X` made the copy's text if it is not, then the copy removed |
+| `X`, `X.t386new` not whole or with no line | a cut in step 1, or v4.4 before its first rename | the copy removed; `X` untouched |
+| `X.t386new`, `X.t386old`, no `X` | v4.4, a cut between its two renames (its new text had been read back) | `X` written with that text, then both removed |
+| `X`, `X.t386old` with other bytes | v4.4, a cut before the old one was removed | the old one removed |
+| `X`, `X.t386old` with `X`'s very bytes | v4.4, a cut inside a rename, perhaps one chain | both left; a yellow line: check the card on a PC (`chkdsk` with `/f`), then delete the `.t386old` |
+| all three | v4.4, a cut inside a rename | all left, the same line |
+| `X.t386old` alone | v4.4 | `X` written with its bytes, then it removed |
+| `X.t386new` alone | `X` gone some other way | left |
+
+Files are only ever written whole and read back before anything is removed, and only names with
+the two endings are touched (and `X` only from them). The yellow line is `setup_tidy_warning()`,
+printed after the boot menu's list is made. The warning's 320 bytes are the only internal RAM the
+change costs (31.9).
+
+**Tested** (`tests/host/test_ini_edit.c`, built with `-DSETUP_TEST_CUT`, which lets a test stop the
+save at a step as a cut would; the board's build has none of it): 149 checks, 0 failed (v4.4: 106).
+The ini rewritten in place, the same file before and after a save; a leftover copy cut short
+removed and a whole one put in place before a save; v4.4's `.t386old` with other bytes removed and
+with the ini's very bytes refused; then a cut at each of the five steps (the copy half written; the
+copy whole; the ini emptied; the ini half written; the ini whole and the copy not removed),
+followed by the next start's tidy: the ini as it was after step 1's cut and saved after the others,
+nothing beside it, no warning, and `setup_find()` listing it with its description; the tidy's eight
+states, v4.5's copy made by the test with a CRC-32 of its own; the two warnings. The same under
+AddressSanitizer and UBSan: 149, 0 failed [verified: `checks\host-tests-v4.5.log`]. POSIX
+`rename()` and `fopen` are not FatFs: what a real cut does on the card is [unknown], but no step of
+v4.5's save renames, so FatFs's critical section is never entered.
+
+### 31.3 Double buffering (display findings 1, 3 and 6) [verified: code, the review's model; the board unknown]
+
+* **Ctrl+Alt+F9 on the speed screen** (finding 1). `lcd_double_set(true)` makes the back buffer the
+  front one's copy, and while the speed screen is up the front holds the console. `give_back()`
+  now clears the back buffer and writes it back (`memset`, `lcd_vga_flush()` of every row) before
+  asking for the copy and the full update, as the one-buffer path clears its buffer; the back is not
+  on show, so the panel never goes black. The review's model (`test_dbuf.c`, the review's own,
+  rebuilt here against v4.5's `vga.c` objects from the host tests): 465 of 3,004 checks fail
+  without the fix, every one after F9 turned double buffering on during the speed screen, and 0
+  with the fix the model makes, which is what v4.5's `give_back()` does [verified:
+  `checks\findings-v4.4-review.txt`].
+* **The counts on the speed screen** (finding 3). The `double_buffer = 1` line now reads "... (so
+  far N swaps, M of them not reported by the panel) ..." from two totals that are never reset
+  (`lcd_double_totals()`); the UART's `display:` line still has the same per 10 s with the copy's
+  and the wait's time.
+* **No panel at all** (note 6). If the panel cannot even be started again with one frame buffer,
+  the console is told there is none (`console_set_fb(NULL)`: it draws nothing, the UART still has
+  every line), the pool gets its 752 KiB back, and the boot console says in red that only the UART
+  shows what follows.
+
+### 31.4 `sd:N` (storage finding 2, the firmware's side of finding 4, notes 6, 7, 8 and 10) [verified: host test 14b, the harness]
+
+* **The WIN9X partition refused.** `sd_part_plan()` refuses a FAT volume labelled WIN9X (any case):
+  "card partition 3 is labelled WIN9X: on a card laid out for the Linux route it holds win95.img,
+  which the guest would see raw and could overwrite; sd:3 is for a card made by newcard.sh". And
+  `esp_main.c`, while FatFs still has the partition at `/sdcardN`, refuses one holding `win95.img`
+  or `korvo-root.img` (`sd_part_route_files()`), before it lets the partition go.
+* **A type Windows 95 reads by CHS, past 504 MiB.** A FAT16 partition of type 04 or 06, or FAT32
+  0B, that ends past sector 1,032,191 (`SD_PART_CHS_END`, 1024 x 16 x 63) gets a yellow note saying
+  the guest may not start from it and which type to make it.
+* **A type 00 entry with a size** now counts in the overlap check; only an entry with no size is
+  passed over, as Linux reads a table.
+* **28-bit LBA.** `SD_PART_LBA28` is now 0FFFFFFFh, the most sectors IDENTIFY's words 60 and 61 may
+  give; a partition must end by then, and the guest's disk, rounded up to a cylinder, is cut there
+  (v4.4 allowed an end at 2^28 and could round the disk up to 268,436,448 sectors).
+* **The ini's checks in `sd_part.c`.** `check_card_partition()`'s steps 1 to 3 (the name, a hard
+  disk only, nothing else the ini names on `/sdcardN`) are `sd_part_ini_check()`, which the host
+  test calls; the kernel, initrd and linuxstart keys are among the files checked. Several files on
+  the partition give one red line naming the first and how many more.
+* **The wording.** "Every sector or none" is per transfer of up to four sectors, as `ide.c` passes
+  them (`sd_part.h`, `sd_part.c`, 30.2).
+
+Host test 14b (`tests/host/sdpart/run_sdpart.sh`): 14 results, all pass (v4.4: 12). The unit part
+67 checks (v4.4: 40): the cases above (a partition ending at 0FFFFFFFh accepted with the disk at
+0FFFFFFFh, one ending ten sectors short of it in the last part cylinder cut there, one ending at
+2^28 refused; 06 and 04 past 504 MiB with the note, 0E without, 06 ending at sector 1,032,191
+without; a type 00 entry with no size passed over, one with a size refused; a volume labelled
+WIN9X, and win9x, refused) and `sd_part_ini_check()` and `sd_part_route_files()` (17 checks: the
+names, `cda` and `fda`, one and two files on the partition, the kernel, initrd and linuxstart,
+names that only look alike, the two route files asked for by their paths); the new card as v4.4's
+(53 checks); Plat's card as it is now refused, `sd_part_check()` and `sd_part_open()` saying why,
+`ide_attach()` stopping, nothing written and p2 and p3 the same to the sector; and the same card
+with p3 relabelled DATA32 given whole and read as v4.4 gave it [verified:
+`checks\sdpart-host-test-v4.5.log`].
+
+### 31.5 The memory double buffering costs (display finding 4)
+
+`TEST-PLAN.md` 16c said 13M rather than 14M at 768K and 29.6 13M becoming 12M. Plat's pool is
+[unknown]: 29.6's figure rests on his 13M at 320K, which `win95-14m.ini`'s `mem_size = 14M` and its
+comment do not settle. 16c and 29.6 now say only that the second buffer costs Windows 1M or
+nothing, and that the boot console's "Emulator memory" and `mem_size` lines, which 16c asks him to
+photograph with and without double buffering, decide it.
+
+### 31.6 The new card (storage findings 1 and 4, notes 5 and 9) [verified: stand-in images and the test mode; the board unknown]
+
+* **What the old card gets** (finding 1). `newcard/README.md` (its first lines, step 1 and step 7),
+  `TEST-PLAN.md` 16e, 30.0 and `FIRMWARE.md`'s row now say it: files added to its KORVO_SD drive
+  (`export-root.sh`) and its WIN9X drive (`korvo-root.img`, 192 MiB on Plat's layout,
+  `korvo-mbr.bin`, `korvo-export.txt`), `/mnt/win` made on the root if it is not there, the root
+  read-only for the copy; its table, its Linux root and `win95.img` not changed.
+* **p3's type** (finding 4). Past sector 1,032,191 `newcard.sh` writes the LBA twin of the image's
+  type (04 or 06 to 0E, 0B to 0C) and says so; when the volume's boot sector is not Windows 95
+  OSR2's (`MSWIN4.1`) and p3 lies past that point, a note suggests `--p1-mib 64`. On stand-in
+  images made with `mkfs.fat` (no Windows in them): type 06 with the default p1, p3 at 1,056,768,
+  became 0E (with the note, since `mkfs.fat` names itself in the boot sector); 06 with `--p1-mib 64`
+  stayed 06; 06 with the boot sector's name `MSWIN4.1` became 0E with no note; 0E stayed 0E; 0B
+  became 0C past the point and stayed 0B below it; every run "ready" and every check passed
+  [verified: `checks\newcard-v4.5.txt`]. The pristine image is 0E, so Plat's card is as v4.4 made
+  it [inferred: his image comes from the same install].
+* **The root found by its device number** (note 5). `export-root.sh` looks for p2 by name in
+  `/proc/mounts`, else by its major:minor (from `/sys/class/block/mmcblk0p2/dev`) in
+  `/proc/self/mountinfo`, and stops when `/` is `/dev/root` and cannot be tied to p2 or not. In its
+  test mode, under `dash` and `bash`, with stand-in `mounts` and `mountinfo`: `/dev/root` found by
+  179:2 as `/` (it says it would make it read-only), another root left alone and p2 copied, no
+  `mountinfo` or no device number refused, p2 by name found; both files byte for byte each time
+  [verified: `checks\newcard-v4.5.txt`].
+* **Three things more** (note 9). Step 4 and "Afterwards": one card in the PC at a time (both carry
+  the same disk signature, which Windows treats as a collision), the image writer's target checked
+  by its size, and `korvo-root.img` (the root's Wi-Fi settings, SSH host keys, history) deleted from
+  the old card's WIN9X drive and from WSL once the new card works.
+* `win95-sd.ini` says it goes on the new card only, and `TEST-PLAN.md` 16a.
+
+### 31.7 Host tests [verified: `checks\host-tests-v4.5.log` and the files named]
+
+53 tests, all pass (72 s), at 6755352, the tag's code: v4.4's 53, with `test_ini_edit` and `sdpart`
+grown (31.2, 31.4). With the 113-character output folder of every round: 53 of 53
+(`checks\host-tests-v4.5-long-out.log`). In the tree `build.sh` makes from the patch: 45 pass (v4.4:
+43). That tree is a clone of upstream, which has 9ed786b, so the two pristine comparisons now run
+by its commit; the seven that need this branch's own releases (v3, v3.1, v3.5, v3.9, v4.0-base,
+v4.1, v4.3) are skipped, and `run.sh` now says so for each (`checks\host-tests-v4.5-from-patch.log`).
+In a clone that has what the fork has, the branch and only its `s31-` tags (display note 10): 53 of
+53, the pristine and v4.0-base comparisons among them, found by their commits
+(`checks\host-tests-v4.5-fork-clone.log`). The host build's warnings are v4.4's 11 lines.
+
+### 31.8 Not changed
+
+* Display note 9 (a font loaded through the graphics mapping wholly between two pictures): deferred;
+  counting every SR02 bit 2 change would put a store into Windows' 16-colour drawing, which writes
+  the map mask all the time, for a loader nobody is known to use.
+* Display notes 5, 7 and 11: no change, as the review found. Its remark that the card inis' comment
+  ("5000 keeps out pictures caught part way through Windows' drawing") says more than 7, 4 and 4 per
+  cent becoming 2, 0 and 1: the comment stays (a change would be one more card file to copy), and
+  `TEST-PLAN.md` 16c gives the figures.
+* Storage finding 3: the nine lines of `IOS.LOG` are paraphrased in `checks\partition-passthrough-v4.4.txt`
+  here and on the branch; the branch's history keeps the old text, and rewriting a pushed branch is
+  Plat's decision.
+
+### 31.9 Builds, warnings, sizes [verified: `checks\size-*-v4.5.txt`, `checks\warnings-wall-wextra-v4.5.txt`]
+
+The five builds of every round (the Korvo-1 dual boot and standalone, the DOS board, the two
+crash-test builds), from `git archive` of 6755352: all exit 0 with the one old warning (`i2s_task`
+unused, the Korvo-1). `-Wall -Wextra` on the five files v4.5 changed (`speed.c`, `lcd_korvo1.c`,
+`esp_main.c`, `setup.c`, `sd_part.c`), each board's own command: 0 warnings, as v4.4's copies.
+
+| Build | DIRAM used | v4.4 | Total image size | v4.4 |
+|-|-|-|-|-|
+| Korvo-1 (dual boot and standalone) | 251,922 | 251,594 | 932,096 | 929,278 |
+| DOS board | 254,360 | 254,040 | 958,160 | 955,836 |
+
+The 328 bytes more internal RAM on the Korvo-1 are the tidy's warning (320, both boards) and the two
+swap totals (8).
+
+### 31.10 `build.sh`, the images, the dual-boot checks [verified: `checks\reproducible-v4.5.txt` and the files named]
+
+`build.sh` from `s31/` (its first comment moved on to v4.5) with the release's two patches made from
+the branch with `s31/` left out: `git diff 4ce2e06 6755352 -- . ':(exclude)s31'` (161 files, 35,503
+lines added, 723 taken out; 1,406,121 bytes) and the same against 9ed786b (168 files, 36,133 lines
+added, 738 taken out; 1,434,228 bytes); neither holds a binary. v4.4's patch made the same way from
+`s31-v4.4` is the package's v4.4 patch byte for byte. Two runs from nothing, each in a clean
+environment: 170 s and 174 s, both exit 0, the 23 files of the two image trees the same; and the
+three `tiny386.bin`, and the standalone and DOS board's bootloader and table, the same bytes as the
+in-tree builds of 6755352.
+
+| Image set | `tiny386.bin` | of its partition | SHA-256 | v4.4's |
+|-|-|-|-|-|
+| `korvo1-dualboot` (and `-tiny386-default`) | 932,272 bytes | 1,966,080 (47.4 per cent) | `35378fec69fcdf85` | 929,456 |
+| `korvo1-standalone` | 932,272 bytes | 1,835,008 (50.8 per cent) | `78f68dfee86b14e5` | 929,456 |
+| `dosboard` | 958,336 bytes | 1,835,008 (52.2 per cent) | `ef05ba38cbfc6b28` | 956,016 |
+
+Every bootloader, table and `flash_args` is v4.4's (and so v4.3's) byte for byte; only `tiny386.bin`
+and `tiny386.elf` changed. `esptool image-info`: every image and bootloader valid, App version
+`v4.5`, the same output in both runs. The dual-boot checks, each of v4.4's run again with the v4.5
+images in the package's `images\`:
+
+* `flash-simulation-v4.5.txt`, `flash-simulation-bootswap-v4.5.txt`: the dual-boot work's flash
+  model and the boot swap's (paths 1 to 19, cut-off cases C1 to C5): against v4.4's, only the app's
+  size, checksums, hashes and erase ends differ (every kind counted in `chk`'s B3).
+* `app-update-v4.5.txt`: v4.4 to v4.5 by `flash-dualboot.bat COM10 app` alone, simulated: every
+  byte changed is inside tiny386's partition (0xE20000 up); the bootloader, the table and all of
+  Linux as before; the result the same as writing the whole set with v4.5 from be5b725.
+* `cmake-flash-refusal-v4.5.txt`: the dual-boot build's flash targets still refuse, as v4.4's.
+* `status-led-v4.5.txt`: the LED's panic path in internal RAM in all three ELFs; `build.sh`'s
+  bit-bang layout check passes in both runs.
+* `card-check-v4.5.txt`: `setup.c` and `ini.c` of v4.5 on a pretend card with the package's card
+  files (v4.4's checker, `card-check-v4.4.c`, unchanged): 0 problems; against v4.4's list only
+  `win95-sd.ini` changed, as it should.
+* Not run again: the batch harness (`bat-harness-v4.4.txt`). The three scripts and
+  `flash-paths.cmd` are v4.4's byte for byte (and v3.9's), and what they read from an image is
+  `esptool image-info`'s App version, which gives `v4.5` for all three apps (above).
+
+### 31.11 Windows 95 from p3 on the PC harness [verified: `checks\partition-passthrough-v4.5.txt`]
+
+v4.5's `headless` (6755352) in a copy of v4.4's partition harness, the card images made again by
+v4.5's `newcard.sh` from v4.4's inputs (a copy of the pristine `win95.img`, the stand-in root, the
+old first sector): they differ from v4.4's in 12 bytes, all in p1 (`mkfs.fat`'s volume serial and
+the copy's times); the table sector, p3's type 0E and p2 are v4.4's. Windows 95 reached the desktop
+from p3 at 516 MiB and at 68 MiB with v4.4's END lines to the instruction and v4.4's sectors written
+(6,508 in 146 ranges; 6,864 in 138), the card's table, p1 and p2 as made, C: in protected mode
+(only the two floppies through real-mode drivers, paraphrased from `IOS.LOG`). Refused, each
+stopping the PC with its line: `sd:3` with p3 mounted, `sd:2` (Linux's root), `sd:1`, `sd:4`, and
+(v4.5) a card whose p3 is labelled WIN9X. The emulator's core is v4.4's (no file of it changed), so
+the standard Windows 95 set and the flicker harness's runs were not made again: they would run the
+same code.
+
+### 31.12 The package folder and `SHA256SUMS` [verified: `checks\sums-v4.5.txt`]
+
+`D:\Repos\esp32-s31-linux-release\tiny386-idf\v3`, where Plat flashes from: v4.4 as released moved
+to `previous-v4.4\` (its four image sets, both patches, `build.sh`, the docs and its `SHA256SUMS`,
+and v4.4's `win95-sd.ini` and `newcard\` files that v4.5 changes, so that its list still finds every
+file: 180 files, 33 inside it and 147 unchanged in `v3\`); the v4.5 images, patches and `build.sh`
+in their places; from the branch `win95-sd.ini`, `newcard\`, `BUILD-NOTES.md`, `TEST-PLAN.md`, `FLASH.txt`, `REVIEW-RESOLUTION.md` and
+the v4.5 checks; its `README.md` edited to match `FIRMWARE.md`. The top `SHA256SUMS` is v4.4's 180
+files in v4.4's order, then the two reviews of v4.4 (as `REVIEW-v43.md` was added after its review):
+182 lines, every one OK. Against v4.4's list 21 files' hashes changed: the docs (`README.md`,
+`BUILD-NOTES.md`, `TEST-PLAN.md`, `FLASH.txt`, `REVIEW-RESOLUTION.md`), `build.sh`, the two patches
+and their diffstats, `win95-sd.ini`, `newcard\`'s three files, and the seven `tiny386.bin` and
+`tiny386.elf`; every bootloader, table, `flash_args` and script is v4.4's. Each image folder's own
+list checks; every earlier list, `previous-v4.4\` to `previous-v3.2\`, finds every one of its files
+with its hash; the T386MON folder's list, unchanged by v4.5, checks.
+
+### 31.13 For Plat
+
+* **Try** (`TEST-PLAN.md` 16, now for v4.5): the keys' saves (wait for the "saved in" line), the two
+  cures for tearing (the speed screen's double-buffer line has the swap counts), then the new card
+  by `newcard\README.md`; photographs as 16f lists.
+* **Decide**: 29.13's two (double buffering for 1M or nothing of Windows' memory, pacing by
+  default), 30.15's two (p1's size, the root's), and whether the branch's history should be
+  rewritten to drop the nine `IOS.LOG` lines of 58f868d (31.8).
+
+### 31.14 Where things are
+
+On the branch (`s31\`): this section; `REVIEW-v44-display.md` and `REVIEW-v44-storage-and-safety.md`
+(the reviewers' own); `checks\` (text only): `findings-v4.4-review.txt`, `host-tests-v4.5.log`,
+`host-tests-v4.5-long-out.log`, `host-tests-v4.5-from-patch.log`, `host-tests-v4.5-fork-clone.log`,
+`sdpart-host-test-v4.5.log`, `newcard-v4.5.txt`, `partition-passthrough-v4.5.txt`,
+`reproducible-v4.5.txt`, `build-sh-v4.5-run1.txt`, `build-sh-v4.5-run2.txt`, `image-info-*-v4.5.txt`
+(six), `size-*-v4.5.txt` (three), `warnings-wall-wextra-v4.5.txt`, `flash-simulation-v4.5.txt`,
+`flash-simulation-bootswap-v4.5.txt`, `app-update-v4.5.py` and `.txt`, `cmake-flash-refusal-v4.5.txt`,
+`status-led-v4.5.txt`, `card-check-v4.5.txt`, `sums-v4.5.txt`. The package's `checks\` has the same.
+
+WSL `~/org2/v45/` (all made here, throw-away): `bt-c1/` (the in-tree builds), `rel/` (the stage and
+the two `build.sh` runs), `chk/` (the checks), `ph/` and `ncw/` (the harness copy and the card images
+made from a copy of the pristine `win95.img`: never to leave WSL), `nc/` and `nc2/` (the stand-in images),
+`dbuf/` (the review's model rebuilt), `t1/`, `ht1/`, `sdp1/`, `ht-fork/`, `fork-clone/`, `t-c1/`,
+`t-v44/`, and the scripts with their outputs. On Windows the session's scratch folder `v45\` holds
+the scripts as written. Nothing started for this is still running.

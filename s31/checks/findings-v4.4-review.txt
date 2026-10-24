@@ -1,0 +1,94 @@
+The two reviews of v4.4 (REVIEW-v44-display.md, REVIEW-v44-storage-and-safety.md), each finding checked
+against the tag s31-v4.4 (58f868d) and ESP-IDF, 2026-10-24.
+
+==== display F1: the speed screen and Ctrl+Alt+F9
+-- lcd_double_set(true) copies the front buffer (the console's, while the speed screen is up) into the back:
+317:		memcpy(s_back, s_fb, FB_BYTES);
+-- give_back() at v4.4 asks for the copy and a full update and does not clear the back buffer:
+12:		lcd_vga_copy_all();
+16:		memset(globals.panel_fb, 0, LCD_WIDTH * LCD_HEIGHT * 2);
+20:		pc->full_update = 2;
+-- the review's model, rebuilt here against v4.5's vga.c objects (~/org2/v45/dbuf):
+test_dbuf: 465 of 3004 checks failed (465 after F9 turned double buffering on while the speed screen was shown, 0 otherwise)
+test_dbuf: 0 of 3004 checks failed (0 after F9 turned double buffering on while the speed screen was shown, 0 otherwise)
+   (v4.5's give_back(): memset of the back buffer, lcd_vga_flush() of every row, lcd_vga_copy_all(), full_update = 2,
+    which is what the model's FIX_CLEAR_BACK does: its copy_all copies every row as lcd_vga_flush()'s marks do)
+
+==== display F2: a cut inside a FatFs rename
+5364:/* Start of critical section where an interruption can cause a cross-link */
+5391:/* Start of critical section where an interruption can cause a cross-link */
+5409:/* End of the critical section */
+49:					res = dir_register(&djn);		/* Register the new entry */
+60:/* Start of critical section where an interruption can cause a cross-link */
+74:					res = dir_register(&djn);			/* Register the new entry */
+87:/* Start of critical section where an interruption can cause a cross-link */
+100:				res = dir_remove(&djo);	/* Remove old entry */
+105:/* End of the critical section */
+-- f_unlink(): the entry first, then the chain (a cut leaves lost clusters, not a cross-link):
+67:			res = dir_remove(&dj);				/* Remove the directory entry */
+70:				res = remove_chain(&obj, dclst, 0);
+72:				res = remove_chain(&dj.obj, dclst, 0);
+-- v4.4's setup_ini_save() renames the live ini, and the tidy removes leftovers beside X:
+324:	if (rename(path, oldp) != 0) {
+329:	if (rename(newp, path) != 0) {
+331:		if (rename(oldp, path) != 0)
+382:			if (hn && remove(xn) == 0)
+384:			if (ho && remove(xo) == 0)
+387:			if (rename(xn, x) == 0) {
+389:				if (remove(xo) == 0)
+393:			if (rename(xo, x) == 0)
+
+==== display F3: the 'swaps not reported' count
+180:					"panel on average, %" PRIu32 " swaps the panel did not report",
+178:				console_uart_printf("display: double buffering %s: %" PRIu32 " swaps, %" PRIu32
+0
+1280:  rows should be gone. If Ctrl+Alt+F12's `display:` line shows its "swaps not reported" count going
+
+==== display F4: the memory double buffering costs
+1278:  memory, which on your pool probably leaves Windows 1M less (13M rather than 14M at 768K)
+4922:  to 14,671 KiB [inferred]; then at 768K double buffering leaves him 12M.
+51:mem_size = 14M
+
+==== display notes 5 to 11: read; F6 changed (the last fallback), F10 changed (run.sh), the others documented
+45:			s_fb = NULL;
+55:		console_set_fb(fb_ptr);
+67:	console_set_fb(fb);
+43:if git -C "$TREE" rev-parse -q --verify pristine >/dev/null; then
+124:if git -C "$TREE" rev-parse -q --verify v4.0-base >/dev/null; then
+608:if git -C "$TREE" rev-parse -q --verify pristine >/dev/null; then
+tags pristine and v4.0-base on the fork clone: 0
+
+==== storage F1: the old card is written to
+15:# (mount -o remount,ro), so that nothing changes it part way through, and
+40:    mkdir -p /mnt/win
+65:    mount -o remount,ro "$mp" || die "$P2 (at $mp) could not be made read-only, so it is not copied: \
+72:dd if="$P2" of="$DST/korvo-root.img" bs=1M 2>/dev/null || rc=$?
+74:    mount -o remount,rw "$mp" || say "WARNING: $mp is still read-only: mount -o remount,rw $mp, or restart"
+77:dd if="$DEV" of="$DST/korvo-mbr.bin" bs=512 count=1 2>/dev/null
+79:got=$(( $(wc -c < "$DST/korvo-root.img") / 512 ))
+85:} > "$DST/korvo-export.txt"
+87:cat "$DST/korvo-export.txt"
+3:From v4.4 Windows 95 can run from a partition of its own on the card instead of from `win95.img`, a file on a FAT32 partition (`hda = sd:3` in an ini). This folder moves you onto a new card laid out for that, with your Linux and your Windows as they are, and leaves the old card untouched as the fallback.
+68:7. **Going back** is putting the old card in. It was never written.
+1300:write it with your image writer, and the old card is never written. What the new card holds: p1
+
+==== storage F2: Plat's card's WIN9X partition accepted
+203:result $st "Plat's card: p2 and p4 refused, p1 kept, p3 (FAT32) given whole and read"
+1246:   `win95-sd.ini` is new, for 16e. No other card file changed.
+
+==== storage F3: IOS.LOG's lines in a pushed check file
+9
+
+==== storage F4: newcard.sh copies the image's type
+80:read -r WSTART WCOUNT WTYPE WFS <<<"$(python3 -I - "$WIN" <<'PY'
+108:echo "  $WIN: partition from sector $WSTART, $WCOUNT sectors, type $WTYPE; its volume $WFS sectors ($((WFS / 2048)) MiB)"
+156:printf '  p3 Windows (%s)    from %10d, %10d sectors (%d MiB)\n' "$WTYPE" $P3 $P3N $((P3N / 2048))
+164:python3 -I - "$OUT" "${MBR:-}" $P1 $P1N $P2 $P2N $P3 $P3N "$WTYPE" <<'PY'
+256:python3 -I - "$OUT" $P1 $P1N $P2 $P2N $P3 $P3N "$WTYPE" <<'PY'
+-- v4.5, the same stand-in images (~/org2/v45/nc-test.sh): see newcard-v4.5.txt
+
+==== storage notes 5 to 10: read; 5, 6, 7, 10 changed, 8 and 9 documented
+56:    *" root=$P2 "*)
+193:		if (i == part - 1 || !o[4] || !on)
+32:#define SD_PART_LBA28 (1u << 28)
+1024:				 conf.fdd[0], conf.fdd[1], conf.bios, conf.vga_bios };
