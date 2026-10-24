@@ -21,16 +21,24 @@ result() {
 }
 # an earlier release's tag: its name in the firmware's scratch repository
 # (v4.1), or on Plat's fork, where the same commits carry s31-v4.1 (v4.4);
-# empty when the tree has neither
+# or, given as a second argument, the commit itself, which any clone of the
+# branch has (v4.5: pristine and v4.0-base have no s31- tag on the fork).
+# Empty when the tree has none of them, and then it says so (v4.5: the
+# comparisons were skipped without a word before).
 tagref() {
     local t
-    for t in "$1" "s31-$1"; do
+    for t in "$1" "s31-$1" ${2:-}; do
         if git -C "$TREE" rev-parse -q --verify "$t^{commit}" >/dev/null 2>&1; then
             echo "$t"
             return
         fi
     done
+    echo "(no $1 here, as a tag or a commit: the comparison with it is skipped)" >&2
 }
+# upstream's release 9ed786b, which the work started from, and v4.0's merge
+# base (v3.9 with upstream's master of 2026-10-22)
+T_PRISTINE=$(tagref pristine 9ed786b4dd9698306dccdb7595858dee10949994)
+T_V40BASE=$(tagref v4.0-base 6c220847f9053d607d296f32ba8b93f3cbd9e5f4)
 
 # ==== 1. the PS/2 queue's lock (FIRMWARE-PLAN 3.3.1) ====
 # i8042.c as it is now must pass; i8042.c as tiny386 released it (the
@@ -40,8 +48,8 @@ $CC $CFLAGS -Wno-unused-function -DBUILD_ESP32 -I"$HERE/shim" -I"$TREE" \
 "$OUT/test_ps2_queue"
 result $? "ps2 queue lock, i8042.c of this tree"
 
-if git -C "$TREE" rev-parse -q --verify pristine >/dev/null; then
-    git -C "$TREE" show pristine:i8042.c > "$OUT/i8042-pristine.c"
+if [ -n "$T_PRISTINE" ]; then
+    git -C "$TREE" show "$T_PRISTINE":i8042.c > "$OUT/i8042-pristine.c"
     $CC $CFLAGS -w -DBUILD_ESP32 -I"$HERE/shim" -I"$TREE" \
         -o "$OUT/test_ps2_queue_pristine" "$HERE/test_ps2_queue.c" "$OUT/i8042-pristine.c" -lpthread || exit 1
     echo "(the same test against i8042.c at the pristine tag, where it has to fail)"
@@ -121,10 +129,10 @@ vga_rename() {
 }
 printf '#undef VGA_DIRTY_BLOCKS\n' > "$OUT/no_dirty_blocks.h"
 VBE_BASE=
-if git -C "$TREE" rev-parse -q --verify v4.0-base >/dev/null; then
+if [ -n "$T_V40BASE" ]; then
     mkdir -p "$OUT/v40base"
-    git -C "$TREE" show v4.0-base:vga.c > "$OUT/v40base/vga.c"
-    git -C "$TREE" show v4.0-base:vga.h > "$OUT/v40base/vga.h"
+    git -C "$TREE" show "$T_V40BASE":vga.c > "$OUT/v40base/vga.c"
+    git -C "$TREE" show "$T_V40BASE":vga.h > "$OUT/v40base/vga.h"
     VBE_BASE=1
 fi
 for board in korvo1 dosboard; do
@@ -607,8 +615,8 @@ $CC $CFLAGS -I"$TREE" -o "$OUT/test_pit" "$HERE/test_pit.c" "$OUT/pit_i8254.o" \
     "$OUT/pit_misc.o" || exit 1
 "$OUT/test_pit"
 result $? "i8254.c and the CMOS: missed timer ticks dropped after a hold, one raised, on the counter's phase"
-if git -C "$TREE" rev-parse -q --verify pristine >/dev/null; then
-    git -C "$TREE" show pristine:i8254.c > "$OUT/i8254-pristine.c"
+if [ -n "$T_PRISTINE" ]; then
+    git -C "$TREE" show "$T_PRISTINE":i8254.c > "$OUT/i8254-pristine.c"
     $CC -O1 -g -w -I"$TREE" -c -o "$OUT/pit_i8254_pristine.o" "$OUT/i8254-pristine.c" || exit 1
     $CC $CFLAGS -DPIT_PRISTINE -I"$TREE" -o "$OUT/test_pit_pristine" "$HERE/test_pit.c" \
         "$OUT/pit_i8254_pristine.o" || exit 1
