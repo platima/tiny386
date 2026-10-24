@@ -55,6 +55,8 @@ typedef struct PS2MouseState PS2MouseState;
 /* a few HID usages (keyboard page) */
 #define HID_KEY_ENTER   0x28
 #define HID_KEY_ESC     0x29
+#define HID_KEY_F9      0x42
+#define HID_KEY_F10     0x43
 #define HID_KEY_F11     0x44
 #define HID_KEY_F12     0x45
 #define HID_KEY_RIGHT   0x4F

@@ -43,6 +43,7 @@
 #include "speed.h"
 #include "status_led.h"
 #ifdef LCD_ZERO_COPY
+#include "display.h"
 #include "lcd.h"
 #endif
 #ifdef KM_UART_NUM
@@ -301,6 +302,8 @@ struct esp_ini_config {
 	int timer_catchup;      /* i8254_max_owed: timer ticks owed at once */
 	int memtest;            /* passes of the PSRAM test before the PC is built */
 	int vbe_blocks;         /* vga_dirty_blocks: VBE pictures from the blocks written */
+	int pace_quiet;         /* v4.4: vga_pace_quiet, guest instructions; 0 off */
+	int pace_wait_ms;       /* v4.4: the most a picture waits for a quiet moment */
 };
 
 #ifdef TINY386_CRASH_TEST
@@ -355,6 +358,8 @@ static struct esp_ini_config config = {
 	.fast_seek = 1,
 	.timer_catchup = 1,     /* as a real 8254 and 8259 (i8254.c) */
 	.vbe_blocks = 1,        /* v4.0: only what the guest wrote is drawn again */
+	.pace_quiet = 0,        /* v4.4: pictures when they are due (BUILD-NOTES 29) */
+	.pace_wait_ms = 15,     /* DISPLAY_PACE_WAIT_MS */
 };
 static PCConfig conf;
 
@@ -446,28 +451,38 @@ static void disk_errors(uint32_t now)
 	}
 }
 
-/* v4.4: Ctrl+Alt+F11's setting into the ini the PC was started from
-   (setup_ini_save(): only that line changed or added, the new file made
-   whole beside the old one before they are swapped), and a line on the
-   console to say what was saved.  On the emulator's core between two
-   steps, after the guest's disk writes are on the card, so that no FatFs
-   work of the guest's is under way; the guest waits meanwhile. */
-static void save_blocks(void)
+/* v4.4: a setting a Ctrl+Alt key changed (F11: vbe_blocks, F10:
+   pace_quiet) into the ini the PC was started from (setup_ini_save():
+   only that line changed or added, the new file made whole beside the old
+   one before they are swapped), and a line on the console to say what was
+   saved.  On the emulator's core between two steps, after the guest's disk
+   writes are on the card, so that no FatFs work of the guest's is under
+   way; the guest waits meanwhile. */
+static void save_setting(const char *name, unsigned long v)
 {
-	char why[200];
-	int v = vga_dirty_blocks;
-	int r = setup_ini_save(s_ini_path, "esp", "vbe_blocks", v ? "1" : "0", why, sizeof(why));
+	char why[200], value[16];
+	snprintf(value, sizeof(value), "%lu", v);
+	int r = setup_ini_save(s_ini_path, "esp", name, value, why, sizeof(why));
 	if (r < 0)
-		console_printf(CON_ERROR, "vbe_blocks = %d could not be saved in %s: %s. It "
-			       "holds until the PC starts again.", v, s_ini_path, why);
+		console_printf(CON_ERROR, "%s = %s could not be saved in %s: %s. It holds "
+			       "until the PC starts again.", name, value, s_ini_path, why);
 	else if (r == INI_EDIT_SAME)
-		console_printf(CON_INFO, "vbe_blocks = %d: %s has it already, so nothing was "
-			       "written.", v, s_ini_path);
+		console_printf(CON_INFO, "%s = %s: %s has it already, so nothing was written.",
+			       name, value, s_ini_path);
 	else
-		console_printf(why[0] ? CON_WARN : CON_GOOD, "vbe_blocks = %d saved in %s (%s)%s%s.",
-			       v, s_ini_path, r == INI_EDIT_CHANGED ? "its line in [esp] changed" :
-			       r == INI_EDIT_ADDED ? "a line added to [esp]" :
-			       "[esp] and the line added at the end", why[0] ? "; but " : "", why);
+		console_printf(why[0] ? CON_WARN : CON_GOOD, "%s = %s saved in %s (%s)%s%s.",
+			       name, value, s_ini_path, r == INI_EDIT_CHANGED ?
+			       "its line in [esp] changed" : r == INI_EDIT_ADDED ?
+			       "a line added to [esp]" : "[esp] and the line added at the end",
+			       why[0] ? "; but " : "", why);
+}
+
+static void save_settings(unsigned what)
+{
+	if (what & SPEED_SAVE_BLOCKS)
+		save_setting("vbe_blocks", vga_dirty_blocks ? 1 : 0);
+	if (what & SPEED_SAVE_PACE)
+		save_setting("pace_quiet", vga_pace_quiet);
 }
 
 /* Runs the PC, and puts what the guest wrote to its disks on the card
@@ -478,10 +493,22 @@ static void run_pc(PC *pc)
 	unsigned writes = disk_writes();
 	uint32_t write_time = get_uticks();
 	bool unflushed = false;
+#ifdef LCD_ZERO_COPY
+	uint32_t cyc = (uint32_t) cpui386_get_cycle(pc->cpu);
+#endif
 
 	speed_run_init(pc);
 	while (pc->shutdown_state != 8) {
 		pc_step(pc);
+#ifdef LCD_ZERO_COPY
+		/* v4.4: the guest's last store into video memory, for the
+		   pictures at its quiet moments (display.c) */
+		{
+			uint32_t c = (uint32_t) cpui386_get_cycle(pc->cpu);
+			display_pace_step(c, c == cyc);
+			cyc = c;
+		}
+#endif
 		status_led_heartbeat();
 		uint32_t now = get_uticks();
 		speed_run_step(pc, now);
@@ -495,22 +522,24 @@ static void run_pc(PC *pc)
 			unflushed = false;
 			speed_run_aside(get_uticks());
 		}
-		if (speed_take_blocks_save()) {
+		unsigned saves = speed_take_saves();
+		if (saves) {
 			/* the guest's writes first, as at a quiet moment */
 			if (unflushed) {
 				disk_flush(pc);
 				unflushed = false;
 				speed_run_aside(get_uticks());
 			}
-			save_blocks();
+			save_settings(saves);
 			speed_run_pause(get_uticks());
 		}
 		disk_errors(now);
 	}
 	if (unflushed)
 		disk_flush(pc);
-	if (speed_take_blocks_save())
-		save_blocks();
+	unsigned saves = speed_take_saves();
+	if (saves)
+		save_settings(saves);
 	disk_errors(get_uticks());
 }
 
@@ -614,7 +643,7 @@ static const char *const known_keys[] = {
 	"esp:ssid", "esp:pass", "esp:enable_usb", "esp:console",
 	"esp:lcd_invalidate", "esp:led_brightness",
 	"esp:uart_log", "esp:fast_seek", "esp:timer_catchup", "esp:memtest",
-	"esp:verbose_log", "esp:vbe_blocks",
+	"esp:verbose_log", "esp:vbe_blocks", "esp:pace_quiet", "esp:pace_wait_ms",
 #ifdef TINY386_CRASH_TEST
 	"esp:crash_test",
 #endif
@@ -725,6 +754,10 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		ini_whole(name, value, 0, 10, &conf->memtest);
 	} else if (NAME("vbe_blocks")) {
 		ini_whole(name, value, 0, 1, &conf->vbe_blocks);
+	} else if (NAME("pace_quiet")) {
+		ini_whole(name, value, 0, 10000000, &conf->pace_quiet);
+	} else if (NAME("pace_wait_ms")) {
+		ini_whole(name, value, 1, 200, &conf->pace_wait_ms);
 	} else if (NAME("crash_test")) {
 		conf->crash_test = atoi(value);
 	}
@@ -1234,6 +1267,10 @@ void app_main(void)
 	kbd_input_set_hotkey(HID_KEY_F12, speed_hotkey);
 	/* v4.2: vbe_blocks changed while the PC runs */
 	kbd_input_set_hotkey(HID_KEY_F11, speed_blocks_hotkey);
+#ifdef LCD_ZERO_COPY
+	/* v4.4: pictures at the guest's quiet moments, on or off */
+	kbd_input_set_hotkey(HID_KEY_F10, speed_pace_hotkey);
+#endif
 
 #ifdef ESPDEBUG
 	uart_config_t uart_config = {
@@ -1347,6 +1384,19 @@ void app_main(void)
 	if (!config.vbe_blocks)
 		console_puts(CON_INFO, "vbe_blocks = 0: VBE pictures are drawn in full every "
 			     "time, as before v4.0 (slower).");
+#ifdef LCD_ZERO_COPY
+	/* v4.4: pictures at the guest's quiet moments */
+	vga_pace_quiet = config.pace_quiet;
+	display_pace_set_wait(config.pace_wait_ms);
+	speed_set_pace_on(config.pace_quiet ? config.pace_quiet : DISPLAY_PACE_QUIET_ON);
+	if (config.pace_quiet)
+		console_printf(CON_INFO, "pace_quiet = %d: a picture waits until the guest has stored "
+			       "nothing into video memory for %d instructions, at most %d ms.",
+			       config.pace_quiet, config.pace_quiet, config.pace_wait_ms);
+#else
+	if (config.pace_quiet)
+		console_puts(CON_INFO, "pace_quiet is ignored: this board's drawing does not wait.");
+#endif
 	psram_test(config.memtest);
 
 	if (config.enable_usb) {

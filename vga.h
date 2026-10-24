@@ -115,6 +115,25 @@ PCIDevice *vga_pci_init(VGAState *s, PCIBus *bus,
    way.  See vga_graphic_refresh(). */
 extern int vga_planar_fast;
 
+/*
+ * v4.4: pictures taken at the guest's quiet moments (the board's [esp]
+ * pace_quiet and pace_wait_ms, and Ctrl+Alt+F10; the PC harness's -pace).
+ * Every store into video memory sets vga_wrote: pc.c's linear frame buffer
+ * and vga.c's window, in every mode.  The emulator's core calls
+ * vga_pace_after_step() after each of its steps with the guest's
+ * instruction count and whether the step ran none (the guest halted); it
+ * clears the flag, notes when the guest last wrote, and says whether the
+ * guest is quiet now: no store for vga_pace_quiet instructions, or halted.
+ * A picture that is due is then drawn at the first quiet step, or late by
+ * at most the board's wait (display.c).  vga_pace_quiet 0 is off: the
+ * pictures are drawn when they are due, as before v4.4.  vga_wrote and the
+ * note belong to the emulator's core alone; vga_pace_quiet is set from the
+ * drawing's core between pictures and read with a plain load.
+ */
+extern uint8_t vga_wrote;
+extern uint32_t vga_pace_quiet;
+bool vga_pace_after_step(uint32_t insns, bool halted);
+
 typedef struct VGATextOps {
     void (*set_cursor)(void *o, int y, int x);
     void (*put_char2)(void *o, int y, int x, int ch, int attr);

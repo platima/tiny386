@@ -52,6 +52,21 @@ void vga_set_dirty_blocks(int on)
     __atomic_add_fetch(&vga_dirty_blocks_changes, 1, __ATOMIC_RELEASE);
 }
 
+/* v4.4: pictures at the guest's quiet moments (vga.h) */
+uint8_t vga_wrote;
+uint32_t vga_pace_quiet;
+static uint32_t vga_pace_last;  /* the guest's count at its last store */
+
+bool vga_pace_after_step(uint32_t insns, bool halted)
+{
+    if (vga_wrote) {
+        vga_wrote = 0;
+        vga_pace_last = insns;
+        return false;
+    }
+    return halted || insns - vga_pace_last >= vga_pace_quiet;
+}
+
 #ifdef BUILD_ESP32
 #include "esp_attr.h"
 void *pcmalloc(long size);
@@ -3228,6 +3243,7 @@ void IRAM_ATTR vga_mem_write16(VGAState *s, uint32_t addr, uint16_t val16)
 {
     if (!(s->msr & MSR_RAM_ENABLE))
         return;
+    vga_wrote = 1;          /* v4.4: for the pacing (vga.h) */
     if (!(s->sr[VGA_SEQ_MEMORY_MODE] & VGA_SR04_CHN_4M)) {
         vga_mem_write(s, addr, val16);
         vga_mem_write(s, addr + 1, val16 >> 8);
@@ -3277,6 +3293,7 @@ void IRAM_ATTR vga_mem_write32(VGAState *s, uint32_t addr, uint32_t val)
 {
     if (!(s->msr & MSR_RAM_ENABLE))
         return;
+    vga_wrote = 1;          /* v4.4: for the pacing (vga.h) */
     if (!(s->sr[VGA_SEQ_MEMORY_MODE] & VGA_SR04_CHN_4M)) {
         vga_mem_write(s, addr, val);
         vga_mem_write(s, addr + 1, val >> 8);
@@ -3327,6 +3344,7 @@ bool IRAM_ATTR vga_mem_write_string(VGAState *s, uint32_t addr, uint8_t *buf, in
 {
     if (!(s->msr & MSR_RAM_ENABLE))
         return true;    /* written to nothing */
+    vga_wrote = 1;          /* v4.4: for the pacing (vga.h) */
     if (!(s->sr[VGA_SEQ_MEMORY_MODE] & VGA_SR04_CHN_4M)) {
         return false;
     }
@@ -3379,6 +3397,7 @@ void IRAM_ATTR vga_mem_write(VGAState *s, uint32_t addr, uint8_t val8)
     /* misc output bit 1 off: the CPU's writes go nowhere */
     if (!(s->msr & MSR_RAM_ENABLE))
         return;
+    vga_wrote = 1;          /* v4.4: for the pacing (vga.h) */
 
     int memory_map_mode, plane, write_mode, b, func_select, mask;
     uint32_t write_mask, bit_mask, set_mask;

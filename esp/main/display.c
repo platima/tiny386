@@ -17,8 +17,10 @@
 #include "esp_timer.h"
 
 #include "../../pc.h"
+#include "../../vga.h"
 #include "common.h"
 #include "console.h"
+#include "display.h"
 #include "lcd.h"
 #include "speed.h"
 
@@ -58,9 +60,69 @@ static void stacks_line(void)
 	console_uart_printf("%s", line);
 }
 
+/* ==== v4.4: pictures at the guest's quiet moments (vga.h, display.h) ==== */
+
+static TaskHandle_t s_vga_task;
+/* a picture is due and waits for a quiet step: set by vga_task, cleared by
+   whichever core ends the wait */
+static uint8_t s_pace_want;
+static int s_pace_wait_ms = DISPLAY_PACE_WAIT_MS;
+/* vga_task's own counts: pictures drawn at a quiet step, and at the end of
+   the wait; and the time waited in all, in ticks */
+static uint32_t s_pace_quiet, s_pace_late, s_pace_ticks;
+
+void display_pace_set_wait(int ms)
+{
+	s_pace_wait_ms = ms > 0 ? ms : 1;
+}
+
+int display_pace_wait(void)
+{
+	return s_pace_wait_ms;
+}
+
+void display_pace_counts(uint32_t *quiet, uint32_t *late)
+{
+	*quiet = __atomic_load_n(&s_pace_quiet, __ATOMIC_RELAXED);
+	*late = __atomic_load_n(&s_pace_late, __ATOMIC_RELAXED);
+}
+
+void display_pace_step(uint32_t insns, bool halted)
+{
+	/* every step, so that the last store is noted whether or not a
+	   picture waits */
+	if (vga_pace_after_step(insns, halted) &&
+	    __atomic_load_n(&s_pace_want, __ATOMIC_ACQUIRE)) {
+		__atomic_store_n(&s_pace_want, 0, __ATOMIC_RELAXED);
+		xTaskNotifyGive(s_vga_task);
+	}
+}
+
+/* Before a picture, with pacing on: wait until the emulator's core finds
+   the guest quiet, at most the wait.  A notice left from a wait that ran
+   out just as the core found it quiet is taken first. */
+static void pace_wait(void)
+{
+	/* the ticks, rounded up (pdMS_TO_TICKS() rounds down) */
+	TickType_t wait = ((TickType_t) s_pace_wait_ms * configTICK_RATE_HZ + 999) / 1000;
+	if (!wait)
+		wait = 1;
+	ulTaskNotifyTake(pdTRUE, 0);
+	__atomic_store_n(&s_pace_want, 1, __ATOMIC_RELEASE);
+	TickType_t t0 = xTaskGetTickCount();
+	uint32_t got = ulTaskNotifyTake(pdTRUE, wait);
+	__atomic_store_n(&s_pace_want, 0, __ATOMIC_RELEASE);
+	s_pace_ticks += xTaskGetTickCount() - t0;
+	if (got)
+		__atomic_store_n(&s_pace_quiet, s_pace_quiet + 1, __ATOMIC_RELAXED);
+	else
+		__atomic_store_n(&s_pace_late, s_pace_late + 1, __ATOMIC_RELAXED);
+}
+
 void vga_task(void *arg)
 {
 	(void) arg;
+	s_vga_task = xTaskGetCurrentTaskHandle();
 	/* the PC exists */
 	xEventGroupWaitBits(global_event_group, BIT0, pdFALSE, pdFALSE,
 			    portMAX_DELAY);
@@ -76,6 +138,9 @@ void vga_task(void *arg)
 	lcd_get_stats(&st, true);
 
 	for (;;) {
+		/* v4.4: [esp] pace_quiet, Ctrl+Alt+F10 */
+		if (__atomic_load_n(&vga_pace_quiet, __ATOMIC_RELAXED) && !console_owns_display())
+			pace_wait();
 		display_lock();
 		if (!console_owns_display()) {
 			pc_vga_step(globals.pc);
@@ -102,6 +167,11 @@ void vga_task(void *arg)
 				pictures, DISPLAY_STATS_S, st.flushes, st.rows,
 				st.flushes ? (uint32_t) (st.cycles / st.flushes / mhz) : 0,
 				st.cycles_max / mhz);
+			if (vga_pace_quiet)
+				console_uart_printf("display: paced (pace_quiet %" PRIu32 ", wait %d ms): "
+					"%" PRIu32 " pictures at a quiet moment, %" PRIu32 " late, %" PRIu32
+					" ms waited, since the PC started", vga_pace_quiet, s_pace_wait_ms,
+					s_pace_quiet, s_pace_late, (uint32_t) (s_pace_ticks * portTICK_PERIOD_MS));
 			stacks_line();
 			pictures = 0;
 			stats_t0 = now;

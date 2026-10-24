@@ -725,6 +725,7 @@ static void iomem_write8(void *iomem, uword addr, u8 val)
 		if (addr < pc->vga_mem_size) {
 			pc->vga_mem[addr] = val;
 			LFB_WRITTEN(pc, addr, 1);
+			vga_wrote = 1;  /* v4.4: for the pacing (vga.h) */
 		}
 		return;
 	}
@@ -753,6 +754,7 @@ static void iomem_write16(void *iomem, uword addr, u16 val)
 		if (addr + 1 < pc->vga_mem_size) {
 			stu16((uint8_t *) &(pc->vga_mem[addr]), val);
 			LFB_WRITTEN(pc, addr, 2);
+			vga_wrote = 1;
 		}
 		return;
 	}
@@ -781,6 +783,7 @@ static void iomem_write32(void *iomem, uword addr, u32 val)
 		if (addr + 3 < pc->vga_mem_size) {
 			stu32((uint8_t *) &(pc->vga_mem[addr]), val);
 			LFB_WRITTEN(pc, addr, 4);
+			vga_wrote = 1;
 		}
 		return;
 	}
@@ -814,6 +817,7 @@ static bool iomem_write_string(void *iomem, uword addr, uint8_t *buf, int len)
 			memcpy(pc->vga_mem + addr, buf, len);
 			if (len > 0)
 				LFB_WRITTEN(pc, addr, len);
+			vga_wrote = 1;
 			return true;
 		}
 		return false;

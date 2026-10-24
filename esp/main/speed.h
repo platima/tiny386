@@ -87,10 +87,19 @@ void speed_hotkey(void);                /* Ctrl+Alt+F12, from the USB task */
    (speed_take_blocks_save()), where no disk write of the guest's is under
    way */
 void speed_blocks_hotkey(void);
-/* on the emulator's core, after a step: true once for each Ctrl+Alt+F11
-   that is still to be saved (presses close together are saved once, with
-   the setting the last one left) */
-bool speed_take_blocks_save(void);
+/* v4.4: Ctrl+Alt+F10, from the USB task: pictures at the guest's quiet
+   moments on or off at once (vga_pace_quiet: 0, or the ini's pace_quiet,
+   else DISPLAY_PACE_QUIET_ON), with a line on the console, and to be saved
+   in the ini as F11's setting is */
+void speed_pace_hotkey(void);
+/* the value Ctrl+Alt+F10 turns the pacing on with */
+void speed_set_pace_on(uint32_t quiet);
+/* the settings still to be saved in the ini, each once however often its
+   key was pressed (with the value the last press left): on the emulator's
+   core, after a step */
+#define SPEED_SAVE_BLOCKS 1     /* [esp] vbe_blocks, Ctrl+Alt+F11 */
+#define SPEED_SAVE_PACE   2     /* [esp] pace_quiet, Ctrl+Alt+F10 */
+unsigned speed_take_saves(void);
 void speed_forget_requests(void);       /* before vga_task starts drawing */
 void speed_set_title(const char *normal);       /* the console's usual title */
 void speed_screen_poll(void *pc, uint32_t pictures_per_s);     /* vga_task */

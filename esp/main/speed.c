@@ -162,6 +162,7 @@ void speed_total_line(uint64_t insns, uint64_t us, const char *what,
 #include "console.h"
 #include "disk_image.h"
 #ifdef LCD_ZERO_COPY
+#include "display.h"
 #include "lcd.h"
 #endif
 #ifdef USER_KEY_GPIO
@@ -193,8 +194,12 @@ static volatile uint32_t s_flushes;      /* disk flushes, for the log */
 static int s_req;
 /* Ctrl+Alt+F11 pressed: vbe_blocks to change, on core 0 between pictures */
 static int s_blocks_req;
-/* v4.4: and then to be saved in the ini, on the emulator's core */
-static int s_save_req;
+/* v4.4: Ctrl+Alt+F10 pressed: the pacing on or off, on core 0 */
+static int s_pace_req;
+static uint32_t s_pace_on = 10000;      /* what F10 turns it on with */
+/* v4.4: settings to be saved in the ini (SPEED_SAVE_*), on the emulator's
+   core */
+static unsigned s_save_req;
 static bool s_shown;            /* core 0 only, as below */
 static const char *s_normal_title = "";
 static uint32_t s_last_title_s, s_last_log_s;
@@ -290,14 +295,20 @@ void speed_forget_requests(void)
 	__atomic_store_n(&s_req, 0, __ATOMIC_RELEASE);
 	__atomic_store_n(&s_blocks_req, 0, __ATOMIC_RELEASE);
 	__atomic_store_n(&s_save_req, 0, __ATOMIC_RELEASE);
+	__atomic_store_n(&s_pace_req, 0, __ATOMIC_RELEASE);
 }
 
-bool speed_take_blocks_save(void)
+unsigned speed_take_saves(void)
 {
 	/* a plain load first: a step pays one load when nothing is asked */
 	if (!__atomic_load_n(&s_save_req, __ATOMIC_RELAXED))
-		return false;
-	return __atomic_exchange_n(&s_save_req, 0, __ATOMIC_ACQ_REL) != 0;
+		return 0;
+	return __atomic_exchange_n(&s_save_req, 0, __ATOMIC_ACQ_REL);
+}
+
+void speed_set_pace_on(uint32_t quiet)
+{
+	s_pace_on = quiet;
 }
 
 void speed_run_step(void *opaque, uint32_t now_us)
@@ -358,6 +369,11 @@ void speed_blocks_hotkey(void)
 	__atomic_store_n(&s_blocks_req, 1, __ATOMIC_RELEASE);
 }
 
+void speed_pace_hotkey(void)
+{
+	__atomic_store_n(&s_pace_req, 1, __ATOMIC_RELEASE);
+}
+
 /* the line that says what vbe_blocks is now */
 static void blocks_line(bool changed)
 {
@@ -368,6 +384,28 @@ static void blocks_line(bool changed)
 		       "marked, as before v4.0.",
 		       changed ? "; it is saved in the ini once the guest's disk writes are on "
 		       "the card" : " and saves it in the ini");
+}
+
+/* v4.4: the line that says whether pictures wait for a quiet moment */
+static void pace_line(bool changed)
+{
+#ifdef LCD_ZERO_COPY
+	uint32_t q = vga_pace_quiet, a, b;
+	display_pace_counts(&a, &b);
+	if (q)
+		console_printf(CON_INFO, "pace_quiet = %u%s: a picture waits until the guest has "
+			       "stored nothing into video memory for %u instructions, at most %d ms "
+			       "(so far %u at a quiet moment, %u late). Ctrl+Alt+F10 changes it%s.",
+			       (unsigned) q, changed ? " now" : "", (unsigned) q, display_pace_wait(),
+			       (unsigned) a, (unsigned) b, changed ? "; it is saved in the ini" :
+			       " and saves it in the ini");
+	else
+		console_printf(CON_INFO, "pace_quiet = 0%s: pictures are drawn when they are due, "
+			       "as before v4.4. Ctrl+Alt+F10 changes it%s.", changed ? " now" : "",
+			       changed ? "; it is saved in the ini" : " and saves it in the ini");
+#else
+	(void) changed;
+#endif
 }
 
 void speed_set_title(const char *normal)
@@ -446,7 +484,13 @@ void speed_screen_poll(void *opaque, uint32_t pps)
 		blocks_line(true);
 		/* v4.4: saved by the emulator's core (run_pc()), which sees the
 		   new setting: stored before this release */
-		__atomic_store_n(&s_save_req, 1, __ATOMIC_RELEASE);
+		__atomic_or_fetch(&s_save_req, SPEED_SAVE_BLOCKS, __ATOMIC_RELEASE);
+	}
+	/* v4.4, Ctrl+Alt+F10: the pacing the other way */
+	if (__atomic_exchange_n(&s_pace_req, 0, __ATOMIC_ACQ_REL)) {
+		__atomic_store_n(&vga_pace_quiet, vga_pace_quiet ? 0 : s_pace_on, __ATOMIC_RELAXED);
+		pace_line(true);
+		__atomic_or_fetch(&s_save_req, SPEED_SAVE_PACE, __ATOMIC_RELEASE);
 	}
 	bool want = s_shown;
 	if (req == REQ_TOGGLE)
@@ -488,6 +532,7 @@ void speed_screen_poll(void *opaque, uint32_t pps)
 		console_printf(CON_INFO, "Log: %u repeated lines held back, %u dropped from the "
 			       "UART's queue", held, dropped);
 		blocks_line(false);
+		pace_line(false);
 		show_title(pps);
 		s_last_title_s = secs;
 	} else if (!want && s_shown) {

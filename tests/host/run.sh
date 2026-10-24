@@ -115,7 +115,7 @@ vga_rename() {
              vga_ioport_read vbe_write vbe_read vga_mem_write vga_mem_read \
              vga_mem_write16 vga_mem_write32 vga_mem_write_string vga_pci_init \
              vga_planar_fast vga_set_text_ops vga_dirty_map vga_dirty vga_dirty_blocks \
-             vga_set_dirty_blocks vga_get_info; do
+             vga_set_dirty_blocks vga_get_info vga_wrote vga_pace_quiet vga_pace_after_step; do
         printf ' -D%s=%s%s' "$s" "$p" "$s"
     done
 }
@@ -236,6 +236,22 @@ for board in korvo1 dosboard; do
         [ $st = 1 ]
         result $? "vga.c, $board: the font test catches v4.3's text drawing (old glyphs left after a new font)"
     fi
+done
+
+# ==== 3f. pictures at the guest's quiet moments (v4.4, vga.h) ====
+# vga.c as each board builds it (test 3c's objects): vga_pace_after_step()
+# and the stores through the VGA window that set vga_wrote, in every mode.
+echo
+for board in korvo1 dosboard; do
+    hdr="$TREE/esp/main/board_$board.h"
+    $CC $CFLAGS -c -I"$HERE/shim" -I"$TREE" -include "$hdr" \
+        -o "$OUT/test_pace-$board.o" "$HERE/test_pace.c" || exit 1
+    $CC -o "$OUT/test_pace-$board" "$OUT/test_pace-$board.o" "$OUT/vbe-new-$board.o" \
+        "$OUT/vgafont.o" || exit 1
+    "$OUT/test_pace-$board" > "$OUT/pace-$board.log" 2>&1
+    st=$?
+    grep "FAIL\|test_pace" "$OUT/pace-$board.log" | head -12
+    result $st "vga.c, $board: quiet moments counted from the last store, every store through the window noted"
 done
 
 # ==== 4. the keyboard and mouse layer (FIRMWARE-PLAN 3.3) ====
