@@ -301,7 +301,11 @@ struct VGAState {
 #endif
 
     /* what the drawing has done, for vga_get_info(): the drawing writes
-       them, a word each; last in the state, so that no other field moves */
+       them, a word each; last in the state, so that no other field moves.
+       n_vbe_blocks counts KiB found written, as the port has it
+       (perfport.h), whatever the blocks' size: v4.4's blocks of 256 bytes
+       go into vbe_block_part (at the end) until they make 1 KiB, so that
+       the count wraps at 2^32 KiB as before, not at 2^30 */
     uint32_t n_vbe_pictures, n_vbe_whole, n_vbe_blocks, n_vbe_rows;
 
     /* v4.4: the font in plane 2 (vga_text_refresh()).  font_req counts the
@@ -311,6 +315,7 @@ struct VGAState {
     uint32_t font_req;
     uint32_t font_seen;
     int last_sr03;
+    uint32_t vbe_block_part;            /* blocks not yet 1 KiB, above */
 };
 
 uint32_t get_uticks();
@@ -1528,7 +1533,14 @@ static void vga_take_marks(VGAState *s, uint32_t addr1, uint32_t line_offset,
             if (!__atomic_load_n(&map[b], __ATOMIC_RELAXED))
                 continue;
             __atomic_store_n(&map[b], 0, __ATOMIC_RELAXED);
+#if VGA_DIRTY_SHIFT < 10
+            if (++s->vbe_block_part == 1u << (10 - VGA_DIRTY_SHIFT)) {
+                s->vbe_block_part = 0;
+                s->n_vbe_blocks++;
+            }
+#else
             s->n_vbe_blocks++;
+#endif
             if (all)
                 continue;
             uint32_t lo = b << VGA_DIRTY_SHIFT;
@@ -3795,10 +3807,9 @@ void vga_get_info(VGAState *s, struct vga_info *info)
     info->screen_h = s->fb_dev->height;
     info->vbe_pictures = s->n_vbe_pictures;
     info->vbe_whole = s->n_vbe_whole;
-    /* the port counts KiB found written (perfport.h), whatever the
-       blocks' size */
-    info->vbe_blocks = VGA_DIRTY_SHIFT < 10 ?
-        s->n_vbe_blocks >> (10 - VGA_DIRTY_SHIFT) : s->n_vbe_blocks;
+    /* KiB found written (perfport.h), whatever the blocks' size; one word,
+       which the drawing's core writes, read whole */
+    info->vbe_blocks = s->n_vbe_blocks;
     info->vbe_rows = s->n_vbe_rows;
     if (!(s->ar_index & 0x20))
         return;                         /* blank */

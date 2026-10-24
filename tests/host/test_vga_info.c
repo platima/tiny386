@@ -194,6 +194,21 @@ int main(void)
     vga_refresh(s, redraw, NULL, 1);
     vga_get_info(s, &v2);
     CHECK(v2.vbe_whole == 2 && v2.vbe_rows == vi.vbe_rows + LCD_HEIGHT, "a full update");
+    /* (v4.4) the part of a KiB one picture leaves is counted with the
+       next: lines 200 and 300, then the running total in whole KiB */
+    uint32_t nball = nb;
+    for (int line = 200; line <= 300; line += 100) {
+        uint32_t a2 = (10 + line) * LCD_WIDTH * 2;
+        memset(vram + a2, 0xa5, LCD_WIDTH * 2);
+        vga_dirty_mark(vga_dirty_map(s), a2, LCD_WIDTH * 2);
+        vga_refresh(s, redraw, NULL, 0);
+        nball += ((a2 + LCD_WIDTH * 2 - 1) >> VGA_DIRTY_SHIFT) - (a2 >> VGA_DIRTY_SHIFT) + 1;
+    }
+    vga_get_info(s, &v2);
+    CHECK(v2.vbe_blocks - blocks0 == (nball << VGA_DIRTY_SHIFT) >> 10,
+          "blocks over three pictures %u KiB, %u wanted (%u blocks of %u bytes)",
+          v2.vbe_blocks - blocks0, (nball << VGA_DIRTY_SHIFT) >> 10, nball,
+          1u << VGA_DIRTY_SHIFT);
 #else
     printf("(no VGA_DIRTY_BLOCKS in this build: the counts are not tried)\n");
 #endif
