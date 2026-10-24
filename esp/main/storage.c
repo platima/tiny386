@@ -299,6 +299,62 @@ const struct storage_volume *storage_volumes(int *n)
 	*n = s_nvols;
 	return s_vols;
 }
+
+/* v4.4: the card for sd_part.c, which reads and writes a partition of it
+   through FatFs's disk functions of the drive /sdcard is on (the first
+   registered for the card, never let go) */
+int storage_card_pdrv(void)
+{
+	sdmmc_card_t *card = rawsd;
+	if (!card)
+		return -1;
+	BYTE pdrv = ff_diskio_get_pdrv_card(card);
+	return pdrv == 0xFF ? -1 : (int) pdrv;
+}
+
+uint64_t storage_card_sectors(void)
+{
+	sdmmc_card_t *card = rawsd;
+	if (!card)
+		return 0;
+	return (uint64_t) card->csd.capacity * card->csd.sector_size / 512;
+}
+
+bool storage_part_mounted(int part)
+{
+	for (int i = 0; i < s_nvols; i++)
+		if (s_vols[i].part == part && s_vols[i].mounted)
+			return true;
+	return false;
+}
+
+/* v4.4: hda = sd:N: partition N unmounted from /sdcardN, as the mount above
+   is undone when it fails (esp_main.c has checked that nothing else the ini
+   names is on it, and nothing is open there yet).  /sdcard stays. */
+bool storage_part_release(int part, char *why, size_t size)
+{
+	for (int i = 0; i < s_nvols; i++) {
+		struct storage_volume *v = &s_vols[i];
+		if (v->part != part || !v->mounted)
+			continue;
+		if (!strcmp(v->path, "/sdcard")) {
+			snprintf(why, size, "card partition %d is /sdcard, where tiny386's own "
+				 "files are (the inis, the BIOS)", part);
+			return false;
+		}
+		BYTE ld = (BYTE) (v->drv[0] - '0');
+		f_mount(NULL, v->drv, 0);
+		esp_vfs_fat_unregister_path(v->path);
+		ff_diskio_unregister(ld);
+		VolToPart[ld].pd = ld;
+		VolToPart[ld].pt = 0;
+		v->mounted = false;
+		v->path[0] = 0;
+		v->drv[0] = 0;
+		v->why = "let go, for the guest to have whole";
+	}
+	return true;
+}
 #else
 int storage_sd_mount_others(void)
 {
@@ -309,6 +365,28 @@ const struct storage_volume *storage_volumes(int *n)
 {
 	*n = 0;
 	return NULL;
+}
+
+int storage_card_pdrv(void)
+{
+	return -1;
+}
+
+uint64_t storage_card_sectors(void)
+{
+	return 0;
+}
+
+bool storage_part_mounted(int part)
+{
+	(void) part;
+	return false;
+}
+
+bool storage_part_release(int part, char *why, size_t size)
+{
+	(void) part; (void) why; (void) size;
+	return true;
 }
 #endif
 

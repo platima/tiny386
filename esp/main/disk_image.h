@@ -50,6 +50,11 @@ struct disk_image_stats {
 	uint32_t busy_us;               /* all the accesses' time together */
 };
 void disk_image_get_stats(struct disk_image_stats *s, bool reset_recent);
+/* v4.4: an access of a card partition the guest has whole (sd_part.c),
+   counted with the images': n sectors in us microseconds; error if the
+   card refused it at first, recovered if the second try worked */
+void disk_image_count(bool write, uint32_t sectors, uint32_t us, bool error,
+		      bool recovered);
 
 /* 1 (the default): each image's clusters mapped when it is opened.  0:
    not, so that every seek back walks the FAT from the image's first

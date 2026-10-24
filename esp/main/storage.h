@@ -39,4 +39,18 @@ const char *storage_win_path(void);
    small). */
 bool storage_fatfs_path(const char *path, char *out, size_t size);
 
+/* v4.4, for a card partition given to the guest whole (sd_part.c):
+   FatFs's physical drive of the card, or -1 without one, and the card's
+   size in 512-byte sectors */
+int storage_card_pdrv(void);
+uint64_t storage_card_sectors(void);
+/* whether tiny386's own FatFs has partition part (1 to 4) of the card's MBR
+   mounted */
+bool storage_part_mounted(int part);
+/* Lets partition part go from FatFs so that the guest can have it whole:
+   unmounted from /sdcardN if it was mounted there.  True if it is not
+   mounted now; false, with why, if it is /sdcard, where tiny386's own files
+   are. */
+bool storage_part_release(int part, char *why, size_t size);
+
 #endif /* STORAGE_H */

@@ -294,6 +294,35 @@ static FRESULT rw_once(struct disk_image *d, uint64_t off, uint8_t *buf, size_t 
 	return FR_OK;
 }
 
+/* one access in the figures: its time, its sectors */
+static void count_access(bool write, uint32_t sectors, uint32_t dt)
+{
+	if (dt > s_stats.longest_us)
+		s_stats.longest_us = dt;
+	if (dt > s_stats.recent_us)
+		s_stats.recent_us = dt;
+	if (dt > DI_TICK_US)
+		s_stats.over_tick++;
+	s_stats.busy_us += dt;
+	if (write) {
+		s_stats.writes++;
+		s_stats.wsectors += sectors;
+	} else {
+		s_stats.reads++;
+		s_stats.rsectors += sectors;
+	}
+}
+
+void disk_image_count(bool write, uint32_t sectors, uint32_t us, bool error,
+		      bool recovered)
+{
+	if (error)
+		s_stats.errors++;
+	if (recovered)
+		s_stats.recovered++;
+	count_access(write, sectors, us);
+}
+
 static int access_image(struct disk_image *d, uint64_t off, uint8_t *buf, size_t n,
 			bool write)
 {
@@ -319,21 +348,7 @@ static int access_image(struct disk_image *d, uint64_t off, uint8_t *buf, size_t
 			    ret ? "failed again: the guest is told" : "then worked");
 		d->said++;
 	}
-	uint32_t dt = get_uticks() - t0;
-	if (dt > s_stats.longest_us)
-		s_stats.longest_us = dt;
-	if (dt > s_stats.recent_us)
-		s_stats.recent_us = dt;
-	if (dt > DI_TICK_US)
-		s_stats.over_tick++;
-	s_stats.busy_us += dt;
-	if (write) {
-		s_stats.writes++;
-		s_stats.wsectors += (uint32_t) (n / 512);
-	} else {
-		s_stats.reads++;
-		s_stats.rsectors += (uint32_t) (n / 512);
-	}
+	count_access(write, (uint32_t) (n / 512), get_uticks() - t0);
 	return ret;
 }
 

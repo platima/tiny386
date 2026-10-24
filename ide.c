@@ -313,6 +313,7 @@
 #ifdef BUILD_ESP32
 #include <errno.h>
 #include "esp/main/disk_image.h"
+#include "esp/main/sd_part.h"
 void *pcmalloc(long size);
 /* says so on the panel and stops (esp/main/esp_main.c) */
 void tiny386_fatal(const char *fmt, ...) __attribute__((noreturn));
@@ -1974,6 +1975,12 @@ static BlockDeviceFile *bf_rw[BF_MAX_RW];
 static int bf_rw_count;
 static unsigned bf_writes;
 #ifdef BUILD_ESP32
+/* v4.4: the card partitions the guest has whole (hda = sd:3) */
+#define BF_MAX_SDP 4
+static struct sd_part *bf_sdp[BF_MAX_SDP];
+static int bf_sdp_count;
+#endif
+#ifdef BUILD_ESP32
 /* reads, writes and flushes the card refused (a card pulled out, or
    failing): the guest's IDE driver is told of a failed write or read */
 static unsigned bf_errors;
@@ -2024,6 +2031,13 @@ void ide_flush(void)
 #endif
 #endif
     }
+#ifdef BUILD_ESP32
+    /* a card partition's writes are on the card when they return; the
+       card's own cache, if any, is asked to empty */
+    for (i = 0; i < bf_sdp_count; i++)
+        if (sd_part_sync(bf_sdp[i]) != 0)
+            bf_errors++;
+#endif
 }
 
 //#define DUMP_BLOCK_READ
@@ -2300,6 +2314,65 @@ static BlockDevice *block_device_init(const char *filename,
     return bs;
 }
 
+#ifdef BUILD_ESP32
+/* v4.4: one partition of the card as the whole disk (hda = sd:3,
+   esp/main/sd_part.c): LBA 0 a partition table made for it, the
+   partition's sectors the card's at the same numbers, every other sector
+   zeros and not writable.  A write outside the partition is refused there,
+   and is the guest's mistake, not the card's. */
+static int64_t sdp_get_sector_count(BlockDevice *bs)
+{
+    return (int64_t) sd_part_sectors(bs->opaque);
+}
+
+static int sdp_read_async(BlockDevice *bs,
+                          uint64_t sector_num, uint8_t *buf, int n,
+                          BlockDeviceCompletionFunc *cb, void *opaque)
+{
+    BF_ACTIVITY();
+    if (n < 0)
+        return -1;
+    int r = sd_part_read(bs->opaque, sector_num, buf, (unsigned) n);
+    if (r == SD_PART_CARD_ERROR)
+        bf_errors++;
+    return r ? -1 : 0;
+}
+
+static int sdp_write_async(BlockDevice *bs,
+                           uint64_t sector_num, const uint8_t *buf, int n,
+                           BlockDeviceCompletionFunc *cb, void *opaque)
+{
+    BF_ACTIVITY();
+    if (n < 0)
+        return -1;
+    int r = sd_part_write(bs->opaque, sector_num, buf, (unsigned) n);
+    if (r == SD_PART_CARD_ERROR)
+        bf_errors++;
+    if (r)
+        return -1;
+    bf_writes++;
+    return 0;
+}
+
+static BlockDevice *block_device_init_sdpart(const char *filename)
+{
+    struct sd_part *p;
+    static char why[200];
+    if (sd_part_open(sd_part_name(filename), &p, why, sizeof(why)) != 0)
+        tiny386_fatal("%s: %s.", filename, why);
+    BlockDevice *bs = pcmalloc(sizeof(*bs));
+    memset(bs, 0, sizeof(*bs));
+    bs->opaque = p;
+    bs->get_sector_count = sdp_get_sector_count;
+    bs->get_chs = NULL;
+    bs->read_async = sdp_read_async;
+    bs->write_async = sdp_write_async;
+    if (bf_sdp_count < BF_MAX_SDP)
+        bf_sdp[bf_sdp_count++] = p;
+    return bs;
+}
+#endif
+
 /* The whole card as one raw disk (hda = /dev/mmcblk0).  Not in the
    firmware of this tree: the card's FAT partitions are mounted by FatFs at
    the same time, and Linux's root is on it too, so a guest given it could
@@ -2550,8 +2623,11 @@ int ide_attach(IDEIFState *s, int drive, const char *filename)
 #else
         tiny386_fatal("%s, the whole card as one disk, is not allowed: the "
                       "guest could write over the card's partitions, Linux's "
-                      "among them. Name a disk image file instead.", filename);
+                      "among them. Name a disk image file, or one FAT partition "
+                      "of the card (hda = sd:3).", filename);
 #endif
+    } else if (sd_part_name(filename) != 0) {
+        bs = block_device_init_sdpart(filename);
     } else {
         bs = block_device_init(filename, BF_MODE_RW);
     }

@@ -39,6 +39,7 @@
 #include "ini_edit.h"
 #include "setup.h"
 #include "storage.h"
+#include "sd_part.h"
 #include "bootmenu.h"
 #include "speed.h"
 #include "status_led.h"
@@ -789,7 +790,9 @@ static int parse_ini(void *user, const char *section,
 	bool secret = !strcmp(section, "esp") && !strcmp(name, "pass");
 	static char resolved[200];
 
-	if (known_key(section, name) && setup_is_path_key(section, name) && value[0]) {
+	/* v4.4: hda = sd:3, a partition of the card, is no file's name */
+	if (known_key(section, name) && setup_is_path_key(section, name) && value[0] &&
+	    !sd_part_name(value)) {
 		bool missing;
 		setup_resolve(s_ini_dir, value, s_maps, 2, resolved, sizeof(resolved),
 			      &missing);
@@ -997,6 +1000,69 @@ static void default_roms(void)
    said here in plain words, rather than an abort later. */
 static int s_bios_bad;           /* how many of check_config()'s were a BIOS */
 
+/* v4.4: key = sd:N, card partition N as the guest's whole disk
+   (sd_part.c).  Only for a hard disk; nothing else the ini names may be on
+   that partition; FatFs lets it go (never /sdcard); then the partition is
+   checked as the PC will open it.  Returns the problems found. */
+static int check_card_partition(int i, const char *key, const char *path)
+{
+	char why[200];
+	int part = sd_part_name(path);
+	if (part < 0) {
+		console_printf(CON_ERROR, "[pc] %s = %s: write sd: and the partition's number in "
+			       "the card's table, 1 to 4 (hda = sd:3).", key, path);
+		return 1;
+	}
+	if (i >= 4 || conf.iscd[i]) {
+		console_printf(CON_ERROR, "[pc] %s = %s: a card partition can be a hard disk "
+			       "(hda to hdd), not a CD or a floppy.", key, path);
+		return 1;
+	}
+	char prefix[24];
+	snprintf(prefix, sizeof(prefix), "/sdcard%d/", part);
+	const char *others[] = { conf.disks[0], conf.disks[1], conf.disks[2], conf.disks[3],
+				 conf.fdd[0], conf.fdd[1], conf.bios, conf.vga_bios };
+	int bad = 0;
+	for (unsigned k = 0; k < sizeof(others) / sizeof(others[0]); k++) {
+		if (others[k] && !strncmp(others[k], prefix, strlen(prefix))) {
+			console_printf(CON_ERROR, "[pc] %s = %s gives the guest card partition %d "
+				       "whole, so nothing else can be read from it: %s is on it. "
+				       "Move that file to /sdcard.", key, path, part, others[k]);
+			bad++;
+		}
+	}
+	if (bad)
+		return bad;
+	bool was = storage_part_mounted(part);
+	if (!storage_part_release(part, why, sizeof(why))) {
+		console_printf(CON_ERROR, "[pc] %s = %s: %s, so the guest cannot have it whole.",
+			       key, path, why);
+		return 1;
+	}
+	if (was) {
+		console_printf(CON_INFO, "Card partition %d unmounted from /sdcard%d: the guest "
+			       "has it whole.", part, part);
+		s_maps[1].to = storage_win_path();
+	}
+	struct sd_part_plan plan;
+	if (sd_part_check(part, &plan, why, sizeof(why))) {
+		console_printf(CON_ERROR, "[pc] %s = %s: %s.", key, path, why);
+		return 1;
+	}
+	char label[20] = "";
+	if (plan.label[0])
+		snprintf(label, sizeof(label), " \"%s\"", plan.label);
+	console_printf(CON_INFO, "%s: card partition %d, %s%s, %u MiB from sector %u, read and "
+		       "written raw: the guest's disk is %llu MiB, this partition alone in its "
+		       "table, nothing outside it writable.", key, part,
+		       plan.fat ? (plan.fat32 ? "FAT32" : "FAT16") : "no FAT volume", label,
+		       (unsigned) (plan.count >> 11), (unsigned) plan.start,
+		       (unsigned long long) (plan.disk_sectors >> 11));
+	if (plan.note[0])
+		console_printf(CON_WARN, "%s: card partition %d: %s.", key, part, plan.note);
+	return 0;
+}
+
 static int check_config(void)
 {
 	int bad = s_ini_bad;
@@ -1051,6 +1117,10 @@ static int check_config(void)
 		}
 		if (twice) {
 			bad++;
+			continue;
+		}
+		if (sd_part_name(path)) {
+			bad += check_card_partition(i, key, path);
 			continue;
 		}
 		struct stat st;
