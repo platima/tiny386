@@ -10,7 +10,9 @@
  *   test_sd_part new IMAGE SECTORS       the new card: p1 FAT32, p3 FAT16
  *                                        right after it, p2 after p3
  *   test_sd_part old IMAGE SECTORS       Plat's card as it is: p1, p2 ext4,
- *                                        p3 FAT32 WIN9X
+ *                                        p3 FAT32 WIN9X (v4.5: refused)
+ *   test_sd_part fat32 IMAGE SECTORS     the same card with p3 labelled
+ *                                        DATA32: given whole and read
  *
  * "new" writes GUEST.TXT on p3 through the guest's own view of its disk
  * (FatFs reading the record sd_part.c made, as Windows 95 does), and
@@ -160,6 +162,83 @@ static bool refused(const uint8_t *mbr, const uint8_t *vbr, uint64_t card, int p
 	return ok;
 }
 
+/* ==== v4.5: the ini's side (esp_main.c's steps 1 to 3 and the WIN9X
+   files) ==== */
+
+static const char *s_present[4];
+static const char *s_asked[8];
+static int s_nasked;
+static bool fake_exists(const char *path)
+{
+	if (s_nasked < 8)
+		s_asked[s_nasked++] = strdup(path);
+	for (int i = 0; i < 4; i++)
+		if (s_present[i] && !strcmp(s_present[i], path))
+			return true;
+	return false;
+}
+
+static void ini_checks(void)
+{
+	char why[240];
+	printf("== the ini's side of sd:N (esp_main.c's check_card_partition())\n");
+	const char *none[] = { "sd:3", NULL, NULL, NULL, NULL, NULL, "/sdcard/tiny386/bios.bin",
+			       "/sdcard/tiny386/vgabios.bin", NULL, NULL, NULL };
+	int n = (int) (sizeof(none) / sizeof(none[0]));
+	CHECK(sd_part_ini_check("sd:3", 0, false, none, n, why, sizeof(why)) == 3,
+	      "hda = sd:3, the BIOS on /sdcard: partition 3");
+	CHECK(sd_part_ini_check("sd:2", 3, false, none, n, why, sizeof(why)) == 2,
+	      "hdd = sd:2: partition 2 (what is on it is sd_part_plan()'s)");
+	CHECK(sd_part_ini_check("sd:0", 0, false, none, n, why, sizeof(why)) < 0 &&
+	      strstr(why, "1 to 4"), "sd:0: refused (%s)", why);
+	CHECK(sd_part_ini_check("sd:33", 0, false, none, n, why, sizeof(why)) < 0 &&
+	      strstr(why, "1 to 4"), "sd:33: refused");
+	CHECK(sd_part_ini_check("sd:p3", 0, false, none, n, why, sizeof(why)) < 0, "sd:p3: refused");
+	CHECK(sd_part_ini_check("sd:3", 0, true, none, n, why, sizeof(why)) < 0 &&
+	      strstr(why, "not a CD or a floppy"), "cda = sd:3: refused (%s)", why);
+	CHECK(sd_part_ini_check("sd:3", 4, false, none, n, why, sizeof(why)) < 0 &&
+	      strstr(why, "not a CD or a floppy"), "fda = sd:3: refused");
+	CHECK(sd_part_ini_check("sd:3", 5, false, none, n, why, sizeof(why)) < 0, "fdb = sd:3: refused");
+	const char *one[] = { "sd:3", "/sdcard3/data.img", NULL, NULL, NULL, NULL,
+			      "/sdcard/tiny386/bios.bin", NULL, NULL, NULL, NULL };
+	CHECK(sd_part_ini_check("sd:3", 0, false, one, n, why, sizeof(why)) < 0 &&
+	      strstr(why, "/sdcard3/data.img is on it"), "hdb on /sdcard3: refused (%s)", why);
+	const char *two[] = { "sd:3", NULL, NULL, NULL, "/sdcard3/boot.img", NULL,
+			      "/sdcard3/bios.bin", NULL, NULL, NULL, NULL };
+	CHECK(sd_part_ini_check("sd:3", 0, false, two, n, why, sizeof(why)) < 0 &&
+	      strstr(why, "/sdcard3/boot.img and 1 more"), "fda and the BIOS on /sdcard3: refused "
+	      "(%s)", why);
+	const char *kern[] = { "sd:3", NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+			       "/sdcard3/vmlinux.bin", NULL, NULL };
+	CHECK(sd_part_ini_check("sd:3", 0, false, kern, n, why, sizeof(why)) < 0 &&
+	      strstr(why, "vmlinux.bin"), "kernel on /sdcard3: refused (v4.5; %s)", why);
+	const char *init[] = { "sd:3", NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+			       "/sdcard3/initrd", "/sdcard3/linuxstart.bin" };
+	CHECK(sd_part_ini_check("sd:3", 0, false, init, n, why, sizeof(why)) < 0 &&
+	      strstr(why, "and 1 more"), "initrd and linuxstart on /sdcard3: refused");
+	const char *near[] = { "sd:3", "/sdcard/x/sdcard3/a.img", "/sdcard3", "/sdcard31/b.img",
+			       NULL, NULL, NULL, NULL, NULL, NULL, NULL };
+	CHECK(sd_part_ini_check("sd:3", 0, false, near, n, why, sizeof(why)) == 3,
+	      "names that only look alike (/sdcard/x/sdcard3/..., /sdcard3, /sdcard31/...): not on it");
+
+	s_present[0] = NULL;
+	s_nasked = 0;
+	CHECK(sd_part_route_files(3, fake_exists, why, sizeof(why)) == 0 && s_nasked == 2 &&
+	      !strcmp(s_asked[0], "/sdcard3/win95.img") && !strcmp(s_asked[1], "/sdcard3/korvo-root.img"),
+	      "the new card's p3: neither win95.img nor korvo-root.img there (asked %s, %s)",
+	      s_nasked > 0 ? s_asked[0] : "", s_nasked > 1 ? s_asked[1] : "");
+	s_present[0] = "/sdcard3/win95.img";
+	CHECK(sd_part_route_files(3, fake_exists, why, sizeof(why)) < 0 && strstr(why, "win95.img") &&
+	      strstr(why, "WIN9X"), "win95.img on /sdcard3: refused (%s)", why);
+	s_present[0] = "/sdcard3/korvo-root.img";
+	CHECK(sd_part_route_files(3, fake_exists, why, sizeof(why)) < 0 && strstr(why, "korvo-root"),
+	      "korvo-root.img on /sdcard3: refused");
+	s_present[0] = "/sdcard2/win95.img";
+	CHECK(sd_part_route_files(3, fake_exists, why, sizeof(why)) == 0,
+	      "win95.img on another partition: not this one's business");
+	s_present[0] = NULL;
+}
+
 static void unit(void)
 {
 	static uint8_t mbr[512], vbr[512];
@@ -241,10 +320,50 @@ static void unit(void)
 	entry(mbr, 2, 0x06, 139264, 818433);
 	r = sd_part_plan(mbr, NULL, card, 3, &p, why, sizeof(why));
 	CHECK(r == 0 && p.type == 0x06, "a FAT16 p3 of type 06: accepted, its type kept");
+	/* v4.5: the guest's disk is never more than 28-bit LBA can name
+	   (IDENTIFY's words 60 and 61 hold at most 0FFFFFFFh) */
 	entry(mbr, 2, 0x0E, SD_PART_LBA28 - 818433, 818433);
 	entry(mbr, 1, 0x83, 958464, 1000000);
 	r = sd_part_plan(mbr, NULL, 300000000, 3, &p, why, sizeof(why));
-	CHECK(r == 0, "a partition ending exactly at 128 GiB: accepted (%s)", r ? why : "");
+	CHECK(r == 0 && p.disk_sectors == SD_PART_LBA28, "a partition ending at sector 0FFFFFFFh, "
+	      "the 28-bit limit: accepted, the guest's disk %llu sectors, no more (%s)",
+	      (unsigned long long) p.disk_sectors, r ? why : "");
+	entry(mbr, 2, 0x0E, SD_PART_LBA28 - 818433 - 10, 818433);
+	r = sd_part_plan(mbr, NULL, 300000000, 3, &p, why, sizeof(why));
+	CHECK(r == 0 && p.disk_sectors == SD_PART_LBA28,
+	      "a partition ending 10 sectors short of it, in the last part cylinder: that cylinder "
+	      "cut at the limit (%llu sectors; v4.4 gave 268436448)", (unsigned long long) p.disk_sectors);
+	/* v4.5: the types Windows 95's boot sector reads by CHS, past the
+	   504 MiB CHS reaches */
+	blank_mbr(mbr);
+	entry(mbr, 0, 0x0C, 8192, 1048576);
+	entry(mbr, 2, 0x06, 1056768, 818433);
+	fat16_vbr(vbr, 818433, 1056768, NULL);
+	r = sd_part_plan(mbr, vbr, card, 3, &p, why, sizeof(why));
+	CHECK(r == 0 && strstr(p.note, "CHS") && strstr(p.note, "make its type 0E"),
+	      "a FAT16 p3 of type 06 past 504 MiB: accepted, with a note (%s)", p.note);
+	entry(mbr, 2, 0x04, 1056768, 60000);
+	fat16_vbr(vbr, 60000, 1056768, NULL);
+	r = sd_part_plan(mbr, vbr, card, 3, &p, why, sizeof(why));
+	CHECK(r == 0 && strstr(p.note, "make its type 0E"), "the same of type 04: the note");
+	entry(mbr, 2, 0x0E, 1056768, 818433);
+	fat16_vbr(vbr, 818433, 1056768, NULL);
+	r = sd_part_plan(mbr, vbr, card, 3, &p, why, sizeof(why));
+	CHECK(r == 0 && !p.note[0], "the same of type 0E: no note (%s)", p.note);
+	entry(mbr, 0, 0x0C, 8192, 131072);
+	entry(mbr, 2, 0x06, 1032192 - 818433, 818433);
+	fat16_vbr(vbr, 818433, 1032192 - 818433, NULL);
+	r = sd_part_plan(mbr, vbr, card, 3, &p, why, sizeof(why));
+	CHECK(r == 0 && !p.note[0], "type 06 ending at sector 1032191, the last CHS reaches: no "
+	      "note (%s)", p.note);
+	/* a type-00 entry with no size is nothing */
+	blank_mbr(mbr);
+	entry(mbr, 0, 0x0C, 8192, 131072);
+	entry(mbr, 2, 0x0E, 139264, 818433);
+	entry(mbr, 3, 0x00, 200000, 0);
+	r = sd_part_plan(mbr, NULL, card, 3, &p, why, sizeof(why));
+	CHECK(r == 0, "an entry of type 00 with a start inside p3 but no size: passed over (%s)",
+	      r ? why : "");
 
 	printf("== partitions the guest may not have\n");
 	blank_mbr(mbr);
@@ -277,6 +396,19 @@ static void unit(void)
 	refused(mbr, NULL, card, 3, "past the card's end", "p3 running past the card's end");
 	entry(mbr, 2, 0x0C, SD_PART_LBA28 - 1000, 2048);
 	refused(mbr, NULL, 300000000, 3, "128 GiB", "p3 ending past 128 GiB on a big card");
+	entry(mbr, 2, 0x0E, SD_PART_LBA28 - 818432, 818433);
+	refused(mbr, NULL, 300000000, 3, "128 GiB", "p3 ending at 2^28, one past what 28-bit LBA "
+		"names (v4.4 took it)");
+	entry(mbr, 1, 0x83, 958464, 4194304);
+	entry(mbr, 2, 0x0E, 139264, 818433);
+	entry(mbr, 3, 0x00, 200000, 100000);
+	refused(mbr, NULL, card, 3, "overlaps partition 4", "an entry of type 00 with a size, "
+		"inside p3 (v4.4 passed it over; Linux counts it)");
+	entry(mbr, 3, 0, 0, 0);
+	fat16_vbr(vbr, 818433, 139264, "WIN9X");
+	refused(mbr, vbr, card, 3, "labelled WIN9X", "a FAT16 volume labelled WIN9X");
+	memcpy(vbr + 43, "win9x      ", 11);
+	refused(mbr, vbr, card, 3, "labelled WIN9X", "  in small letters");
 	entry(mbr, 2, 0x0E, 139264, 1000);
 	refused(mbr, NULL, card, 3, "too small", "p3 of 1000 sectors");
 	entry(mbr, 2, 0x0E, 139264, SD_PART_FAT16_MAX + 2048);
@@ -294,6 +426,8 @@ static void unit(void)
 	refused(mbr, NULL, card, 1, "no partition table", "a card that is one FAT volume, no table");
 	memset(mbr, 0, 512);
 	refused(mbr, NULL, card, 3, "no partition table", "a card with no 55AA in sector 0");
+
+	ini_checks();
 }
 
 /* ==== the guest's own view of its disk: FatFs on the block device ==== */
@@ -680,10 +814,11 @@ static int scenario_new(uint32_t p1, uint32_t p3, uint32_t p3n, uint32_t p2)
 	return 0;
 }
 
-static int scenario_old(void)
+static int scenario_old(bool win9x)
 {
 	char why[200], text[256];
-	printf("== Plat's card as it is: p1 FAT32, p2 ext4, p3 FAT32 WIN9X\n");
+	printf("== Plat's card as it is: p1 FAT32, p2 ext4, p3 FAT32 %s\n",
+	       win9x ? "WIN9X" : "relabelled DATA32");
 	CHECK(mount_first(), "p1 mounted at /sdcard");
 	storage_sd_mount_others();
 	list();
@@ -691,6 +826,26 @@ static int scenario_old(void)
 	open_refused(4, "no partition 4", "p4");
 	CHECK(!storage_part_release(1, why, sizeof(why)), "p1 not let go: %s", why);
 	CHECK(storage_part_release(3, why, sizeof(why)) && !storage_part_mounted(3), "p3 let go");
+	if (win9x) {
+		/* v4.5: the Linux route's WIN9X partition is not the guest's */
+		struct sd_part_plan plan;
+		CHECK(sd_part_check(3, &plan, why, sizeof(why)) != 0 && strstr(why, "WIN9X"),
+		      "sd_part_check(3): refused (%s)", why);
+		open_refused(3, "labelled WIN9X", "p3, WIN9X");
+		unsigned w0 = host_card.writes;
+		IDEIFState *ifs = ide_allocate(14, NULL, ide_irq);
+		s_fatal_returns = true;
+		if (!setjmp(s_fatal_jmp)) {
+			ide_attach(ifs, 0, "sd:3");
+			CHECK(false, "sd:3 attached on the WIN9X partition");
+		} else {
+			CHECK(strstr(s_fatal, "WIN9X") != NULL, "ide_attach(sd:3): stops with \"%s\"",
+			      s_fatal);
+		}
+		s_fatal_returns = false;
+		CHECK(host_card.writes == w0, "nothing written on the card (%u)", host_card.writes - w0);
+		return 0;
+	}
 	host_card.nallowed = 1;
 	host_card.allowed[0][0] = 532480;
 	host_card.allowed[0][1] = 1048576;
@@ -699,7 +854,7 @@ static int scenario_old(void)
 	ide_attach(ifs, 0, "sd:3");
 	BlockDevice *bs = ifs->drives[0]->bs;
 	const struct sd_part_plan *p = sd_part_get_plan(bs->opaque);
-	CHECK(p->fat32 && p->type == 0x0C && p->start == 532480 && !strcmp(p->label, "WIN9X"),
+	CHECK(p->fat32 && p->type == 0x0C && p->start == 532480 && !strcmp(p->label, "DATA32"),
 	      "sd:3: FAT32 \"%s\", type %02X, from sector %u", p->label, p->type, (unsigned) p->start);
 	CHECK(guest_mount(bs) && s_gfs.fs_type == FS_FAT32 && s_gfs.volbase == 532480,
 	      "the guest's view: FAT32 at sector %lu", (unsigned long) s_gfs.volbase);
@@ -714,7 +869,8 @@ int main(int argc, char **argv)
 {
 	setvbuf(stdout, NULL, _IONBF, 0);
 	if (argc < 2) {
-		fprintf(stderr, "usage: test_sd_part unit | new IMAGE SECTORS P1 P3 P3N P2 | old IMAGE SECTORS\n");
+		fprintf(stderr, "usage: test_sd_part unit | new IMAGE SECTORS P1 P3 P3N P2 | old IMAGE "
+			"SECTORS | fat32 IMAGE SECTORS\n");
 		return 2;
 	}
 	if (!strcmp(argv[1], "unit")) {
@@ -734,7 +890,9 @@ int main(int argc, char **argv)
 			scenario_new((uint32_t) atol(argv[4]), (uint32_t) atol(argv[5]),
 				     (uint32_t) atol(argv[6]), (uint32_t) atol(argv[7]));
 		else if (!strcmp(argv[1], "old"))
-			scenario_old();
+			scenario_old(true);
+		else if (!strcmp(argv[1], "fat32"))
+			scenario_old(false);
 		else
 			return 2;
 		close(s_fd);

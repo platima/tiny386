@@ -12,7 +12,9 @@
 #      new  the layout s31/newcard makes: p1 FAT32 KORVO_SD at 8192, p3
 #           FAT16 (type 0E) straight after it, p2 (ext4) after p3, the
 #           table in partition order
-#      old  Plat's card as it is: p1 FAT32, p2 ext4, p3 FAT32 WIN9X
+#      old  Plat's card as it is: p1 FAT32, p2 ext4, p3 FAT32 WIN9X, which
+#           v4.5 refuses (the Linux route's partition holding win95.img);
+#           then the same card with p3 relabelled DATA32, given whole
 #    On "new" the guest's own view of its disk writes two files on p3;
 #    then mtools reads them back, fsck.fat -n finds p1 and p3 clean, and
 #    the card's sector 0, p1 and p2 are as they were, every sector.
@@ -34,7 +36,7 @@ F=$IDF/components/fatfs
 export MTOOLS_SKIP_CHECK=1
 export PATH=$PATH:/sbin:/usr/sbin
 mkdir -p "$OUT" || exit 2
-for t in gcc as ld mkfs.fat fsck.fat mcopy mtype sfdisk python3; do
+for t in gcc as ld mkfs.fat fsck.fat mcopy mtype mlabel sfdisk python3; do
     command -v $t >/dev/null || { echo "SKIP sdpart: no $t"; exit 0; }
 done
 [ -f "$F/src/ff.c" ] || { echo "SKIP sdpart: no ESP-IDF FatFs at $F"; exit 0; }
@@ -197,12 +199,22 @@ printf 'p3 marker\n' > "$OUT/P3OLD.TXT"
 mcopy -o -i "$IMG@@$((532480 * 512))" "$OUT/P3OLD.TXT" ::/P3.TXT || exit 1
 ext4ish "$IMG" 139264
 p2=$(sum "$IMG" 139264 393216)
+p3=$(sum "$IMG" 532480 1048576)
 "$OUT/test_sd_part" old "$IMG" $TOT > "$OUT/old.log" 2>&1
 st=$?
 sed 's/^/    | /' "$OUT/old.log"
-result $st "Plat's card: p2 and p4 refused, p1 kept, p3 (FAT32) given whole and read"
+result $st "Plat's card: p2 and p4 refused, p1 kept, p3 (WIN9X) refused (v4.5)"
+[ "$(sum "$IMG" 139264 393216)" = "$p2" ] && [ "$(sum "$IMG" 532480 1048576)" = "$p3" ]
+result $? "Plat's card: p2 and p3 as they were, every sector"
+echo "== the same card, p3 relabelled DATA32"
+mlabel -i "$IMG@@$((532480 * 512))" ::DATA32 || exit 1
+p2=$(sum "$IMG" 139264 393216)
+"$OUT/test_sd_part" fat32 "$IMG" $TOT > "$OUT/fat32.log" 2>&1
+st=$?
+sed 's/^/    | /' "$OUT/fat32.log"
+result $st "a FAT32 p3 not labelled WIN9X: given whole and read"
 [ "$(sum "$IMG" 139264 393216)" = "$p2" ]
-result $? "Plat's card: p2 as it was, every sector"
+result $? "the FAT32 card: p2 as it was, every sector"
 
 rm -f "$OUT"/card-*.img
 echo "sdpart: $pass passed, $fail failed"
