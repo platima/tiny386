@@ -50,8 +50,20 @@ struct sd_part {
 	unsigned said;                  /* lines said about refused writes */
 };
 
-static struct sd_part s_parts[SDP_MAX];
+/* each taken when a partition is opened, from PSRAM, so that none of this
+   costs internal RAM until hda = sd:N is used (and then only s_buf) */
+static struct sd_part *s_parts[SDP_MAX];
 static uint8_t *s_buf;                  /* internal RAM the SD host reaches by DMA */
+
+static void *ps_alloc(size_t n)
+{
+	void *p = heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+	if (!p)
+		p = heap_caps_malloc(n, MALLOC_CAP_8BIT);
+	if (p)
+		memset(p, 0, n);
+	return p;
+}
 
 static uint32_t le32(const uint8_t *p)
 {
@@ -292,10 +304,11 @@ static bool buf_ready(void)
 	return s_buf != NULL;
 }
 
-/* the card's MBR into mbr and partition part's plan from it, as
-   sd_part_open() and sd_part_check() want them; the card's drive in *pdrv */
-static int load_plan(int part, int *pdrv, uint8_t *mbr, struct sd_part_plan *plan,
-		     char *why, size_t size)
+/* the card's MBR into mbr (and the partition's first sector into vbr, 512
+   bytes each) and partition part's plan from them, as sd_part_open() and
+   sd_part_check() want them; the card's drive in *pdrv */
+static int load_plan(int part, int *pdrv, uint8_t *mbr, uint8_t *vbr,
+		     struct sd_part_plan *plan, char *why, size_t size)
 {
 	*pdrv = storage_card_pdrv();
 	if (*pdrv < 0)
@@ -305,7 +318,6 @@ static int load_plan(int part, int *pdrv, uint8_t *mbr, struct sd_part_plan *pla
 			      "so the guest cannot have it whole as well", part);
 	if (!buf_ready())
 		return refuse(why, size, "no internal RAM for a 2 KiB sector buffer");
-	static uint8_t vbr[512];
 	BYTE d = (BYTE) *pdrv;
 	if (disk_read(d, s_buf, 0, 1) != RES_OK && disk_read(d, s_buf, 0, 1) != RES_OK)
 		return refuse(why, size, "the card's first sector could not be read");
@@ -326,27 +338,41 @@ static int load_plan(int part, int *pdrv, uint8_t *mbr, struct sd_part_plan *pla
 
 int sd_part_check(int part, struct sd_part_plan *plan, char *why, size_t size)
 {
-	static uint8_t mbr[512];
+	uint8_t *tmp = ps_alloc(1024);
+	if (!tmp)
+		return refuse(why, size, "no memory for two sectors");
 	int pdrv;
-	return load_plan(part, &pdrv, mbr, plan, why, size);
+	int r = load_plan(part, &pdrv, tmp, tmp + 512, plan, why, size);
+	heap_caps_free(tmp);
+	return r;
 }
 
 int sd_part_open(int part, struct sd_part **out, char *why, size_t size)
 {
-	struct sd_part *p = NULL;
-	for (int i = 0; i < SDP_MAX && !p; i++)
-		if (!s_parts[i].used)
-			p = &s_parts[i];
-	if (!p)
+	int slot = -1;
+	for (int i = 0; i < SDP_MAX && slot < 0; i++)
+		if (!s_parts[i])
+			slot = i;
+	if (slot < 0)
 		return refuse(why, size, "four card partitions are open already");
-	memset(p, 0, sizeof(*p));
-	static uint8_t mbr[512];
-	if (load_plan(part, &p->pdrv, mbr, &p->plan, why, size))
-		return -1;
-	sd_part_make_mbr(&p->plan, mbr, p->mbr);
-	p->used = true;
-	*out = p;
-	return 0;
+	struct sd_part *p = ps_alloc(sizeof(*p));
+	uint8_t *tmp = ps_alloc(1024);
+	int r = -1;
+	if (!p || !tmp)
+		refuse(why, size, "no memory for the partition's state");
+	else if (!load_plan(part, &p->pdrv, tmp, tmp + 512, &p->plan, why, size))
+		r = 0;
+	if (r == 0) {
+		sd_part_make_mbr(&p->plan, tmp, p->mbr);
+		p->used = true;
+		s_parts[slot] = p;
+		*out = p;
+	} else if (p) {
+		heap_caps_free(p);
+	}
+	if (tmp)
+		heap_caps_free(tmp);
+	return r;
 }
 
 /* one run of whole sectors of the card, through the internal buffer, tried
@@ -456,6 +482,9 @@ int sd_part_sync(struct sd_part *p)
 
 void sd_part_close(struct sd_part *p)
 {
-	if (p)
-		memset(p, 0, sizeof(*p));
+	for (int i = 0; p && i < SDP_MAX; i++)
+		if (s_parts[i] == p) {
+			s_parts[i] = NULL;
+			heap_caps_free(p);
+		}
 }
