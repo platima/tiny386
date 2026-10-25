@@ -1,5 +1,5 @@
 tiny386 v3 bare metal on the ESP32-S31-Korvo-1, beside Linux (dual boot),
-and on the DOS board.  App version v4.6: v3 with seven review rounds' fixes
+and on the DOS board.  App version v4.6: v3 with every review round's fixes
 (REVIEW-RESOLUTION.md), the status LED (STATUS-LED.md), and for the DOS
 board rev A2c its new pins, its line out and speakers and a louder default
 sound (LINE-OUT.md).  v3.7 made the status LED much dimmer and added
@@ -261,7 +261,10 @@ Use the scripts or the commands below.
   With tiny386 the default that restart comes back to tiny386.  With Linux
   the default it would start Linux, so tiny386 does not restart there: it
   keeps one frame buffer and says why in yellow.  Double buffering needs
-  tiny386 the default ("table tiny386" above).
+  tiny386 the default ("table tiny386" above).  After a crash, a watchdog
+  or a power dip there is no restart, so that the last run's lines stay on
+  the panel; and if the panel will not start after the restart, tiny386
+  restarts once more and keeps one frame buffer (TEST-PLAN.md 17d).
 
 
 3. A newer tiny386: one write

@@ -1,10 +1,11 @@
 SHA256SUMS of tiny386-idf v4.6 made in the staged package (WSL ~/org2/v46/pkg), and every checksum
 list checked as the package folder will be once the stage is copied over it (each file from the
 stage if it is there, else from the package folder, which was only read), 2026-10-25.
+Made again after the three reviews of v4.6 (BUILD-NOTES.md 32.14), from that round's stage.
 
-== the top SHA256SUMS: 182 lines (v4.5's list: 182), files not found: 0
-  checked again file by file: 182 OK, 0 not
-== against v4.5's list: files whose hash changed
+== the top SHA256SUMS: 185 lines (v4.5's list: 182, and the 3 reviews of v4.6 at its end), files not found: 0
+  checked again file by file: 185 OK, 0 not
+== against v4.5's list: files whose hash changed, and the files added
   README.md   (staged)
   BUILD-NOTES.md   (staged)
   TEST-PLAN.md   (staged)
@@ -24,16 +25,23 @@ stage if it is there, else from the package folder, which was only read), 2026-1
   images/korvo1-dualboot-tiny386-default/tiny386.bin   (staged)
   REVIEW-v44-display.md   (staged)
   REVIEW-v44-storage-and-safety.md   (staged)
-  19 files
-== staged files that are in no list (checks\ and dualboot\ are not in the top list, as before)
+  19 files changed
+  REVIEW-v46-memory-safety.md   (added, staged)
+  REVIEW-v46-display-boot.md   (added, staged)
+  REVIEW-v46-package-flash.md   (added, staged)
+  3 files added
+== staged files that are in no list (the top list leaves out dualboot\ and most of checks\: of
+== checks\ it names only the 14 files README.md lists, as before)
   dualboot/DUALBOOT.md
   checks/size-korvo1-standalone-v4.6.txt
+  checks/sums-v4.6.txt
   checks/build-sh-v4.6-run1.txt
   checks/findings-v4.4-review.txt
   checks/host-tests-v4.6-from-patch.log
   checks/reproducible-v4.5.txt
   checks/image-info-korvo1-dualboot-tiny386.bin-v4.6.txt
   checks/size-dosboard-v4.6.txt
+  checks/merge-v4.3.txt
   checks/image-info-dosboard-tiny386.bin-v4.6.txt
   checks/reproducible-v4.6.txt
   checks/image-info-korvo1-standalone-tiny386.bin-v4.6.txt
@@ -41,10 +49,12 @@ stage if it is there, else from the package folder, which was only read), 2026-1
   checks/build-sh-v4.6-run2.txt
   checks/image-info-korvo1-dualboot-bootloader.bin-v4.6.txt
   checks/image-info-dosboard-bootloader.bin-v4.6.txt
+  checks/findings-v4.6-review.txt
   checks/host-tests-v4.6-long-out.log
   checks/image-info-korvo1-standalone-bootloader.bin-v4.6.txt
   checks/partition-passthrough-v4.5.txt
   checks/size-korvo1-v4.6.txt
+  core2/resume-check/test-storage-host.patch
 
 == each image folder's own list (the stage's images)
   images/dosboard: 5 OK, 0 not

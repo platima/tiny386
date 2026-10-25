@@ -1,0 +1,244 @@
+The three reviews of v4.6 (s31/REVIEW-v46-memory-safety.md, REVIEW-v46-display-boot.md,
+REVIEW-v46-package-flash.md), each finding checked against the code, and the checks of the fixes
+(REVIEW-RESOLUTION.md round 12, BUILD-NOTES.md 32.14). WSL ~/org2/v46/res, 2026-10-25.
+Branch v46 at 0f7eb09, the notes' commit to come (its index is read).
+
+==== D1 (major): the restart after a crash hid the last run's report
+-- 2d076f6, before the fix: the banner shows the last run's lines only for a bad reset or a crash mark
+1233:	if (console_previous_lines() && (bad || console_previous_crashed()))
+-- console_init() resets the ring after reading it; the old lines go to the UART and the panel only
+903:	emit_text(CON_OLD, s_prev, TO_UART | TO_PANEL, false);
+   (console_init, its line) 9:	if (ring_valid()) {
+   (console_init, its line) 15:	ring_reset();
+-- the status LED's cause_of() has no case for ESP_RST_SW (count of it there):
+0
+-- 2d076f6's dbuf_boot.c looks at no crash before restart_for_two() (count of console_previous_crashed or ESP_RST_PANIC):
+0
+-- on the S31 the RESET button cannot read as ESP_RST_EXT (ESP-IDF's map, read only):
+   ESP_RST_EXT in esp32s31/reset_reason.c: 0 times
+       case RESET_REASON_CHIP_POWER_ON:
+           return ESP_RST_POWERON;
+-- now (6b5e050): the guard before restart_for_two()
+388:	if (reset_was_bad(s_reset) || console_previous_crashed()) {
+
+==== D1, D2: test 3g's double-start test at this commit (quick3g.sh: test 3g alone, then against v4.5's display.c)
+   exit 0
+   test_double_start: all 28 cases passed
+   v4.5 exit 1
+     FAIL: the drawing faulted (SIGSEGV) at address 0xfa50, in picture 2
+     FAIL: the drawing faulted (SIGSEGV) at address 0xfa50, in picture 2
+     FAIL: the drawing faulted (SIGSEGV) at address 0xfa50, in picture 2
+     FAIL: the drawing faulted (SIGSEGV) at address 0xfa50, in picture 2
+   test_double_start: 4 of 28 cases FAILED
+   trace exit 0
+   pictures 288 presses 120
+   panel cases: the same as v4.5
+-- the cases of the review's fixes: each start's lines about double buffering
+   double_buffer = 1, two and then one refused after the restart: a second restart, then one and the yellow line
+     start 1 (power-on):
+       [grey] double_buffer = 1: tiny386 starts again now, once, so that the panel gets both frame buffers before anything else takes memory. The next start takes win95-sd.ini without the menu.
+       | (esp_restart())
+     start 2 (a software restart):
+       | (the driver refuses this start, with 2: ESP_ERR_NOT_FOUND)
+       | E lcd: the panel did not start (ESP_ERR_NOT_FOUND)
+       | E lcd: two frame buffers: no (ESP_ERR_NOT_FOUND); the panel with one
+       | (the driver refuses this start, with 1: ESP_ERR_NOT_FOUND)
+       | E lcd: the panel did not start (ESP_ERR_NOT_FOUND)
+   double_buffer = 1: the panel would not start with two frame buffers (ESP_ERR_NOT_FOUND), nor with one after that (ESP_ERR_NOT_FOUND): tiny386 starts again now, with one, as at power-on.
+       | (esp_restart())
+     start 3 (a software restart):
+       [grey] This start is tiny386's second restart for double_buffer = 1: after the first, the panel would not start with two frame buffers (ESP_ERR_NOT_FOUND), nor with one after that (ESP_ERR_NOT_FOUND), so it was started again, as at power-on, with one.
+       [green] Starting win95-sd.ini, as chosen before the restart (no menu).
+       [yellow] double_buffer = 1: one frame buffer at this start. After tiny386's restart for it the panel would not start with two frame buffers (ESP_ERR_NOT_FOUND), nor with one after that (ESP_ERR_NOT_FOUND), with PSRAM free 16110 KiB (largest block 16110 KiB) and internal DMA memory free 120 KiB, so tiny386 started again and the panel has one, as with double_buffer = 0. Set double_buffer = 0 in win95-sd.ini, or press Ctrl+Alt+F9 once the PC runs, which saves it.
+   double_buffer = 1, two and one refused after the restart, the second note lost: no third restart
+     start 1 (power-on):
+       [grey] double_buffer = 1: tiny386 starts again now, once, so that the panel gets both frame buffers before anything else takes memory. The next start takes win95-sd.ini without the menu.
+       | (esp_restart())
+     start 2 (a software restart):
+       | (the driver refuses this start, with 2: ESP_ERR_NOT_FOUND)
+       | E lcd: the panel did not start (ESP_ERR_NOT_FOUND)
+       | E lcd: two frame buffers: no (ESP_ERR_NOT_FOUND); the panel with one
+       | (the driver refuses this start, with 1: ESP_ERR_NO_MEM)
+       | E lcd: the panel did not start (ESP_ERR_NO_MEM)
+   double_buffer = 1: the panel would not start with two frame buffers (ESP_ERR_NOT_FOUND), nor with one after that (ESP_ERR_NO_MEM): tiny386 starts again now, with one, as at power-on.
+       | (esp_restart())
+     start 3 (a software restart):
+       [yellow] double_buffer = 1: one frame buffer at this start. It followed a software restart with no note of tiny386's own (as Linux's reboot may give, or the LP SRAM did not keep the note), and tiny386 restarts for double buffering only once. Press RESET to try again.
+   double_buffer = 1, two and one refused after the restart, and one again after the second: no panel, no third restart
+     start 1 (power-on):
+       [grey] double_buffer = 1: tiny386 starts again now, once, so that the panel gets both frame buffers before anything else takes memory. The next start takes win95-sd.ini without the menu.
+       | (esp_restart())
+     start 2 (a software restart):
+       | (the driver refuses this start, with 2: ESP_ERR_NOT_FOUND)
+       | E lcd: the panel did not start (ESP_ERR_NOT_FOUND)
+       | E lcd: two frame buffers: no (ESP_ERR_NOT_FOUND); the panel with one
+       | (the driver refuses this start, with 1: ESP_ERR_NOT_FOUND)
+       | E lcd: the panel did not start (ESP_ERR_NOT_FOUND)
+   double_buffer = 1: the panel would not start with two frame buffers (ESP_ERR_NOT_FOUND), nor with one after that (ESP_ERR_NOT_FOUND): tiny386 starts again now, with one, as at power-on.
+       | (esp_restart())
+     start 3 (a software restart):
+       | (the driver refuses this start, with 1: ESP_ERR_NOT_FOUND)
+       | E lcd: the panel did not start (ESP_ERR_NOT_FOUND)
+       [grey] This start is tiny386's second restart for double_buffer = 1: after the first, the panel would not start with two frame buffers (ESP_ERR_NOT_FOUND), nor with one after that (ESP_ERR_NOT_FOUND), so it was started again, as at power-on, with one.
+       [green] Starting win95-sd.ini, as chosen before the restart (no menu).
+       [yellow] double_buffer = 1: there is no panel, so no second frame buffer.
+   a note asking for two under the Linux-default table, the panel with neither: no restart, no panel
+     start 1 (a software restart):
+       | (the driver refuses this start, with 2: ESP_ERR_NOT_FOUND)
+       | E lcd: the panel did not start (ESP_ERR_NOT_FOUND)
+       | E lcd: two frame buffers: no (ESP_ERR_NOT_FOUND); the panel with one
+       | (the driver refuses this start, with 1: ESP_ERR_NOT_FOUND)
+       | E lcd: the panel did not start (ESP_ERR_NOT_FOUND)
+       [grey] This start is tiny386's own restart for double_buffer = 1, but the panel would not start with two frame buffers (ESP_ERR_NOT_FOUND), nor with one (ESP_ERR_NOT_FOUND).
+       [green] Starting win95-sd.ini, as chosen before the restart (no menu).
+       [yellow] double_buffer = 1: there is no panel, so no second frame buffer.
+   a second restart's note at power-on (the LP SRAM kept it): one, the yellow line, no restart
+     start 1 (power-on):
+       [grey] This start is tiny386's second restart for double_buffer = 1: after the first, the panel would not start with two frame buffers (ESP_ERR_NOT_FOUND), nor with one after that (ESP_ERR_NO_MEM), so it was started again, as at power-on, with one.
+       [green] Starting win95-sd.ini, as chosen before the restart (no menu).
+       [yellow] double_buffer = 1: one frame buffer at this start. After tiny386's restart for it the panel would not start with two frame buffers (ESP_ERR_NOT_FOUND), nor with one after that (ESP_ERR_NO_MEM), with PSRAM free 1000 KiB (largest block 900 KiB) and internal DMA memory free 100 KiB, so tiny386 started again and the panel has one, as with double_buffer = 0. Set double_buffer = 0 in win95-sd.ini, or press Ctrl+Alt+F9 once the PC runs, which saves it.
+   double_buffer = 1 after a crash (the reset a panic): no restart, the report kept, one
+     start 1 (a crash):
+       [yellow] double_buffer = 1: one frame buffer at this start. The last run ended with a crash, a watchdog or a power dip (above), and a restart now would take that off the panel before it could be read. RESET makes both.
+   double_buffer = 1 after a CPU lock-up: no restart, the report kept, one
+     start 1 (a CPU lock-up):
+       [yellow] double_buffer = 1: one frame buffer at this start. The last run ended with a crash, a watchdog or a power dip (above), and a restart now would take that off the panel before it could be read. RESET makes both.
+   double_buffer = 1 after a brownout: no restart, the report kept, one
+     start 1 (a brownout):
+       [yellow] double_buffer = 1: one frame buffer at this start. The last run ended with a crash, a watchdog or a power dip (above), and a restart now would take that off the panel before it could be read. RESET makes both.
+   double_buffer = 1 after RESET on the crash screen (power-on, the ring marked): no restart
+     start 1 (power-on, the ring marked by the crash screen):
+       [yellow] double_buffer = 1: one frame buffer at this start. The last run ended with a crash, a watchdog or a power dip (above), and a restart now would take that off the panel before it could be read. RESET makes both.
+   double_buffer = 0 after a crash: as v4.5, no line
+     start 1 (a crash, the ring marked by the crash screen):
+
+==== D1, D2: deliberate breaks of dbuf_boot.c (mut3g.sh); each must make the test fail
+   no-report-guard              exit 1: test_double_start: 4 of 28 cases FAILED
+   no-ring-crashed              exit 1: test_double_start: 1 of 28 cases FAILED
+   panic-not-bad                exit 1: test_double_start: 1 of 28 cases FAILED
+   no-second-restart            exit 1: test_double_start: 3 of 28 cases FAILED
+   second-under-linux           exit 1: test_double_start: 1 of 28 cases FAILED
+   one-note-ignored             exit 1: test_double_start: 3 of 28 cases FAILED
+   one-note-asks-two            exit 1: test_double_start: 3 of 28 cases FAILED
+   one-no-figures               exit 1: test_double_start: 3 of 28 cases FAILED
+   one-no-pick                  exit 1: test_double_start: 3 of 28 cases FAILED
+   one-errors-swapped           exit 1: test_double_start: 1 of 28 cases FAILED
+
+==== D3: the crash screen in both frame buffers (test_console.c with the real console.c)
+   this commit: exit 0, test_console: all checks passed
+   the second buffer drawn the old way (with the ring writes): exit 1
+     FAIL: both frame buffers: the second has the same crash screen
+     FAIL: both frame buffers: the report in the ring once
+     FAIL: both frame buffers: the last lines of the log on the second picture are the log's, ending with its last line, without the report
+   test_console: 3 checks FAILED
+
+==== D4: a panic inside lcd_init_two() comes before console_init(), and a panic halts
+1410:	void *fb = dbuf_boot_panel();
+1414:	console_init(fb, LCD_WIDTH, LCD_HEIGHT, lcd_flush);
+45:CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y
+
+==== D5 to D7, now
+313:		display_lock();
+314:		lcd_double_set(true);
+315:		display_unlock();
+42:// has taken both, 1,500 KiB.  The pool is then about 15,100 KiB with one
+44:// vga_mem_size 256K or 320K, and about 14,350 KiB with two: 13M.
+438:			       !dbuf_boot_comes_back() ? "the second frame buffer is made only with "
+
+==== M1: what the Windows runs showed
+-- the core series' runs (made side by side): host seconds
+   v45-b1       wall=6.1 s
+   v45-msdos    wall=22.9 s
+   v45-restart  wall=23.2 s
+   v46-b1       wall=8.2 s
+   v46-msdos    wall=29.1 s
+   v46-restart  wall=24.0 s
+-- the memory-safety review's runs (one after the other), its runs.log
+   c-b1           END t=331.032 s insns=588301033 | wall=6.0 s | load16 760 load32 12652 store16 88 store32 1119 ok2 14151 bytes_io 0 bytes_past 0 ram_to_io 0
+   c-restart      END t=1411.032 s insns=1304341904 | wall=22.7 s | load16 1510 load32 33515 store16 131 store32 1431 ok2 35637 bytes_io 0 bytes_past 0 ram_to_io 0
+   c-msdos        END t=1411.032 s insns=1337723352 | wall=22.4 s | load16 2175 load32 39202 store16 136 store32 1585 ok2 42293 bytes_io 0 bytes_past 0 ram_to_io 0
+   t45-b1-1       END t=331.032 s insns=588301033 | wall=6.0 s | 
+   t46-b1-1       END t=331.032 s insns=588301033 | wall=5.9 s | 
+   t45-b1-2       END t=331.032 s insns=588301033 | wall=6.0 s | 
+   t46-b1-2       END t=331.032 s insns=588301033 | wall=5.9 s | 
+   t45-b1-3       END t=331.032 s insns=588301033 | wall=6.0 s | 
+   t46-b1-3       END t=331.032 s insns=588301033 | wall=5.9 s | 
+   c-b1: outcome: desktop (desktop seen at t=211 s) final=b05a5040
+   c-msdos: outcome: desktop (desktop seen at t=211 s) final=82464aaf
+   c-restart: outcome: desktop (desktop seen at t=211 s) final=82464aaf
+   t45-b1-1: outcome: desktop (desktop seen at t=211 s) final=b05a5040
+   t45-b1-2: outcome: desktop (desktop seen at t=211 s) final=b05a5040
+   t45-b1-3: outcome: desktop (desktop seen at t=211 s) final=b05a5040
+   t46-b1-1: outcome: desktop (desktop seen at t=211 s) final=b05a5040
+   t46-b1-2: outcome: desktop (desktop seen at t=211 s) final=b05a5040
+   t46-b1-3: outcome: desktop (desktop seen at t=211 s) final=b05a5040
+   done
+-- the split accesses summed from that log (load16 + load32 + store16 + store32)
+   c-b1 14619
+   c-restart 36587
+   c-msdos 43098
+-- what the counting patch counts: its rv_note() calls (in load_bytes() and store_bytes()), and its lines about DMA or the floppy
+   2 calls; 0 lines about DMA or the floppy
+
+==== M2: the frame buffer's stores (pc.c), a byte against a dword
+725:		if (addr < pc->vga_mem_size) {
+727:			LFB_WRITTEN(pc, addr, 1);
+783:		if (addr + 3 < pc->vga_mem_size) {
+785:			LFB_WRITTEN(pc, addr, 4);
+
+==== M3, M4: old, left as they were
+342:	if (!cpu_store32(cpu, seg, addr + 4, v >> 32))
+352:	if (!cpu_store32(cpu, seg, addr + 4, f80.mant1))
+354:	if (!cpu_store16(cpu, seg, addr + 8, f80.high))
+398:	if (!cpu_store32(cpu, seg, addr + 4, v >> 32))
+555:				if(!cpu_store32(cpu, seg, addr + 4, sw))
+719:				if(!cpu_store32(cpu, seg, addr + 4, sw))
+629:	uword i = lpgno >> 10;
+708:			lpgno++;
+
+==== M5: run.sh has no sanitizer build
+   fsanitize in tests/host/run.sh: 0
+
+==== P1: f7f7492
+   ~/org2/v46/int/repo: fatal: Not a valid object name f7f7492
+   ~/fw/tiny386-s31: fatal: Not a valid object name f7f7492
+   lines of the index's s31/ that name it, but for the folder prelim-f7f7492/ and this file (the package review names it, word for word):
+     s31/REVIEW-v46-package-flash.md:132:  (97a450b's patch-id equals 876af9c's [verified]), and f7f7492 (finding 1).
+     s31/REVIEW-v46-package-flash.md:164:### 1. minor: f7f7492 is named, but exists nowhere
+     s31/REVIEW-v46-package-flash.md:167:f7f7492, "the version commit before 32.1's one-line change". It is in neither the in
+
+==== P3: personal addresses (counted, never shown: any address but the two noreply ones and upstream's)
+   checks/merge-v4.3.txt: the package folder's 16, the stage's 0
+   core2/resume-check/test-storage-host.patch: the package folder's 1, the stage's 0
+   the branch's s31/checks/merge-v4.3.txt: 0
+   the stage's merge-v4.3.txt is the branch's: yes
+   the stage's core2 patch against the folder's: the same but for the address
+   checksum lists read: 66; any that names either file is listed above
+
+==== P4: the modes of s31/'s files, the index against 99074b7 (s31-v4.5)
+   no mode change
+   100755 s31/BUILD-NOTES.md
+   100755 s31/FLASH.txt
+   100755 s31/REVIEW-RESOLUTION.md
+   100755 s31/TEST-PLAN.md
+   100755 s31/dualboot/DUALBOOT.md
+
+==== P5: what the top SHA256SUMS names under checks/ (v4.5's list, which v4.6's keeps)
+   14 files:
+     checks/vbe480/bvbe480.S
+     checks/vbe480/BVBE480.COM
+     checks/vbe480/vbe480check.py
+     checks/vbe480/headless-v4.0.diff
+     checks/vbe480/headless-v4.1.diff
+     checks/mode13x/mode13x.S
+     checks/mode13x/MODE13X.COM
+     checks/flicker/headless-v4.2.diff
+     checks/flicker/harness-v4.2-review.diff
+     checks/flicker/build-v4.3.diff
+     checks/t386mon-v4.3/harness-v4.3.diff
+     checks/win95-v4.3/build-v4.3.diff
+     checks/flicker/harness-v4.4.diff
+     checks/sdpart-harness-v4.4.diff
+
+==== P6: FLASH.txt's first paragraph
+   and on the DOS board.  App version v4.6: v3 with every review round's fixes

@@ -1399,8 +1399,9 @@ three runs]. Nothing of v4.6 has run on a board [unknown]; this section is what 
 
 ### 17b. First with double_buffer = 0: the memory lines
 
-Boot `win95-sd.ini` as it is (`double_buffer` commented out, so 0). Everything should be as on
-v4.5, with no new line about double buffering. One line reads differently:
+First check on the PC that `win95-sd.ini` has `double_buffer = 0`, or the line commented out: you
+set it to 1 for v4.5. Then boot it. Everything should be as on v4.5, with no new line about double
+buffering. One line reads differently:
 
     PC built. Device memory (the 0xA0000 window): 93344 of 131040 bytes used. ...
 
@@ -1443,7 +1444,7 @@ only RESET), and let the menu start `win95-sd.ini` or choose it.
    line: it counts the swaps, and those the panel did not report. If that second count goes up and
    the picture stops changing, set `double_buffer = 0` and tell me.
 5. RESET once: the same restart and the same lines. Every boot with `double_buffer = 1` makes this
-   one restart.
+   one restart, but a boot after a crash, a watchdog or a power dip (17d).
 
 ### 17d. If it goes another way
 
@@ -1460,16 +1461,42 @@ only RESET), and let the menu start `win95-sd.ini` or choose it.
   line: the LP SRAM did not keep the note through the restart. One restart only, no loop. Tell me.
 * **`The last start was cut short while it started the panel with two frame buffers ...`**: the
   chip reset inside that start. **Photo** the banner's reset line too.
-* **A dark panel** after the restart: the PC still starts. Give Windows a minute, press Ctrl+Alt+F9
-  once (it saves `double_buffer = 0`), wait a few seconds and press RESET; or set
-  `double_buffer = 0` on the PC.
-* **More than one restart in a row**: it should not happen, as a start that follows a software
-  restart never restarts again. Switch off, set `double_buffer = 0` on the PC, and tell me.
+* **Two restarts in a row**, the panel dark from the first until the third start: after the first
+  restart the panel would not start, with two frame buffers or with one, so tiny386 started again
+  by itself, with one. The third start says in grey `This start is tiny386's second restart for
+  double_buffer = 1: ...`, and in yellow:
+
+      double_buffer = 1: one frame buffer at this start. After tiny386's restart for it the panel
+      would not start with two frame buffers (ESP_ERR_...), nor with one after that (ESP_ERR_...),
+      with PSRAM free ... KiB (largest block ... KiB) and internal DMA memory free ... KiB, ...
+
+  **Photo** it: the two error names and the memory figures are the best clue yet to why v4.5 could
+  not start the panel again [inferred]. The PC starts 10 s later with one frame buffer. Set `double_buffer = 0` in `win95-sd.ini` on the PC,
+  or press Ctrl+Alt+F9 once Windows runs, which saves it.
+* **After a crash, a watchdog or a power dip** (the banner's `Reset by ...` line in yellow, or `The
+  last run ended with the crash screen. Its last N lines:`): that start does not restart, so that
+  the last run's lines stay on the panel for the 10 s hold, and a yellow line says so,
+  `double_buffer = 1: one frame buffer at this start. The last run ended with a crash, a watchdog or
+  a power dip (above), ...`. **Photo** the whole console. RESET then makes both frame buffers again.
+* **A dark panel that stays dark, with the status LED's crash code**, after the restart: a crash
+  inside the start with two frame buffers, before the boot console was up, so nothing could be
+  drawn, and the chip halts. Switch off, set `double_buffer = 0` in `win95-sd.ini` on the PC, and
+  send a photo of the LED's code (`STATUS-LED.md`). Whether RESET alone would give a start with one
+  frame buffer depends on the LP SRAM keeping the note through RESET [unknown].
+* **A dark panel with a green LED**, Windows running with nothing to see: it should not happen
+  now. Do not press RESET while the disk light flickers. When it has stayed off for a minute, switch
+  off, set `double_buffer = 0` on the PC, and tell me. Windows may run ScanDisk at its next start.
+* **More than two restarts in a row**, or step 1's grey line twice in a row: it should not happen,
+  as a start that follows a software restart never restarts for the note, and the second restart
+  comes only straight after the first, before the boot console is up. Switch off, set
+  `double_buffer = 0` on the PC, and tell me.
 * **With Linux the default** (VOL+ for tiny386): no restart, and a yellow line, `double_buffer = 1:
   one frame buffer. The second is made with the panel at power-on, by one restart, and tiny386 is
   the dual boot's VOL+ app here, so a restart would start Linux. ...`. That is expected.
 * **Linux's `reboot` into tiny386**, with tiny386 the default: one frame buffer, and the yellow
-  "software restart with no note" line, which says to press RESET. Also expected.
+  "software restart with no note" line, which says to press RESET. Also expected [inferred: which
+  reset cause Linux's reboot gives tiny386 is not known; if it is not a software restart, tiny386
+  makes its one restart, which is also safe].
 
 ### 17e. Windows 95 as before
 

@@ -787,9 +787,10 @@ also mends it, from the backup.
   folder's `SHA256SUMS` made again. (Since v3.8 `..\build.sh` makes that folder itself, from
   `partition-table-tiny386-default.bin`, which it checks by SHA-256, and the korvo1-dualboot
   set it has just built: `..\BUILD-NOTES.md` 20.)
-* (v4.6) With `double_buffer = 1` tiny386 restarts itself once at every boot (13.8). With tiny386
-  the default, VOL+ held at that moment would start Linux instead [inferred: 13.2]; nobody holds
-  it then in practice, and the next RESET starts tiny386 again.
+* (v4.6) With `double_buffer = 1` tiny386 restarts itself once at every boot, and once more if the
+  panel will not start after that (13.8). With tiny386 the default, VOL+ held at that moment would
+  start Linux instead [inferred: 13.2]; nobody holds it then in practice, and the next RESET starts
+  tiny386 again.
 
 ### 13.7 Files of this round
 
@@ -824,7 +825,14 @@ the call 13.3 describes, and restarts only if that partition's subtype is not te
 * The comment in `partitions-korvo1-dualboot-tiny386-default.csv` still says that neither app
   looks itself up by subtype. It is this round's, kept as it is (its SHA-256 is in `SHA256SUMS`
   here); this section is what holds since v4.6. The Linux loader is as 13.3 says.
-* On the board: [unknown]. That the call gives the test subtype for tiny386 under the
+* After the review of v4.6 (`..\REVIEW-RESOLUTION.md` round 12, `..\BUILD-NOTES.md` 32.14): if
+  the panel will start with neither two frame buffers nor one after the restart, tiny386 restarts
+  once more, before the card is mounted, with the same check of its subtype first; the start after
+  it never restarts. A start after a crash, a watchdog or a power dip does not restart at all. Two
+  restarts in a row at most.
+* On the board: [unknown]. The call itself already runs at every boot since v4.5, before
+  `app_main()`, in ESP-IDF's `esp_ota_auto_confirm` [verified: `..\REVIEW-v46-package-flash.md`
+  2.6, nm and objdump of both ELFs], so only the subtype it gives is new to the board. That it gives the test subtype for tiny386 under the
   Linux-default table is [inferred] from 13.3's reading of ESP-IDF.
 
 

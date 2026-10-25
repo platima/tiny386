@@ -19,19 +19,20 @@ PASS ps2 queue lock, i8042.c of this tree
 PASS ps2 queue lock test catches the bug in pristine i8042.c
 
 previous run and start-up
-  wrote /home/owner/org2/v46/int/ht/out-patch/console-1-boot.ppm
+  wrote /home/owner/org2/v46/res/ht/out-patch/console-1-boot.ppm
 scrolling
-  wrote /home/owner/org2/v46/int/ht/out-patch/console-2-scrolled.ppm
+  wrote /home/owner/org2/v46/res/ht/out-patch/console-2-scrolled.ppm
 ring
 handing the panel over and back
-  wrote /home/owner/org2/v46/int/ht/out-patch/console-3-taken-back.ppm
+  wrote /home/owner/org2/v46/res/ht/out-patch/console-3-taken-back.ppm
 crash screen
-  wrote /home/owner/org2/v46/int/ht/out-patch/console-4-crash.ppm
+  wrote /home/owner/org2/v46/res/ht/out-patch/console-4-crash.ppm
 the UART quiet
 lines that repeat
 the UART's queue
 held error lines, held lines at a crash
-  wrote /home/owner/org2/v46/int/ht/out-patch/console-5-crash-held.ppm
+  wrote /home/owner/org2/v46/res/ht/out-patch/console-5-crash-held.ppm
+  wrote /home/owner/org2/v46/res/ht/out-patch/console-6-crash-second-buffer.ppm
 test_console: all checks passed
 PASS boot console: text, colours, scrolling, ring, hand-over, crash screen, repeated lines, UART queue
 
@@ -48,7 +49,7 @@ rows redrawn in 80x25 text (720x400 at 40,40)
   a letter on the cursor's row: 1 call(s), rows 200+16
   a letter on row 20: 1 call(s), rows 200+176
   every cell changed: 1 call(s), rows 40+400
-  wrote /home/owner/org2/v46/int/ht/out-patch/vga-text-80x25.ppm
+  wrote /home/owner/org2/v46/res/ht/out-patch/vga-text-80x25.ppm
 rows redrawn in 640x480x16 (at 80,0)
   into graphics: cleared, all of it: 1 call(s), rows 0+480
   nothing changed: 0 call(s), rows -1+-1
@@ -62,10 +63,10 @@ clears asked for by the emulator
   VBE: 60 retraces in 1 s
 mode 13h (320x200x256) placement
   into mode 13h: 1 call(s), rows 0+480
-  wrote /home/owner/org2/v46/int/ht/out-patch/vga-13h-320x200.ppm
+  wrote /home/owner/org2/v46/res/ht/out-patch/vga-13h-320x200.ppm
 VBE 800x600x16 on an 800x480 panel
   VBE 800x600 on: 1 call(s), rows 0+480
-  wrote /home/owner/org2/v46/int/ht/out-patch/vga-vbe-800x600-scaled.ppm
+  wrote /home/owner/org2/v46/res/ht/out-patch/vga-vbe-800x600-scaled.ppm
   800x600, nothing changed: 0 call(s), rows -1+-1
   800x600, one pixel changed: 1 call(s), rows 240+1
 VBE 640x480x16 shown from line 400 of 1 MiB: past the end
@@ -125,7 +126,7 @@ VBE pictures from the blocks written against every pixel every time, on a 800x48
   512x384x16 in 1024K      the same in every picture
   512x384x24 in 1024K      the same in every picture
   512x384x32 in 1024K      the same in every picture
-  wrote /home/owner/org2/v46/int/ht/out-patch/vbe-800x480-last.ppm
+  wrote /home/owner/org2/v46/res/ht/out-patch/vbe-800x480-last.ppm
   800x480x8 in 1536K       the same in every picture
   800x480x15 in 1536K      the same in every picture
   800x480x16 in 1536K      the same in every picture
@@ -261,7 +262,7 @@ VBE pictures from the blocks written against every pixel every time, on a 800x60
   512x384x16 in 1024K      the same in every picture
   512x384x24 in 1024K      the same in every picture
   512x384x32 in 1024K      the same in every picture
-  wrote /home/owner/org2/v46/int/ht/out-patch/vbe-800x600-last.ppm
+  wrote /home/owner/org2/v46/res/ht/out-patch/vbe-800x600-last.ppm
   800x600x8 in 1536K       the same in every picture
   800x600x15 in 1536K      the same in every picture
   800x600x16 in 1536K      the same in every picture
@@ -377,8 +378,8 @@ PASS vga.c, korvo1: quiet moments counted from the last store, every store throu
 test_pace: all checks passed
 PASS vga.c, dosboard: quiet moments counted from the last store, every store through the window noted
 
-test_double_start: all 19 cases passed
-PASS dbuf_boot.c, lcd_korvo1.c and display.c: two frame buffers at power-on after one restart at most, the note, the fallback, and a frame buffer there for every picture
+test_double_start: all 28 cases passed
+PASS dbuf_boot.c, lcd_korvo1.c and display.c: two frame buffers at power-on after one restart at most (two when the panel starts with neither, none after a crash), the note, the fallback, and a frame buffer there for every picture
 (no v4.5 here, as a tag or a commit: the comparison with it is skipped)
 
 every key, press and release (scancode set 1):
@@ -491,11 +492,11 @@ double click at sample rate 20:
 test_ps2_mouse: 29 checks, 0 failed
 PASS PS/2 mouse: backlog, clicks, sample rate, remote mode, reset, mouse off
 two threads: a reporting task and the emulator:
-  4000 reports in, 287 packets out; 4000 right, 8000 down (sent 4000, 8000); 10 presses seen
+  4000 reports in, 290 packets out; 4000 right, 8000 down (sent 4000, 8000); 10 presses seen
 test_ps2_mouse (two threads): 6 checks, 0 failed
 PASS PS/2 mouse: a reporting thread and the emulator's thread
 two threads: a reporting task and the emulator:
-  4000 reports in, 155 packets out; 3727 right, 5992 down (sent 4000, 8000); 10 presses seen
+  4000 reports in, 155 packets out; 3746 right, 5962 down (sent 4000, 8000); 10 presses seen
   6 stalls of 120 ms
 test_ps2_mouse (two threads): 7 checks, 0 failed
 PASS PS/2 mouse: two threads, the emulator held up: every click through the ring's overflow
@@ -514,79 +515,79 @@ descriptors:
 hid_parse: 21 checks, 0 failed
 PASS hid_parse.c: boot keyboard, wheel mouse, receiver with report IDs, NKRO, vendor, tablet
 
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c: In function ‘main’:
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:473:24: warning: missing initializer for field ‘start_fails’ of ‘struct model_iface’ [-Wmissing-field-initializers]
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c: In function ‘main’:
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:473:24: warning: missing initializer for field ‘start_fails’ of ‘struct model_iface’ [-Wmissing-field-initializers]
   473 |                 struct model_iface v = { "if0 vendor", 0, 0, 0, vendor_desc, sizeof(vendor_desc) };
       |                        ^~~~~~~~~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:147:13: note: ‘start_fails’ declared here
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:147:13: note: ‘start_fails’ declared here
   147 |         int start_fails;
       |             ^~~~~~~~~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:475:42: warning: missing initializer for field ‘desc’ of ‘struct model_iface’ [-Wmissing-field-initializers]
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:475:42: warning: missing initializer for field ‘desc’ of ‘struct model_iface’ [-Wmissing-field-initializers]
   475 |                                          HID_PROTOCOL_KEYBOARD };
       |                                          ^~~~~~~~~~~~~~~~~~~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:145:24: note: ‘desc’ declared here
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:145:24: note: ‘desc’ declared here
   145 |         const uint8_t *desc;
       |                        ^~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:488:42: warning: missing initializer for field ‘desc’ of ‘struct model_iface’ [-Wmissing-field-initializers]
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:488:42: warning: missing initializer for field ‘desc’ of ‘struct model_iface’ [-Wmissing-field-initializers]
   488 |                                          HID_PROTOCOL_KEYBOARD };
       |                                          ^~~~~~~~~~~~~~~~~~~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:145:24: note: ‘desc’ declared here
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:145:24: note: ‘desc’ declared here
   145 |         const uint8_t *desc;
       |                        ^~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:489:24: warning: missing initializer for field ‘start_fails’ of ‘struct model_iface’ [-Wmissing-field-initializers]
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:489:24: warning: missing initializer for field ‘start_fails’ of ‘struct model_iface’ [-Wmissing-field-initializers]
   489 |                 struct model_iface v = { "if1 vendor", 1, 0, 0, vendor_desc, sizeof(vendor_desc) };
       |                        ^~~~~~~~~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:147:13: note: ‘start_fails’ declared here
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:147:13: note: ‘start_fails’ declared here
   147 |         int start_fails;
       |             ^~~~~~~~~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:510:42: warning: missing initializer for field ‘desc’ of ‘struct model_iface’ [-Wmissing-field-initializers]
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:510:42: warning: missing initializer for field ‘desc’ of ‘struct model_iface’ [-Wmissing-field-initializers]
   510 |                                          HID_PROTOCOL_KEYBOARD };
       |                                          ^~~~~~~~~~~~~~~~~~~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:145:24: note: ‘desc’ declared here
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:145:24: note: ‘desc’ declared here
   145 |         const uint8_t *desc;
       |                        ^~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:511:24: warning: missing initializer for field ‘start_fails’ of ‘struct model_iface’ [-Wmissing-field-initializers]
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:511:24: warning: missing initializer for field ‘start_fails’ of ‘struct model_iface’ [-Wmissing-field-initializers]
   511 |                 struct model_iface v = { "kbd if1 vendor", 1, 0, 0, vendor_desc, sizeof(vendor_desc) };
       |                        ^~~~~~~~~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:147:13: note: ‘start_fails’ declared here
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:147:13: note: ‘start_fails’ declared here
   147 |         int start_fails;
       |             ^~~~~~~~~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:513:42: warning: missing initializer for field ‘desc’ of ‘struct model_iface’ [-Wmissing-field-initializers]
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:513:42: warning: missing initializer for field ‘desc’ of ‘struct model_iface’ [-Wmissing-field-initializers]
   513 |                                          HID_PROTOCOL_MOUSE };
       |                                          ^~~~~~~~~~~~~~~~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:145:24: note: ‘desc’ declared here
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:145:24: note: ‘desc’ declared here
   145 |         const uint8_t *desc;
       |                        ^~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:527:42: warning: missing initializer for field ‘desc’ of ‘struct model_iface’ [-Wmissing-field-initializers]
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:527:42: warning: missing initializer for field ‘desc’ of ‘struct model_iface’ [-Wmissing-field-initializers]
   527 |                                          HID_PROTOCOL_KEYBOARD };
       |                                          ^~~~~~~~~~~~~~~~~~~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:145:24: note: ‘desc’ declared here
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:145:24: note: ‘desc’ declared here
   145 |         const uint8_t *desc;
       |                        ^~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:545:42: warning: missing initializer for field ‘desc’ of ‘struct model_iface’ [-Wmissing-field-initializers]
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:545:42: warning: missing initializer for field ‘desc’ of ‘struct model_iface’ [-Wmissing-field-initializers]
   545 |                                          HID_SUBCLASS_BOOT_INTERFACE, HID_PROTOCOL_MOUSE };
       |                                          ^~~~~~~~~~~~~~~~~~~~~~~~~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:145:24: note: ‘desc’ declared here
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:145:24: note: ‘desc’ declared here
   145 |         const uint8_t *desc;
       |                        ^~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:548:42: warning: missing initializer for field ‘desc’ of ‘struct model_iface’ [-Wmissing-field-initializers]
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:548:42: warning: missing initializer for field ‘desc’ of ‘struct model_iface’ [-Wmissing-field-initializers]
   548 |                                          HID_PROTOCOL_KEYBOARD };
       |                                          ^~~~~~~~~~~~~~~~~~~~~
-/home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:145:24: note: ‘desc’ declared here
+/home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:145:24: note: ‘desc’ declared here
   145 |         const uint8_t *desc;
       |                        ^~~~
-In file included from /home/owner/org2/v46/int/build-a/tiny386/tests/host/usb/test_usb_input.c:41:
+In file included from /home/owner/org2/v46/res/build-a/tiny386/tests/host/usb/test_usb_input.c:41:
 In function ‘handle_report’,
-    inlined from ‘if_callback’ at /home/owner/org2/v46/int/build-a/tiny386/esp/main/usb_input.c:141:4:
-/home/owner/org2/v46/int/build-a/tiny386/esp/main/usb_input.c:120:21: warning: ‘data’ may be used uninitialized [-Wmaybe-uninitialized]
+    inlined from ‘if_callback’ at /home/owner/org2/v46/res/build-a/tiny386/esp/main/usb_input.c:141:4:
+/home/owner/org2/v46/res/build-a/tiny386/esp/main/usb_input.c:120:21: warning: ‘data’ may be used uninitialized [-Wmaybe-uninitialized]
   120 |                 if (hid_report_keyboard(&hif->layout, d, n, boot))
       |                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-In file included from /home/owner/org2/v46/int/build-a/tiny386/esp/main/usb_input.c:45:
-/home/owner/org2/v46/int/build-a/tiny386/esp/main/hid_parse.h: In function ‘if_callback’:
-/home/owner/org2/v46/int/build-a/tiny386/esp/main/hid_parse.h:47:6: note: by argument 2 of type ‘const uint8_t *’ {aka ‘const unsigned char *’} to ‘hid_report_keyboard’ declared here
+In file included from /home/owner/org2/v46/res/build-a/tiny386/esp/main/usb_input.c:45:
+/home/owner/org2/v46/res/build-a/tiny386/esp/main/hid_parse.h: In function ‘if_callback’:
+/home/owner/org2/v46/res/build-a/tiny386/esp/main/hid_parse.h:47:6: note: by argument 2 of type ‘const uint8_t *’ {aka ‘const unsigned char *’} to ‘hid_report_keyboard’ declared here
    47 | bool hid_report_keyboard(const struct hid_layout *l, const uint8_t *r, size_t n,
       |      ^~~~~~~~~~~~~~~~~~~
-/home/owner/org2/v46/int/build-a/tiny386/esp/main/usb_input.c:134:17: note: ‘data’ declared here
+/home/owner/org2/v46/res/build-a/tiny386/esp/main/usb_input.c:134:17: note: ‘data’ declared here
   134 |         uint8_t data[64];
       |                 ^~~~
     console: USB host started (full and low speed, hubs allowed): plug in a keyboard and a mouse, or a receiver for both.
@@ -717,35 +718,35 @@ test_usb_input: 0 checks wrong
 PASS usb_input.c: interfaces given up, unplugged, queued behind others; lights after an unplug; unplugged while being set up
 (no v3.1 here, as a tag or a commit: the comparison with it is skipped)
 
-top folder only: /home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard/tiny386.ini (other.ini there is not listed)
-the Linux route's folder (/home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard/tiny386):
+top folder only: /home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard/tiny386.ini (other.ini there is not listed)
+the Linux route's folder (/home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard/tiny386):
   1  bench.ini    FreeDOS with 4M, for BENCH.COM on the FreeDOS image, which wants 4 MB:
   2  freedos.ini  FreeDOS from the hard disk image: the first thing to try on the board.
   3  win95.ini    Windows 95 on the board, from an image made on the PC (DISK-IMAGES.txt)
 default: freedos.ini; after win95.ini is chosen: win95.ini (lastboot.txt; not rewritten when the same)
-files named in the Linux route's inis (/mnt/sd -> /home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard, /mnt/win -> /home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard3):
+files named in the Linux route's inis (/mnt/sd -> /home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard, /mnt/win -> /home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard3):
   freedos.ini:
-    bios      bios.bin                 -> /home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard/tiny386/bios.bin
-    vga_bios  vgabios.bin              -> /home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard/tiny386/vgabios.bin
-    hda       freedos-hd.img           -> /home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard/tiny386/freedos-hd.img
+    bios      bios.bin                 -> /home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard/tiny386/bios.bin
+    vga_bios  vgabios.bin              -> /home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard/tiny386/vgabios.bin
+    hda       freedos-hd.img           -> /home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard/tiny386/freedos-hd.img
   bench.ini:
-    bios      bios.bin                 -> /home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard/tiny386/bios.bin
-    vga_bios  vgabios.bin              -> /home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard/tiny386/vgabios.bin
-    hda       freedos-hd.img           -> /home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard/tiny386/freedos-hd.img
+    bios      bios.bin                 -> /home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard/tiny386/bios.bin
+    vga_bios  vgabios.bin              -> /home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard/tiny386/vgabios.bin
+    hda       freedos-hd.img           -> /home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard/tiny386/freedos-hd.img
   win95.ini:
-    bios      bios.bin                 -> /home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard/tiny386/bios.bin
-    vga_bios  vgabios.bin              -> /home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard/tiny386/vgabios.bin
-    hda       /mnt/win/win95.img       -> /home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard3/win95.img
+    bios      bios.bin                 -> /home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard/tiny386/bios.bin
+    vga_bios  vgabios.bin              -> /home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard/tiny386/vgabios.bin
+    hda       /mnt/win/win95.img       -> /home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard3/win95.img
 and with no WIN9X partition on the card:
   win95.ini:
-    bios      bios.bin                 -> /home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard/tiny386/bios.bin
-    vga_bios  vgabios.bin              -> /home/owner/org2/v46/int/ht/out-patch/test-setup-card/sdcard/tiny386/vgabios.bin
+    bios      bios.bin                 -> /home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard/tiny386/bios.bin
+    vga_bios  vgabios.bin              -> /home/owner/org2/v46/res/ht/out-patch/test-setup-card/sdcard/tiny386/vgabios.bin
     hda       /mnt/win/win95.img       -> /mnt/win/win95.img  (no WIN9X partition: flagged)
 setup: 31 checks, 0 failed
 PASS setup.c: ini search, the menu's list and default, lastboot.txt, paths of the Linux route's inis
 
-  ok: leftovers tidied first; refused: /home/owner/org2/v46/int/ht/out-patch/inisave/a.ini.t386old holds the very bytes of the ini: a save of v4.4 was cut inside a rename, and the two names may share the card's clusters. Both are left as they are: check the card on a PC (chkdsk with /f), then delete the .t386old file
-  ok: errors: /home/owner/org2/v46/int/ht/out-patch/inisave/b.ini.t386new could not be written whole
+  ok: leftovers tidied first; refused: /home/owner/org2/v46/res/ht/out-patch/inisave/a.ini.t386old holds the very bytes of the ini: a save of v4.4 was cut inside a rename, and the two names may share the card's clusters. Both are left as they are: check the card on a PC (chkdsk with /f), then delete the .t386old file
+  ok: errors: /home/owner/org2/v46/res/ht/out-patch/inisave/b.ini.t386new could not be written whole
   ok: cut at step 1: the ini as it was after the next start
   ok: cut at step 2: the ini saved after the next start
   ok: cut at step 3: the ini saved after the next start

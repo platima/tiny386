@@ -65,6 +65,11 @@ first round, word for word, as an appendix.
   `double_buffer = 1` crashed at boot, and takes in upstream's device window fix with three memory
   checks of our own (`BUILD-NOTES.md` 32). The commit hashes of round 11 here are the branch's since
   its history from `s31-v4.4` on was rewritten that day (S3 below, `BUILD-NOTES.md` 32.6).
+* Round 12 (2026-10-25) was three reviewers on branch `v46` (2d076f6) and its staged package, before
+  v4.6 was released, each with a lens of its own: `REVIEW-v46-memory-safety.md` (here M),
+  `REVIEW-v46-display-boot.md` (here D) and `REVIEW-v46-package-flash.md` (here P). One major
+  finding (D1). v4.6 had not been tagged or pushed, so its fixes are in v4.6 itself (two commits on
+  `v46` and the notes), and the app still calls itself `v4.6` (`BUILD-NOTES.md` 32.14).
 
 Of these rounds' fixes only round 11's have run on a board: Plat ran v4.5 on 2026-10-25, and all he
 tried worked but `double_buffer = 1` [reported]. He had run v3.6, v3.9, v4.1 and v4.3 before
@@ -81,7 +86,61 @@ round 5's (`BUILD-NOTES.md` 21), `checks\...-v4.1...` round 6's (`BUILD-NOTES.md
 `checks\...-v4.2...` round 7's (`BUILD-NOTES.md` 25), `checks\...-v4.2-review...` and
 `checks\route-c-v4.2.txt` round 8's (`BUILD-NOTES.md` 26), `checks\...-v4.3...` round 9's
 (`BUILD-NOTES.md` 27), `checks\...-v4.3-review...` round 10's (`BUILD-NOTES.md` 28),
-`checks\...-v4.5...` and `checks\findings-v4.4-review.txt` round 11's (`BUILD-NOTES.md` 31).
+`checks\...-v4.5...` and `checks\findings-v4.4-review.txt` round 11's (`BUILD-NOTES.md` 31),
+`checks\...-v4.6...` and `checks\findings-v4.6-review.txt` round 12's (`BUILD-NOTES.md` 32).
+
+
+## Round 12: the three reviews of v4.6 (`REVIEW-v46-memory-safety.md`, `REVIEW-v46-display-boot.md`, `REVIEW-v46-package-flash.md`)
+
+Three reviewers, each with a lens of its own, on branch `v46` at 2d076f6 and the package staged in
+WSL `~/org2/v46/pkg`, before release: `REVIEW-v46-memory-safety.md` (here M: the four core commits,
+the byte split, the DMA window, the floppy, the Windows runs; verdict ready),
+`REVIEW-v46-display-boot.md` (here D: the restart for double buffering, the note in the LP SRAM, the
+two tables, the memory figures, the crash screen, what Plat sees; verdict needs changes) and
+`REVIEW-v46-package-flash.md` (here P: the staged package against the package folder, the flash
+script, the checksum lists, the hashes after the rewrite, addresses and style; verdict ready). One
+major finding (D1), five minor (M1, D2, D3, D4, P1) and thirteen notes. Each was checked against the
+code before it was acted on [verified: `checks\findings-v4.6-review.txt`]. v4.6 had not been tagged,
+pushed or flashed, so the fixes go into v4.6 itself: 6b5e050 (D1, D2 and notes D5 to D8), 0f7eb09
+(D3) and the commit of the notes; the app still calls itself `v4.6` (`BUILD-NOTES.md` 32.14).
+Nothing was rejected; one clause of M1's suggested wording was left out, with the reason. The
+branch's copy of the package review names in words the old commit and the two old tag objects that
+it named by hash, as the branch names none of them, and a line at its top says so (`BUILD-NOTES.md`
+32.6).
+
+### Memory safety (M)
+
+| # | Severity | Status | What was done, or why not |
+|-|-|-|-|
+| 1 | minor | fixed (docs) | Confirmed: equal guest instruction counts are fixed by the guest and the harness's virtual clock, so they show nothing of cost, and the core series' own runs, made side by side, gave v4.6 more host time (8.2 against 6.1 s, 29.1 against 22.9 s, 24.0 against 23.2 s) [verified: `~/org2/v46/core/pc/runs/*/outcome.txt`]. `BUILD-NOTES.md` 32.4's last sentence is now the review's figures: the counting build's 14,619, 36,587 and 43,098 split accesses, every one RAM to RAM, none into the window or past RAM, and 5.9 s of host time on v4.6 against 6.0 s on v4.5 run one after the other [verified: the reviewer's `~/org2/v46/rev-memory-safety/runs.log`, the sums checked here]. Left out: "and no DMA write or floppy request". The counting patch counts only split accesses (`count/count.patch`), so the runs say nothing of those [verified]; 32.4 says they were not counted |
+| 2 | note | documented | Not run: no PC run uses 800x480 through the linear frame buffer with `vga_mem_size` 768K. `BUILD-NOTES.md` 32.10 now gives the code reading as the reason: a store that crosses a page inside the frame buffer is four `iomem_write8()` calls where it was one `iomem_write32()`, each byte stored and marked dirty as before, and only at the very end of video memory does v4.6 keep the bytes that fit where v4.5 dropped the dword [verified: `pc.c`, `i386.c`; not run] |
+| 3 | note | deferred | Confirmed: `fpstoref64()` and `fpstoref80()` in `fpu.c` are two or three separately translated stores, so a fault on a later part leaves the first written; the same on v4.5 (the reviewer's case T6) [verified: code]. Plat's inis have `fpu = 0`. An upstream matter; `BUILD-NOTES.md` 32.4 lists it as left as it was |
+| 4 | note | deferred | Confirmed: `translate_laddr()` does `lpgno++` with no wrap, so an access at FFFFFFFDh to FFFFFFFFh looks up directory entry 1024; `pt_addr_ok()` keeps that read inside guest RAM [verified: code]. Wrong for the guest only, and old; listed in 32.4 as left as it was |
+| 5 | note | documented | A tooling problem, not the code's: `run.sh` has no sanitizer build [verified: grep], so the host tests are not affected. `BUILD-NOTES.md` 32.7 says to run ad hoc sanitizer checks under `setarch -R`, with their output sent to a file with a size cap |
+
+### Display and boot (D)
+
+| # | Severity | Status | What was done, or why not |
+|-|-|-|-|
+| 1 | major | fixed | Confirmed by reading: `banner()` shows the last run's lines only for a reset it shows in yellow or a ring marked by the crash screen; `console_init()` resets the ring and the old lines are not put back; the status LED has no cause after a software restart [verified: `esp_main.c`, `console.c`, `status_led.c`]. `dbuf_boot_start()` now keeps one frame buffer, with no restart, after a reset that `banner()` shows in yellow (the same causes as its `reset_words()`) or with the ring marked by the crash screen (RESET on a halted crash reads as power-on on the S31 [verified: ESP-IDF's `esp32s31/reset_reason.c` has no `ESP_RST_EXT`]). A yellow line says so, which brings the 10 s hold; RESET makes both (6b5e050). `test_double_start.c`: after a panic, a CPU lock-up, a brownout and RESET on a crash screen, no restart and the line; `double_buffer = 0` after a crash, no line; three breaks of the guard each fail it [verified: `checks\findings-v4.6-review.txt`]. `TEST-PLAN.md` 17d has the bullet |
+| 2 | minor | fixed | Confirmed [verified: code, the old case of test 3g]. The review's first suggestion: `dbuf_boot_panel()`, when the panel started with neither after a `DBUF_NOTE_TWO` note, writes a `DBUF_NOTE_ONE` note with both of ESP-IDF's errors and the memory figures and restarts once more, before the card is mounted, if a restart comes back to tiny386; the start after it makes the panel as `lcd_init()` does, takes the ini without the menu, never restarts, and gives both errors and the figures in yellow. Two restarts in a row at most (6b5e050; the note is form 3, 200 bytes). `test_double_start.c`: that path, the second note lost, one refused again after it, the Linux-default table, the note found at power-on; seven breaks each fail it. `TEST-PLAN.md` 17d no longer says to press RESET under a running Windows |
+| 3 | minor | fixed | Confirmed [verified: the reviewer's probe with the real `console.c`]. `crash.c` draws the buffer on show with `console_draw_crash()`, then the second with the new `console_draw_crash_again()`, which uses the log's lines the first call read and writes nothing into the ring (0f7eb09). `test_console.c`: the two pictures the same, the report once in the ring, the second picture's last lines the log's; all three fail with the second buffer drawn the old way |
+| 4 | minor | documented | Confirmed: a panic inside `lcd_init_two()` comes before `console_init()`, so nothing is drawn and the chip halts [verified: code, `CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y`]. `TEST-PLAN.md` 17d has the review's bullet: switch off, set `double_buffer = 0` on the PC, photograph the LED's code. With D1's fix, a RESET after it also does not restart if the LP SRAM kept the ring's crash mark [inferred: code] |
+| 5 | note | fixed | `lcd_double_set(true)` is called with the display lock held (6b5e050) |
+| 6 | note | fixed | `board_korvo1.h`: about 15,100 KiB with one frame buffer (14M fits), about 14,350 KiB and 13M with two (6b5e050) |
+| 7 | note | fixed | Ctrl+Alt+F9's line for the next start asks `dbuf_boot_comes_back()` and, under the Linux-default table, says the second frame buffer needs the tiny386-default table instead of promising it (6b5e050) |
+| 8 | note | documented | Harmless, as the review says [inferred: code]. The yellow line now says Linux's reboot "may" give a software restart, `TEST-PLAN.md` 17d labels it [inferred], and `BUILD-NOTES.md` 32.3 gives the VOL+ case |
+
+### Package and flash (P)
+
+| # | Severity | Status | What was done, or why not |
+|-|-|-|-|
+| 1 | minor | fixed (docs) | Confirmed: f7f7492 is in no repository [verified: `git cat-file`]. `BUILD-NOTES.md` 32 no longer names it; the run it named is "the version commit before 32.1's one-line change (not kept)". `checks\reproducible-v4.6.txt` was made again from this round's builds and does not name it. The folder `prelim-f7f7492/` keeps its name |
+| 2 | note | fixed (docs) | `TEST-PLAN.md` 17b first asks Plat to check that `win95-sd.ini` has `double_buffer = 0` or the line commented out |
+| 3 | note | fixed in the stage | Confirmed by counting, without printing the address [verified: `checks\findings-v4.6-review.txt`]. The stage now holds the branch's `checks\merge-v4.3.txt` and a copy of `core2\resume-check\test-storage-host.patch` with the address replaced by "address removed before publishing", so the release step's copy puts both right. No list names either file, before or after |
+| 4 | note | fixed | The five files' modes are 100755 again, as at v4.5, so v4.6's diff of `s31\` shows content only |
+| 5 | note | fixed (docs) | Confirmed: the top `SHA256SUMS` names 14 files under `checks\` [verified: grep]. `BUILD-NOTES.md` 32.11 and `checks\sums-v4.6.txt` now say it leaves out `dualboot\` and most of `checks\` |
+| 6 | note | fixed | `FLASH.txt`'s first paragraph: "v3 with every review round's fixes" |
 
 
 ## Round 11: the two reviews of v4.4 (`REVIEW-v44-display.md`, `REVIEW-v44-storage-and-safety.md`)
