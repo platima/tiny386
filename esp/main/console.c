@@ -1253,6 +1253,12 @@ static void ct_newline(struct crash_text *t)
 
 static void ct_put(struct crash_text *t, const char *s, uint16_t fg, uint16_t bg)
 {
+	/* v4.6: no frame buffer (no panel): nothing is drawn.  v4.5 drew the
+	   last line at row -1 then (t->rows 0), a store below address 0
+	   (0xFFFF9C00 on the 800-pixel panel): a fault inside the panic
+	   handler itself */
+	if (!t->base)
+		return;
 	for (; *s; s++) {
 		if (*s == '\n') {
 			ct_newline(t);
@@ -1260,7 +1266,7 @@ static void ct_put(struct crash_text *t, const char *s, uint16_t fg, uint16_t bg
 		}
 		if (t->col >= t->cols)
 			ct_newline(t);
-		if (t->row >= t->rows)
+		if (t->row < 0 || t->row >= t->rows)
 			return;
 		char c = printable(*s) ? *s : '?';
 		draw_cell(t->base, t->w, t->col * CELL_W, t->row * CELL_H,
@@ -1370,7 +1376,10 @@ void console_draw_crash(uint16_t *base, int width, int height,
 		ct_put(&t, " ", white, red);
 	t.row = 2;
 	t.col = 0;
-	ring_note("CRASH (the crash screen was shown):");
+	/* v4.6: with no frame buffer (no panel) nothing was drawn, and the
+	   next boot's lines say so */
+	ring_note(base ? "CRASH (the crash screen was shown):" :
+		  "CRASH (no panel, so nothing was shown):");
 
 	p = put_str(line, "What happened: ");
 	put_str(p, r->what ? r->what : "unknown");

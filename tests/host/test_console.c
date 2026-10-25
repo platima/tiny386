@@ -575,6 +575,14 @@ int main(int argc, char **argv)
 	check(on_screen, "the count on the crash screen, among the log's last lines");
 	console_log_limit(false);
 	check(lines_after("-- mark 8", "(not shown: 35 ") == 1, "said once");
+	/* v4.6: a crash with no frame buffer (no panel): nothing drawn, and
+	   the ring says so, not "the crash screen was shown" */
+	console_draw_crash(NULL, W, H, &r2);
+	n = console_ring_tail(tail, sizeof(tail), 4);
+	check(n == 4 && strstr(tail, "CRASH (no panel, so nothing was shown):\n") &&
+	      strstr(tail, "What happened: Load access fault\n") &&
+	      !strstr(tail, "the crash screen was shown"),
+	      "a crash with no panel: the ring says nothing was shown");
 
 	/* the UART got every line, also those printed while the picture had
 	   the panel */
