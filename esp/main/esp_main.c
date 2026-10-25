@@ -27,6 +27,8 @@
 #include "esp_vfs.h"
 #include "esp_vfs_fat.h"
 #include "esp_system.h"
+#include "esp_attr.h"
+#include "esp_ota_ops.h"
 
 #include "../../ini.h"
 #include "../../pc.h"
@@ -938,11 +940,103 @@ static void settle_memory(void)
 	}
 }
 
+#ifdef LCD_DOUBLE_BUFFER
+/* v4.6: double_buffer = 1 and the panel not started again, with two frame
+   buffers or with one (lcd_korvo1.c's last fallback): the panel is dark,
+   its frame buffer gone.  v4.5 built the PC all the same, with no picture
+   (and its vga_task then handed the VGA code a NULL frame buffer: a load
+   access fault at 0xFA50 on the board).  Now tiny386 restarts once, and
+   the next start skips double buffering, so that the panel comes up as
+   with double_buffer = 0, shows the last run's lines and says why.  The
+   note of it is in the LP SRAM, which a restart does not clear (as
+   console.c's ring and the status LED's record), and the next start takes
+   it before anything else, so that it can never bring a second restart.
+   Where a restart would start Linux (tiny386 the dual boot's test app,
+   VOL+ held through RESET), tiny386 stops instead, the LED red 5, for
+   RESET with VOL+ held; the note is left for that start too, though
+   whether the LP SRAM keeps it through RESET is not known. */
+#define DBUF_RESTART_MAGIC 0x44425546u  /* "DBUF" */
+struct dbuf_restart {
+	uint32_t magic;
+	uint32_t magic_inv;     /* ~magic: not just noise */
+	int32_t two, one;       /* lcd_double_why() */
+	int32_t stopped;        /* 1: stopped for RESET, 0: restarted */
+};
+static RTC_NOINIT_ATTR struct dbuf_restart s_dbuf_note;
+static struct dbuf_restart s_dbuf_last;         /* as this start found it */
+
+/* first thing once the console is up: the last run's note, if any, taken
+   and cleared */
+static void dbuf_restart_take(void)
+{
+	if (s_dbuf_note.magic == DBUF_RESTART_MAGIC && s_dbuf_note.magic_inv == ~DBUF_RESTART_MAGIC)
+		s_dbuf_last = s_dbuf_note;
+	memset(&s_dbuf_note, 0, sizeof(s_dbuf_note));
+}
+
+static bool dbuf_restarted(void)
+{
+	return s_dbuf_last.magic == DBUF_RESTART_MAGIC;
+}
+
+/* why the start with two frame buffers failed (lcd_double_why()) */
+static const char *dbuf_why(int two)
+{
+	return two ? esp_err_to_name(two) : "no memory for the second";
+}
+
+/* true if a restart starts this app again: the one the bootloader starts
+   with no key held (the factory app: tiny386 alone, or the dual boot's
+   tiny386-default table), not the dual boot's test app, which only VOL+
+   held through the reset starts (FLASH.txt 2) */
+static bool dbuf_restart_comes_back(void)
+{
+	const esp_partition_t *p = esp_ota_get_running_partition();
+	return p && p->subtype != ESP_PARTITION_SUBTYPE_APP_TEST;
+}
+
+static void dbuf_restart(int two, int one) __attribute__((noreturn));
+static void dbuf_restart(int two, int one)
+{
+	bool back = dbuf_restart_comes_back();
+	s_dbuf_note.two = two;
+	s_dbuf_note.one = one;
+	s_dbuf_note.stopped = !back;
+	s_dbuf_note.magic_inv = ~DBUF_RESTART_MAGIC;
+	s_dbuf_note.magic = DBUF_RESTART_MAGIC;
+	if (!back)
+		console_fatal("double_buffer = 1: the panel could not be started again (with two "
+			      "frame buffers: %s; with one: %s). tiny386 is the dual boot's VOL+ "
+			      "app here, so a restart would start Linux: hold VOL+ and press RESET. "
+			      "That start has one frame buffer and shows these lines, if the board "
+			      "keeps them through RESET.", dbuf_why(two), esp_err_to_name(one));
+	console_printf(CON_ERROR, "double_buffer = 1: the panel could not be started again "
+		       "(with two frame buffers: %s; with one: %s). tiny386 restarts now with "
+		       "one frame buffer, as with double_buffer = 0, and shows these lines.",
+		       dbuf_why(two), esp_err_to_name(one));
+	/* the last lines out of the UART first (the ring has them) */
+	fflush(stdout);
+	vTaskDelay(pdMS_TO_TICKS(100));
+	esp_restart();
+}
+#else
+static void dbuf_restart_take(void)
+{
+}
+
+static bool dbuf_restarted(void)
+{
+	return false;
+}
+#endif
+
 /* v4.4: [esp] double_buffer = 1: the second frame buffer, taken from the
    end of the emulator's pool before the guest's memory is worked out from
    what is left (lcd.h).  750 KiB: whole megabytes of the guest's memory
    come out of what is left, so it costs the guest 1M or nothing, as the
-   pool falls (BUILD-NOTES 29). */
+   pool falls (BUILD-NOTES 29).  v4.6: when it is not made, the setting
+   stays 1 for Ctrl+Alt+F9 (speed_double_refused()), so that one press
+   saves 0. */
 static void double_buffer_start(void)
 {
 	speed_set_double(config.double_buffer);
@@ -950,10 +1044,28 @@ static void double_buffer_start(void)
 		return;
 #ifdef LCD_DOUBLE_BUFFER
 	long take = round4k((long) LCD_WIDTH * LCD_HEIGHT * 2);
-	if (!globals.panel_fb || psram_len - take < 2 * 1024 * 1024) {
+	if (dbuf_restarted()) {
+		/* v4.6: after the restart (or the stop) below */
+		console_printf(CON_WARN, "double_buffer = 1: one frame buffer at this start. At the "
+			       "last start the panel could not be started again (with two frame "
+			       "buffers: %s; with one: %s), so tiny386 %s; the last run's lines, "
+			       "earlier in this log, say more. Set double_buffer = 0 in %s, or press "
+			       "Ctrl+Alt+F9 once the PC runs, which saves it.",
+			       dbuf_why(s_dbuf_last.two), esp_err_to_name(s_dbuf_last.one),
+			       s_dbuf_last.stopped ? "stopped" : "restarted", s_ini_name);
+		speed_double_refused();
+		return;
+	}
+	if (!globals.panel_fb) {
+		console_puts(CON_WARN, "double_buffer = 1: there is no panel, so no second frame "
+			     "buffer.");
+		speed_double_refused();
+		return;
+	}
+	if (psram_len - take < 2 * 1024 * 1024) {
 		console_printf(CON_WARN, "double_buffer = 1: no room for a second frame buffer; "
 			       "one is used.");
-		speed_set_double(0);
+		speed_double_refused();
 		return;
 	}
 	psram_len -= take;
@@ -963,20 +1075,21 @@ static void double_buffer_start(void)
 		console_printf(CON_INFO, "double_buffer = 1: a second frame buffer of %ld KiB, "
 			       "from the emulator's memory (%ld KiB now); pictures go to the panel "
 			       "at its frame.", take / 1024, psram_len / 1024);
-	} else if (globals.panel_fb) {
-		psram_len += take;
-		console_printf(CON_WARN, "double_buffer = 1: the panel could not be started with "
-			       "two frame buffers; one is used.");
-		speed_set_double(0);
-	} else {
-		/* v4.5: not even with one (lcd_korvo1.c's last fallback; the
-		   review of v4.4, F6): the console no longer draws */
-		psram_len += take;
-		console_printf(CON_ERROR, "double_buffer = 1: the panel could not be started "
-			       "again, with two frame buffers or with one; from here on only the "
-			       "UART shows the console. Set double_buffer = 0 in the ini.");
-		speed_set_double(0);
+		return;
 	}
+	psram_len += take;
+	int two, one;
+	lcd_double_why(&two, &one);
+	if (globals.panel_fb) {
+		console_printf(CON_WARN, "double_buffer = 1: the panel could not be started with "
+			       "two frame buffers (%s); one is used.", dbuf_why(two));
+		speed_double_refused();
+		return;
+	}
+	/* v4.5: not even with one (lcd_korvo1.c's last fallback; the review of
+	   v4.4, F6): the panel is dark.  v4.6: no PC with no picture, but one
+	   restart, or a stop (above) */
+	dbuf_restart(two, one);
 #else
 	console_puts(CON_INFO, "double_buffer is ignored: this board has one frame buffer.");
 	speed_set_double(0);
@@ -1222,9 +1335,13 @@ static void banner(void)
 		       (unsigned) (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024),
 		       (unsigned) (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
 
-	if (console_previous_lines() && (bad || console_previous_crashed()))
-		console_show_previous(console_previous_crashed() ?
-				      "the crash screen" : why);
+	/* v4.6: also after double_buffer_start()'s restart, which ESP-IDF
+	   reports as a software restart, not a bad reset (or its stop, then
+	   RESET) */
+	if (console_previous_lines() && (bad || console_previous_crashed() || dbuf_restarted()))
+		console_show_previous(console_previous_crashed() ? "the crash screen" :
+				      dbuf_restarted() ? "the panel not started again for "
+				      "double_buffer = 1" : why);
 }
 
 static const char *part_type(uint8_t t)
@@ -1390,6 +1507,9 @@ void app_main(void)
 #endif
 	console_hooks_install();
 	kbd_input_init();
+	/* v4.6: the note of a restart for double buffering, taken before the
+	   banner, which shows the last run's lines after it */
+	dbuf_restart_take();
 	banner();
 	status_led_report();
 	status_led_stage(STATUS_STAGE_SCREEN);

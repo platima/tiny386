@@ -125,6 +125,7 @@ const char *esp_err_to_name(esp_err_t err)
 	case ESP_OK: return "ESP_OK";
 	case ESP_ERR_NO_MEM: return "ESP_ERR_NO_MEM";
 	case ESP_ERR_INVALID_ARG: return "ESP_ERR_INVALID_ARG";
+	case ESP_ERR_NOT_FOUND: return "ESP_ERR_NOT_FOUND";
 	default: return "ESP_FAIL";
 	}
 }
@@ -163,6 +164,10 @@ static int new_fails, calloc_fails;     /* calls still to fail */
 static esp_lcd_panel_t *live;           /* the panel the DMA runs, if any */
 static void *gone[8];                   /* driver buffers freed (kept, to compare) */
 static int ngone;
+/* what a refused start returns: as the driver's for no free panel slot,
+   interrupt or DMA channel, so that it is told from the no memory of the
+   second buffer */
+#define REFUSED ESP_ERR_NOT_FOUND
 
 esp_err_t esp_lcd_new_rgb_panel(const esp_lcd_rgb_panel_config_t *cfg,
 				esp_lcd_panel_handle_t *ret_panel)
@@ -170,7 +175,7 @@ esp_err_t esp_lcd_new_rgb_panel(const esp_lcd_rgb_panel_config_t *cfg,
 	if (new_fails > 0) {
 		new_fails--;
 		printf("    | (the driver refuses this start)\n");
-		return ESP_ERR_NO_MEM;
+		return REFUSED;
 	}
 	esp_lcd_panel_t *p = calloc(1, sizeof(*p));
 	p->nfbs = cfg->num_fbs > 1 ? 2 : 1;
@@ -551,21 +556,27 @@ struct tcase {
 	int calloc_fails;       /* the second buffer's allocation */
 	bool want_double;       /* both buffers made */
 	bool want_panel;        /* a panel after the start */
+	int want_two, want_one; /* v4.6: lcd_double_why() when not made */
 };
 
+/* The two cases where the panel is not started again (the last fallback):
+   since v4.6 the firmware restarts there (esp_main.c double_buffer_start())
+   and never builds the PC; vga_task is run all the same, as with no panel
+   at power-on, to keep its handover honest. */
 static const struct tcase cases[] = {
-	{ "double_buffer = 0", 0, 0, 0, 0, false, true },
-	{ "double_buffer = 1, the panel started again with two buffers", 0, 1, 0, 0, true, true },
+	{ "double_buffer = 0", 0, 0, 0, 0, false, true, 0, 0 },
+	{ "double_buffer = 1, the panel started again with two buffers", 0, 1, 0, 0, true, true,
+	  0, 0 },
 	{ "double_buffer = 1, two buffers refused, the panel started again with one", 0, 1, 1, 0,
-	  false, true },
+	  false, true, REFUSED, 0 },
 	{ "double_buffer = 1, no memory for the second, the panel started again with one", 0, 1, 0, 1,
-	  false, true },
+	  false, true, 0, 0 },
 	{ "double_buffer = 1, the panel not started again with two or with one (v4.5 on the board)",
-	  0, 1, 2, 0, false, false },
+	  0, 1, 2, 0, false, false, REFUSED, REFUSED },
 	{ "double_buffer = 1, no memory for the second, the panel not started again", 0, 1, 1, 1,
-	  false, false },
-	{ "no panel at power-on, double_buffer = 0", 1, 0, 0, 0, false, false },
-	{ "no panel at power-on, double_buffer = 1", 1, 1, 0, 0, false, false },
+	  false, false, 0, REFUSED },
+	{ "no panel at power-on, double_buffer = 0", 1, 0, 0, 0, false, false, 0, 0 },
+	{ "no panel at power-on, double_buffer = 1", 1, 1, 0, 0, false, false, 0, 0 },
 };
 #define NCASES ((int) (sizeof(cases) / sizeof(cases[0])))
 
@@ -598,6 +609,13 @@ static int run_case(const struct tcase *c)
 		check(ok == c->want_double, "lcd_double_start() as expected");
 		check(lcd_double_made() == c->want_double, "lcd_double_made() as expected");
 		check(console_buf == globals.panel_fb, "the console follows the panel's buffer (or none)");
+		if (!ok) {
+			int two, one;
+			lcd_double_why(&two, &one);
+			snprintf(msg, sizeof(msg), "lcd_double_why(): two %#x one %#x, want %#x and %#x",
+				 two, one, c->want_two, c->want_one);
+			check(two == c->want_two && one == c->want_one, msg);
+		}
 	}
 	snprintf(msg, sizeof(msg), "%s after the start", c->want_panel ? "a panel" : "no panel");
 	check((globals.panel_fb != NULL) == c->want_panel && (live != NULL) == c->want_panel, msg);

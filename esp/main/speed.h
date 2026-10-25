@@ -109,6 +109,10 @@ void speed_double_hotkey(void);
    it: what is saved */
 void speed_set_double(int on);
 int speed_double_value(void);
+/* v4.6: the ini asked for double_buffer = 1 but the second frame buffer
+   was not made at this start: the setting stays 1, so that one press of
+   Ctrl+Alt+F9 saves 0, and the speed screen says it was not made */
+void speed_double_refused(void);
 void speed_forget_requests(void);       /* before vga_task starts drawing */
 void speed_set_title(const char *normal);       /* the console's usual title */
 void speed_screen_poll(void *pc, uint32_t pictures_per_s);     /* vga_task */

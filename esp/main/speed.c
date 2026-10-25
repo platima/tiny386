@@ -199,6 +199,7 @@ static int s_pace_req;
 /* v4.4: Ctrl+Alt+F9 pressed: double buffering, on core 0; the setting */
 static int s_db_req;
 static int s_db_value;
+static bool s_db_refused;               /* v4.6: asked for, not made */
 static uint32_t s_pace_on = 10000;      /* what F10 turns it on with */
 /* v4.4: settings to be saved in the ini (SPEED_SAVE_*), on the emulator's
    core */
@@ -325,6 +326,11 @@ int speed_double_value(void)
 	return s_db_value;
 }
 
+void speed_double_refused(void)
+{
+	s_db_refused = true;
+}
+
 void speed_run_step(void *opaque, uint32_t now_us)
 {
 	PC *pc = opaque;
@@ -417,10 +423,15 @@ static void double_line(bool changed)
 				       (unsigned) swaps, (unsigned) unreported,
 				       changed ? "; it is saved in the ini" : " and saves it in the ini");
 	} else {
+		/* v4.6: the ini's 1 kept when the second buffer could not be
+		   made (speed_double_refused()), and said so */
 		console_printf(CON_INFO, "double_buffer = %d%s: %s Ctrl+Alt+F9 changes it for the next "
 			       "start%s.", s_db_value, changed ? " for the next start" : "",
-			       s_db_value ? "the second frame buffer is made when the PC starts (750 "
-			       "KiB of the emulator's memory)." : "one frame buffer.",
+			       !s_db_value ? "one frame buffer." :
+			       s_db_refused && !changed ? "the second frame buffer could not be made "
+			       "at this start, so there is one (the boot console said why)." :
+			       "the second frame buffer is made when the PC starts (750 "
+			       "KiB of the emulator's memory).",
 			       changed ? "; it is saved in the ini" : " and saves it in the ini");
 	}
 #else
