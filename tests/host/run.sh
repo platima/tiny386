@@ -663,6 +663,47 @@ else
     result $st "i386.c: double faults delivered through the task gate, the ring 3 stack put back, shutdown and a bad CR3 stop cleanly, LLDT checked"
 fi
 
+# ==== 21. 16 and 32-bit accesses that cross a page (v4.6) ====
+# i386.c as the Korvo-1 builds it and as tiny386's own Makefile builds it,
+# with the small guests in tests/host/cpu/test_page_cross.c: an access that
+# runs on into the next 4 KiB page goes a byte at a time, so its bytes in
+# the VGA window go to the VGA (not into phys_mem, where the board keeps
+# the devices' state) and those past the end of RAM nowhere, and the
+# crossings from RAM to RAM are as before.  Then v4.5's i386.c, where those
+# bytes have to land in phys_mem.
+echo
+PCFLAGS="-O2 -g -w -I$TREE"
+PCBOARD="-include $TREE/esp/main/board_korvo1.h -I$HERE/shim -DI386_ENABLE_FPU"
+pcbuild() {     # name i386.c [flags]: OUT/test_page_cross-name
+    local name=$1 src=$2
+    shift 2
+    # i386.c's own warnings are not this test's business
+    $CC $PCFLAGS "$@" -c -o "$OUT/pc_i386-$name.o" "$src" || exit 1
+    $CC $PCFLAGS "$@" -c -o "$OUT/pc_fpu-$name.o" "$TREE/fpu.c" || exit 1
+    $CC $CFLAGS -I"$TREE" "$@" -o "$OUT/test_page_cross-$name" "$HERE/cpu/test_page_cross.c" \
+        "$OUT/pc_i386-$name.o" "$OUT/pc_fpu-$name.o" -lm || exit 1
+}
+pcbuild korvo1 "$TREE/i386.c" $PCBOARD
+"$OUT/test_page_cross-korvo1" > "$OUT/page-cross-korvo1.log" 2>&1
+st=$?
+grep -v "^  eax \|^  window " "$OUT/page-cross-korvo1.log"
+result $st "i386.c as the Korvo-1 builds it: accesses that cross a page go a byte at a time, none into the window's phys_mem or past RAM"
+pcbuild plain "$TREE/i386.c" -DI386_ALIGNED_ONLY
+"$OUT/test_page_cross-plain" > "$OUT/page-cross-plain.log" 2>&1
+st=$?
+tail -1 "$OUT/page-cross-plain.log" | sed 's/^/    | /'
+result $st "i386.c without the board header: the same"
+T_V4_5=$(tagref v4.5 99074b7347bec45d743a56254df218fe616c7d29)
+if [ -n "$T_V4_5" ]; then
+    git -C "$TREE" show "$T_V4_5":i386.c > "$OUT/i386-v4.5.c"
+    pcbuild v4.5 "$OUT/i386-v4.5.c" $PCBOARD
+    echo "(the same guests against v4.5's i386.c, where those bytes have to land in phys_mem)"
+    "$OUT/test_page_cross-v4.5" before > "$OUT/page-cross-v4.5.log" 2>&1
+    st=$?
+    grep "ok: v4.5\|FAIL\|checks" "$OUT/page-cross-v4.5.log" | sed 's/^ */    | /'
+    result $st "the page-crossing test sees v4.5's bytes in the window's phys_mem and past RAM"
+fi
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]

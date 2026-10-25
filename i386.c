@@ -810,6 +810,30 @@ static inline bool in_iomem(uword addr)
 	return (addr >= 0xa0000 && addr < 0xc0000) || addr >= 0xe0000000;
 }
 
+/* A 16 or 32-bit access that runs on into the next 4 KiB page goes a byte
+   at a time, each byte sent by its own physical address.  With paging the
+   next page can be anywhere (translate_laddr's ADDR_OK2); without it the
+   access can run from RAM into the VGA window at 0xA0000, where the ESP-IDF
+   port keeps the devices' state, or past the end of RAM.  Both ends of the
+   window are page aligned, and so is the end of RAM when mem_size is a
+   whole number of pages (any size in MiB), so an access inside one page is
+   all RAM, all MMIO or all past the end, and its first byte decides for the
+   rest.  An access that does not cross a page is always ADDR_OK1, so this
+   test takes the place of the ADDR_OK1 one, and the common path still
+   makes one test.  It compares the offset in the page in the top 12 bits,
+   which needs no mask: three instructions on the board's RISC-V, where the
+   ADDR_OK1 test was a load and a branch.  After yejun's hchunhui/tiny386
+   PR #49, which tab5-pc carries. */
+#define CROSSES_PAGE(res, n) (((res)->addr1 << 20) > ((0x1000u - (n)) << 20))
+
+static inline uword byte_paddr(OptAddr *res, int i)
+{
+	uword off = (res->addr1 & 0xfff) + i;
+	if (res->res == ADDR_OK2 && off >= 0x1000)
+		return res->addr2 + (off - 0x1000);
+	return res->addr1 + i;
+}
+
 static u8 IRAM_ATTR load8(CPUI386 *cpu, OptAddr *res)
 {
 	uword addr = res->addr1;
@@ -821,41 +845,38 @@ static u8 IRAM_ATTR load8(CPUI386 *cpu, OptAddr *res)
 	return pload8(cpu, addr);
 }
 
+static u32 noinline load_bytes(CPUI386 *cpu, OptAddr *res, int n)
+{
+	u32 v = 0;
+	for (int i = 0; i < n; i++) {
+		OptAddr b = { ADDR_OK1, byte_paddr(res, i), 0 };
+		v |= (u32) load8(cpu, &b) << (8 * i);
+	}
+	return v;
+}
+
 static u16 IRAM_ATTR load16(CPUI386 *cpu, OptAddr *res)
 {
+	if (unlikely(CROSSES_PAGE(res, 2)))
+		return load_bytes(cpu, res, 2);
 	if (in_iomem(res->addr1) && cpu->cb.iomem_read16)
 		return cpu->cb.iomem_read16(cpu->cb.iomem, res->addr1);
 	if (unlikely(res->addr1 >= cpu->phys_mem_size)) {
 		return 0;
 	}
-	if (likely(res->res == ADDR_OK1))
-		return pload16(cpu, res->addr1);
-	else
-		return pload8(cpu, res->addr1) | (pload8(cpu, res->addr2) << 8);
+	return pload16(cpu, res->addr1);
 }
 
 static u32 IRAM_ATTR load32(CPUI386 *cpu, OptAddr *res)
 {
+	if (unlikely(CROSSES_PAGE(res, 4)))
+		return load_bytes(cpu, res, 4);
 	if (in_iomem(res->addr1) && cpu->cb.iomem_read32)
 		return cpu->cb.iomem_read32(cpu->cb.iomem, res->addr1);
 	if (unlikely(res->addr1 >= cpu->phys_mem_size)) {
 		return 0;
 	}
-	if (likely(res->res == ADDR_OK1)) {
-		return pload32(cpu, res->addr1);
-	} else {
-		switch(res->addr1 & 0xf) {
-		case 0xf:
-			return pload8(cpu, res->addr1) | (pload16(cpu, res->addr2) << 8) |
-				(pload8(cpu, res->addr2 + 2) << 24);
-		case 0xe:
-			return pload16(cpu, res->addr1) | (pload16(cpu, res->addr2) << 16);
-		case 0xd:
-			return pload8(cpu, res->addr1) | (pload16(cpu, res->addr1 + 1) << 8) |
-				(pload8(cpu, res->addr2) << 24);
-		}
-	}
-	assert(false);
+	return pload32(cpu, res->addr1);
 }
 
 static void IRAM_ATTR store8(CPUI386 *cpu, OptAddr *res, u8 val)
@@ -871,8 +892,20 @@ static void IRAM_ATTR store8(CPUI386 *cpu, OptAddr *res, u8 val)
 	pstore8(cpu, addr, val);
 }
 
+static void noinline store_bytes(CPUI386 *cpu, OptAddr *res, int n, u32 val)
+{
+	for (int i = 0; i < n; i++) {
+		OptAddr b = { ADDR_OK1, byte_paddr(res, i), 0 };
+		store8(cpu, &b, val >> (8 * i));
+	}
+}
+
 static void IRAM_ATTR store16(CPUI386 *cpu, OptAddr *res, u16 val)
 {
+	if (unlikely(CROSSES_PAGE(res, 2))) {
+		store_bytes(cpu, res, 2, val);
+		return;
+	}
 	if (in_iomem(res->addr1) && cpu->cb.iomem_write16) {
 		cpu->cb.iomem_write16(cpu->cb.iomem, res->addr1, val);
 		return;
@@ -880,16 +913,15 @@ static void IRAM_ATTR store16(CPUI386 *cpu, OptAddr *res, u16 val)
 	if (unlikely(res->addr1 >= cpu->phys_mem_size)) {
 		return;
 	}
-	if (likely(res->res == ADDR_OK1)) {
-		pstore16(cpu, res->addr1, val);
-	} else {
-		pstore8(cpu, res->addr1, val);
-		pstore8(cpu, res->addr2, val >> 8);
-	}
+	pstore16(cpu, res->addr1, val);
 }
 
 static void IRAM_ATTR store32(CPUI386 *cpu, OptAddr *res, u32 val)
 {
+	if (unlikely(CROSSES_PAGE(res, 4))) {
+		store_bytes(cpu, res, 4, val);
+		return;
+	}
 	if (in_iomem(res->addr1) && cpu->cb.iomem_write32) {
 		cpu->cb.iomem_write32(cpu->cb.iomem, res->addr1, val);
 		return;
@@ -897,26 +929,7 @@ static void IRAM_ATTR store32(CPUI386 *cpu, OptAddr *res, u32 val)
 	if (unlikely(res->addr1 >= cpu->phys_mem_size)) {
 		return;
 	}
-	if (likely(res->res == ADDR_OK1)) {
-		pstore32(cpu, res->addr1, val);
-	} else {
-		switch(res->addr1 & 0xf) {
-		case 0xf:
-			pstore8(cpu, res->addr1, val);
-			pstore16(cpu, res->addr2, val >> 8);
-			pstore8(cpu, res->addr2 + 2, val >> 24);
-			break;
-		case 0xe:
-			pstore16(cpu, res->addr1, val);
-			pstore16(cpu, res->addr2, val >> 16);
-			break;
-		case 0xd:
-			pstore8(cpu, res->addr1, val);
-			pstore16(cpu, res->addr1 + 1, val >> 8);
-			pstore8(cpu, res->addr2, val >> 24);
-			break;
-		}
-	}
+	pstore32(cpu, res->addr1, val);
 }
 
 #define LOADSTORE(BIT) \
