@@ -267,9 +267,11 @@ done
 # them, vga.c as test 3c built it, and a pretend RGB panel driver whose
 # starts fail, or reset the chip, when asked (tests/host/display): each case
 # a run of starts in child processes, the LP SRAM's note carried between
-# them; never more than one restart, the note cleared once taken, a note
-# not whole ignored, the panel with two frame buffers after the restart or
-# with one and the yellow line, no restart under the Linux-default table;
+# them; never more than one restart (and one more, after the review of
+# v4.6, when the panel started with neither two frame buffers nor one), none
+# after a crash, a watchdog or a power dip, the note cleared once taken, a
+# note not whole ignored, the panel with two frame buffers after the restart
+# or with one and the yellow line, no restart under the Linux-default table;
 # after every picture the VGA code draws into a frame buffer that is there.
 # Then display.c at v4.5, where a start with no panel has to end in a load
 # at 0xFA50, the address of the board's fault with double_buffer = 1 (the
@@ -291,7 +293,7 @@ $CC -o "$OUT/test_double_start" "$OUT/dstart-test.o" "$OUT/dstart-lcd.o" "$OUT/d
 "$OUT/test_double_start" > "$OUT/double-start.log" 2>&1
 st=$?
 grep "FAIL\|test_double_start" "$OUT/double-start.log" | head -12
-result $st "dbuf_boot.c, lcd_korvo1.c and display.c: two frame buffers at power-on after one restart at most, the note, the fallback, and a frame buffer there for every picture"
+result $st "dbuf_boot.c, lcd_korvo1.c and display.c: two frame buffers at power-on after one restart at most (two when the panel starts with neither, none after a crash), the note, the fallback, and a frame buffer there for every picture"
 T_V4_5=$(tagref v4.5 99074b7347bec45d743a56254df218fe616c7d29)
 if [ -n "$T_V4_5" ]; then
     git -C "$TREE" show "$T_V4_5":esp/main/display.c > "$OUT/display-v4.5.c"

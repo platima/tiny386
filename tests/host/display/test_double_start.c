@@ -27,9 +27,14 @@
  * chosen (dbuf_boot_pick(), else the boot menu's choice), double buffering
  * as the ini asks (dbuf_boot_start()), and if that does not restart, the
  * VGA built as screen_init() and pc_new() build it, then vga_task for some
- * pictures.  Checked: never more than one restart in a row; the note cleared
+ * pictures.  Checked: never more than one restart in a row, but for one more
+ * when the panel started with neither two frame buffers nor one after the
+ * first (the review of v4.6, display finding 2), and none after a crash, a
+ * watchdog or a power dip, or after RESET on the crash screen (display
+ * finding 1); the note cleared
  * as soon as it is taken, and after every start that does not restart; the
- * restart's note naming the ini chosen; a note that is not whole, or of
+ * restart's note naming the ini chosen, and the second's both errors and the
+ * memory figures; a note that is not whole, or of
  * another form, ignored with no restart; the panel's starts asked of the
  * driver (one frame buffer as v4.5 unless the note asks for two); the
  * console's lines, among them the yellow one with ESP-IDF's error names;
@@ -428,9 +433,21 @@ static bool said_any(const char *piece)
 void esp_restart(void)
 {
 	printf("    | (esp_restart())\n");
-	check(nlines > 0 && strstr(line_text[nlines - 1], "tiny386 starts again now, once"),
-	      "the restart says so on the panel first");
+	/* the second restart (DBUF_NOTE_ONE) comes before the console is up,
+	   with no panel: its line goes to the UART alone */
+	check((nlines > 0 && strstr(line_text[nlines - 1], "tiny386 starts again now, once")) ||
+	      (dbuf_note.stage == DBUF_NOTE_ONE && nlines == 0),
+	      "the restart says so on the panel first, or is the second, before the console");
 	start_end(OUT_RESTART);
+}
+
+/* console.c's: whether the ring the last run left was marked by the crash
+   screen (the case's first start only) */
+static bool ring_crashed;
+
+bool console_previous_crashed(void)
+{
+	return ring_crashed;
 }
 
 /* ==== speed.c's double buffering setting ==== */
@@ -731,7 +748,8 @@ static struct setup_list inis = {
 /* ==== the cases ==== */
 
 /* what the LP SRAM holds at the first start */
-enum { RTC_EMPTY, RTC_NOISE, RTC_TWO, RTC_TRYING, RTC_BAD_CHECK, RTC_OLD_FORM, RTC_NEW_FORM };
+enum { RTC_EMPTY, RTC_NOISE, RTC_TWO, RTC_TRYING, RTC_BAD_CHECK, RTC_OLD_FORM, RTC_NEW_FORM,
+       RTC_ONE };
 
 struct tcase {
 	const char *name;
@@ -753,69 +771,107 @@ struct tcase {
 	bool want_menu;         /* the boot menu at the last start */
 	int want_level;         /* a line of the last start: its level, */
 	const char *want_line;  /* and something in it (NULL: no line about double buffering at all) */
+	/* the review of v4.6 */
+	bool crashed;           /* the ring marked by the crash screen at the first start */
+	bool lose_second;       /* the LP SRAM does not keep the second restart's note */
 };
 
 static const struct tcase cases[] = {
 	{ "double_buffer = 0: as v4.5, one frame buffer, no line", 0, RTC_EMPTY, NULL, 0, false,
 	  { { 0 } }, 0, 0, false, 0,
-	  1, 0, true, false, false, true, 0, NULL },
+	  1, 0, true, false, false, true, 0, NULL, false, false },
 	{ "double_buffer = 1: one restart, then both frame buffers made with the panel", 1,
 	  RTC_EMPTY, NULL, 0, false, { { 0 } }, 0, 0, false, 0,
-	  2, 1, true, true, true, false, CON_INFO, "both made with the panel at power-on" },
+	  2, 1, true, true, true, false, CON_INFO, "both made with the panel at power-on", false, false },
 	{ "double_buffer = 1, two refused after the restart: one, and the yellow line", 1,
 	  RTC_EMPTY, NULL, 0, false, { { 0 }, { REFUSED, 0 } }, 0, 0, false, 0,
 	  2, 1, true, false, false, false, CON_WARN,
-	  "The panel would not start with two at power-on (ESP_ERR_NOT_FOUND)" },
+	  "The panel would not start with two at power-on (ESP_ERR_NOT_FOUND)", false, false },
 	{ "double_buffer = 1, no memory for two after the restart: one, and the yellow line", 1,
 	  RTC_EMPTY, NULL, 0, false, { { 0 }, { ESP_ERR_NO_MEM, 0 } }, 0, 0, false, 0,
 	  2, 1, true, false, false, false, CON_WARN,
-	  "The panel would not start with two at power-on (ESP_ERR_NO_MEM)" },
+	  "The panel would not start with two at power-on (ESP_ERR_NO_MEM)", false, false },
 	{ "double_buffer = 1, the frame event refused after the restart: one, and the yellow line",
 	  1, RTC_EMPTY, NULL, 0, false, { { 0 } }, 2, 0, false, 0,
 	  2, 1, true, false, false, false, CON_WARN,
-	  "The panel would not start with two at power-on (ESP_ERR_INVALID_ARG)" },
-	{ "double_buffer = 1, two and then one refused after the restart: no panel, no second restart",
-	  1, RTC_EMPTY, NULL, 0, false, { { 0 }, { REFUSED, REFUSED } }, 0, 0, false, 0,
-	  2, 1, false, false, false, false, CON_WARN, "there is no panel, so no second frame buffer" },
+	  "The panel would not start with two at power-on (ESP_ERR_INVALID_ARG)", false, false },
+	{ "double_buffer = 1, two and then one refused after the restart: a second restart, then one and the yellow line",
+	  1, RTC_EMPTY, NULL, 0, false, { { 0 }, { REFUSED, REFUSED }, { 0 } }, 0, 0, false, 0,
+	  3, 2, true, false, false, false, CON_WARN,
+	  "would not start with two frame buffers (ESP_ERR_NOT_FOUND), nor with one after that "
+	  "(ESP_ERR_NOT_FOUND), with PSRAM free 16110 KiB (largest block 16110 KiB) and internal "
+	  "DMA memory free 120 KiB", false, false },
+	{ "double_buffer = 1, two and one refused after the restart, the second note lost: no third restart",
+	  1, RTC_EMPTY, NULL, 0, false, { { 0 }, { REFUSED, ESP_ERR_NO_MEM }, { 0 } }, 0, 0, false, 0,
+	  3, 2, true, false, false, true, CON_WARN, "followed a software restart with no note",
+	  false, true },
+	{ "double_buffer = 1, two and one refused after the restart, and one again after the second: no panel, no third restart",
+	  1, RTC_EMPTY, NULL, 0, false, { { 0 }, { REFUSED, REFUSED }, { REFUSED } }, 0, 0, false, 0,
+	  3, 2, false, false, false, false, CON_WARN, "there is no panel, so no second frame buffer", false, false },
+	{ "a note asking for two under the Linux-default table, the panel with neither: no restart, no panel",
+	  1, RTC_TWO, "win95-sd.ini", ESP_RST_SW, true, { { REFUSED, REFUSED } }, 0, 0, false, 0,
+	  1, 0, false, false, false, false, CON_WARN, "there is no panel, so no second frame buffer", false, false },
+	{ "a second restart's note at power-on (the LP SRAM kept it): one, the yellow line, no restart",
+	  1, RTC_ONE, "win95-sd.ini", 0, false, { { 0 } }, 0, 0, false, 0,
+	  1, 0, true, false, false, false, CON_WARN,
+	  "two frame buffers (ESP_ERR_NOT_FOUND), nor with one after that (ESP_ERR_NO_MEM), with PSRAM "
+	  "free 1000 KiB (largest block 900 KiB) and internal DMA memory free 100 KiB", false, false },
+	{ "double_buffer = 1 after a crash (the reset a panic): no restart, the report kept, one", 1,
+	  RTC_EMPTY, NULL, ESP_RST_PANIC, false, { { 0 } }, 0, 0, false, 0,
+	  1, 0, true, false, false, true, CON_WARN,
+	  "The last run ended with a crash, a watchdog or a power dip (above)", false, false },
+	{ "double_buffer = 1 after a CPU lock-up: no restart, the report kept, one", 1,
+	  RTC_EMPTY, NULL, ESP_RST_CPU_LOCKUP, false, { { 0 } }, 0, 0, false, 0,
+	  1, 0, true, false, false, true, CON_WARN, "RESET makes both", false, false },
+	{ "double_buffer = 1 after a brownout: no restart, the report kept, one", 1,
+	  RTC_EMPTY, NULL, ESP_RST_BROWNOUT, false, { { 0 } }, 0, 0, false, 0,
+	  1, 0, true, false, false, true, CON_WARN, "a restart now would take that off the panel", false, false },
+	{ "double_buffer = 1 after RESET on the crash screen (power-on, the ring marked): no restart", 1,
+	  RTC_EMPTY, NULL, 0, false, { { 0 } }, 0, 0, false, 0,
+	  1, 0, true, false, false, true, CON_WARN,
+	  "The last run ended with a crash, a watchdog or a power dip (above)", true, false },
+	{ "double_buffer = 0 after a crash: as v4.5, no line", 0,
+	  RTC_EMPTY, NULL, ESP_RST_PANIC, false, { { 0 } }, 0, 0, false, 0,
+	  1, 0, true, false, false, true, 0, NULL, true, false },
 	{ "double_buffer = 1, Linux the default (tiny386 the VOL+ app): no restart, the yellow line",
 	  1, RTC_EMPTY, NULL, 0, true, { { 0 } }, 0, 0, false, 0,
-	  1, 0, true, false, false, true, CON_WARN, "tiny386 is the dual boot's VOL+ app here" },
+	  1, 0, true, false, false, true, CON_WARN, "tiny386 is the dual boot's VOL+ app here", false, false },
 	{ "double_buffer = 1, the LP SRAM forgets the note: one restart, no second", 1,
 	  RTC_EMPTY, NULL, 0, false, { { 0 } }, 0, 0, true, 0,
-	  2, 1, true, false, false, true, CON_WARN, "followed a software restart with no note" },
+	  2, 1, true, false, false, true, CON_WARN, "followed a software restart with no note", false, false },
 	{ "double_buffer = 1, a software restart with no note (Linux's reboot): no restart", 1,
 	  RTC_EMPTY, NULL, ESP_RST_SW, false, { { 0 } }, 0, 0, false, 0,
-	  1, 0, true, false, false, true, CON_WARN, "followed a software restart with no note" },
+	  1, 0, true, false, false, true, CON_WARN, "followed a software restart with no note", false, false },
 	{ "double_buffer = 1, a note not whole (one byte changed): ignored, no restart", 1,
 	  RTC_BAD_CHECK, "win95-sd.ini", ESP_RST_EXT, false, { { 0 } }, 0, 0, false, 0,
-	  1, 0, true, false, false, true, CON_WARN, "The note of a restart in the LP SRAM was not whole" },
+	  1, 0, true, false, false, true, CON_WARN, "The note of a restart in the LP SRAM was not whole", false, false },
 	{ "double_buffer = 1, a note of another form (the dbuf series' 20 bytes): ignored, no restart",
 	  1, RTC_OLD_FORM, NULL, ESP_RST_SW, false, { { 0 } }, 0, 0, false, 0,
-	  1, 0, true, false, false, true, CON_WARN, "The note of a restart in the LP SRAM was not whole" },
+	  1, 0, true, false, false, true, CON_WARN, "The note of a restart in the LP SRAM was not whole", false, false },
 	{ "double_buffer = 1, a whole note of a later form: ignored, no restart", 1,
 	  RTC_NEW_FORM, "win95-sd.ini", ESP_RST_SW, false, { { 0 } }, 0, 0, false, 0,
-	  1, 0, true, false, false, true, CON_WARN, "The note of a restart in the LP SRAM was not whole" },
+	  1, 0, true, false, false, true, CON_WARN, "The note of a restart in the LP SRAM was not whole", false, false },
 	{ "double_buffer = 1, noise in the LP SRAM at power-on: no note, one restart, both made", 1,
 	  RTC_NOISE, NULL, 0, false, { { 0 } }, 0, 0, false, 0,
-	  2, 1, true, true, true, false, CON_INFO, "both made with the panel at power-on" },
+	  2, 1, true, true, true, false, CON_INFO, "both made with the panel at power-on", false, false },
 	{ "a note naming an ini no longer there: both made, the menu, win95-sd.ini", 1,
 	  RTC_TWO, "gone.ini", ESP_RST_SW, false, { { 0 } }, 0, 0, false, 0,
-	  1, 0, true, true, true, true, CON_INFO, "gone.ini, chosen before the restart, is not there now" },
+	  1, 0, true, true, true, true, CON_INFO, "gone.ini, chosen before the restart, is not there now", false, false },
 	{ "a note naming an ini with double_buffer = 0: both made, kept off, Ctrl+Alt+F9 at once", 1,
 	  RTC_TWO, "freedos.ini", ESP_RST_SW, false, { { 0 } }, 0, 0, false, 0,
-	  1, 0, true, true, false, false, CON_INFO, "double_buffer = 0, but the panel has two frame buffers" },
+	  1, 0, true, true, false, false, CON_INFO, "double_buffer = 0, but the panel has two frame buffers", false, false },
 	{ "double_buffer = 1, a reset while the panel was made with two: then one, no restart", 1,
 	  RTC_EMPTY, NULL, 0, false, { { 0 } }, 0, 2, false, 0,
-	  3, 1, true, false, false, true, CON_WARN, "The last start was cut short while it made the panel with two" },
+	  3, 1, true, false, false, true, CON_WARN, "The last start was cut short while it made the panel with two", false, false },
 	{ "no panel at power-on, double_buffer = 0", 0, RTC_EMPTY, NULL, 0, false,
 	  { { REFUSED } }, 0, 0, false, 0,
-	  1, 0, false, false, false, true, 0, NULL },
+	  1, 0, false, false, false, true, 0, NULL, false, false },
 	{ "no panel at power-on, double_buffer = 1: no restart", 1, RTC_EMPTY, NULL, 0, false,
 	  { { REFUSED } }, 0, 0, false, 0,
-	  1, 0, false, false, false, true, CON_WARN, "there is no panel, so no second frame buffer" },
+	  1, 0, false, false, false, true, CON_WARN, "there is no panel, so no second frame buffer", false, false },
 	{ "double_buffer = 1, no room for a second frame buffer: no restart", 1, RTC_EMPTY, NULL, 0,
 	  false, { { 0 } }, 0, 0, false, (long) FB_BYTES + KEEP_FREE + 2560L * 1024,
-	  1, 0, true, false, false, true, CON_WARN, "no room for a second frame buffer" },
+	  1, 0, true, false, false, true, CON_WARN, "no room for a second frame buffer", false, false },
 };
 #define NCASES ((int) (sizeof(cases) / sizeof(cases[0])))
 
@@ -865,6 +921,21 @@ static void rtc_first(const struct tcase *c, struct dbuf_note *n)
 			n->name[3] ^= 0x20;
 		break;
 	}
+	case RTC_ONE:
+		/* a second restart's note, whole, as dbuf_boot_panel() writes it */
+		n->magic = DBUF_NOTE_MAGIC;
+		n->magic_inv = ~DBUF_NOTE_MAGIC;
+		n->form = DBUF_NOTE_FORM;
+		n->stage = DBUF_NOTE_ONE;
+		snprintf(n->dir, sizeof(n->dir), "%s", inis.dir);
+		snprintf(n->name, sizeof(n->name), "%s", c->rtc_ini);
+		n->why_two = REFUSED;
+		n->why_one = ESP_ERR_NO_MEM;
+		n->psram_free = 1000;
+		n->psram_block = 900;
+		n->dma_free = 100;
+		n->check = note_fnv(n);
+		break;
 	case RTC_OLD_FORM: {
 		/* the dbuf series' note: magic, ~magic, two, one, stopped */
 		uint32_t old[5] = { DBUF_NOTE_MAGIC, ~DBUF_NOTE_MAGIC, ESP_ERR_NOT_FOUND,
@@ -897,6 +968,7 @@ static void start(const struct tcase *c, int k)
 	running.subtype = c->linux_default ? ESP_PARTITION_SUBTYPE_APP_TEST :
 		ESP_PARTITION_SUBTYPE_APP_FACTORY;
 	psram_free = c->psram ? c->psram : PSRAM_START;
+	ring_crashed = c->crashed && k == 1;
 	bool last = k == c->want_starts;
 
 	/* app_main(): the note first, then the panel */
@@ -1012,7 +1084,9 @@ static int run_case(const struct tcase *c)
 	rtc_first(c, &rtc);
 	esp_reset_reason_t why = c->reset ? c->reset : ESP_RST_POWERON;
 	int restarts = 0, resets = 0, k, bad = 0;
-	char msg[200];
+	int first_pick = -1;            /* the ini the first restart's note names */
+	bool second_one = false;        /* the second restart was the panel's (DBUF_NOTE_ONE) */
+	char msg[300];
 	failures = checks = 0;
 	for (k = 1; k <= 4; k++) {
 		int fd[2];
@@ -1021,9 +1095,11 @@ static int run_case(const struct tcase *c)
 			return 1;
 		}
 		if (!trace)
-			printf("  start %d (%s):\n", k, why == ESP_RST_SW ? "a software restart" :
+			printf("  start %d (%s%s):\n", k, why == ESP_RST_SW ? "a software restart" :
 			       why == ESP_RST_POWERON ? "power-on" : why == ESP_RST_EXT ?
-			       "the reset pin" : "a CPU lock-up");
+			       "the reset pin" : why == ESP_RST_PANIC ? "a crash" :
+			       why == ESP_RST_BROWNOUT ? "a brownout" : "a CPU lock-up",
+			       c->crashed && k == 1 ? ", the ring marked by the crash screen" : "");
 		dbuf_note = rtc;
 		reset_now = why;
 		pid_t pid = fork();
@@ -1051,12 +1127,38 @@ static int run_case(const struct tcase *c)
 			break;
 		}
 		bad += r.failures;
+		if (r.outcome == OUT_RESTART && r.note.stage == DBUF_NOTE_ONE) {
+			/* the second: the panel started with neither, before the ini
+			   was chosen; the note names the first restart's ini, with the
+			   start's two errors and the memory before them */
+			restarts++;
+			second_one = restarts == 2;
+			int fb_two = c->fail[k - 1][0], fb_one = c->fail[k - 1][1];
+			snprintf(msg, sizeof(msg), "the second restart's note names %s/%s, with %s and %s, and "
+				 "the memory figures", inis.dir, first_pick >= 0 ? inis.ini[first_pick].name : "?",
+				 esp_err_to_name(fb_two), esp_err_to_name(fb_one));
+			check(r.note.magic == DBUF_NOTE_MAGIC && first_pick >= 0 &&
+			      r.note.check == note_fnv(&r.note) && !strcmp(r.note.dir, inis.dir) &&
+			      !strcmp(r.note.name, inis.ini[first_pick].name) &&
+			      r.note.why_two == fb_two && r.note.why_one == fb_one &&
+			      r.note.psram_free == PSRAM_START / 1024 &&
+			      r.note.psram_block == PSRAM_START / 1024 && r.note.dma_free == DMA_FREE / 1024,
+			      msg);
+			if (c->lose_second)
+				memset(&rtc, 0, sizeof(rtc));
+			else
+				rtc = r.note;
+			why = ESP_RST_SW;
+			continue;
+		}
 		if (r.outcome == OUT_RESTART) {
 			restarts++;
+			first_pick = r.pick;
 			snprintf(msg, sizeof(msg), "the restart's note names %s/%s",
-				 inis.dir, inis.ini[r.pick].name);
-			check(r.note.magic == DBUF_NOTE_MAGIC && r.note.stage == DBUF_NOTE_TWO &&
-			      !strcmp(r.note.dir, inis.dir) && !strcmp(r.note.name, inis.ini[r.pick].name),
+				 inis.dir, r.pick >= 0 ? inis.ini[r.pick].name : "?");
+			check(r.pick >= 0 && r.note.magic == DBUF_NOTE_MAGIC && r.note.stage == DBUF_NOTE_TWO &&
+			      !strcmp(r.note.dir, inis.dir) && !strcmp(r.note.name, inis.ini[r.pick].name) &&
+			      !r.note.why_two && !r.note.why_one && !r.note.psram_free,
 			      msg);
 			if (c->lose_note)
 				memset(&rtc, 0, sizeof(rtc));
@@ -1079,7 +1181,8 @@ static int run_case(const struct tcase *c)
 	snprintf(msg, sizeof(msg), "%d starts and %d restarts (%d resets), the case wants %d and %d",
 		 k, restarts, resets, c->want_starts, c->want_restarts);
 	check(k == c->want_starts && restarts == c->want_restarts, msg);
-	check(restarts <= 1, "never more than one restart");
+	check(restarts <= 1 || (restarts == 2 && second_one),
+	      "never more than one restart, and a second only when the panel started with neither");
 	return bad + failures;
 }
 

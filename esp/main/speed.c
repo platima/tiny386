@@ -165,6 +165,9 @@ void speed_total_line(uint64_t insns, uint64_t us, const char *what,
 #include "display.h"
 #include "lcd.h"
 #endif
+#ifdef LCD_DOUBLE_BUFFER
+#include "dbuf_boot.h"
+#endif
 #ifdef USER_KEY_GPIO
 #include "driver/gpio.h"
 #endif
@@ -424,12 +427,17 @@ static void double_line(bool changed)
 				       changed ? "; it is saved in the ini" : " and saves it in the ini");
 	} else {
 		/* v4.6: the ini's 1 kept when the second buffer could not be
-		   made (speed_double_refused()), and said so */
+		   made (speed_double_refused()), and said so; after its review
+		   (display note 7), under the Linux-default table, where the
+		   restart that makes it would start Linux, not promised */
 		console_printf(CON_INFO, "double_buffer = %d%s: %s Ctrl+Alt+F9 changes it for the next "
 			       "start%s.", s_db_value, changed ? " for the next start" : "",
 			       !s_db_value ? "one frame buffer." :
 			       s_db_refused && !changed ? "the second frame buffer could not be made "
 			       "at this start, so there is one (the boot console said why)." :
+			       !dbuf_boot_comes_back() ? "the second frame buffer is made only with "
+			       "tiny386 the default at reset (the tiny386-default table, FLASH.txt 2); "
+			       "with Linux the default the next start keeps one and says so." :
 			       "the second frame buffer is made with the panel at the next "
 			       "start (750 KiB of the emulator's memory; the boot console says "
 			       "if it cannot be).",

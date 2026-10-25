@@ -39,8 +39,9 @@
 // for ESP-IDF (FatFs buffers, the console's text).  The panel's frame
 // buffer (750 KiB) is not in it: lcd_init() has taken that before the
 // pool is sized (app_main); with double_buffer = 1 (v4.6) lcd_init_two()
-// has taken both, 1,500 KiB.  About 15,300 KiB is left for the guest:
-// mem_size 14M with vga_mem_size 256K or 320K.
+// has taken both, 1,500 KiB.  The pool is then about 15,100 KiB with one
+// frame buffer (Plat's board: 15,104), room for mem_size 14M with
+// vga_mem_size 256K or 320K, and about 14,350 KiB with two: 13M.
 #define PSRAM_KEEP_FREE (256 * 1024)
 
 // No I2S: the Korvo-1 audio wiring is not described in the Linux sources.
