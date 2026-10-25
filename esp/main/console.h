@@ -139,6 +139,12 @@ void console_set_fb(uint16_t *fb);
    boot. */
 void console_draw_crash(uint16_t *base, int width, int height,
 			const struct crash_report *r);
+/* v4.6, after its review: the same report again, after console_draw_crash(),
+   into the board's second frame buffer (double buffering), with the log's
+   lines that call read and nothing more into the ring: the two pictures
+   are the same, and the ring has the report once. */
+void console_draw_crash_again(uint16_t *base, int width, int height,
+			      const struct crash_report *r);
 
 /* The last 'lines' lines of the ring into out, '\n' after each, '\0' at
    the end; returns how many lines. */

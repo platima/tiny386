@@ -583,6 +583,43 @@ int main(int argc, char **argv)
 	      strstr(tail, "What happened: Load access fault\n") &&
 	      !strstr(tail, "the crash screen was shown"),
 	      "a crash with no panel: the ring says nothing was shown");
+	/* v4.6, after its review (display finding 3): with both frame buffers
+	   (double buffering) the crash screen goes into the second too, as
+	   crash.c draws it: the same picture in both, its last lines the log's,
+	   and the report in the ring once.  v4.4 to v4.6 drew each buffer with
+	   console_draw_crash(), which put the report into the ring twice and
+	   listed the first copy on the second picture. */
+	console_puts(CON_INFO, "-- mark 9");
+	console_puts(CON_INFO, "the last line before a crash with both frame buffers");
+	static uint16_t fb2[W * H];
+	struct crash_report r3 = {
+		.core = 0, .what = "Store access fault",
+		.mepc = 0x40020000, .ra = 0x40020100, .sp = 0x2f07c000, .mcause = 7, .mtval = 0xfa50,
+	};
+	console_draw_crash(fb, W, H, &r3);
+	console_draw_crash_again(fb2, W, H, &r3);
+	write_ppm("console-6-crash-second-buffer.ppm", fb2);
+	check(!memcmp(fb, fb2, sizeof(fb)), "both frame buffers: the second has the same crash screen");
+	check(lines_after("-- mark 9", "CRASH (the crash screen was shown):") == 1 &&
+	      lines_after("-- mark 9", "What happened: Store access fault") == 1 &&
+	      lines_after("-- mark 9", "Where: mepc 40020000") == 1 &&
+	      lines_after("-- mark 9", "Backtrace") == 1,
+	      "both frame buffers: the report in the ring once");
+	int log_row = -1, last_row = -1;
+	bool listed = false;
+	for (int row = 2; row < 29; row++) {
+		char text[COLS + 1];
+		row_text(fb2, row, 0, text);
+		if (!strcmp(text, "The last lines of the log:"))
+			log_row = row;
+		else if (log_row >= 0 && !strncmp(text, "What happened: Store access fault", 33))
+			listed = true;
+		else if (log_row >= 0 && !strcmp(text, "the last line before a crash with both frame buffers"))
+			last_row = row;
+	}
+	check(log_row > 0 && !listed && last_row > log_row,
+	      "both frame buffers: the last lines of the log on the second picture are the log's, "
+	      "ending with its last line, without the report");
 
 	/* the UART got every line, also those printed while the picture had
 	   the panel */

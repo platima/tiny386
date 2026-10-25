@@ -1341,8 +1341,16 @@ static void crash_say_held(void)
 	}
 }
 
-void console_draw_crash(uint16_t *base, int width, int height,
-			const struct crash_report *r)
+/* v4.6, after its review (display finding 3): note false draws the same
+   report again into the second frame buffer, from the log's lines the
+   first draw read, and puts nothing into the ring: v4.4 to v4.6 drew each
+   buffer with the report put into the ring, so the second picture listed
+   the first one's report among the log's last lines, and the next boot's
+   last-run lines had it twice */
+static int s_crash_tail_lines;
+
+static void draw_crash(uint16_t *base, int width, int height,
+		       const struct crash_report *r, bool note)
 {
 	const uint16_t white = RGB565(255, 255, 255);
 	const uint16_t yellow = fg_of[CON_WARN];
@@ -1352,8 +1360,11 @@ void console_draw_crash(uint16_t *base, int width, int height,
 
 	/* the log's last lines, before this report goes in, with what the limit
 	   on repeated lines still held */
-	crash_say_held();
-	int tail = console_ring_tail(s_crash_tail, sizeof(s_crash_tail), 40);
+	if (note) {
+		crash_say_held();
+		s_crash_tail_lines = console_ring_tail(s_crash_tail, sizeof(s_crash_tail), 40);
+	}
+	int tail = s_crash_tail_lines;
 
 	if (base) {
 		uint32_t *d = (uint32_t *) base;
@@ -1378,17 +1389,20 @@ void console_draw_crash(uint16_t *base, int width, int height,
 	t.col = 0;
 	/* v4.6: with no frame buffer (no panel) nothing was drawn, and the
 	   next boot's lines say so */
-	ring_note(base ? "CRASH (the crash screen was shown):" :
-		  "CRASH (no panel, so nothing was shown):");
+	if (note)
+		ring_note(base ? "CRASH (the crash screen was shown):" :
+			  "CRASH (no panel, so nothing was shown):");
 
 	p = put_str(line, "What happened: ");
 	put_str(p, r->what ? r->what : "unknown");
 	ct_put(&t, line, white, 0);
-	ring_note(line);
+	if (note)
+		ring_note(line);
 	ct_newline(&t);
 	if (r->detail && r->detail[0]) {
 		ct_put(&t, r->detail, yellow, 0);
-		ring_note(r->detail);
+		if (note)
+			ring_note(r->detail);
 		ct_newline(&t);
 	}
 	ct_newline(&t);
@@ -1404,7 +1418,8 @@ void console_draw_crash(uint16_t *base, int width, int height,
 	p = put_str(p, "  mtval ");
 	put_hex(p, r->mtval);
 	ct_put(&t, line, white, 0);
-	ring_note(line);
+	if (note)
+		ring_note(line);
 	ct_newline(&t);
 
 	p = put_str(line, "Backtrace (code addresses on the stack, newest first):");
@@ -1415,7 +1430,8 @@ void console_draw_crash(uint16_t *base, int width, int height,
 		p = put_hex(p, r->bt[i]);
 	}
 	ct_put(&t, line, white, 0);
-	ring_note(line);
+	if (note)
+		ring_note(line);
 	ct_newline(&t);
 	ct_put(&t, "To decode: riscv32-esp-elf-addr2line -pfiaC -e tiny386.elf "
 	       "and the addresses above", grey, 0);
@@ -1466,5 +1482,18 @@ void console_draw_crash(uint16_t *base, int width, int height,
 	ct_put(&t, "The full report is on the UART (115200 baud). Take a photo of "
 	       "this screen, then press RESET.", yellow, 0);
 
-	s_ring.crashed = RING_CRASHED;
+	if (note)
+		s_ring.crashed = RING_CRASHED;
+}
+
+void console_draw_crash(uint16_t *base, int width, int height,
+			const struct crash_report *r)
+{
+	draw_crash(base, width, height, r, true);
+}
+
+void console_draw_crash_again(uint16_t *base, int width, int height,
+			      const struct crash_report *r)
+{
+	draw_crash(base, width, height, r, false);
 }

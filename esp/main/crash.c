@@ -117,10 +117,14 @@ static void crash_screen(panic_info_t *info)
 		cache_ll_writeback_all(CACHE_LL_LEVEL_ALL, CACHE_TYPE_DATA, CACHE_LL_ID_ALL);
 		base = (uint16_t *) ((uint32_t) fb + SOC_NON_CACHEABLE_OFFSET_PSRAM);
 	}
+	console_draw_crash(base, w, h, r);
+	/* v4.6, after its review (display finding 3): the second buffer gets
+	   the same picture, and the report goes into the ring once, not once
+	   for each buffer */
 	uint16_t *fb2 = lcd_crash_second_fb();
 	if (base && fb2 && (uint32_t) fb2 >= SOC_EXTRAM_LOW && (uint32_t) fb2 < SOC_EXTRAM_HIGH)
-		console_draw_crash((uint16_t *) ((uint32_t) fb2 + SOC_NON_CACHEABLE_OFFSET_PSRAM), w, h, r);
-	console_draw_crash(base, w, h, r);
+		console_draw_crash_again((uint16_t *) ((uint32_t) fb2 + SOC_NON_CACHEABLE_OFFSET_PSRAM),
+					 w, h, r);
 }
 
 void IRAM_ATTR __wrap_esp_panic_handler(panic_info_t *info)
