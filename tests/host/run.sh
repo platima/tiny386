@@ -704,6 +704,32 @@ if [ -n "$T_V4_5" ]; then
     result $st "the page-crossing test sees v4.5's bytes in the window's phys_mem and past RAM"
 fi
 
+# ==== 22. ISA DMA into the 0xA0000 window (v4.6) ====
+# i8257.c with tests/host/dma/test_dma_window.c: a transfer to memory drops
+# the bytes for 0xA0000 to 0xBFFFF, where the board keeps the devices'
+# state (SB16 command E2h writes a byte wherever channel 1 points), and
+# writes the rest to RAM as before.  Then v4.5's i8257.c, where those bytes
+# have to land in phys_mem.
+echo
+$CC -O1 -g -w -I"$TREE" -c -o "$OUT/dma_i8257.o" "$TREE/i8257.c" || exit 1
+$CC $CFLAGS -I"$TREE" -o "$OUT/test_dma_window" "$HERE/dma/test_dma_window.c" \
+    "$OUT/dma_i8257.o" || exit 1
+"$OUT/test_dma_window" > "$OUT/dma-window.log" 2>&1
+st=$?
+grep -v "^  window " "$OUT/dma-window.log"
+result $st "i8257.c: DMA writes into the 0xA0000 window dropped, the rest of a transfer to RAM as before"
+if [ -n "$T_V4_5" ]; then
+    git -C "$TREE" show "$T_V4_5":i8257.c > "$OUT/i8257-v4.5.c"
+    $CC -O1 -g -w -I"$TREE" -c -o "$OUT/dma_i8257_v45.o" "$OUT/i8257-v4.5.c" || exit 1
+    $CC $CFLAGS -I"$TREE" -o "$OUT/test_dma_window_v45" "$HERE/dma/test_dma_window.c" \
+        "$OUT/dma_i8257_v45.o" || exit 1
+    echo "(the same transfers against v4.5's i8257.c, where those bytes have to land in phys_mem)"
+    "$OUT/test_dma_window_v45" before > "$OUT/dma-window-v4.5.log" 2>&1
+    st=$?
+    grep "ok: v4.5\|FAIL\|checks" "$OUT/dma-window-v4.5.log" | sed 's/^ */    | /'
+    result $st "the DMA test sees v4.5's bytes in the window's phys_mem"
+fi
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]

@@ -437,6 +437,11 @@ int i8257_dma_read_memory(IsaDma *obj, int nchan, void *buf, int pos,
     return len;
 }
 
+/* The ESP-IDF port keeps the devices' state in phys_mem from 0xA0000 to
+   0xBFFFF, where the CPU's own stores go to the VGA instead; a DMA write
+   into that range is dropped rather than stored over it. */
+#define I8257_HOLE(a) ((a) >= 0xa0000 && (a) < 0xc0000)
+
 int i8257_dma_write_memory(IsaDma *obj, int nchan, void *buf, int pos,
                            int len)
 {
@@ -453,7 +458,8 @@ int i8257_dma_write_memory(IsaDma *obj, int nchan, void *buf, int pos,
         for (hwaddr i = 0;
              addr - pos - len + i < s->phys_mem_size && i < len;
              i++) {
-            s->phys_mem[addr - pos - len + i] = p[i];
+            if (!I8257_HOLE(addr - pos - len + i))
+                s->phys_mem[addr - pos - len + i] = p[i];
         }
         //cpu_physical_memory_write (addr - pos - len, buf, len);
         /* What about 16bit transfers? */
@@ -465,7 +471,8 @@ int i8257_dma_write_memory(IsaDma *obj, int nchan, void *buf, int pos,
         for (hwaddr i = 0;
              addr + pos + i < s->phys_mem_size && i < len;
              i++) {
-            s->phys_mem[addr + pos + i] = p[i];
+            if (!I8257_HOLE(addr + pos + i))
+                s->phys_mem[addr + pos + i] = p[i];
         }
         //cpu_physical_memory_write (addr + pos, buf, len);
     }
