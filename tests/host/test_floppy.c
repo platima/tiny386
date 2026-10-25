@@ -7,6 +7,8 @@
  *   a drive number of 2 or more is refused, not used as an index;
  *   a cylinder, head, sector and count past the image's end are refused,
  *     and the image file does not grow;
+ *   a head or a first sector the disk does not have is refused (v4.6), and
+ *     a transfer may still run on into the next head;
  *   reads and writes inside the image work as before;
  *   a write the medium refuses is an error for the guest, and counted
  *     (emulink_error_count(), which the console's card-error line adds in);
@@ -89,6 +91,19 @@ int main(int argc, char **argv)
 	CHECK(start(e, 0x101, 0, 0, 0, 0, 1) == (uint32_t) -EIO, "read, sector 0 (there is none): refused");
 	CHECK(file_size(path) == FLOPPY_BYTES, "the image is still %d bytes (%ld)", FLOPPY_BYTES,
 	      file_size(path));
+
+	/* a first sector the disk does not have (v4.6, upstream 81e09ee): not
+	   found, as on a real drive, rather than read from somewhere else (head
+	   2 of cylinder 0 was cylinder 1 head 0, and sector 19 head 1 sector 1);
+	   a transfer may still run on from there into the next head */
+	CHECK(start(e, 0x101, 0, 0, 2, 1, 1) == (uint32_t) -EIO, "read, head 2 of 2: refused");
+	CHECK(start(e, 0x101, 0, 0, 0, 19, 1) == (uint32_t) -EIO, "read, sector 19 of 18: refused");
+	CHECK(start(e, 0x102, 0, 0, 1, 19, 1) == (uint32_t) -EIO, "write, sector 19 of 18: refused");
+	CHECK(start(e, 0x101, 0, 0, 0, 18, 2) == 0, "read, two sectors from head 0's last: accepted");
+	memset(buf, 0, 1024);
+	CHECK(emulink_data_read_string(e, buf, 2, 512) == 512 && emulink_status_read(e) == 0 &&
+	      buf[0] == 17 && buf[512] == 18,
+	      "its data: sectors 17 and 18, the second from head 1 (%02X %02X)", buf[0], buf[512]);
 
 	/* inside: as before */
 	CHECK(start(e, 0x101, 0, 79, 1, 18, 1) == 0, "read, the last sector: accepted");

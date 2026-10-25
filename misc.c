@@ -478,8 +478,10 @@ unsigned emulink_error_count(void)
 }
 
 /* the guest's drive, cylinder, head, sector and count name sectors the
-   image has: no seek past its end, which on the card would make the file
-   grow */
+   image has: a first sector the disk has (a sector past the track's, or a
+   head it lacks, is not found, as on a real drive, rather than read from
+   somewhere else), and no seek past its end, which on the card would make
+   the file grow */
 static int emulink_range_ok(EMULINK *e)
 {
 	if (e->args[0] >= 2 || !e->fdd[e->args[0]])
@@ -488,6 +490,8 @@ static int emulink_range_ok(EMULINK *e)
 	int64_t c = e->args[1] >> 16;
 	int64_t h = (e->args[1] >> 8) & 0xff;
 	int64_t s = e->args[1] & 0xff;
+	if (c >= f->tracks || h >= f->heads || s < 1 || s > f->sectors)
+		return 0;
 	int64_t total = (int64_t) f->sectors * f->tracks * f->heads;
 	int64_t lba = (c * f->heads + h) * f->sectors + (s - 1);
 	return s >= 1 && lba >= 0 && lba + (int64_t) e->args[2] <= total;
