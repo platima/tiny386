@@ -233,6 +233,10 @@ static PCScreen *screen_init(int width, int height)
 		c->fb = lcd_vga_fb();
 #endif
 	} else {
+		/* no panel frame buffer: from the emulator's pool, before the
+		   guest's memory (v4.6: on an LCD_ZERO_COPY board
+		   settle_memory() and check_config() count it,
+		   own_screen_bytes()) */
 		c->fb = bigmalloc(LCD_WIDTH * LCD_HEIGHT * 2);
 	}
 	return c;
@@ -906,6 +910,22 @@ static void psram_test(int passes)
 			       (unsigned) bits);
 }
 
+/* v4.6: what screen_init() takes from the emulator's pool before pc_new()
+   takes the guest's memory.  On a board whose VGA code draws straight into
+   the panel's frame buffer (LCD_ZERO_COPY), nothing, unless there is no
+   panel (none at power-on): the PC's picture then needs a buffer of its
+   own, 752 KiB on the Korvo-1, which v4.5 did not count, so that pc_new()
+   could stop with "Out of emulator memory ... Lower mem_size or
+   vga_mem_size" for a mem_size that fitted. */
+static long own_screen_bytes(void)
+{
+#ifdef LCD_ZERO_COPY
+	if (!globals.panel_fb)
+		return round4k((long) LCD_WIDTH * LCD_HEIGHT * 2);
+#endif
+	return 0;
+}
+
 /* The guest's memory: what the ini asks for if it fits; "mem_size = max",
    0 or no line at all gives the most that fits (14M on the Korvo-1 with
    vga_mem_size 256K or 320K); more than fits is lowered to that, with a
@@ -925,17 +945,24 @@ static void settle_memory(void)
 		conf.vga_mem_size = down;
 	}
 	long vga = round4k(conf.vga_mem_size + VGA_MEM_SLACK);
-	long fit = (psram_len - vga) / (1024 * 1024) * (1024 * 1024);
+	/* v4.6: what is left once the PC's own picture buffer is out, if it
+	   needs one (own_screen_bytes()) */
+	long own = own_screen_bytes();
+	long room = psram_len - own;
+	if (own)
+		console_printf(CON_INFO, "No panel: %ld KiB of the emulator's memory go to the "
+			       "PC's own picture buffer (%ld KiB left).", own / 1024, room / 1024);
+	long fit = (room - vga) / (1024 * 1024) * (1024 * 1024);
 	if (conf.mem_size <= 0) {
 		conf.mem_size = fit;
 		console_printf(CON_INFO, "mem_size: %ldM, the most there is room for "
 			       "(no mem_size line, or max).", fit / (1024 * 1024));
-	} else if (round4k(conf.mem_size) + vga > psram_len && fit >= 1024 * 1024) {
+	} else if (round4k(conf.mem_size) + vga > room && fit >= 1024 * 1024) {
 		console_printf(CON_WARN, "mem_size %ldK with vga_mem_size %ldK needs "
 			       "%ldK, and the emulator has %ldK: mem_size lowered to "
 			       "%ldM, the most that fits.", conf.mem_size / 1024,
 			       conf.vga_mem_size / 1024, (round4k(conf.mem_size) + vga) / 1024,
-			       psram_len / 1024, fit / (1024 * 1024));
+			       room / 1024, fit / (1024 * 1024));
 		conf.mem_size = fit;
 	}
 }
@@ -1262,15 +1289,17 @@ static int check_config(void)
 
 	long vga = round4k(conf.vga_mem_size + VGA_MEM_SLACK);
 	long need = round4k(conf.mem_size) + vga;
+	long room = psram_len - own_screen_bytes();     /* v4.6 */
 	if (conf.mem_size < 1024 * 1024) {
 		console_printf(CON_ERROR, "[pc] mem_size = %ld KiB is too small: give "
 			       "at least 1M.", conf.mem_size / 1024);
 		bad++;
-	} else if (need > psram_len) {
+	} else if (need > room) {
 		console_printf(CON_ERROR, "mem_size %ld KiB and vga_mem_size %ld KiB "
-			       "need %ld KiB, but the emulator has %ld KiB. Lower "
+			       "need %ld KiB, but the emulator has %ld KiB%s. Lower "
 			       "vga_mem_size in %s.", conf.mem_size / 1024,
-			       conf.vga_mem_size / 1024, need / 1024, psram_len / 1024,
+			       conf.vga_mem_size / 1024, need / 1024, room / 1024,
+			       room < psram_len ? " beside the PC's own picture buffer (no panel)" : "",
 			       s_ini_name);
 		bad++;
 	}
