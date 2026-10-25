@@ -1,7 +1,7 @@
 BUILD-NOTES 31.11: v4.5's card partition on the PC harness (pp45.sh, as v4.4's ppfinal.sh), 2026-10-24.
 IOS.LOG is summarised (which units go through real-mode drivers), never copied.
 
-v4.5 (code 6755352): a card partition as the guest's whole disk on the PC harness, 2026-10-24 15:04:46.
+v4.5 (code 8196e20): a card partition as the guest's whole disk on the PC harness, 2026-10-24 15:04:46.
 The harness: /home/owner/org2/v45/ph (a copy of v4.4's ~/org2/v44sd/ph harness, unchanged; build.sh compiles sd_part.c).
 headless: tree: /home/owner/org2/v45/t-c1 (no .commit) 
 warnings: 0

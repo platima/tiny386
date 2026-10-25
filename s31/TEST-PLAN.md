@@ -1238,12 +1238,14 @@ reviews (`BUILD-NOTES.md` 31): the ini saved without renaming anything, the spee
 Ctrl+Alt+F9 together, the swap counts on the speed screen, the old card's WIN9X partition refused
 for `sd:3`, and the new card's p3 type. Nothing of v4.4 has run on a board, so flash v4.5 and take
 this section with it. On the PC: all of it [verified: `BUILD-NOTES.md` 29, 30 and 31]. On the
-board: none of it yet [unknown]; this section is what to try.
+board: none of it yet [unknown]; this section is what to try. (2026-10-25: you have run v4.5, and
+all of it worked, the new card too, but `double_buffer = 1`, which crashed at boot, and pacing,
+which did not help [reported]. v4.6 answers both: section 17.)
 
 ### 16a. The app, and the card's files
 
 1. `flash-dualboot.bat COM10 app` (FLASH.txt 3), as for v4.3; its lines should say
-   `App version: v4.5`.
+   `App version: v4.5` (v4.6 now: 17a).
 2. The card: `card\tiny386\win95-14m.ini` and `win95-800x480.ini` have new lines, all commented
    out (what each new setting does, so that a key's save lands beside its comment): copy them over
    your old ones if you have not changed those, or leave yours, which work as before.
@@ -1281,32 +1283,19 @@ Both are off by default. Try each with the pointer change of 14c in:
   type, and again to turn it off: does the sprite of T386MON's test, or a window you drag, still go
   black and back? On the PC it takes the pictures caught part way through drawing from 7, 4 and 4
   per cent of your session's to 2, 0 and 1, but T386MON's tests get a third fewer pictures
-  [verified on the PC: `BUILD-NOTES.md` 29.7].
+  [verified on the PC: `BUILD-NOTES.md` 29.7]. (2026-10-25: on your board it changed none of the
+  glitches you see and lowered the panel's frame rate [reported], so it stays off by default.)
 * **Double buffering** (`double_buffer`, Ctrl+Alt+F9, the Korvo-1 only): Windows' picture goes to a
   second frame buffer, shown at the panel's next frame, so no frame shows two pictures at once (your
   16-bit colour bands). Set `double_buffer = 1` in the ini (or press Ctrl+Alt+F9, which saves it, and
-  restart). (v4.6) After you choose the ini, a grey line says `double_buffer = 1: tiny386 starts
-  again now, once, ...`, the panel goes dark for a moment and the boot console starts again by
-  itself: the two frame buffers are made with the panel before anything else (v4.5 made the second
-  one later, and on your board the panel would not start again, the load access fault at
-  `0000fa50`). That start says `This start is tiny386's own restart for double_buffer = 1: the
-  panel was started with two frame buffers ...`, takes the same ini with no menu (`Starting ...,
-  as chosen before the restart (no menu).`), and after the settings says `double_buffer = 1: two
-  frame buffers of 750 KiB, both made with the panel at power-on ...`. Every start with
-  `double_buffer = 1` does this one restart. If the panel will not start with two even then, that
-  start has one frame buffer, as with `double_buffer = 0`, and a yellow line `double_buffer = 1:
-  one frame buffer at this start. The panel would not start with two at power-on (ESP_ERR_...)`
-  with the memory free. **Photo** that line: it says why, which no one knows yet. One Ctrl+Alt+F9
-  once the PC runs then saves `double_buffer = 0`. If the board restarts more than once in a row,
-  or the panel stays dark after the restart, tell me (it should not: a start that follows a
-  software restart never restarts again). A dark panel there still starts the PC: give Windows a
-  minute, press Ctrl+Alt+F9 once (it saves `double_buffer = 0`), wait a few seconds and press
-  RESET; or set `double_buffer = 0` on the PC. With Linux the default (you hold VOL+ for tiny386)
-  a restart would start Linux, so there is no restart: one frame buffer and a yellow line saying
-  so; double buffering needs the tiny386-default table.
+  restart). (v4.6: both frame buffers are now made with the panel at power-on, after tiny386
+  starts itself again once, and only with tiny386 the default at reset; section 17 has the steps,
+  the lines to expect, what to do if it goes wrong, and the photos. v4.5's way crashed on your
+  board, the load access fault at `0000fa50`.)
   **Photo** the boot console's memory lines: the second buffer takes about 750 KiB of the emulator's
-  memory, which costs Windows 1M or nothing, depending on your pool, which is not known yet
-  [unknown]; the boot console's `Emulator memory` and `mem_size` lines in that photo decide it
+  memory, which costs Windows 1M or nothing, depending on your pool (v4.6: with your pool,
+  nothing for `win95-sd.ini` and 1M for `win95-14m.ini`, 17c [inferred]); the boot console's
+  `Emulator memory` and `mem_size` lines in that photo decide it
   (`BUILD-NOTES.md` 29.6 and 31.5). Then T386MON's full-picture test at 16 bits: the band of mixed
   rows should be gone. Ctrl+Alt+F12's `double_buffer = 1` line counts the swaps since the start and
   how many the panel did not report (v4.5); if that second count goes up and the picture stops
@@ -1320,7 +1309,8 @@ milliseconds should fall in fill, scroll, text and sprite, and stay in the full 
 [verified on the PC: `BUILD-NOTES.md` 29.4; the board unknown].
 
 Two choices are yours after this: whether double buffering is worth 1M of Windows' memory, and
-whether pacing should be on by default for Windows.
+whether pacing should be on by default for Windows. (2026-10-25: pacing stays off, from your run of
+v4.5. Double buffering's is still yours, once it runs: 17.)
 
 ### 16d. The grey screen at a restart from 16 colours
 
@@ -1378,6 +1368,125 @@ The photos of 16b to 16e, the ini after a save, T386MON's log and tables with ea
 screen with double buffering on (its `double_buffer = 1` line has the swap counts), the boot
 console's memory lines with and without double buffering, the two choices of 16c, and for the new
 card the console, the speed screen and `chkdsk`'s output; and anything that looked wrong.
+
+
+## 17. v4.6: double buffering made at power-on, and the guest kept out of the devices' state
+
+v4.6 answers your run of v4.5 on 2026-10-25 [reported]. Everything worked, the new card too, but
+`double_buffer = 1` stopped the boot with a load access fault at `0000fa50`, and pacing changed none
+of the glitches and lowered the panel's frame rate. The crash: v4.5 deleted the panel once the ini
+was read and started it again with two frame buffers. On your board that start failed, with two
+and then with one, and the VGA code was then handed a frame buffer at address 0 [verified on the
+PC: the host test faults at the same address; that your board took this path is inferred]. Why the
+panel would not start again is not known. Memory is the likeliest cause [inferred].
+
+v4.6 makes both frame buffers with the panel at power-on, before anything else takes memory, and
+never starts the panel again (`BUILD-NOTES.md` 32.3). The ini is only known after the boot menu, so
+a boot with `double_buffer = 1` starts tiny386 again once by itself. Pacing stays off by default,
+unchanged (16c). v4.6 also takes in upstream's fix that moves the devices' state 32 bytes up, and
+three checks of our own that keep the guest's stores and DMA out of it (`BUILD-NOTES.md` 32.4).
+On the PC Windows 95 does exactly what it did on v4.5 [verified: the same instruction counts in
+three runs]. Nothing of v4.6 has run on a board [unknown]; this section is what to try.
+
+### 17a. The app
+
+1. `flash-dualboot.bat COM10 app` (FLASH.txt 3), as for v4.5; its lines should say
+   `App version: v4.6`. No card file changed.
+2. For double buffering tiny386 must be the default at reset: `flash-dualboot.bat COM10 table
+   tiny386` (FLASH.txt 2), if it is not already. tiny386 restarts itself once for double
+   buffering, and with Linux the default that restart would start Linux, so there it does not
+   restart and keeps one frame buffer (17d).
+
+### 17b. First with double_buffer = 0: the memory lines
+
+Boot `win95-sd.ini` as it is (`double_buffer` commented out, so 0). Everything should be as on
+v4.5, with no new line about double buffering. One line reads differently:
+
+    PC built. Device memory (the 0xA0000 window): 93344 of 131040 bytes used. ...
+
+v4.5 said `of 131072`: upstream's fix leaves 32 bytes between the guest's own memory and the
+devices' state, so a store that runs over the end of the guest's memory there cannot reach it. The
+used figure should be v4.5's [verified on the PC harness: 91616 of 131040 with `win95-14m.ini`'s
+settings, 91616 of 131072 on v4.5; 93344 for `win95-sd.ini` and 93408 for `win95-800x480.ini`
+inferred from the build's sizes].
+
+**Photo** the boot console's memory lines: `Emulator memory: ... KiB` (15,104 KiB on v4.5, from
+your photo of the crash), `mem_size: 13M, ...` and the `PC built.` line.
+
+### 17c. double_buffer = 1, from power-on
+
+With tiny386 the default: set `double_buffer = 1` under `[esp]` in `win95-sd.ini` (on the PC, or
+Ctrl+Alt+F9 once Windows runs, which saves it). Switch the board off, then on again (power, not
+only RESET), and let the menu start `win95-sd.ini` or choose it.
+
+1. After the ini's settings, a grey line:
+
+       double_buffer = 1: tiny386 starts again now, once, so that the panel gets both frame
+       buffers before anything else takes memory. The next start takes win95-sd.ini without the
+       menu.
+
+   One second later the panel goes dark for a moment and the boot console starts again by itself.
+   A phone video catches this best.
+2. The second start's banner says `Reset by a software restart.`, then, in grey: `This start is
+   tiny386's own restart for double_buffer = 1: the panel was started with two frame buffers,
+   before anything else.` No boot menu: `Starting win95-sd.ini, as chosen before the restart (no
+   menu).` in green. After the settings: `double_buffer = 1: two frame buffers of 750 KiB, both
+   made with the panel at power-on, before the emulator's memory (N KiB); pictures go to the panel
+   at its frame.` **Photo** the whole console.
+3. The memory lines in that photo: `Emulator memory:` about 750 KiB less than in 17b (about 14,350
+   KiB), and still `mem_size: 13M`. With `win95-sd.ini`'s `vga_mem_size = 768K` the second buffer
+   costs Windows nothing on your board; with `win95-14m.ini`'s 14M at 320K it would cost 1M, and a
+   yellow line would lower `mem_size` to 13M [inferred: arithmetic on the code, with your pool].
+   The `PC built.` line as in 17b.
+4. In Windows, T386MON's full-picture test at 16 bits: the band of mixed rows should be gone. Note
+   the panel's fps against 17b's. After a few minutes, **photo** Ctrl+Alt+F12's `double_buffer = 1`
+   line: it counts the swaps, and those the panel did not report. If that second count goes up and
+   the picture stops changing, set `double_buffer = 0` and tell me.
+5. RESET once: the same restart and the same lines. Every boot with `double_buffer = 1` makes this
+   one restart.
+
+### 17d. If it goes another way
+
+* **A yellow line** in place of step 2's grey ones:
+
+      double_buffer = 1: one frame buffer at this start. The panel would not start with two at
+      power-on (ESP_ERR_...), with PSRAM free ... KiB (largest block ... KiB) and internal DMA
+      memory free ... KiB; it started with one, as with double_buffer = 0. ...
+
+  **Photo** it. The error name and the three memory figures say why the panel will not take two
+  frame buffers, which no one knows yet. The PC starts 10 s later with one frame buffer, as with
+  `double_buffer = 0`; one Ctrl+Alt+F9 once Windows runs saves `double_buffer = 0`.
+* **`It followed a software restart with no note of tiny386's own ...`** straight after step 1's grey
+  line: the LP SRAM did not keep the note through the restart. One restart only, no loop. Tell me.
+* **`The last start was cut short while it started the panel with two frame buffers ...`**: the
+  chip reset inside that start. **Photo** the banner's reset line too.
+* **A dark panel** after the restart: the PC still starts. Give Windows a minute, press Ctrl+Alt+F9
+  once (it saves `double_buffer = 0`), wait a few seconds and press RESET; or set
+  `double_buffer = 0` on the PC.
+* **More than one restart in a row**: it should not happen, as a start that follows a software
+  restart never restarts again. Switch off, set `double_buffer = 0` on the PC, and tell me.
+* **With Linux the default** (VOL+ for tiny386): no restart, and a yellow line, `double_buffer = 1:
+  one frame buffer. The second is made with the panel at power-on, by one restart, and tiny386 is
+  the dual boot's VOL+ app here, so a restart would start Linux. ...`. That is expected.
+* **Linux's `reboot` into tiny386**, with tiny386 the default: one frame buffer, and the yellow
+  "software restart with no note" line, which says to press RESET. Also expected.
+
+### 17e. Windows 95 as before
+
+The memory checks change nothing Windows does on the PC [verified: the same instruction counts to
+the desktop, through a restart and in MS-DOS mode]. On the board, with `double_buffer = 0`: start
+Windows from p3, restart it once from the Start menu, and once into MS-DOS mode (`mem`, `dir`,
+`exit`), as on v4.5. Anything different is worth a photo. T386MON's instructions a second, against
+your v4.5 figure on the same test, would show whether the change to each 16 or 32-bit access costs
+anything you can see: one instruction more and one memory load fewer [verified: the board's
+compiled code; the time on the board unknown].
+
+### 17f. What to send back
+
+The photos of 17b to 17d (the boot console with each setting, the speed screen with double
+buffering on), T386MON's full-picture test with double buffering on, any yellow line, how many
+times the board restarted, and whether the band of mixed rows is gone. Then the one choice left
+from 16c: whether double buffering is worth what it costs.
 
 
 ## Other ways to run it

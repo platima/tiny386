@@ -62,13 +62,20 @@ speed screen no longer leaves the console's text round a picture narrower than t
 screen counts the double buffer's swaps; `sd:3` refuses the old card's WIN9X partition, the one
 holding `win95.img`; `newcard.sh` gives p3 an LBA type when it lies past what CHS reaches, and
 `export-root.sh` finds the root by its device number; and the docs say what the new card's
-procedure really adds to the old card. The app calls itself `v4.5`. Every release is a tag on this
-branch, `s31-v3` and `s31-v3.1` to `s31-v4.5` (`README.md` beside this file).
+procedure really adds to the old card. The app called itself `v4.5`. Now v4.6, 2026-10-25, from
+Plat's run of v4.5 on his board, where all he tried worked but double buffering, which crashed at
+boot, and pacing, which did not help (`BUILD-NOTES.md` 32, `TEST-PLAN.md` 17): with
+`double_buffer = 1` both frame buffers are made with the panel at power-on, after one restart of
+tiny386 itself at each boot, and the panel is never started again; pacing stays off by default;
+and upstream's fix that moves the devices' state 32 bytes up, with three checks of our own, keeps
+the guest's stores and DMA out of that state. The app calls itself `v4.6`. Every release is a tag
+on this branch, `s31-v3` and `s31-v3.1` to `s31-v4.6` (`README.md` beside this file).
 
 This file was the README of the v4.3 package; on 2026-10-24 it moved to the `esp32-s31` branch of
 github.com/platima/tiny386 with the notes, scripts and evidence around it. The commit hashes named
 here and in the other notes are the scratch repository's: `old-to-new.tsv` gives each one's hash on
-this branch, and an old tag `vN` is `s31-vN` here.
+this branch, and an old tag `vN` is `s31-vN` here. The branch's own history from `s31-v4.4` on was
+rewritten on 2026-10-25 (`BUILD-NOTES.md` 32.6); the notes name the new hashes.
 
 **Almost nothing here has been seen on a board yet.** Plat has written v3.6 to his Korvo-1: FreeDOS
 and BENCH ran (2.231 million instructions a second), the status LED was far too bright (v3.7 answers
@@ -79,27 +86,32 @@ same virtual second (`BUILD-NOTES.md` 21). Plat had Windows 95 at its desktop on
 [reported: 2026-10-23], and then on v4.1 at 800x480, where the mouse pointer and anything moving
 flickered [reported: 2026-10-23], which v4.2 answers. Nothing of v4.2 or v4.3 had run on a board
 when v4.3 was released; Plat has since run v4.3 on his Korvo-1 with T386MON [reported: 2026-10-24].
-Nothing of v4.4 or v4.5 has run on a board yet.
+Plat ran v4.5 on 2026-10-25: all he tried worked, the new card too, but `double_buffer = 1`, which
+crashed at boot, and pacing, which did not help [reported]; v4.6 answers both. Nothing of v4.6 has
+run on a board yet.
 Everything was built and checked on the PC: host tests, builds from nothing giving the same bytes
 twice, the flash scripts' whole flow with a stand-in esptool, the Windows 95 runs, the driver's
 install through Windows' own dialogs (since the review of v4.2 also from the changed floppy), the
 pointer change typed in MS-DOS mode, and (v4.3) T386MON in Windows 95 reading the port. The record
-of each board run is Plat's, with `TEST-PLAN.md`; its section 16 (v4.4 and v4.5) is the new steps:
-the keys' saves, the two cures for tearing, and the new card with Windows on p3. From v3.6 to v4.4
-(the dual boot already in), `flash-dualboot.bat COM10 app` is all v4.5 needs (`FLASH.txt` 3), with the card's
+of each board run is Plat's, with `TEST-PLAN.md`; its section 16 (v4.4 and v4.5) is the keys'
+saves, the two cures for tearing, and the new card with Windows on p3, and section 17 (v4.6) is
+double buffering made at power-on. From v3.6 to v4.5
+(the dual boot already in), `flash-dualboot.bat COM10 app` is all v4.6 needs (`FLASH.txt` 3), with the card's
 two inis copied again if they are older than v3.8's, and for section 13 three files more on the card
 (`card\tiny386\`: `vgabios.bin`, `win95-800x480.ini`, `vbe-reg.img`); v4.2 and v4.3 changed no card
 file, and v4.4 adds commented lines to the Windows inis and `win95-sd.ini` for the new card (v4.5:
-two comment lines more in `win95-sd.ini`, which goes on the new card only). To have tiny386 start with no key
+two comment lines more in `win95-sd.ini`, which goes on the new card only; v4.6 changed no card
+file). To have tiny386 start with no key
 held and Linux on VOL+ instead, one more small write, the partition table alone:
-`flash-dualboot.bat COM10 table tiny386` (`FLASH.txt` 2; `table linux` turns it back).
+`flash-dualboot.bat COM10 table tiny386` (`FLASH.txt` 2; `table linux` turns it back). v4.6's
+double buffering needs that table: its one restart at each boot would start Linux under the other.
 
 
 ## Start here
 
 | Read | For |
 |-|-|
-| `TEST-PLAN.md` | first, its top section: every risk to your Linux install, plainly (power Linux off first; the scripts copy the flash before writing). Then the first boot on the Korvo-1, step by step: what to flash, what to see on the panel and on the status LED, what to photograph. Section 8 is Windows 95: a fresh copy of the image, what to photograph at the desktop or after a failure, safe mode and a logged start. Section 13 (v4.0) is Windows at 800x480: the driver to fetch, its install through Windows' dialogs, the registry file, what to photograph. Section 14 (v4.2) is the mouse pointer at 800x480: what it looks like now, the one-byte change to the driver, what should change, and Ctrl+Alt+F11. Section 15 (v4.3) is T386MON on the board: its tests at 640x480 in 16 colours and at 800x480 in 16 bits, what to photograph, and Ctrl+Alt+F11 seen in it. Section 16 (v4.4 and v4.5) is the keys' saves, the two cures for tearing, and the new card with Windows from its partition 3 |
+| `TEST-PLAN.md` | first, its top section: every risk to your Linux install, plainly (power Linux off first; the scripts copy the flash before writing). Then the first boot on the Korvo-1, step by step: what to flash, what to see on the panel and on the status LED, what to photograph. Section 8 is Windows 95: a fresh copy of the image, what to photograph at the desktop or after a failure, safe mode and a logged start. Section 13 (v4.0) is Windows at 800x480: the driver to fetch, its install through Windows' dialogs, the registry file, what to photograph. Section 14 (v4.2) is the mouse pointer at 800x480: what it looks like now, the one-byte change to the driver, what should change, and Ctrl+Alt+F11. Section 15 (v4.3) is T386MON on the board: its tests at 640x480 in 16 colours and at 800x480 in 16 bits, what to photograph, and Ctrl+Alt+F11 seen in it. Section 16 (v4.4 and v4.5) is the keys' saves, the two cures for tearing, and the new card with Windows from its partition 3. Section 17 (v4.6) is double buffering made at power-on: the restart, the lines to expect, what to do if it goes another way, the memory lines, and Windows as before |
 | `newcard\README.md` | v4.4: a new card for the dual boot with Windows' own volume on p3, step by step: Linux's root off the old card (`export-root.sh` on the board's Linux), `newcard.sh` in WSL, writing the image, what to expect; the old card keeps its table, its Linux root and its `win95.img`, and only gets files added to its two FAT drives |
 | T386MON's `README.md` (github.com/platima/T386Mon) | T386MON, the monitor for Windows 95 on tiny386 (`T386MON.EXE` on the floppy `t386mon.img`): what it shows, its tests, its log, and which firmware has the information port it reads (v4.3 and later). Its `PROTOCOL.md` is the port itself |
 | `qemumini-pointer\README.txt` | v4.2: why the pointer flickers at 800x480 with VMDisp9x's QEMU driver, and three ways to give the pointer to Windows' DIB engine: six lines in MS-DOS mode on the board, `qemumini-pointer.bat` on the card's Windows image, or a changed copy of the driver's floppy |
@@ -110,7 +122,7 @@ held and Linux on VOL+ instead, one more small write, the partition table alone:
 | `research\WIN95-FIX.md` | why Windows 95 crashed (the guest's timer after a wait for the card) and what v3.8 changed, with the PC runs |
 | `LINE-OUT.md` | the DOS board's 3.5 mm line out and, from rev A2c, its speakers: the level (`audio_shift`, now 2 by default), mute, what to try |
 | `REVIEW-RESOLUTION.md` | every review round's findings, one line each: fixed, documented, or deferred and why; round 3 is the review of v3.3, round 4 the review of v3.5, round 5 the two reviews of v3.8, round 6 the two reviews of v4.0, round 7 the flicker on v4.1 (the brief's suspects and the two investigations' recommendations), round 8 the review of v4.2 (`REVIEW-v42.md`), round 9 (v4.3) the review of the information port (T386MON's own review, not in this tree) as it stands in the merged firmware, round 10 the review of v4.3 (`REVIEW-v43.md`), round 11 the two reviews of v4.4 (`REVIEW-v44-display.md`, `REVIEW-v44-storage-and-safety.md`) |
-| `BUILD-NOTES.md` | how v3 was put together, built and checked; sizes; what is still unknown; section 12 for the second round, section 14 for v3.3, section 15 for v3.4, section 16 for v3.5, section 17 for v3.6, section 18 for v3.7, sections 19 and 20 for v3.8 (19 the Windows 95 fix, 20 the disk light, the log and the images), section 21 for v3.9, section 22 for v4.0, section 23 for v4.1 (23.9: what each colour depth costs in guest memory and speed), section 24 for the flicker's investigations, section 25 for v4.2 (25.13: what the mouse pointer costs Windows, either way), section 26 for the review of v4.2 (no firmware change), section 27 for v4.3 (the information port merged), section 28 for the review of v4.3 (no firmware change), section 29 for v4.4's display work and section 30 for its storage work and the release (the card partition as the guest's disk, the new card, the package), section 31 for v4.5 (the two reviews of v4.4) |
+| `BUILD-NOTES.md` | how v3 was put together, built and checked; sizes; what is still unknown; section 12 for the second round, section 14 for v3.3, section 15 for v3.4, section 16 for v3.5, section 17 for v3.6, section 18 for v3.7, sections 19 and 20 for v3.8 (19 the Windows 95 fix, 20 the disk light, the log and the images), section 21 for v3.9, section 22 for v4.0, section 23 for v4.1 (23.9: what each colour depth costs in guest memory and speed), section 24 for the flicker's investigations, section 25 for v4.2 (25.13: what the mouse pointer costs Windows, either way), section 26 for the review of v4.2 (no firmware change), section 27 for v4.3 (the information port merged), section 28 for the review of v4.3 (no firmware change), section 29 for v4.4's display work and section 30 for its storage work and the release (the card partition as the guest's disk, the new card, the package), section 31 for v4.5 (the two reviews of v4.4), section 32 for v4.6 (double buffering made at power-on, the guest kept out of the devices' state, the branch's history rewritten) |
 
 
 ## What is in this folder, and what is in the releases
@@ -127,13 +139,13 @@ BIOS's source are assets of the release for each `s31-v*` tag, as `README.md` be
 | `flash-dualboot.bat`, `flash-standalone.bat`, `back-to-linux.bat`, `flash-paths.cmd` | the Windows scripts; each needs the port (`COM10`), checks its files, reads the board first (MAC, partition table, and over Linux the bootloader) and stops if it is not one the script was made for, copies the whole flash into `backup\` before its first write over Linux, prints the esptool commands, and writes only after Y. `flash-dualboot.bat COM10 table tiny386` (or `table linux`) chooses which system starts with no key held, writing only the table at 0x8000; all three scripts know both dual-boot tables. Since v3.9 a first install cut short over Linux's table is finished by running the same script again, with the backup taken before it kept (none is ever taken of a cut state); `app` and `table` go on only with the dual-boot bootloader at 0x2000; and the DOS board's image is refused for the Korvo-1 (`dualboot\DUALBOOT.md` 14). They expect the image sets in `images\` beside them, as the release has them |
 | `backup\` | not here yet: made by the first run of `flash-dualboot.bat` (or `flash-standalone.bat`) over Linux, the flash as it was. Keep it; `back-to-linux.bat` puts it back |
 | `qemumini-pointer\` | v4.2: `README.txt` (why and how), `qemumini-pointer.bat` and `qemumini-pointer.ps1`, which change one byte of VMDisp9x 1.2025.0.119's `QEMUMINI.DRV` inside the driver's floppy image (a changed copy) or a Windows 95 disk image (in place, or a copy), after checking it is that file; `-Check`, `-Undo`. No byte of the driver is in the package |
-| `tiny386-idf-v4.patch` (release) | since v4.0 the build's patch: everything against tiny386's master of 2026-10-22, 4ce2e06 (github.com/hchunhui/tiny386): the v4.5 firmware and its host tests (`git diff 4ce2e06 s31-v4.5 -- . ':(exclude)s31'` on this branch; up to v4.3 `git diff upstream-20261022 v4.3` in the scratch repository, the same bytes as `git diff 4ce2e06 s31-v4.3` here), which `build.sh` applies |
-| `tiny386-idf-v3.patch` (release) | everything against the release tiny386 9ed786b, as every patch until v3.9 was: `git diff 9ed786b s31-v4.5 -- . ':(exclude)s31'`, the same v4.5 tree, for comparing with the earlier patches. The Windows 95 fix to the shared emulator core alone, for the Linux route or upstream (v3.8's and v3.9's `win95-core-*.patch`), is not in this tree; it no longer applies to upstream's master (`research\UPSTREAM-MERGE-v4.md`) |
+| `tiny386-idf-v4.patch` (release) | since v4.0 the build's patch: everything against tiny386's master of 2026-10-22, 4ce2e06 (github.com/hchunhui/tiny386): the v4.6 firmware and its host tests (`git diff 4ce2e06 s31-v4.6 -- . ':(exclude)s31'` on this branch; up to v4.3 `git diff upstream-20261022 v4.3` in the scratch repository, the same bytes as `git diff 4ce2e06 s31-v4.3` here), which `build.sh` applies |
+| `tiny386-idf-v3.patch` (release) | everything against the release tiny386 9ed786b, as every patch until v3.9 was: `git diff 9ed786b s31-v4.6 -- . ':(exclude)s31'`, the same v4.6 tree, for comparing with the earlier patches. The Windows 95 fix to the shared emulator core alone, for the Linux route or upstream (v3.8's and v3.9's `win95-core-*.patch`), is not in this tree; it no longer applies to upstream's master (`research\UPSTREAM-MERGE-v4.md`) |
 | `build.sh`, `dependencies.lock` | the release build from nothing, in WSL; the ESP-IDF component versions. Since v3.4 it also checks the status LED's crash bit-bang in each built ELF (`BUILD-NOTES.md` 15); since v3.8 it makes the fourth image set, tiny386 the default (`BUILD-NOTES.md` 20); since v4.0 it clones tiny386 at 4ce2e06 and applies `tiny386-idf-v4.patch` (v4.1, v4.2 and v4.3 changed its first comment only). It wants the patch beside it and, in `dualboot\`, the dual-boot `bootloader.bin`, `partition-table.bin` and `partition-table-tiny386-default.bin`, all from the release. `README.md` beside this file says how to build from the branch itself |
 | `bios\` (release) | not in this tree: v4.0's VGA BIOS from source (SeaBIOS is LGPL 3: these go with `vgabios.bin`): the source tree as built, the patches (the Linux route's and `seabios-korvo-800x480.patch`), `tools\build-bios.sh` and how it differs from the Linux route's, `README.txt` (since v4.1 it also says which kit makes the card's `bios.bin` exactly). The SeaBIOS changes are to go to github.com/platima/seabios |
 | `checks\` | the evidence behind `BUILD-NOTES.md` and `REVIEW-RESOLUTION.md` (the second round's files end in `-v3.2`, v3.3's in `-v3.3`, v3.4's in `-v3.4`, v3.5's in `-v3.5`, v3.6's in `-v3.6`, v3.7's in `-v3.7`, v3.8's in `-v3.8`, v3.9's in `-v3.9`, v4.0's in `-v4.0`, v4.1's in `-v4.1`, v4.2's in `-v4.2`, among them `flicker-harness-v4.2.txt`, `pointer-cost-v4.2.txt` and `pointer-script-v4.2.txt`, and the review of v4.2's round in `-v4.2-review`, among them `flicker-harness-v4.2-review.txt` and `route-c-v4.2.txt`; v4.3's in `-v4.3`, among them `merge-v4.3.txt` (the merge and its two conflicts), `flicker-harness-v4.3.txt` and `t386mon-v4.3.txt`; `checks\t386mon-v4.3\` has the T386MON runs' scripts and the harness's change, `checks\win95-v4.3\` the standard Windows runs' scripts, and `checks\flicker\` v4.3's run list and scripts, `build-v4.3.diff` the flicker harness taught `perfport.c`; and the review of v4.3's round in `-v4.3-review`, among them `findings-v4.3-review.txt`, each finding checked); `checks\mode13x\` v4.2's mode 13h test program (`MODE13X.COM` and its source); `checks\flicker\` the flicker harness's changes for v4.2 (`headless-v4.2.diff`; since the review `harness-v4.2-review.diff`, the count of black between two pictures) and the run lists; `checks\vbe480\` the DOS VBE test program (`BVBE480.COM` and its source), its checker (v4.1's mends a log line the harness split), the harness's changes (`headless-v4.0.diff`, and `headless-v4.1.diff`, the whole of the harness v4.1's runs used) and their results; `checks\bootswap\` for tiny386 the default (the table, the scripts' flow, the flash simulation). The .bat and .cmd files changed for it on 2026-10-22, after v3.7 was built; the earlier ones, which every `previous-v3.x\SHA256SUMS` up to v3.7's names and which the v3.2 to v3.7 checks ran, are kept byte for byte in `checks\bootswap\scripts-before\` (`sha256sum -c` of those four lines passes there). On this branch `checks\` is text only. Left out of the tree: the two DOS test programs' binaries (`mode13x\MODE13X.COM`, `vbe480\BVBE480.COM`; their sources are here), and the records of runs that hold Windows' own output or code (`win95-pc-runs-*.txt`, `win95-driver-install-*.txt`, `flicker-harness-*.txt`, `pointer-script-v4.2.txt`, `pointer-cost-v4.2.txt`, `route-c-v4.2.txt`, `t386mon-v4.3.txt`). In `merge-v4.3.txt` an email address is taken out |
 | `research\` | v3.8's investigations of Windows 95 (`WIN95-BAREMETAL-AUDIT.md`) and the fix (`WIN95-FIX.md`); v4.0's merge with upstream (`UPSTREAM-MERGE-v4.md`) and its display design (`NATIVE-VBE-DESIGN.md`); the flicker on v4.1 (`FLICKER-REPRO.md`, `FLICKER-AUDIT.md`, and Plat's reports, `FLICKER-PLAT-NOTES.md`). Only the notes are on this branch: `WIN95-PC-REPRO.md` and `WIN95-CRASH-DECODE.md` are not, as they hold Windows' own code and data from Plat's card, and neither are `WIN95-FIX-runs.txt`, the two core patches and `flicker-repro\` (the flicker harness and its runs) |
-| Earlier releases | the package's `previous-v3.2\` to `previous-v4.3\` folders are not here: each release's source is its tag, `s31-v3` and `s31-v3.1` to `s31-v4.3`, and `BUILD-NOTES.md` and `REVIEW-RESOLUTION.md` here cover every one of them |
+| Earlier releases | the package's `previous-v3.2\` to `previous-v4.5\` folders are not here: each release's source is its tag, `s31-v3` and `s31-v3.1` to `s31-v4.5`, and `BUILD-NOTES.md` and `REVIEW-RESOLUTION.md` here cover every one of them |
 | `STATUS-LED.md`, `LINE-OUT.md` | the status LED (v3.4; v3.5 changed two pin numbers in it, v3.6 one line of its yellow 2 row, v3.7 added section 7, the brightness, v3.8 section 8, the disk light), and the DOS board's line out and speakers (v3.5; v3.6 rewrote its board point on R703) |
 | `REVIEW-*.md` | the four reviews, as their authors left them: the second round first, the first round word for word as an appendix; `REVIEW-v32.md`, the review of v3.3 (named for the task that asked for it); `REVIEW-v35.md`, the review of v3.5; and the two reviews of v3.8, `REVIEW-v38-emulator-and-windows.md` and `REVIEW-v38-board-safety-and-features.md`; and the two reviews of v4.0, `REVIEW-v40-emulator-vbe-merge.md` and `REVIEW-v40-board-and-package.md`; `REVIEW-v42.md`, the review of v4.2; `REVIEW-v43.md`, the review of v4.3; and the two reviews of v4.4, `REVIEW-v44-display.md` and `REVIEW-v44-storage-and-safety.md` |
 | `NOTES-core1.md`, `NOTES-core2.md`, `core1\`, `core2\`, `dosboard\` | not in this tree: the work records of the firmware's core (panel, console, crash screen, keyboard and mouse, card and ini, boot menu, speed readout) and of the DOS board's drivers (MS7210 HDMI, CH9350L keyboard and mouse, 800x600, 48 kHz sound) |
@@ -286,9 +298,10 @@ board does it too is [unknown] until the first boot.
 ## Building again
 
 From this branch with `idf.py`, as `README.md` beside this file says: the Korvo-1 dual-boot, Korvo-1
-standalone and DOS board builds of `s31-v4.3` give the released v4.3 `tiny386.bin` files' bytes, and
-the standalone and DOS board builds their bootloaders and tables too [verified: 2026-10-24, built
-from the branch's v4.3 commit in WSL].
+standalone and DOS board builds of the v4.6 code give the released v4.6 `tiny386.bin` and
+`tiny386.elf` files' bytes, and the standalone and DOS board builds their bootloaders and tables too
+[verified: 2026-10-25, built from `git archive` of the branch's v4.6 commit in WSL,
+`BUILD-NOTES.md` 32.9; the same was checked for v4.5, v4.4 and v4.3].
 
 Or the release's way, in WSL, with ESP-IDF v6.1-dev-8142-g188e3e55bb at `~/esp/esp-idf`: put the
 release's `tiny386-idf-v4.patch` beside `build.sh`, and its `bootloader.bin`, `partition-table.bin`
@@ -298,5 +311,5 @@ and `partition-table-tiny386-default.bin` in `dualboot\`, then
 bash s31/build.sh ~/some-empty-folder
 ```
 
-A few minutes on this PC (195 s and 183 s in v4.3's two runs); the images it makes are the bytes
-of the release, all four sets [verified: two runs in different folders, `BUILD-NOTES.md` 27.12].
+A few minutes on this PC (171 s and 171 s in v4.6's two runs); the images it makes are the bytes
+of the release, all four sets [verified: two runs in different folders, `BUILD-NOTES.md` 32.9].

@@ -2,7 +2,7 @@ v4.5's release build: the stage, build.sh run twice from nothing in a clean envi
 image trees compared, and build.sh's images against an in-tree build of the same code (WSL
 ~/org2/v45/rel, rel45.sh; ~/org2/v45/bt-c1, b45.sh), 2026-10-24.
 
-the code at 6755352 (esp/version.txt: v4.5, v4.4 with the fixes of its two reviews)
+the code at 8196e20 (esp/version.txt: v4.5, v4.4 with the fixes of its two reviews)
 v4.5
 warning: refname 's31-v4.4' is ambiguous.
 == v4.4's patch made the same way from the branch's tag, against the package's: the same bytes

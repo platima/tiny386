@@ -1,0 +1,295 @@
+v4.6's release build: the stage, build.sh run twice from nothing in a clean environment, the two
+image trees compared, every bootloader, table and flash_args against v4.5's package, the apps
+against their partitions, and build.sh's images against an in-tree build of the same code (WSL
+~/org2/v46/int: rel46.sh into build-a and build-b; b46.sh into bt), 2026-10-25.
+
+the code at 190ec33 (esp/version.txt: v4.6, v4.5 with double buffering made at power-on and the memory-safety fixes)
+v4.6
+== v4.5's patches made the same way from the branch's tag s31-v4.5 (99074b7), against the package's:
+  tiny386-idf-v4.patch: the same bytes
+  tiny386-idf-v3.patch: the same bytes
+== the files v4.6's patch changes against v4.5's (git diff --stat s31-v4.5 190ec33, s31/ left out)
+ esp/dependencies.lock                            |   67 ++-------
+ esp/main/CMakeLists.txt                          |    1 +
+ esp/main/board_korvo1.h                          |    3 +-
+ esp/main/console.c                               |   13 +-
+ esp/main/dbuf_boot.c                             |  290 +++++++++++++++++++++++++++++++++++++
+ esp/main/dbuf_boot.h                             |   50 +++++++
+ esp/main/display.c                               |   13 +-
+ esp/main/esp_main.c                              |  114 +++++++++------
+ esp/main/lcd.h                                   |   34 +++--
+ esp/main/lcd_korvo1.c                            |  171 +++++++++++-----------
+ esp/main/speed.c                                 |   16 ++-
+ esp/main/speed.h                                 |    4 +
+ esp/version.txt                                  |    2 +-
+ i386.c                                           |  103 ++++++++------
+ i8257.c                                          |   11 +-
+ misc.c                                           |    8 +-
+ pc.c                                             |    3 +-
+ tests/host/cpu/test_page_cross.c                 |  490 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ tests/host/display/stubs/esp_attr.h              |    8 ++
+ tests/host/display/stubs/esp_cache.h             |   10 ++
+ tests/host/display/stubs/esp_cpu.h               |    6 +
+ tests/host/display/stubs/esp_err.h               |   11 ++
+ tests/host/display/stubs/esp_heap_caps.h         |   14 ++
+ tests/host/display/stubs/esp_lcd_panel_ops.h     |   12 ++
+ tests/host/display/stubs/esp_lcd_panel_rgb.h     |   58 ++++++++
+ tests/host/display/stubs/esp_log.h               |    7 +
+ tests/host/display/stubs/esp_ota_ops.h           |    7 +
+ tests/host/display/stubs/esp_partition.h         |   12 ++
+ tests/host/display/stubs/esp_system.h            |   13 ++
+ tests/host/display/stubs/esp_timer.h             |    7 +
+ tests/host/display/stubs/freertos/FreeRTOS.h     |   32 +++++
+ tests/host/display/stubs/freertos/event_groups.h |   14 ++
+ tests/host/display/stubs/freertos/semphr.h       |   14 ++
+ tests/host/display/stubs/freertos/task.h         |   19 +++
+ tests/host/display/stubs/sdkconfig.h             |    5 +
+ tests/host/display/test_double_start.c           | 1110 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ tests/host/dma/test_dma_window.c                 |  181 +++++++++++++++++++++++
+ tests/host/run.sh                                |  130 +++++++++++++++++
+ tests/host/test_console.c                        |    8 ++
+ tests/host/test_floppy.c                         |   15 ++
+ 40 files changed, 2832 insertions(+), 254 deletions(-)
+dependencies.lock: the package's, unchanged
+esp/dependencies.lock in the patched tree: the same bytes as s31/dependencies.lock (c8528f2)
+build.sh parses
+2c2
+< # Builds tiny386 v4.5 (v3.9 merged with tiny386's master of 2026-10-22, and
+---
+> # Builds tiny386 v4.6 (v3.9 merged with tiny386's master of 2026-10-22, and
+9c9,11
+< # card as its whole disk; v4.5 takes in the two reviews of v4.4), bare
+---
+> # card as its whole disk; v4.5 takes in the two reviews of v4.4; v4.6
+> # makes double buffering's two frame buffers with the panel at power-on,
+> # and keeps the guest's stores and DMA out of the devices' state), bare
+13c15
+< # esp32-s31 branch: git diff 4ce2e06 s31-v4.5 -- . ':(exclude)s31').  Until
+---
+> # esp32-s31 branch: git diff 4ce2e06 s31-v4.6 -- . ':(exclude)s31').  Until
+15c17
+< # whole of it against 9ed786b (now giving the v4.5 tree), for comparing
+---
+> # whole of it against 9ed786b (now giving the v4.6 tree), for comparing
+ 185 files changed, 38181 insertions(+), 823 deletions(-)
+1518481
+ 192 files changed, 38811 insertions(+), 838 deletions(-)
+1546588
+/home/owner/org2/v46/int/stage/tiny386-idf-v3.patch:0
+/home/owner/org2/v46/int/stage/tiny386-idf-v4.patch:0
+== build-a: exit 0, 171 s
+   d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346  partition-table.bin
+   73136176737fae0ab4ce904c9147da5c0ff9e010e24a67ecbe570a280d7fe8e6  tiny386.bin
+   031e8def621a535489b067b0391aad8cb74ecc1eacc10373b7dda75011fcd906  tiny386.elf
+== images/korvo1-dualboot-tiny386-default (esptool write-flash offsets: flash_args)
+   -fm keep -ff keep -fs keep
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0xe20000 tiny386.bin
+   6fc0ab4111fd630343b9fce8d41df17e6af26eeda1cfc2993742b8c2fde56518  flash_args
+   b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  bootloader.bin
+   5b90d4166afc39d72a1d6c7b16f3a2e4a5cc0193a3e0eb50990a4dbb9da58226  partition-table.bin
+   73136176737fae0ab4ce904c9147da5c0ff9e010e24a67ecbe570a280d7fe8e6  tiny386.bin
+== images/korvo1-standalone (esptool write-flash offsets: flash_args)
+   --flash-mode dio --flash-freq 80m --flash-size 16MB
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0x10000 tiny386.bin
+   48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  flash_args
+   ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  bootloader.bin
+   afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  partition-table.bin
+   6e0439cd01a09433095ee14570cf61e972870978c019a04f4ba6f22fe5601718  tiny386.bin
+   847a450329fcec742f10c1cb68ffeece94a2f772d231a8638ae90daf629f1d7c  tiny386.elf
+== images/dosboard (esptool write-flash offsets: flash_args)
+   --flash-mode dio --flash-freq 80m --flash-size 16MB
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0x10000 tiny386.bin
+   48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  flash_args
+   ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  bootloader.bin
+   afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  partition-table.bin
+   828ca9ae95b04389ccb556aa7622a99cf4554846ad1d7ba3927da056015fa125  tiny386.bin
+   c2375dd08815e40fc5530c3eebd9866da6e5c7763eae776db072bb070d30e574  tiny386.elf
+== build-b: exit 0, 171 s
+   d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346  partition-table.bin
+   73136176737fae0ab4ce904c9147da5c0ff9e010e24a67ecbe570a280d7fe8e6  tiny386.bin
+   031e8def621a535489b067b0391aad8cb74ecc1eacc10373b7dda75011fcd906  tiny386.elf
+== images/korvo1-dualboot-tiny386-default (esptool write-flash offsets: flash_args)
+   -fm keep -ff keep -fs keep
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0xe20000 tiny386.bin
+   6fc0ab4111fd630343b9fce8d41df17e6af26eeda1cfc2993742b8c2fde56518  flash_args
+   b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  bootloader.bin
+   5b90d4166afc39d72a1d6c7b16f3a2e4a5cc0193a3e0eb50990a4dbb9da58226  partition-table.bin
+   73136176737fae0ab4ce904c9147da5c0ff9e010e24a67ecbe570a280d7fe8e6  tiny386.bin
+== images/korvo1-standalone (esptool write-flash offsets: flash_args)
+   --flash-mode dio --flash-freq 80m --flash-size 16MB
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0x10000 tiny386.bin
+   48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  flash_args
+   ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  bootloader.bin
+   afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  partition-table.bin
+   6e0439cd01a09433095ee14570cf61e972870978c019a04f4ba6f22fe5601718  tiny386.bin
+   847a450329fcec742f10c1cb68ffeece94a2f772d231a8638ae90daf629f1d7c  tiny386.elf
+== images/dosboard (esptool write-flash offsets: flash_args)
+   --flash-mode dio --flash-freq 80m --flash-size 16MB
+   0x2000 bootloader.bin
+   0x8000 partition-table.bin
+   0x10000 tiny386.bin
+   48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  flash_args
+   ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  bootloader.bin
+   afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  partition-table.bin
+   828ca9ae95b04389ccb556aa7622a99cf4554846ad1d7ba3927da056015fa125  tiny386.bin
+   c2375dd08815e40fc5530c3eebd9866da6e5c7763eae776db072bb070d30e574  tiny386.elf
+== the two runs' images
+every file of the two image trees the same (23 files)
+== the two runs' other outputs (image-info, sizes, bit-bang layout)
+  bb-layout-dosboard.txt: the same (the folder's name aside)
+  bb-layout-korvo1-dualboot.txt: the same (the folder's name aside)
+  bb-layout-korvo1-standalone.txt: the same (the folder's name aside)
+  image-info-dosboard-bootloader.bin.txt: the same (the folder's name aside)
+  image-info-dosboard-tiny386.bin.txt: the same (the folder's name aside)
+  image-info-korvo1-dualboot-bootloader.bin.txt: the same (the folder's name aside)
+  image-info-korvo1-dualboot-tiny386.bin.txt: the same (the folder's name aside)
+  image-info-korvo1-standalone-bootloader.bin.txt: the same (the folder's name aside)
+  image-info-korvo1-standalone-tiny386.bin.txt: the same (the folder's name aside)
+  size-dosboard.txt: the same (the folder's name aside)
+  size-korvo1-standalone.txt: the same (the folder's name aside)
+  size-korvo1.txt: the same (the folder's name aside)
+== bootloaders, tables and flash_args against v4.5's package (images/, read only)
+  korvo1-dualboot/bootloader.bin: v4.5's byte for byte (b57469cd1542fe83)
+  korvo1-dualboot/partition-table.bin: v4.5's byte for byte (d41cba3cf33bedee)
+  korvo1-dualboot/flash_args: v4.5's byte for byte (6fc0ab4111fd6303)
+  korvo1-dualboot-tiny386-default/bootloader.bin: v4.5's byte for byte (b57469cd1542fe83)
+  korvo1-dualboot-tiny386-default/partition-table.bin: v4.5's byte for byte (5b90d4166afc39d7)
+  korvo1-dualboot-tiny386-default/flash_args: v4.5's byte for byte (6fc0ab4111fd6303)
+  korvo1-standalone/bootloader.bin: v4.5's byte for byte (ec0a396b5bd96406)
+  korvo1-standalone/partition-table.bin: v4.5's byte for byte (afbe6410c2040c5e)
+  korvo1-standalone/flash_args: v4.5's byte for byte (48e461784c407bbc)
+  dosboard/bootloader.bin: v4.5's byte for byte (ec0a396b5bd96406)
+  dosboard/partition-table.bin: v4.5's byte for byte (afbe6410c2040c5e)
+  dosboard/flash_args: v4.5's byte for byte (48e461784c407bbc)
+== the apps against their partitions
+  korvo1-dualboot/tiny386.bin: 936192 of 1966080 bytes (47.6 per cent, 1029888 free); v4.5 932272 (+3920); SHA-256 73136176737fae0a
+  korvo1-standalone/tiny386.bin: 936192 of 1835008 bytes (51.0 per cent, 898816 free); v4.5 932272 (+3920); SHA-256 6e0439cd01a09433
+  dosboard/tiny386.bin: 958608 of 1835008 bytes (52.2 per cent, 876400 free); v4.5 958336 (+272); SHA-256 828ca9ae95b04389
+  korvo1-dualboot-tiny386-default/tiny386.bin: korvo1-dualboot's
+== App version in each image (esptool image-info)
+image-info-dosboard-tiny386.bin.txt:App version: v4.6
+image-info-korvo1-dualboot-tiny386.bin.txt:App version: v4.6
+image-info-korvo1-standalone-tiny386.bin.txt:App version: v4.6
+/dev/sdd        251G  103G  136G  44% /
+
+== the in-tree builds (b46.sh)
+== korvo1 (korvo1 ) exit 0, 55 s
+1727:src/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+   warning lines in the whole log: 1
+│ DIRAM               │       251872 │     50.0 │         251872 │        503744 │
+│ LP SRAM             │         8424 │    25.71 │          24344 │         32768 │
+Total image size: 936012 bytes (.bin may be padded larger)
+v4.6
+73136176737fae0a
+== korvo1-standalone (korvo1 -DPARTITION_CSV=partitions.csv) exit 0, 52 s
+1720:src/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+   warning lines in the whole log: 1
+│ DIRAM               │       251872 │     50.0 │         251872 │        503744 │
+│ LP SRAM             │         8424 │    25.71 │          24344 │         32768 │
+Total image size: 936012 bytes (.bin may be padded larger)
+v4.6
+6e0439cd01a09433
+== dosboard (dosboard ) exit 0, 53 s
+   warning lines in the whole log: 0
+│ DIRAM               │       254094 │    50.44 │         249650 │        503744 │
+│ LP SRAM             │         8244 │    25.16 │          24524 │         32768 │
+Total image size: 958424 bytes (.bin may be padded larger)
+v4.6
+828ca9ae95b04389
+== kc (korvo1 -DCRASH_TEST=1) exit 0, 53 s
+1725:src/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+   warning lines in the whole log: 1
+│ DIRAM               │       251872 │     50.0 │         251872 │        503744 │
+│ LP SRAM             │         8424 │    25.71 │          24344 │         32768 │
+Total image size: 936588 bytes (.bin may be padded larger)
+v4.6
+4412dc863f28c035
+== dc (dosboard -DCRASH_TEST=1) exit 0, 52 s
+   warning lines in the whole log: 0
+│ DIRAM               │       254094 │    50.44 │         249650 │        503744 │
+│ LP SRAM             │         8244 │    25.16 │          24524 │         32768 │
+Total image size: 959000 bytes (.bin may be padded larger)
+v4.6
+e846a30160b69bb7
+== build.sh's images (build-a) against these in-tree builds
+  korvo1-dualboot/tiny386.bin: the same bytes as build-korvo1
+  korvo1-dualboot/tiny386.elf: the same bytes as build-korvo1
+  korvo1-standalone/tiny386.bin: the same bytes as build-korvo1-standalone
+  korvo1-standalone/tiny386.elf: the same bytes as build-korvo1-standalone
+  dosboard/tiny386.bin: the same bytes as build-dosboard
+  dosboard/tiny386.elf: the same bytes as build-dosboard
+  korvo1-standalone/bootloader.bin: the same bytes
+  korvo1-standalone/partition-table.bin: the same bytes
+  dosboard/bootloader.bin: the same bytes
+  dosboard/partition-table.bin: the same bytes
+  korvo1-dualboot/partition-table.bin: the same bytes as build-korvo1's own table
+builds done
+
+== the built app (objdump of build-a's korvo1-dualboot/tiny386.elf)
+ELF: build-a/images/korvo1-dualboot/tiny386.elf, SHA-256 031e8def621a5354
+-- app_main's first six calls
+4000eefa:	jal	4002394a <dbuf_boot_take>
+4000eefe:	jal	4002acf2 <status_led_init>
+4000ef02:	jal	4006cd4c <xEventGroupCreate>
+4000ef0e:	jal	4000eeda <board_early_init>
+4000ef10:	jal	40023a8c <dbuf_boot_panel>
+4000ef24:	jal	40022d8a <console_init>
+-- the functions dbuf_boot_start calls or reads (count, name)
+      4 <console_printf>
+      2 <console_puts>
+      1 <esp_err_to_name>
+      1 <esp_ota_get_running_partition>
+      1 <esp_restart>
+      1 <fflush>
+      1 <lcd_double_made>
+      1 <lcd_double_set>
+      1 <lcd_double_why>
+      1 <note_write>
+      1 <s_dma_free>
+      1 <s_found>
+      1 <speed_double_refused>
+      1 <speed_set_double>
+      1 <s_psram_block>
+      1 <s_psram_free>
+      1 <s_reset>
+      1 <stdout>
+      1 <vTaskDelay>
+-- dbuf_boot_panel's calls
+<lcd_init>
+<heap_caps_get_free_size>
+<heap_caps_get_largest_free_block>
+<heap_caps_get_free_size>
+<note_write>
+<lcd_init_two>
+-- the LP SRAM's noinit objects (address, size, name)
+2e002010 000000b4 B dbuf_note
+2e0020c4 0000000c b s_rec
+2e000000 00002010 b s_ring
+-- on_switched (the swap event's callback) is in IRAM
+2f02694e t on_switched
+
+== the run at f7f7492, the version commit before the one-line change to run.sh (BUILD-NOTES 32.1)
+-- the images: build-a at f7f7492 against build-a at 190ec33
+every file of the two image trees the same (23 files)
+-- the in-tree builds
+  build-korvo1/tiny386.bin: the same bytes
+  build-korvo1-standalone/tiny386.bin: the same bytes
+  build-dosboard/tiny386.bin: the same bytes
+  build-kc/tiny386.bin: the same bytes
+  build-dc/tiny386.bin: the same bytes
+-- the host tests at f7f7492
+  host-tests-v4.6.log: host tests: 61 passed, 0 failed
+  host-tests-v4.6-long-out.log: host tests: 61 passed, 0 failed
+  host-tests-v4.6-from-patch.log: host tests: 49 passed, 0 failed
+== build-a: exit 0, 167 s
+== build-b: exit 0, 167 s

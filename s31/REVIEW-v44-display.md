@@ -2,7 +2,7 @@
 
 Written 2026-10-24 as an independent, sceptical review of v4.4's display work: branch `s31-v4.4`
 of Plat's fork (WSL `~/fw/tiny386-s31`, worktree `~/fw/wt-v44`), commits 4758608 to de24383, as
-released in tag `s31-v4.4` (58f868d). The lens: Ctrl+Alt+F11 saving (the ini rewrite against a cut
+released in tag `s31-v4.4` (6d619a0). The lens: Ctrl+Alt+F11 saving (the ini rewrite against a cut
 in power and against a flush of the guest's disk), the double-buffered panel (memory, the swap at
 the panel's frame, both buffers kept right), pacing at the guest's quiet moments (no starvation, a
 bound on the lag), the drawing speed-ups (pictures identical), the text investigation and the grey
@@ -13,6 +13,10 @@ The worktree and the earlier steps' scratch were only read (`git status` clean a
 own work is in WSL `~/org2/review-display` (section 10). The only file written outside WSL is this
 one. Every claim is marked [verified] (seen in a file or measured in a run named here), [inferred]
 or [unknown].
+
+(Added 2026-10-25: the commit hashes in this review are the ones the branch has had since its
+history from `s31-v4.4` on was rewritten and force-pushed that day (`BUILD-NOTES.md` 32.6). The code
+they name is the same. Nothing else in this review was changed.)
 
 
 ## 0. The answer in one screen
@@ -59,7 +63,7 @@ or [unknown].
 
 ## 1. What I ran
 
-* **Host tests** at 58f868d, `bash tests/host/run.sh ~/org2/review-display/ht` from the worktree:
+* **Host tests** at 6d619a0, `bash tests/host/run.sh ~/org2/review-display/ht` from the worktree:
   `host tests: 53 passed, 0 failed` [verified: `~/org2/review-display/ht.log`]. Among them
   `test_vbe: all 6856 checks passed` on both boards, `test_font: all checks passed` on both boards
   and v4.3's `vga.c` failing it (5 checks) on both, `test_pace` on both, `test_ini_edit: 106 checks,
@@ -348,6 +352,6 @@ change, not only those that come with a new character code [inferred]. Notes:
 ## 10. Where things are
 
 WSL `~/org2/review-display/` (mine, 50 MB, throw-away): `ht/` and `ht.log` (the host tests
-at 58f868d), `part1.diff` (the part 1 diff read here), `dbuf/test_dbuf.c` and `dbuf/dbuf.log`
+at 6d619a0), `part1.diff` (the part 1 diff read here), `dbuf/test_dbuf.c` and `dbuf/dbuf.log`
 (the model and its run), `dbuf/test_dbuf_fix.c` and `dbuf/dbuf-fix.log` (with F1's fix), and the
 small scripts (`x.sh`, `ht.sh`, `db.sh`, `dbf.sh`). Nothing I started is still running.

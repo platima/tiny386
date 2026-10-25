@@ -1,5 +1,5 @@
 The two reviews of v4.4 (REVIEW-v44-display.md, REVIEW-v44-storage-and-safety.md), each finding checked
-against the tag s31-v4.4 (58f868d) and ESP-IDF, 2026-10-24.
+against the tag s31-v4.4 (6d619a0) and ESP-IDF, 2026-10-24.
 
 ==== display F1: the speed screen and Ctrl+Alt+F9
 -- lcd_double_set(true) copies the front buffer (the console's, while the speed screen is up) into the back:

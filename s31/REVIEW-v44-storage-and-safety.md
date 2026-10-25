@@ -5,13 +5,19 @@ Written 2026-10-24 as an independent, sceptical review of v4.4's storage work an
 and geometry the guest sees, the refusals, the new-card procedure (`s31/newcard/newcard.sh`,
 `export-root.sh`, `README.md`), the dual-boot images and scripts in this folder, and what was pushed
 to github.com/platima/tiny386. The code reviewed is the branch `s31-v4.4` in WSL `~/fw/tiny386-s31`
-(worktree `~/fw/wt-v44`), at 58f868d, which is also `esp32-s31` and the tag `s31-v4.4`.
+(worktree `~/fw/wt-v44`), at 6d619a0, which is also `esp32-s31` and the tag `s31-v4.4`.
 
 Nothing was flashed, no serial or COM port was opened, nothing was committed or pushed, and the
 worktree, the fork clone `D:\Repos\tiny386` and this folder were only read (this file is the one
 thing written here). My own work is in WSL `~/org2/review-storage-and-safety` (section 8). Every
 claim is marked [verified] (seen in a file or measured in a run named here), [inferred] or
 [unknown].
+
+(Added 2026-10-25: the commit and tag hashes in this review are the ones the branch has had since
+its history from `s31-v4.4` on was rewritten and force-pushed that day, to take out the nine lines
+of finding 3 (`BUILD-NOTES.md` 32.6). The code they name is the same. Finding 3's own row says
+"pushed with `s31-v4.4`" where it named that commit's old hash, as the rewritten one no longer
+holds the lines. Nothing else in this review was changed.)
 
 
 ## 0. The answer in one screen
@@ -215,8 +221,8 @@ makes such a table on purpose (note 6).
 ## 6. What was pushed to the fork
 
 Checked in `D:\Repos\tiny386` (read only) and against GitHub with `git ls-remote` [verified]:
-* Remote `refs/heads/esp32-s31` is 58f868d, a fast-forward from 8d4b758 (17 commits); remote tag
-  `s31-v4.4` is ab5e5a3 (annotated, pointing at 58f868d). No `s31-v4.4` branch on the remote, and
+* Remote `refs/heads/esp32-s31` is 6d619a0, a fast-forward from 8d4b758 (17 commits); remote tag
+  `s31-v4.4` is 7d7febe (annotated, pointing at 6d619a0). No `s31-v4.4` branch on the remote, and
   only `s31-*` tags there: none of the 19 tags the fetch pulled in by mistake.
 * Every one of the 17 commits: author and committer Platima
   <13729856+platima@users.noreply.github.com>; the tagger the same; the only address in any message
@@ -240,7 +246,7 @@ Checked in `D:\Repos\tiny386` (read only) and against GitHub with `git ls-remote
 |-|-|-|-|-|
 | 1 | minor | `s31/newcard/README.md` (intro and step 7), `TEST-PLAN.md` 16e, `BUILD-NOTES.md` 30.0, `FIRMWARE.md`'s table row for `newcard\` | "The old card is never written" and "leaves the old card untouched" are false: step 1 copies `export-root.sh` onto KORVO_SD, and `export-root.sh` writes three files (192 MiB) onto WIN9X, may make `/mnt/win` on the root and remounts the root read-only and back. Nothing is destroyed, but Plat is told something that is not so, about the card he keeps as his fallback | Say what happens: "only files are added to its two FAT partitions; its table, Linux's root and `win95.img` are not changed", and mention deleting `korvo-root.img` from WIN9X afterwards |
 | 2 | minor | `esp_main.c` `check_card_partition()`, `sd_part_plan()`; `TEST-PLAN.md` 16a | On the old card `win95-sd.ini` hands the guest the WIN9X partition (the one holding `win95.img`) raw, accepted silently [verified: the branch's own test, my probe]; 16a has Plat copy `win95-sd.ini` with the other card files, so the old card's boot menu offers it | Before `storage_part_release()`, refuse if `/sdcardN/win95.img` exists (or the label is WIN9X): "this is the WIN9X partition of a card laid out for the Linux route". And in 16a: copy `win95-sd.ini` only to the new card |
-| 3 | minor | `s31/checks/partition-passthrough-v4.4.txt` section 2 (pushed in 58f868d), `checks\` here | Nine verbatim lines of `IOS.LOG`, a file Windows 95 writes inside its image. Trivial machine-written text, but the rule is to publish nothing from Windows images or files from them | Paraphrase ("units 00 and 01 through real-mode drivers") in a later commit; history keeps the old text unless Plat wants it rewritten, which he decides |
+| 3 | minor | `s31/checks/partition-passthrough-v4.4.txt` section 2 (pushed with `s31-v4.4`), `checks\` here | Nine verbatim lines of `IOS.LOG`, a file Windows 95 writes inside its image. Trivial machine-written text, but the rule is to publish nothing from Windows images or files from them | Paraphrase ("units 00 and 01 through real-mode drivers") in a later commit; history keeps the old text unless Plat wants it rewritten, which he decides |
 | 4 | minor | `s31/newcard/newcard.sh`, the layout and table steps | The Windows image's partition type is copied as it is; a type 04 or 06 volume placed past sector 1,032,192 (the default puts p3 at 1,056,768) gets "ready" although, by `BUILD-NOTES.md` 30.2, its boot sector then reads by CHS and cannot boot [verified: my run e with a stand-in image] | Write 0E (FAT16) or 0C (FAT32) for p3 whenever it ends past 1,032,192, or refuse with words; `sd_part_plan()` could add the same yellow note |
 | 5 | note | `s31/newcard/export-root.sh`, lines 51 to 61 | A root the kernel mounted (`/dev/root`) is recognised only by a literal `root=/dev/mmcblk0p2` in `/proc/cmdline`; any other form would copy p2 live and read-write without a word. Fine on Plat's and the fork's Linux, where the initramfs mounts p2 by name | Compare device numbers (`/sys/class/block/mmcblk0p2/dev` against `/`'s), or stop if `/` is `/dev/root` and cannot be tied to p2 |
 | 6 | note | `sd_part.c` line 193 | The overlap check skips entries with type 00 even if they have a size; Linux counts those as partitions | Skip only entries with count 0 |

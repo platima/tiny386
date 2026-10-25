@@ -7,14 +7,14 @@ It runs on the ESP32-S31-Korvo-1, either beside Linux (hold VOL+ through reset f
 ## What this branch is 🌿
 
 - **Upstream tiny386 underneath.** The branch is hchunhui's master of 2026-10-22 (`4ce2e06`) merged with my work, so `git log` shows what's mine and every upstream commit keeps its own hash.
-- **My firmware on top**, v3 to v4.5: the board support, the boot console and crash screen, the status LED, the dual boot, the card and ini handling, the Windows 95 fixes, the VBE drawing at 800x480, the information port that [T386Mon](https://github.com/platima/T386Mon) reads, and (v4.4) Windows on a partition of the card of its own.
+- **My firmware on top**, v3 to v4.6: the board support, the boot console and crash screen, the status LED, the dual boot, the card and ini handling, the Windows 95 fixes, the VBE drawing at 800x480, the information port that [T386Mon](https://github.com/platima/T386Mon) reads, (v4.4) Windows on a partition of the card of its own, and (v4.6) double buffering made at power-on.
 - **`s31/`** - the notes, test plans, reviews, flash scripts, card inis and the evidence behind each release. That folder only exists on this branch.
 
 This branch never goes upstream as a whole. Fixes and improvements that make sense for tiny386 itself go to hchunhui as separate, small PRs, each cut from upstream's master on its own branch. That's what the other branches on this fork are.
 
 ## Releases 📦
 
-Each release is a tag: `s31-v3`, `s31-v3.1` up to `s31-v4.5`, the newest. v4.4 is the first made on this branch rather than in the scratch repository: its notes are `s31/BUILD-NOTES.md` sections 29 and 30. v4.5 is v4.4 with the fixes of its two reviews: section 31. Releases with the images will go on the [releases page](https://github.com/platima/tiny386/releases): the four image sets (Korvo-1 dual boot, the same with tiny386 the default, Korvo-1 on its own, the DOS board) with their ELFs, the card files (`bios.bin`, `vgabios.bin`, the inis, `vbe-reg.img`), the VGA BIOS's source, the patch against upstream, and `SHA256SUMS`. None are up yet.
+Each release is a tag: `s31-v3`, `s31-v3.1` up to `s31-v4.6`, the newest. v4.4 is the first made on this branch rather than in the scratch repository: its notes are `s31/BUILD-NOTES.md` sections 29 and 30. v4.5 is v4.4 with the fixes of its two reviews: section 31. v4.6 answers my run of v4.5 on the board: double buffering's two frame buffers made at power-on, and the guest's stores and DMA kept out of the devices' state: section 32. Releases with the images will go on the [releases page](https://github.com/platima/tiny386/releases): the four image sets (Korvo-1 dual boot, the same with tiny386 the default, Korvo-1 on its own, the DOS board) with their ELFs, the card files (`bios.bin`, `vgabios.bin`, the inis, `vbe-reg.img`), the VGA BIOS's source, the patch against upstream, and `SHA256SUMS`. None are up yet.
 
 Binaries aren't committed here - build them, or take them from a release.
 
@@ -43,11 +43,11 @@ idf.py -B build-korvo1-standalone -DBOARD=korvo1 -DIDF_TARGET=esp32s31 -DPARTITI
 idf.py -B build-dosboard -DBOARD=dosboard -DIDF_TARGET=esp32s31 build
 ```
 
-`build-korvo1` is the app for the Korvo-1 beside Linux (it goes at 0xE20000 with the dual-boot bootloader and table), `build-korvo1-standalone` the Korvo-1 on its own, `build-dosboard` the DOS board. Built this way from `s31-v4.5`, all three give the released v4.5 `tiny386.bin` byte for byte, and the standalone and DOS board builds their bootloader and table too [verified, 2026-10-24; the same was checked for `s31-v4.4` and `s31-v4.3`]; the dual-boot set's bootloader comes from `s31/dualboot/` instead. The component manager rewrites `esp/dependencies.lock` on the first build (the committed one is upstream's, for the S3); the versions it settles on are the ones in `s31/dependencies.lock`.
+`build-korvo1` is the app for the Korvo-1 beside Linux (it goes at 0xE20000 with the dual-boot bootloader and table), `build-korvo1-standalone` the Korvo-1 on its own, `build-dosboard` the DOS board. Built this way from the v4.6 code, all three give the released v4.6 `tiny386.bin` and `tiny386.elf` byte for byte, and the standalone and DOS board builds their bootloader and table too [verified, 2026-10-25; the same was checked for `s31-v4.5`, `s31-v4.4` and `s31-v4.3`]; the dual-boot set's bootloader comes from `s31/dualboot/` instead. Since 2026-10-25 the committed `esp/dependencies.lock` is the S31 one, `s31/dependencies.lock` byte for byte, and the builds leave it as it is (before then it was upstream's, for the S3, and the first build rewrote it).
 
 The dual-boot build refuses `idf.py flash` on purpose: write it with `s31/flash-dualboot.bat`, which backs up the board's flash first.
 
-`s31/build.sh` is the release build: it starts from upstream's `4ce2e06`, applies the release's `tiny386-idf-v4.patch` (this branch's tree against `4ce2e06`, `s31/` left out: `git diff 4ce2e06 s31-v4.5 -- . ':(exclude)s31'`), builds all three, and lays out the four image sets with their `SHA256SUMS`. It needs the patch beside it and the dual-boot bootloader and tables in `s31/dualboot/`, all from the release, and builds the same bytes twice from nothing (`s31/FIRMWARE.md`, "Building again").
+`s31/build.sh` is the release build: it starts from upstream's `4ce2e06`, applies the release's `tiny386-idf-v4.patch` (this branch's tree against `4ce2e06`, `s31/` left out: `git diff 4ce2e06 s31-v4.6 -- . ':(exclude)s31'`), builds all three, and lays out the four image sets with their `SHA256SUMS`. It needs the patch beside it and the dual-boot bootloader and tables in `s31/dualboot/`, all from the release, and builds the same bytes twice from nothing (`s31/FIRMWARE.md`, "Building again").
 
 ## Layout 📁
 
@@ -77,6 +77,8 @@ s31/
 ## Old commit hashes 🔁
 
 The firmware grew in a scratch repository on my PC, and its history moved here on 2026-10-24 with the author and committer set to my GitHub address. Nothing else changed, but every commit of mine has a new hash. The notes in `s31/` still name the old ones, so [`s31/old-to-new.tsv`](old-to-new.tsv) maps each old hash to its new one, and an old tag `vN` is `s31-vN` here.
+
+On 2026-10-25 this branch's own history from `s31-v4.4` on was rewritten once more, to take out a few lines quoted from a Windows log in one check file, and force-pushed. The eight commits from `s31-v4.4` to `s31-v4.5` and those two tags have new hashes; their code is the same. The notes already name the new ones (`s31/BUILD-NOTES.md` 32.6).
 
 ## Sponsor This Project 💝
 

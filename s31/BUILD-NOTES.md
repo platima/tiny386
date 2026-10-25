@@ -56,7 +56,12 @@ image is made for it, and part 2 adds the storage work, packages v4.4 and gives 
 Section 30 is that part 2, the same day: a partition of the card as the guest's whole disk
 (`hda = sd:3`), the new card laid out for it (`newcard\`), and v4.4 built, checked and packaged;
 its figures replace section 27's, v4.3's own files are in `previous-v4.3\`, and v4.4 is the tag
-`s31-v4.4` on the `esp32-s31` branch, which from now on is the source of truth.
+`s31-v4.4` on the `esp32-s31` branch, which from now on is the source of truth. Section 31 is v4.5,
+the same day: the fixes from the two reviews of v4.4; its figures replace section 30's, and v4.4's
+own files are in `previous-v4.4\`. Section 32 is v4.6, 2026-10-25: Plat's run of v4.5 answered
+(double buffering's two frame buffers made at power-on, pacing left off), upstream's fix of the
+device window with three memory checks of our own, and the branch's history rewritten; its figures
+replace section 31's, and v4.5's own files are in `previous-v4.5\`.
 
 Tags:
 
@@ -5598,15 +5603,15 @@ run on a board.
 
 | Commit | What |
 |-|-|
-| 71f9ba0 | `esp/main`: double buffering after the speed screen, its counts, a panel that does not come back (`speed.c`, `lcd.h`, `lcd_korvo1.c`, `esp_main.c`) (31.3) |
-| 9bf35d0 | `esp/main`, `tests/host`: the ini saved with no rename (`setup.c`, `setup.h`, `esp_main.c`, `test_ini_edit.c`, `run.sh` 6b) (31.2) |
-| 076114f | `esp/main`, `tests/host`: `sd:N` refuses the WIN9X partition; the review's notes on `sd_part.c` (`sd_part.c`, `sd_part.h`, `esp_main.c`, `tests/host/sdpart`) (31.4) |
-| 39c3d99 | `tests/host`: `run.sh` finds pristine and v4.0-base by their commits, and says when it skips (31.7) |
-| 8123d17 | `s31/newcard`: p3's type past CHS; the root found by its device number (31.6) |
-| 6755352 | `esp/version.txt`: `v4.5` |
+| 47290db | `esp/main`: double buffering after the speed screen, its counts, a panel that does not come back (`speed.c`, `lcd.h`, `lcd_korvo1.c`, `esp_main.c`) (31.3) |
+| 421aef6 | `esp/main`, `tests/host`: the ini saved with no rename (`setup.c`, `setup.h`, `esp_main.c`, `test_ini_edit.c`, `run.sh` 6b) (31.2) |
+| f76aaab | `esp/main`, `tests/host`: `sd:N` refuses the WIN9X partition; the review's notes on `sd_part.c` (`sd_part.c`, `sd_part.h`, `esp_main.c`, `tests/host/sdpart`) (31.4) |
+| 6e5e150 | `tests/host`: `run.sh` finds pristine and v4.0-base by their commits, and says when it skips (31.7) |
+| dd51a62 | `s31/newcard`: p3's type past CHS; the root found by its device number (31.6) |
+| 8196e20 | `esp/version.txt`: `v4.5` |
 | (the tag) | `s31/`: this section, round 11 of `REVIEW-RESOLUTION.md`, the two reviews, `TEST-PLAN.md` 16, `FIRMWARE.md`, `FLASH.txt`, `README.md`, `build.sh`'s first comment, `newcard/README.md`, `card/tiny386/win95-sd.ini`, the corrections in 29.2, 29.6, 30.0, 30.2 and 30.3, and the checks (31.14) |
 
-`git diff --stat esp32-s31 6755352 -- . ':!s31'`: 13 files changed, 846 lines added, 172 taken out.
+`git diff --stat esp32-s31 8196e20 -- . ':!s31'`: 13 files changed, 846 lines added, 172 taken out.
 Every commit's files were looked at: no binary, no picture, nothing of Windows'.
 
 ### 31.2 The ini saved with no rename (display finding 2) [verified: code, `test_ini_edit.c`; the board unknown]
@@ -5757,7 +5762,7 @@ photograph with and without double buffering, decide it.
 
 ### 31.7 Host tests [verified: `checks\host-tests-v4.5.log` and the files named]
 
-53 tests, all pass (72 s), at 6755352, the tag's code: v4.4's 53, with `test_ini_edit` and `sdpart`
+53 tests, all pass (72 s), at 8196e20, the tag's code: v4.4's 53, with `test_ini_edit` and `sdpart`
 grown (31.2, 31.4). With the 113-character output folder of every round: 53 of 53
 (`checks\host-tests-v4.5-long-out.log`). In the tree `build.sh` makes from the patch: 45 pass (v4.4:
 43). That tree is a clone of upstream, which has 9ed786b, so the two pristine comparisons now run
@@ -5777,13 +5782,13 @@ In a clone that has what the fork has, the branch and only its `s31-` tags (disp
   cent becoming 2, 0 and 1: the comment stays (a change would be one more card file to copy), and
   `TEST-PLAN.md` 16c gives the figures.
 * Storage finding 3: the nine lines of `IOS.LOG` are paraphrased in `checks\partition-passthrough-v4.4.txt`
-  here and on the branch; the branch's history keeps the old text, and rewriting a pushed branch is
-  Plat's decision.
+  here and on the branch. The branch's history kept the old text until 2026-10-25, when Plat had it
+  rewritten and force-pushed: no commit holds it now (32.6).
 
 ### 31.9 Builds, warnings, sizes [verified: `checks\size-*-v4.5.txt`, `checks\warnings-wall-wextra-v4.5.txt`]
 
 The five builds of every round (the Korvo-1 dual boot and standalone, the DOS board, the two
-crash-test builds), from `git archive` of 6755352: all exit 0 with the one old warning (`i2s_task`
+crash-test builds), from `git archive` of 8196e20: all exit 0 with the one old warning (`i2s_task`
 unused, the Korvo-1). `-Wall -Wextra` on the five files v4.5 changed (`speed.c`, `lcd_korvo1.c`,
 `esp_main.c`, `setup.c`, `sd_part.c`), each board's own command: 0 warnings, as v4.4's copies.
 
@@ -5798,13 +5803,13 @@ swap totals (8).
 ### 31.10 `build.sh`, the images, the dual-boot checks [verified: `checks\reproducible-v4.5.txt` and the files named]
 
 `build.sh` from `s31/` (its first comment moved on to v4.5) with the release's two patches made from
-the branch with `s31/` left out: `git diff 4ce2e06 6755352 -- . ':(exclude)s31'` (161 files, 35,503
+the branch with `s31/` left out: `git diff 4ce2e06 8196e20 -- . ':(exclude)s31'` (161 files, 35,503
 lines added, 723 taken out; 1,406,121 bytes) and the same against 9ed786b (168 files, 36,133 lines
 added, 738 taken out; 1,434,228 bytes); neither holds a binary. v4.4's patch made the same way from
 `s31-v4.4` is the package's v4.4 patch byte for byte. Two runs from nothing, each in a clean
 environment: 170 s and 174 s, both exit 0, the 23 files of the two image trees the same; and the
 three `tiny386.bin`, and the standalone and DOS board's bootloader and table, the same bytes as the
-in-tree builds of 6755352.
+in-tree builds of 8196e20.
 
 | Image set | `tiny386.bin` | of its partition | SHA-256 | v4.4's |
 |-|-|-|-|-|
@@ -5835,7 +5840,7 @@ images in the package's `images\`:
 
 ### 31.11 Windows 95 from p3 on the PC harness [verified: `checks\partition-passthrough-v4.5.txt`]
 
-v4.5's `headless` (6755352) in a copy of v4.4's partition harness, the card images made again by
+v4.5's `headless` (8196e20) in a copy of v4.4's partition harness, the card images made again by
 v4.5's `newcard.sh` from v4.4's inputs (a copy of the pristine `win95.img`, the stand-in root, the
 old first sector): they differ from v4.4's in 12 bytes, all in p1 (`mkfs.fat`'s volume serial and
 the copy's times); the table sector, p3's type 0E and p2 are v4.4's. Windows 95 reached the desktop
@@ -5870,7 +5875,9 @@ with its hash; the T386MON folder's list, unchanged by v4.5, checks.
   by `newcard\README.md`; photographs as 16f lists.
 * **Decide**: 29.13's two (double buffering for 1M or nothing of Windows' memory, pacing by
   default), 30.15's two (p1's size, the root's), and whether the branch's history should be
-  rewritten to drop the nine `IOS.LOG` lines of 58f868d (31.8).
+  rewritten to drop the nine `IOS.LOG` lines that came in with `s31-v4.4` (31.8). (2026-10-25:
+  pacing stays off, from Plat's run of v4.5 (32.5); the history was rewritten and force-pushed
+  (32.6).)
 
 ### 31.14 Where things are
 
@@ -5889,3 +5896,378 @@ made from a copy of the pristine `win95.img`: never to leave WSL), `nc/` and `nc
 `dbuf/` (the review's model rebuilt), `t1/`, `ht1/`, `sdp1/`, `ht-fork/`, `fork-clone/`, `t-c1/`,
 `t-v44/`, and the scripts with their outputs. On Windows the session's scratch folder `v45\` holds
 the scripts as written. Nothing started for this is still running.
+
+## 32. v4.6: double buffering made at power-on, and the guest kept out of the devices' state (2026-10-25)
+
+Plat ran v4.5 on his Korvo-1 on 2026-10-25, Windows 95 from the new card's p3 with `win95-sd.ini`
+[reported]. Everything he tried worked, the new card too. Pacing (Ctrl+Alt+F10, `pace_quiet`)
+changed none of the visual glitches and lowered the panel's frame rate. `double_buffer = 1` stopped
+the boot with a load access fault, `mtval 0000fa50`. v4.6 answers both, and takes in upstream's fix
+of 2026-10-23 (97a450b) with three memory checks of our own. Two series were made, each in its own
+WSL clone of the canonical repository `~/fw/tiny386-s31` from c8528f2 (the branch after the history
+rewrite, 32.6): the core series (`~/org2/v46/core/repo`, branch `v46-core`) and the display series
+(`~/org2/v46/disp/repo`, branch `v46-disp`). They were put together in a third clone,
+`~/org2/v46/int/repo`, branch `v46`: core first, then display, by cherry-pick, each commit keeping
+its author and message. Every commit of ours is by Platima with his GitHub noreply address and the
+Co-Authored-By line; upstream's keeps its own author and message. Nothing was flashed, no serial
+port was opened, nothing of v4.6 has run on a board, and nothing was pushed or tagged in this round.
+
+### 32.0 In one screen
+
+* **Why `double_buffer = 1` crashed** (32.2): v4.5 deleted the panel once the ini was read, to
+  start it again with two frame buffers. On Plat's board that start failed, with two and then with
+  one, and `vga_task` then handed the VGA code a frame buffer at address 0. 0xFA50 is the first
+  text cell's first pixel: row 40 at 1,600 bytes a row, plus 40 pixels [verified: disassembly,
+  arithmetic, and the host test faults at the same address; that the board took this path is
+  inferred]. Why the panel would not start again is [unknown]. Memory is the likeliest: PSRAM
+  broken up round the freed buffer, or internal DMA memory [inferred].
+* **Double buffering made at power-on** (32.3): both frame buffers come with the panel, before the
+  emulator's memory or anything else, and the panel is never started again. The ini is only known
+  after the boot menu, so a start whose ini asks for it notes the ini in the LP SRAM and restarts
+  once; the next start makes the panel with two frame buffers and takes that ini with no menu. If
+  the panel will not start with two, it starts with one, as at every power-on of v4.5, and a yellow
+  line gives ESP-IDF's error and the memory free. Never more than one restart in a row, and none
+  under the Linux-default table. `double_buffer = 0` starts as v4.5 does [verified: code, host test
+  3g, objdump; the board unknown].
+* **The guest kept out of the devices' state** (32.4): upstream's 97a450b starts the devices' state
+  at 0xA0020; a 16 or 32-bit access that crosses a 4 KiB page goes a byte at a time, each byte to
+  its own page; DMA writes into 0xA0000 to 0xBFFFF are dropped; a floppy request for a cylinder,
+  head or sector the disk does not have is refused. On the PC, Windows 95 gives v4.5's instruction
+  counts to the instruction in three runs [verified].
+* **Pacing** stays off by default (32.5), from Plat's run. No code change.
+* **The history rewrite** (32.6) was done and force-pushed on 2026-10-25. The notes here now name the
+  new hashes.
+* **Checks** (32.7 to 32.10): 61 host tests pass (v4.5: 53); the release built twice from nothing
+  gives the same bytes, and the same as in-tree builds of the code; every bootloader, table and
+  `flash_args` is v4.5's byte for byte; the dual-boot app is 936,192 bytes of its 1,966,080; the one
+  old warning, no new one.
+
+### 32.1 The commits [verified: `git log c8528f2..v46`]
+
+| Commit | Author | What |
+|-|-|-|
+| 876af9c | Chunhui He (upstream 97a450b, "fix", cherry-picked as it is) | `pc.c`: the devices' state from 0xA0020, 0xC0000 less that long (32.4) |
+| a67bb47 | Platima | `i386.c`, `tests/host`: 16 and 32-bit accesses that cross a page go a byte at a time; `test_page_cross.c`, `run.sh` 21 (32.4) |
+| 8ea8200 | Platima | `i8257.c`, `tests/host`: DMA writes into the 0xA0000 window dropped; `test_dma_window.c`, `run.sh` 22 (32.4) |
+| 2dfa515 | Platima | `misc.c`, `tests/host`: a floppy cylinder, head or sector the disk does not have refused; `test_floppy.c` (32.4) |
+| cdf934a | Platima | `esp/main`, `tests/host`: the VGA code keeps its buffer when double buffering was not made (`display.c`, `lcd.h`); `tests/host/display` (new: `test_double_start.c` and its stubs), `run.sh` 3g (32.2) |
+| 5b5c1fb | Platima | `esp/main`: the panel not started again: restart once (`esp_main.c`, `lcd_korvo1.c`, `lcd.h`, `speed.c`, `speed.h`; `TEST-PLAN.md` 16c); mostly replaced by 635dc04 |
+| b8dc026 | Platima | `esp/main`, `tests/host`: the crash screen with no panel draws nothing (`console.c`, `test_console.c`) (32.2) |
+| 89573ce | Platima | `esp/main`: no panel: the PC's own picture buffer counted (`esp_main.c`) (32.2) |
+| 635dc04 | Platima | `esp/main`, `tests/host`: both frame buffers made with the panel at power-on: `dbuf_boot.c` and `dbuf_boot.h` (new), `lcd_korvo1.c`, `lcd.h`, `esp_main.c`, `speed.c`, `display.c`, `board_korvo1.h`, `CMakeLists.txt`; `test_double_start.c` and three stubs more, `run.sh` 3g; `TEST-PLAN.md` 16c (32.3) |
+| 190ec33 | Platima | `esp/version.txt`: `v4.6` |
+| (the next commit) | Platima | `s31/`: this section, `TEST-PLAN.md` 16 and 17, `FLASH.txt`, `FIRMWARE.md`, `README.md`, `dualboot/DUALBOOT.md` 13.3, 13.6 and 13.8, `build.sh`'s first comment, `REVIEW-RESOLUTION.md`, the hashes of 32.6, and the checks (32.14) |
+
+`git diff --stat s31-v4.5 190ec33 -- . ':!s31'`: 40 files changed, 2,832 lines added, 254 taken out,
+c8528f2's `esp/dependencies.lock` among them. Every commit's files were looked at: no binary,
+nothing of Windows'.
+
+The five display commits are the display series' with one line changed in each, the same line.
+`run.sh` 3g, which compares the display test with v4.5's `display.c`, named v4.5's commit by its
+hash from before the rewrite, as a fall-back when the tree has no tag for v4.5. That hash names one
+of the commits the rewrite left behind, so before anything was built it was changed to 99074b7,
+the rewritten `s31-v4.5`, which has the same tree, in all five (`git filter-branch` on `v46` alone).
+Each commit's message, author, committer and dates are as they were, and nothing else in any tree
+changed [verified: the old and new commits compared pair by pair]. Where the tag is there, as in
+the canonical repository and on the fork, the test takes the tag, as before.
+
+### 32.2 The crash with `double_buffer = 1` [verified: code, disassembly, host test; the board's path inferred]
+
+Plat's photo of the next boot's console: a load access fault on core 0, `mepc 4001b87e`, `mtval
+0000fa50`, and two white flashes of the status LED, which mean the last run ended in a watchdog or
+lock-up reset [reported].
+
+* The fault is in `vga_draw_glyph9()`, inlined into `vga_draw_cell()`, reading the first pixel of
+  the first text cell from the VGA code's frame buffer, whose address was 0. 0xFA50 = 40 x 1,600 +
+  40 x 2: row 40 of an 800x480 RGB565 buffer, 40 pixels in, where 80x25 text starts [verified:
+  v4.5's ELF from the package, disassembly; arithmetic].
+* v4.5's `vga_task` handed `lcd_vga_present()` to the VGA code after every picture, whether or not
+  double buffering had been made. When `double_start()` could not start the panel again, with two
+  frame buffers or with one, there was no panel frame buffer, `lcd_vga_present()` returned NULL,
+  and the next text cell faulted at 0xFA50 [verified: v4.5's `display.c` in the host test faults
+  there]. v4.5's answer to that case (31.3, display note 6) told the console, not `vga_task`.
+* cdf934a: `vga_task` hands the panel's buffer over only when double buffering was made. b8dc026:
+  the crash screen draws nothing when there is no panel; the two white flashes were most likely
+  the crash screen faulting inside the panic handler [inferred]. 89573ce: with no panel the PC's
+  own picture buffer, 752 KiB, is counted before the guest's memory is settled, so a `mem_size`
+  that fits is no longer stopped later with a message that blames it. 5b5c1fb's restart for that
+  case is replaced by 635dc04's design (32.3).
+* Why the panel would not start again on Plat's board is [unknown]. The panel at power-on with one
+  frame buffer works there; the second start came after the emulator's pool, the card and the rest
+  had taken their memory. So memory is the likeliest cause: PSRAM broken up round the hole the first
+  panel left, or internal DMA memory for the driver [inferred]. 32.3 takes the question away rather
+  than answering it, by making the frame buffers first; if even that fails, its yellow line names
+  the error and the memory free.
+
+### 32.3 Double buffering made at power-on (635dc04) [verified: code, host test 3g, objdump; the board unknown]
+
+1. `app_main()`'s first call, `dbuf_boot_take()`, copies a 180-byte note from the LP SRAM
+   (`.rtc_noinit`, beside the console's ring) and clears it, and keeps the reset's cause.
+2. `dbuf_boot_panel()` takes `lcd_init()`'s place. With a whole note asking for two frame buffers,
+   it marks the note TRYING, calls `lcd_init_two()` (the RGB panel with `num_fbs = 2`, both buffers
+   the driver's own in PSRAM, and the swap event) and clears the note again. If that start fails,
+   `lcd_init_two()` deletes the panel nobody has seen and starts it exactly as `lcd_init()` does,
+   keeping ESP-IDF's error. Without a note: `lcd_init()`, v4.5's start, unchanged.
+3. With a note, the boot menu is skipped for the ini it names, if it is still there, and
+   `lastboot.txt` is not written.
+4. `dbuf_boot_start()` takes `double_buffer_start()`'s place. Both buffers made and the ini asking:
+   swapping on. Not made: the reason, in yellow. Or, at a start that found no note at all and whose
+   reset was not a software restart, with a panel, room in the pool, and a restart that comes back
+   to tiny386: the note (the ini's folder and name) is written, a grey line says so, and after 1 s
+   `esp_restart()`. That is after `ini_parse()` and before `settle_memory()`, `check_config()`
+   (which hands a card partition to the PC) and the PC.
+
+**No loop.** A restart needs a start that found no note at all, so a whole note, a TRYING note or a
+broken one stops it. It also needs a reset that was not a software restart, so the start after
+tiny386's own restart never restarts, whether the LP SRAM kept the note or not (`esp_restart()`
+reads back as `ESP_RST_SW` on the S31 [verified: ESP-IDF's `reset_reason.c`]). A reset inside the
+two-buffer start leaves TRYING, so the start after it has one buffer and does not try again. So
+there is at most one restart after any reset that is not itself a software restart.
+
+**Where a restart would start Linux** (tiny386 the dual boot's test app, under the Linux-default
+table) there is none: `restart_comes_back()` reads the running partition's subtype
+(`dualboot\DUALBOOT.md` 13.8), and a yellow line says that double buffering needs the
+tiny386-default table. Holding GPIO42 low through the reset to steer the bootloader was thought of
+and rejected: VOL+ is on a resistor ladder, and whether a pad hold survives a system reset on the
+S31 is not known.
+
+**The memory.** The pool is sized after the panel, so with both frame buffers it is already about
+750 KiB smaller, and `settle_memory()` and `check_config()` count the second buffer once;
+`double_buffer_start()` no longer takes 752 KiB from the pool as v4.5's did. With Plat's pool of
+15,104 KiB (his photo of the crash), `win95-sd.ini` (`mem_size = max`, 768K) gets 13M with or
+without double buffering, and `win95-14m.ini` (14M, 320K) is lowered to 13M with it [inferred:
+arithmetic on `settle_memory()`]. The note takes 180 bytes of the LP SRAM (8,244 to 8,424 of
+32,768).
+
+**The lines** Plat will see, case by case, are in `TEST-PLAN.md` 17c and 17d. With
+`double_buffer = 0` there is no new line.
+
+**Tested** (`tests/host/display/test_double_start.c`, `run.sh` 3g, rewritten): 19 cases, each a chain
+of starts in child processes, the note and the reset's cause carried between them, with a pretend
+RGB driver that allocates from a pretend PSRAM and can refuse a start, refuse the swap event, or
+reset the chip inside the start. Checked in each: the note cleared, never more than one restart,
+two buffers asked for only with a whole note, the pool 750 to 754 KiB smaller with two, the console
+line the case expects, every picture's buffer, and Ctrl+Alt+F9's state. All 19 pass. Against v4.5's
+`display.c` the three cases with no panel fault at 0xfa50, as the board did, and with a panel the
+16 cases give v4.5's 192 pictures and 80 presses of Ctrl+Alt+F9, line for line. Each of 14 deliberate
+breaks of `dbuf_boot.c` and `lcd_korvo1.c` makes the test fail [verified: the display series'
+runs; the 19 cases and the comparison with v4.5 again here, 32.7].
+
+**In the built app** [verified: objdump of `korvo1-dualboot\tiny386.elf`,
+`checks\reproducible-v4.6.txt`]: `app_main`'s first call is `dbuf_boot_take`; `dbuf_note` is 180
+bytes at 0x2E002010 in the LP SRAM, beside `s_ring` and `s_rec`; `dbuf_boot_start` calls
+`esp_ota_get_running_partition` and `esp_restart`.
+
+### 32.4 The guest kept out of the devices' state [verified: host tests 21 and 22, the floppy test, the PC harness; the board unknown]
+
+On the board the devices' state (`pcmalloc()`: the IDE channels, the NE2000, the dirty map and the
+rest) lives in the guest's own memory from 0xA0000 to 0xBFFFF, where the guest's own stores go to
+the VGA instead. Three ways in were left.
+
+* **876af9c (upstream 97a450b).** The state starts at 0xA0020, so a 16 or 32-bit store that starts
+  in the last bytes below 0xA0000 lands in a 32-byte gap, not in the primary IDE channel's `irq`
+  field. The window is 131,040 bytes, and the boot console's line reads `Device memory (the 0xA0000
+  window): N of 131040 bytes used` where v4.5 said `of 131072`. N is v4.5's: 91,616 on the PC
+  harness with `win95-14m.ini`'s settings, on both [verified]; 93,344 for `win95-sd.ini` and
+  93,408 for `win95-800x480.ini` [inferred: the board ELF's sizes]. Every allocation is a multiple
+  of 32 and no configuration of the Korvo-1 fills the window exactly, so the 32 bytes can never be
+  the ones that stop a boot [verified: every mix of disks and video memory sizes, by arithmetic].
+* **a67bb47, the byte split** (after yejun's hchunhui/tiny386 PR #49). An access that runs on into
+  the next 4 KiB page goes through `load8` or `store8` a byte at a time, each byte to its own
+  physical address: under paging, the second page's for the bytes past the boundary. With v4.5's
+  `i386.c` such accesses put bytes into the devices' state in the window (0xA0000 to 0xA0002 and
+  0xA1000 to 0xA1002 in the test) and past the end of RAM, and loads read the window's bytes
+  [verified: host test 21's "before" mode]. The old split code is gone. The crossing
+  test is written so that the board's compiler makes it three instructions with no load (`lui`,
+  `slli`, `bltu`), so the common path of `load16`, `load32`, `store16` and `store32` is one
+  instruction longer than v4.5's with one memory load fewer (15, 15, 17, 17 instructions become 16,
+  16, 18, 18). The byte path is in flash, and internal RAM's code is 266 bytes smaller. Host test 21
+  (`test_page_cross.c`): 17 guests, each a crossing case, pass on this `i386.c` as the board and as
+  tiny386's Makefile build it, and v4.5's `i386.c` in the test's "before" mode shows the fault
+  [verified].
+* **8ea8200, DMA.** `i8257_dma_write_memory()` drops a byte for 0xA0000 to 0xBFFFF, in both
+  directions; the rest of a transfer goes to RAM as before. Its only writer there is SB16 command
+  E2h, which writes one byte to channel 1's address [verified: code]. Host test 22
+  (`test_dma_window.c`): 7 transfers pass, and v4.5's `i8257.c` fails 4 of them [verified].
+* **2dfa515, the floppy.** A request for a cylinder, head or sector the disk does not have is
+  refused: the two lines of upstream's 81e09ee (Plat's hchunhui/tiny386 PR #50) that this tree
+  lacked. `test_floppy.c`: 5 more checks, 28 in all, pass [verified].
+* **Windows 95 on the PC harness** (the core series' runs, WSL `~/org2/v46/core/pc/runs`, each on a
+  fresh copy of the pristine image, deleted after): to the desktop and 120 s idle, 588,301,033
+  instructions; Start, Shut Down, Restart, 1,304,341,904; Restart in MS-DOS mode with `mem`, `dir`
+  and `exit`, 1,337,723,352. Each is v4.5's count to the instruction, with the same final picture
+  [verified]. So those runs made no crossing access into the window, no DMA write there and no
+  floppy request, and the checks cost them nothing.
+
+### 32.5 Pacing on the board [reported]
+
+Plat on v4.5: pacing changed none of the visual glitches and lowered the panel's frame rate. On the
+PC it took the pictures caught part way through drawing from 7, 4 and 4 per cent to 2, 0 and 1
+(29.7), so what he sees is something else. `pace_quiet` stays 0 by default, and its code is v4.5's.
+`TEST-PLAN.md` 16c says so.
+
+### 32.6 The branch's history rewritten (2026-10-25) [verified: git]
+
+Storage finding 3 of round 11: nine lines quoted from Windows 95's `IOS.LOG` came in with
+`s31-v4.4`, in `checks\partition-passthrough-v4.4.txt`, and v4.5 paraphrased them, but the history
+kept them. On 2026-10-25 Plat had the branch rewritten from `s31-v4.4` on and force-pushed. The
+seven commits that held the lines carry v4.5's paraphrased copy of that file, and nothing else in
+them changed; the commit after them changed only because its parent did, and its tree is the same.
+The two tags were made again with the same name, message, tagger and date. Older commits and tags
+keep their hashes. c8528f2 then adds the S31 `esp/dependencies.lock`.
+
+| Commit now | Tag | Subject |
+|-|-|-|
+| 6d619a0 | `s31-v4.4` (tag object 7d7febe) | s31: v4.4 part 2 (the card partition, the new card, the release) and its checks |
+| 47290db | | esp/main: double buffering after the speed screen, its counts, a panel that does not come back |
+| 421aef6 | | esp/main, tests/host: the ini saved with no rename |
+| f76aaab | | esp/main, tests/host: sd:N refuses the WIN9X partition; the review's notes on sd_part.c |
+| 6e5e150 | | tests/host: run.sh finds pristine and v4.0-base by their commits, and says when it skips |
+| dd51a62 | | s31/newcard: p3's type past CHS; the root found by its device number |
+| 8196e20 | | esp/version.txt: v4.5, v4.4 with the fixes of its two reviews |
+| 99074b7 | `s31-v4.5` (tag object 13995ba) | s31: v4.5 (the two reviews of v4.4) and its checks |
+| c8528f2 | | esp/dependencies.lock: the S31 one, as the first build writes it |
+
+The notes in this folder named the old hashes: 31.1, 31.7, 31.9, 31.10, 31.11 and 31.13 here,
+`REVIEW-RESOLUTION.md` round 11, the two reviews of v4.4, `checks\findings-v4.4-review.txt`,
+`checks\partition-passthrough-v4.5.txt` and `checks\reproducible-v4.5.txt`. Each now names the new
+one, and each review says so in a line added at its top. The old hashes are named nowhere in the
+tree, nor in v4.6's commits (32.1); the map from old to new stays out of the tree, as its old column
+names the commits the rewrite left behind. 31.8, 31.13 and storage finding 3 in
+`REVIEW-RESOLUTION.md` now say that the rewrite was done. GitHub may still show the old commits by
+their hashes until it collects them; only GitHub Support can purge them sooner [inferred].
+
+v4.5 as released, in the package's `previous-v4.5\`, keeps its docs as they were, old hashes and
+all, so that its `SHA256SUMS` still checks (32.11).
+
+### 32.7 Host tests [verified: `checks\host-tests-v4.6.log` and the files named]
+
+61 tests, all pass (89 s), at 190ec33: v4.5's 53; three in 3g (the 19 double-start cases, v4.5's
+fault at 0xfa50 seen by the test, and with a panel v4.5's pictures line for line); three in 21 (the
+page crossing on `i386.c` as the Korvo-1 builds it and without the board header, and v4.5's bytes
+seen in "before" mode); and two in 22 (DMA, and v4.5's bytes seen). With the 113-character output
+folder: the same 61 (`checks\host-tests-v4.6-long-out.log`). In the tree `build.sh` makes from the
+patch: 49 pass (v4.5: 45), the comparisons that need this branch's own releases skipped and said
+(`checks\host-tests-v4.6-from-patch.log`). The host build's warnings are v4.5's 11 lines. A run at
+f7f7492, the version commit before 32.1's one-line change, gave the same 61, 61 and 49.
+
+### 32.8 Builds, warnings, sizes [verified: `checks\size-*-v4.6.txt`, `checks\reproducible-v4.6.txt`]
+
+The five builds of every round (the Korvo-1 dual boot and standalone, the DOS board, the two
+crash-test builds), from `git archive` of 190ec33 with `s31/dependencies.lock`: all exit 0. The
+Korvo-1 builds have the one old warning (`i2s_task` unused), the DOS board builds none. The host
+build compiles every C file v4.6 changed with `-Wall -Wextra` and gives v4.5's lines only (32.7);
+the board's own `-Wall -Wextra` pass of earlier rounds was not run.
+
+| Build | DIRAM used | v4.5 | LP SRAM | v4.5 | Total image size | v4.5 |
+|-|-|-|-|-|-|-|
+| Korvo-1 (dual boot and standalone) | 251,872 | 251,922 | 8,424 | 8,244 | 936,012 | 932,096 |
+| DOS board | 254,094 | 254,360 | 8,244 | 8,244 | 958,424 | 958,160 |
+
+Internal RAM: the byte split takes 266 bytes of code out of it on both boards, and the display
+series adds 216 on the Korvo-1. The LP SRAM's 180 bytes are the note (Korvo-1 only: the DOS board
+has no `LCD_DOUBLE_BUFFER`, so `dbuf_boot.c` builds to nothing there).
+
+### 32.9 `build.sh`, the images, the dual-boot set [verified: `checks\reproducible-v4.6.txt`]
+
+`build.sh` from `s31/` (its first comment moved on to v4.6), with the release's two patches made from
+the branch with `s31/` left out: `git diff 4ce2e06 190ec33 -- . ':(exclude)s31'` (185 files, 38,181
+lines added, 823 taken out; 1,518,481 bytes) and the same against 9ed786b (192 files, 38,811 lines
+added, 838 taken out; 1,546,588 bytes); neither holds a binary. v4.5's patches made the same way
+from `s31-v4.5` (99074b7) are the package's v4.5 patches byte for byte, so the rewritten history
+gives v4.5's release tree. `dependencies.lock` is v4.5's, and the patched tree's
+`esp/dependencies.lock` (c8528f2's) is the same bytes. Two runs from nothing, each in a clean
+environment, into WSL `~/org2/v46/int/build-a` and `build-b`: 171 s and 171 s, both exit 0,
+the 23 files of the two image trees the same, and the two runs' `esptool image-info`, size and
+bit-bang outputs the same but for the folder's name. Built in the tree at the same code with the
+same build folder names, all three `tiny386.bin` and `tiny386.elf` are `build.sh`'s byte for byte,
+and the standalone and DOS board's bootloader and table too. The images of the run at f7f7492 are
+these bytes too: the one-line change of 32.1 is in a test.
+
+| Image set | `tiny386.bin` | of its partition | SHA-256 | v4.5's |
+|-|-|-|-|-|
+| `korvo1-dualboot` (and `-tiny386-default`) | 936,192 bytes | 1,966,080 (47.6 per cent; 1,029,888 free) | `73136176737fae0a` | 932,272 |
+| `korvo1-standalone` | 936,192 bytes | 1,835,008 (51.0 per cent) | `6e0439cd01a09433` | 932,272 |
+| `dosboard` | 958,608 bytes | 1,835,008 (52.2 per cent) | `828ca9ae95b04389` | 958,336 |
+
+Every bootloader, table and `flash_args` of the four sets is v4.5's byte for byte (and so v4.4's and
+v4.3's): the dual-boot bootloader `b57469cd`, the Linux-default table `d41cba3c`, the tiny386-default
+table `5b90d416`; only `tiny386.bin` and `tiny386.elf` changed. `esptool image-info`: every image and
+bootloader valid, App version `v4.6`. `build.sh`'s check of the status LED's bit-bang passes for all
+three ELFs in both runs.
+
+### 32.10 Not run again, and why
+
+* The dual-boot flash simulations, the batch harness, the app update simulation, the CMake flash
+  refusal and the card check: the scripts, `flash-paths.cmd`, the bootloaders, the tables,
+  `flash_args` and every card file are v4.5's byte for byte, and what the scripts read from an image
+  is `esptool image-info`'s App version, which says `v4.6` for all three apps (32.9).
+  `flash-dualboot.bat COM10 app` writes 936,192 bytes at 0xE20000, inside tiny386's partition.
+* The standard Windows 95 set, the flicker harness, T386MON and the partition harness on the PC: the
+  three Windows runs of 32.4 give v4.5's counts to the instruction, the display series changes only
+  the board's own code (`esp/main`), which the PC harness does not build, and `sd_part.c` is v4.5's.
+
+### 32.11 The package, staged [verified: `checks\sums-v4.6.txt`]
+
+`D:\Repos\esp32-s31-linux-release\tiny386-idf\v3`, where Plat flashes from, was only read. v4.6's
+package is staged in WSL `~/org2/v46/pkg`, laid out as that folder and holding only what v4.6
+changes or adds (92 files), for the release step to copy over it:
+
+* `previous-v4.5\`: v4.5 as released, copied from the package (36 files): its four image sets, both
+  patches and their diffstats, `build.sh`, `README.md`, `BUILD-NOTES.md`, `TEST-PLAN.md`,
+  `FLASH.txt`, `REVIEW-RESOLUTION.md` and its `SHA256SUMS`, and v4.5's copies of the two reviews of
+  v4.4, which v4.6 changes (32.6). Its docs keep the hashes from before the rewrite, as released.
+* The v4.6 images (build-a's), both patches and their diffstats, and `build.sh`, in their places.
+* From the branch: `BUILD-NOTES.md`, `TEST-PLAN.md`, `FLASH.txt`, `REVIEW-RESOLUTION.md`, the two
+  reviews of v4.4, `dualboot\DUALBOOT.md`, and in `checks\` v4.6's checks and the three of v4.5's
+  whose hashes moved on. The package's own `README.md`, edited to match `FIRMWARE.md`.
+* No card file, flash script, `newcard\` file, `STATUS-LED.md`, `LINE-OUT.md` or
+  `dependencies.lock` changed, so none is staged.
+
+The top `SHA256SUMS` is v4.5's 182 files in v4.5's order, as v4.6 adds none: 182 lines, every one OK
+when each file is read from the stage if it is there and from the package folder if not, as the
+folder will be. Against v4.5's list 19 files' hashes changed: the docs (`README.md`,
+`BUILD-NOTES.md`, `TEST-PLAN.md`, `FLASH.txt`, `REVIEW-RESOLUTION.md`, the two reviews of v4.4),
+`build.sh`, the two patches and their diffstats, and the seven `tiny386.bin` and `tiny386.elf`.
+Every bootloader, table, `flash_args`, script and card file is v4.5's. Each image folder's own list
+checks. Every earlier list, `previous-v4.5\` to `previous-v3.2\`, finds every one of its files with
+its hash, in itself, in `v3\` as it will be, or in a later `previous-*` folder: not one missing
+(`previous-v4.5\`'s 182: 31 inside it, 151 from `v3\`). As before the list leaves out `checks\` and
+`dualboot\`.
+
+### 32.12 What only a board can say [unknown]
+
+* Whether the panel starts with two frame buffers at power-on, and if not, why (the yellow line's
+  error and memory figures).
+* The swap itself: v4.4's mechanism has never run on a board.
+* Whether the LP SRAM keeps the note through `esp_restart()`. If not, Plat sees one restart and a
+  yellow line, never a loop.
+* That `esp_ota_get_running_partition()` gives the test subtype for tiny386 under the Linux-default
+  table [inferred: ESP-IDF's source].
+* The boot console's device memory figure, and whether the byte split's one instruction shows in
+  T386MON's instructions a second.
+
+### 32.13 For Plat
+
+* **Try** `TEST-PLAN.md` 17: the memory lines with `double_buffer = 0`, then `double_buffer = 1` from
+  power-on with tiny386 the default, photographs as 17f lists; Windows as before.
+* **Decide**, once double buffering runs: whether it is worth its memory and its restart at every
+  boot.
+* **The release**: the tag `s31-v4.6` goes on the commit that adds this section, and the branch and
+  the tag go to the fork from `D:\Repos\tiny386` as before; the staged package goes into the package
+  folder (32.11).
+
+### 32.14 Where things are
+
+On the branch (`s31\`): this section; `TEST-PLAN.md` 17; `dualboot\DUALBOOT.md` 13.8; `checks\` (text
+only): `host-tests-v4.6.log`, `host-tests-v4.6-long-out.log`, `host-tests-v4.6-from-patch.log`,
+`reproducible-v4.6.txt`, `build-sh-v4.6-run1.txt`, `build-sh-v4.6-run2.txt`, `image-info-*-v4.6.txt`
+(six), `size-*-v4.6.txt` (three), `sums-v4.6.txt`. The package's `checks\` has the same.
+
+WSL `~/org2/v46/` (all made here, throw-away): `core/` and `disp/` (the two series: their clones,
+builds, host test runs and the Windows runs), `dbuf/` (the first fix of the crash, which the display
+series starts from), `int/` (the clone that puts them together, `stage/`, `build-a/` and `build-b/`,
+`bt/` (the in-tree builds), `ht/` (the host test runs), `prelim-f7f7492/` (the same runs at the
+version commit before 32.1's change) and `work/` (the scripts)), and `pkg/` (the package, staged).
+On Windows the session's scratch folder `v46\` holds the notes of each step and the scripts as
+written. Nothing started for this is still running.

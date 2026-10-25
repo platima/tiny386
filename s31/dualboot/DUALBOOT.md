@@ -665,6 +665,9 @@ board: unknown].
 
 ### 13.3 Neither app looks at its own subtype or label
 
+(So it was in this round. Since v4.6 tiny386 reads its own subtype, and only that, before a
+restart of its own: 13.8.)
+
 * The Linux loader (be5b725 `bootloader/main/main.c`, read in `~/esp32-s31-linux-main` at
   be5b7253, no local changes): its only partition calls are `find_partition()` (lines 240 to 248),
   `esp_partition_find_first(ESP_PARTITION_TYPE_DATA, 0x40, name)` for `linux`, `opensbi` and
@@ -784,6 +787,9 @@ also mends it, from the backup.
   folder's `SHA256SUMS` made again. (Since v3.8 `..\build.sh` makes that folder itself, from
   `partition-table-tiny386-default.bin`, which it checks by SHA-256, and the korvo1-dualboot
   set it has just built: `..\BUILD-NOTES.md` 20.)
+* (v4.6) With `double_buffer = 1` tiny386 restarts itself once at every boot (13.8). With tiny386
+  the default, VOL+ held at that moment would start Linux instead [inferred: 13.2]; nobody holds
+  it then in practice, and the next RESET starts tiny386 again.
 
 ### 13.7 Files of this round
 
@@ -797,6 +803,29 @@ also mends it, from the backup.
 | `..\checks\bootswap\flash-simulation-bootswap.txt` | the flash simulation, 19 paths and 6 cut-off cases |
 | `..\checks\bootswap\scripts\` | `table-check.sh`, `make_flow_bootswap.py`, `simulate-flash-bootswap.py` and `mk_sim.py`, which made it from the v3.7 one |
 | `..\checks\bootswap\scripts-before\` | the four Windows scripts as they were before this round, byte for byte, for the `previous-v3.x\SHA256SUMS` lists and the earlier checks |
+
+### 13.8 v4.6: tiny386 reads its own subtype (2026-10-25)
+
+From v4.6, a boot whose ini has `[esp] double_buffer = 1` restarts tiny386 once (`esp_restart()`),
+so that the panel gets both frame buffers at power-on (`..\BUILD-NOTES.md` 32.3). Before it
+restarts, tiny386 asks which app partition it runs from, with `esp_ota_get_running_partition()`,
+the call 13.3 describes, and restarts only if that partition's subtype is not test
+(`esp/main/dbuf_boot.c`, `restart_comes_back()`) [verified: code; its call is in the built app].
+
+* tiny386 the default (this round's table: tiny386 the factory app at 0xE20000), and tiny386 alone
+  (its own table: the factory app at 0x10000): the restart comes back to tiny386, by 13.2's rules,
+  with no key held [inferred: the bootloader source, 13.2].
+* Linux the default (tiny386 the test app, started with VOL+ held): a restart would start Linux, so
+  tiny386 does not restart. It keeps one frame buffer and says why in yellow.
+* It only reads. Nothing is written to the table, the otadata or any partition, the label is not
+  looked at, and the same `tiny386.bin` still serves both tables. `esp_ota_set_boot_partition()`
+  cannot choose a test app, so under the Linux-default table tiny386 has no safe way to restart
+  into itself; holding GPIO42 low through the reset was thought of and not done.
+* The comment in `partitions-korvo1-dualboot-tiny386-default.csv` still says that neither app
+  looks itself up by subtype. It is this round's, kept as it is (its SHA-256 is in `SHA256SUMS`
+  here); this section is what holds since v4.6. The Linux loader is as 13.3 says.
+* On the board: [unknown]. That the call gives the test subtype for tiny386 under the
+  Linux-default table is [inferred] from 13.3's reading of ESP-IDF.
 
 
 ## 14. v3.9: writes cut short over Linux's table, and two more checks (2026-10-22)
