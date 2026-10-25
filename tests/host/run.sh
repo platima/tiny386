@@ -262,17 +262,20 @@ for board in korvo1 dosboard; do
     result $st "vga.c, $board: quiet moments counted from the last store, every store through the window noted"
 done
 
-# ==== 3g. the drawing loop with the panel started again (v4.6) ====
-# display.c's vga_task and lcd_korvo1.c as the Korvo-1 builds them, vga.c as
-# test 3c built it, and a pretend RGB panel driver whose starts and
-# allocations fail when asked (tests/host/display): after every picture the
-# VGA code draws into a frame buffer that is there, double buffering made,
-# refused, or the panel not started again at all.  Then display.c at v4.5,
-# where the panel not started again has to end in a load at 0xFA50, the
-# address of the board's fault with double_buffer = 1 (the same arithmetic:
-# any NULL frame buffer under 80x25 text faults there, so this shows the
-# path can give it, not that the board took it).  Last, both with
-# Ctrl+Alt+F9 and VBE at 16 and 8 bits during the run (--trace): with a
+# ==== 3g. double buffering made at power-on, and the drawing loop (v4.6) ====
+# dbuf_boot.c, lcd_korvo1.c and display.c's vga_task as the Korvo-1 builds
+# them, vga.c as test 3c built it, and a pretend RGB panel driver whose
+# starts fail, or reset the chip, when asked (tests/host/display): each case
+# a run of starts in child processes, the LP SRAM's note carried between
+# them; never more than one restart, the note cleared once taken, a note
+# not whole ignored, the panel with two frame buffers after the restart or
+# with one and the yellow line, no restart under the Linux-default table;
+# after every picture the VGA code draws into a frame buffer that is there.
+# Then display.c at v4.5, where a start with no panel has to end in a load
+# at 0xFA50, the address of the board's fault with double_buffer = 1 (the
+# same arithmetic: any NULL frame buffer under 80x25 text faults there, so
+# this shows the path can give it, not that the board took it).  Last, both
+# with Ctrl+Alt+F9 and VBE at 16 and 8 bits during the run (--trace): with a
 # panel the fix must hand over the same buffers and show the same pictures
 # as v4.5, and with none draw every picture into the PC's own buffer.
 echo
@@ -280,34 +283,38 @@ DSP="$HERE/display"
 DSPFLAGS="-I$DSP/stubs -I$TREE/esp/main -I$TREE -include $TREE/esp/main/board_korvo1.h"
 $CC $CFLAGS $DSPFLAGS -c -o "$OUT/dstart-test.o" "$DSP/test_double_start.c" || exit 1
 $CC $CFLAGS $DSPFLAGS -c -o "$OUT/dstart-lcd.o" "$TREE/esp/main/lcd_korvo1.c" || exit 1
+$CC $CFLAGS $DSPFLAGS -c -o "$OUT/dstart-dbuf.o" "$TREE/esp/main/dbuf_boot.c" || exit 1
 $CC $CFLAGS $DSPFLAGS -Dvga_set_fb=host_vga_set_fb -c -o "$OUT/dstart-display.o" \
     "$TREE/esp/main/display.c" || exit 1
-$CC -o "$OUT/test_double_start" "$OUT/dstart-test.o" "$OUT/dstart-lcd.o" \
+$CC -o "$OUT/test_double_start" "$OUT/dstart-test.o" "$OUT/dstart-lcd.o" "$OUT/dstart-dbuf.o" \
     "$OUT/dstart-display.o" "$OUT/vbe-new-korvo1.o" "$OUT/vgafont.o" || exit 1
 "$OUT/test_double_start" > "$OUT/double-start.log" 2>&1
 st=$?
 grep "FAIL\|test_double_start" "$OUT/double-start.log" | head -12
-result $st "display.c and lcd_korvo1.c: the VGA code draws into a frame buffer that is there, with the panel started again or not"
+result $st "dbuf_boot.c, lcd_korvo1.c and display.c: two frame buffers at power-on after one restart at most, the note, the fallback, and a frame buffer there for every picture"
 T_V4_5=$(tagref v4.5 99074b7347bec45d743a56254df218fe616c7d29)
 if [ -n "$T_V4_5" ]; then
     git -C "$TREE" show "$T_V4_5":esp/main/display.c > "$OUT/display-v4.5.c"
     $CC $CFLAGS -w $DSPFLAGS -Dvga_set_fb=host_vga_set_fb -c -o "$OUT/dstart-display-v4.5.o" \
         "$OUT/display-v4.5.c" || exit 1
     $CC -o "$OUT/test_double_start_v4.5" "$OUT/dstart-test.o" "$OUT/dstart-lcd.o" \
-        "$OUT/dstart-display-v4.5.o" "$OUT/vbe-new-korvo1.o" "$OUT/vgafont.o" || exit 1
-    echo "(the same test against display.c at the v4.5 tag, where it has to fault at 0xfa50, the board's address)"
+        "$OUT/dstart-dbuf.o" "$OUT/dstart-display-v4.5.o" "$OUT/vbe-new-korvo1.o" \
+        "$OUT/vgafont.o" || exit 1
+    echo "(the same test against display.c at the v4.5 tag, where a start with no panel has to fault at 0xfa50, the board's address)"
     "$OUT/test_double_start_v4.5" > "$OUT/double-start-v4.5.log" 2>&1
     st=$?
     grep "faulted\|test_double_start" "$OUT/double-start-v4.5.log" | sed 's/^/    | /' | head -6
     [ $st != 0 ] && grep -q "faulted (SIGSEGV) at address 0xfa50" "$OUT/double-start-v4.5.log"
-    result $? "the display test sees v4.5's fault: the panel not started again, then a load at 0xfa50"
+    result $? "the display test sees v4.5's fault: no panel frame buffer, then a load at 0xfa50"
     "$OUT/test_double_start" --trace > "$OUT/double-start-trace.log" 2>&1
     st=$?
     "$OUT/test_double_start_v4.5" --trace > "$OUT/double-start-trace-v4.5.log" 2>&1
-    awk '/^\[/ { keep = /^\[panel\]/ } keep' "$OUT/double-start-trace.log" \
-        > "$OUT/double-start-trace-panel.log"
-    awk '/^\[/ { keep = /^\[panel\]/ } keep' "$OUT/double-start-trace-v4.5.log" \
-        > "$OUT/double-start-trace-panel-v4.5.log"
+    # the "[panel]" cases, without the last line (all passed, or how many
+    # failed: v4.5 fails the cases with no panel)
+    awk '/^\[/ { keep = /^\[panel\]/ } /^test_double_start:/ { keep = 0 } keep' \
+        "$OUT/double-start-trace.log" > "$OUT/double-start-trace-panel.log"
+    awk '/^\[/ { keep = /^\[panel\]/ } /^test_double_start:/ { keep = 0 } keep' \
+        "$OUT/double-start-trace-v4.5.log" > "$OUT/double-start-trace-panel-v4.5.log"
     grep "FAIL\|test_double_start" "$OUT/double-start-trace.log" | head -6
     echo "    | $(grep -c '^    picture' "$OUT/double-start-trace-panel.log") pictures with a panel" \
         "and $(grep -c '^    Ctrl+Alt+F9' "$OUT/double-start-trace-panel.log") presses of" \

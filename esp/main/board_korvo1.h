@@ -38,7 +38,8 @@
 // The emulator takes the largest PSRAM block but this much, which is left
 // for ESP-IDF (FatFs buffers, the console's text).  The panel's frame
 // buffer (750 KiB) is not in it: lcd_init() has taken that before the
-// pool is sized (app_main).  About 15,300 KiB is left for the guest:
+// pool is sized (app_main); with double_buffer = 1 (v4.6) lcd_init_two()
+// has taken both, 1,500 KiB.  About 15,300 KiB is left for the guest:
 // mem_size 14M with vga_mem_size 256K or 320K.
 #define PSRAM_KEEP_FREE (256 * 1024)
 

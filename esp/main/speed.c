@@ -430,8 +430,9 @@ static void double_line(bool changed)
 			       !s_db_value ? "one frame buffer." :
 			       s_db_refused && !changed ? "the second frame buffer could not be made "
 			       "at this start, so there is one (the boot console said why)." :
-			       "the second frame buffer is made when the PC starts (750 "
-			       "KiB of the emulator's memory).",
+			       "the second frame buffer is made with the panel at the next "
+			       "start (750 KiB of the emulator's memory; the boot console says "
+			       "if it cannot be).",
 			       changed ? "; it is saved in the ini" : " and saves it in the ini");
 	}
 #else

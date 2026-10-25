@@ -56,26 +56,27 @@ void lcd_get_stats(struct lcd_stats *st, bool reset);
  * buffer, so that both hold the picture and the next one is drawn over it.
  * The panel never shows a frame buffer being written: no tearing between
  * rows.  The console and the crash screen draw into the front buffer.
- * Every function but lcd_double_start() is called with the display lock
- * held, on core 0.
+ * Every function but lcd_init_two() is called with the display lock held,
+ * on core 0.
  */
-/* Made once, before the PC is built: fb (LCD_WIDTH x LCD_HEIGHT x 2
-   bytes, from the emulator's pool) becomes the front buffer with the
-   console's picture copied into it, the panel is started again with two
-   frame buffers (a moment of black), and the second one is allocated where
-   the first one was.  false if it cannot be: the panel started again as it
-   was, with one frame buffer of the driver's, or if even that fails, no
-   panel at all (globals.panel_fb NULL, the console told: v4.6, esp_main.c
-   then restarts). */
-bool lcd_double_start(void *fb);
-/* v4.6: after lcd_double_start() returned false, why: *two for the start
-   with two frame buffers (0: not tried, no memory for the second one),
-   *one for the start with one after it (0: that one worked).  ESP-IDF
-   error codes, for the console. */
+/* v4.6: in place of lcd_init(), when the panel is to have both frame
+   buffers (dbuf_boot.c: the start after tiny386's own restart for
+   [esp] double_buffer = 1).  Brings the panel up with two frame buffers of
+   the driver's, before anything else has taken memory, and returns the
+   one on show; double buffering is then made (lcd_double_made()) but not
+   on until lcd_double_set(true).  If the panel will not start with two, it
+   is started as lcd_init() starts it, with one, and lcd_double_why() says
+   why; NULL if it will not start with one either.  (v4.4 and v4.5 started
+   the panel again for it before the PC was built, lcd_double_start(); on
+   Plat's board it did not start again, with two or with one: removed.) */
+void *lcd_init_two(void);
+/* v4.6: after lcd_init_two() made one frame buffer, why: *two for the
+   start with two frame buffers, *one for the start with one after it (0:
+   that one worked).  ESP-IDF error codes, for the console. */
 void lcd_double_why(int *two, int *one);
 /* true while pictures are drawn into the back buffer and swapped */
 bool lcd_double_on(void);
-/* both buffers exist (lcd_double_start() worked) */
+/* both buffers exist (lcd_init_two() made them) */
 bool lcd_double_made(void);
 /* swapping on or off (Ctrl+Alt+F9); off, the VGA code draws into the front
    buffer as without double buffering.  Returns where it is to draw now. */

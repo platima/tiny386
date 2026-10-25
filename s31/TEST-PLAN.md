@@ -1285,18 +1285,26 @@ Both are off by default. Try each with the pointer change of 14c in:
 * **Double buffering** (`double_buffer`, Ctrl+Alt+F9, the Korvo-1 only): Windows' picture goes to a
   second frame buffer, shown at the panel's next frame, so no frame shows two pictures at once (your
   16-bit colour bands). Set `double_buffer = 1` in the ini (or press Ctrl+Alt+F9, which saves it, and
-  restart). Expect a short black on the panel as the boot console starts again in its new buffer.
-  (v4.6) If instead the panel stays dark and the board restarts by itself within a second or two,
-  the panel could not be started again with two frame buffers (v4.5 went on with a dark panel and
-  crashed there, the load access fault at `0000fa50`). The next start then has one frame buffer, as
-  with `double_buffer = 0`: its console shows the last run's lines in cyan and a yellow line
-  `double_buffer = 1: one frame buffer at this start ...` with two error names. **Photo** both:
-  they say why, which no one knows yet. One Ctrl+Alt+F9 once the PC runs then saves
-  `double_buffer = 0`. With Linux the default (you hold VOL+ for tiny386) a restart would start
-  Linux, so tiny386 stops instead, panel dark and the LED red 5: hold VOL+ and press RESET. If the
-  board keeps tiny386's notes through RESET (not known yet) that start is as above; if it tries
-  double buffering again and stops again, set `double_buffer = 0` on the PC and tell me.
-  **Photo** the boot console's memory lines: the second buffer takes 752 KiB of the emulator's
+  restart). (v4.6) After you choose the ini, a grey line says `double_buffer = 1: tiny386 starts
+  again now, once, ...`, the panel goes dark for a moment and the boot console starts again by
+  itself: the two frame buffers are made with the panel before anything else (v4.5 made the second
+  one later, and on your board the panel would not start again, the load access fault at
+  `0000fa50`). That start says `This start is tiny386's own restart for double_buffer = 1: the
+  panel was started with two frame buffers ...`, takes the same ini with no menu (`Starting ...,
+  as chosen before the restart (no menu).`), and after the settings says `double_buffer = 1: two
+  frame buffers of 750 KiB, both made with the panel at power-on ...`. Every start with
+  `double_buffer = 1` does this one restart. If the panel will not start with two even then, that
+  start has one frame buffer, as with `double_buffer = 0`, and a yellow line `double_buffer = 1:
+  one frame buffer at this start. The panel would not start with two at power-on (ESP_ERR_...)`
+  with the memory free. **Photo** that line: it says why, which no one knows yet. One Ctrl+Alt+F9
+  once the PC runs then saves `double_buffer = 0`. If the board restarts more than once in a row,
+  or the panel stays dark after the restart, tell me (it should not: a start that follows a
+  software restart never restarts again). A dark panel there still starts the PC: give Windows a
+  minute, press Ctrl+Alt+F9 once (it saves `double_buffer = 0`), wait a few seconds and press
+  RESET; or set `double_buffer = 0` on the PC. With Linux the default (you hold VOL+ for tiny386)
+  a restart would start Linux, so there is no restart: one frame buffer and a yellow line saying
+  so; double buffering needs the tiny386-default table.
+  **Photo** the boot console's memory lines: the second buffer takes about 750 KiB of the emulator's
   memory, which costs Windows 1M or nothing, depending on your pool, which is not known yet
   [unknown]; the boot console's `Emulator memory` and `mem_size` lines in that photo decide it
   (`BUILD-NOTES.md` 29.6 and 31.5). Then T386MON's full-picture test at 16 bits: the band of mixed

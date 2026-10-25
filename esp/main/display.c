@@ -149,11 +149,13 @@ void vga_task(void *arg)
 			   its next frame, and is copied into the new back buffer,
 			   where the next one is drawn.  v4.6: only once both
 			   buffers are made.  Else the VGA code keeps the buffer it
-			   was built with, its own when the panel could not be
-			   started again (lcd_korvo1.c's last fallback), where
+			   was built with, its own when there is no panel, where
 			   lcd_vga_present() is NULL: v4.5 handed that over, and
 			   the next text cell drawn was a load access fault at
-			   0xFA50 (tests/host/display) */
+			   0xFA50 (tests/host/display).  v4.5 lost its panel when
+			   it could not start it again for double buffering; v4.6
+			   never starts it again, but a panel that does not start
+			   at power-on still needs this */
 			if (lcd_double_made())
 				vga_set_fb(((PC *) globals.pc)->vga, lcd_vga_present());
 #endif

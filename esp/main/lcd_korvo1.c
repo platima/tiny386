@@ -15,12 +15,13 @@
  * the rows that were drawn.  Everything that is not about this panel (the
  * drawing loop, the console) is elsewhere; see lcd.h.
  *
- * v4.4: double buffering (lcd.h).  The panel is started again with two
- * frame buffers, the first one from the emulator's pool, the second where
- * the driver's own one was; a picture goes to the panel by the driver's
- * draw_bitmap() with a pointer into the back buffer, which makes the DMA
- * take that buffer at the end of the frame it is sending, and the driver's
- * frame-buffer-complete event (the DMA's link switch) says when it has.
+ * v4.4: double buffering (lcd.h).  A picture goes to the panel by the
+ * driver's draw_bitmap() with a pointer into the back buffer, which makes
+ * the DMA take that buffer at the end of the frame it is sending, and the
+ * driver's frame-buffer-complete event (the DMA's link switch) says when it
+ * has.  v4.4 and v4.5 started the panel again for it, before the PC was
+ * built; v4.6 makes both frame buffers with the panel at power-on
+ * (lcd_init_two(), dbuf_boot.c), and never starts it again.
  */
 
 #include <string.h>
@@ -32,7 +33,6 @@
 #include "esp_err.h"
 #include "esp_cache.h"
 #include "esp_cpu.h"
-#include "esp_heap_caps.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_rgb.h"
 
@@ -60,9 +60,9 @@ static bool s_rows_any, s_copy_all;
 static uint32_t s_swaps, s_unreported;  /* v4.5: since the start, never reset */
 static esp_err_t s_why_two, s_why_one;  /* v4.6: lcd_double_why() */
 
-/* the panel's settings, with one frame buffer the driver allocates, or
-   with fb0 and fb1 the two given */
-static void panel_config(esp_lcd_rgb_panel_config_t *cfg, void *fb0, void *fb1)
+/* the panel's settings, with nfbs frame buffers (1, or v4.6 2) that the
+   driver allocates in PSRAM */
+static void panel_config(esp_lcd_rgb_panel_config_t *cfg, int nfbs)
 {
 	const esp_lcd_rgb_panel_config_t base = {
 		.clk_src = LCD_CLK_SRC_PLL160M,
@@ -97,26 +97,26 @@ static void panel_config(esp_lcd_rgb_panel_config_t *cfg, void *fb0, void *fb1)
 		},
 	};
 	*cfg = base;
-	if (fb0 && fb1) {
-		cfg->num_fbs = 2;
-		cfg->user_fbs[0] = fb0;
-		cfg->user_fbs[1] = fb1;
-	}
+	cfg->num_fbs = nfbs;
 }
 
-/* the panel started; its first frame buffer in *fb.  NULL if it did not
-   start, and (v4.6) why in *why */
-static esp_lcd_panel_handle_t panel_start(const esp_lcd_rgb_panel_config_t *cfg, void **fb,
-					  esp_err_t *why)
+/* the panel started; its first frame buffer in *fb0 and, if fb1 is not
+   NULL, its second in *fb1.  NULL if it did not start, and (v4.6) why in
+   *why */
+static esp_lcd_panel_handle_t panel_start(const esp_lcd_rgb_panel_config_t *cfg, void **fb0,
+					  void **fb1, esp_err_t *why)
 {
 	esp_lcd_panel_handle_t panel = NULL;
 	esp_err_t err = esp_lcd_new_rgb_panel(cfg, &panel);
 	if (err == ESP_OK)
 		err = esp_lcd_panel_init(panel);
-	*fb = NULL;
+	*fb0 = NULL;
+	if (fb1)
+		*fb1 = NULL;
 	if (err == ESP_OK)
-		err = esp_lcd_rgb_panel_get_frame_buffer(panel, 1, fb);
-	if (err == ESP_OK && !*fb)
+		err = fb1 ? esp_lcd_rgb_panel_get_frame_buffer(panel, 2, fb0, fb1) :
+			esp_lcd_rgb_panel_get_frame_buffer(panel, 1, fb0);
+	if (err == ESP_OK && (!*fb0 || (fb1 && !*fb1)))
 		err = ESP_FAIL;
 	*why = err;
 	if (err != ESP_OK) {
@@ -128,13 +128,13 @@ static esp_lcd_panel_handle_t panel_start(const esp_lcd_rgb_panel_config_t *cfg,
 	return panel;
 }
 
-void *lcd_init(void)
+/* the panel with one frame buffer, the driver's: v4.5's power-on */
+static void *start_one(esp_err_t *why)
 {
 	esp_lcd_rgb_panel_config_t cfg;
-	panel_config(&cfg, NULL, NULL);
+	panel_config(&cfg, 1);
 	void *fb_ptr = NULL;
-	esp_err_t err;
-	esp_lcd_panel_handle_t panel = panel_start(&cfg, &fb_ptr, &err);
+	esp_lcd_panel_handle_t panel = panel_start(&cfg, &fb_ptr, NULL, why);
 	if (!panel) {
 		/* only the UART can say so: there is no panel */
 		return NULL;
@@ -145,6 +145,12 @@ void *lcd_init(void)
 	s_panel = panel;
 	s_fb = fb_ptr;
 	return fb_ptr;
+}
+
+void *lcd_init(void)
+{
+	esp_err_t err;
+	return start_one(&err);
 }
 
 void lcd_set_invalidate(bool on)
@@ -219,96 +225,59 @@ void *lcd_crash_second_fb(void)
 	return s_back;
 }
 
-static bool double_start(void *fb)
+/* v4.6: the panel with two frame buffers, at power-on, before anything
+   else has taken PSRAM or internal DMA memory (dbuf_boot.c).  v4.4 and
+   v4.5 made the second one later, by deleting the panel made here and
+   starting it again with two, after the emulator's pool and the rest had
+   taken their memory; on Plat's board that start failed, with two and
+   with one (v4.5: the load access fault at 0xFA50).  Here nothing is
+   deleted but a panel that has just started: if the start with two fails,
+   the panel is started as lcd_init() starts it, with one. */
+void *lcd_init_two(void)
 {
-	if (!s_panel || !s_fb || !fb || s_back)
-		return false;
+	esp_lcd_rgb_panel_config_t cfg;
+	void *fb0 = NULL, *fb1 = NULL;
+	esp_lcd_panel_handle_t panel = NULL;
+	s_why_two = s_why_one = ESP_OK;
 	if (!s_switched)
 		s_switched = xSemaphoreCreateBinary();
-	if (!s_switched)
-		return false;
-	/* the console's picture into the new front buffer, all of it in PSRAM */
-	memcpy(fb, s_fb, FB_BYTES);
-	esp_cache_msync(fb, FB_BYTES, ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
-
-	/* the old panel and its frame buffer go; the second buffer takes the
-	   room that one leaves */
-	esp_lcd_panel_del(s_panel);
-	s_panel = NULL;
-	globals.panel = NULL;
-	/* v4.6: why, if it fails (two 0: no memory for the second buffer) */
-	s_why_two = s_why_one = ESP_OK;
-	uint16_t *fb1 = heap_caps_calloc(1, FB_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
-	esp_lcd_rgb_panel_config_t cfg;
-	void *fb_ptr = NULL;
-	esp_lcd_panel_handle_t panel = NULL;
-	if (fb1) {
-		memcpy(fb1, fb, FB_BYTES);
-		esp_cache_msync(fb1, FB_BYTES, ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
-		panel_config(&cfg, fb, fb1);
-		panel = panel_start(&cfg, &fb_ptr, &s_why_two);
-		if (panel) {
-			const esp_lcd_rgb_panel_event_callbacks_t cbs = {
-				.on_frame_buf_complete = on_switched,
-			};
-			esp_err_t err = esp_lcd_rgb_panel_register_event_callbacks(panel, &cbs, NULL);
-			if (err != ESP_OK) {
-				ESP_LOGE(TAG, "the panel's frame event could not be had (%s)",
-					 esp_err_to_name(err));
-				s_why_two = err;
-				esp_lcd_panel_del(panel);
-				panel = NULL;
-			}
+	if (!s_switched) {
+		s_why_two = ESP_ERR_NO_MEM;
+	} else {
+		panel_config(&cfg, 2);
+		panel = panel_start(&cfg, &fb0, &fb1, &s_why_two);
+	}
+	if (panel) {
+		const esp_lcd_rgb_panel_event_callbacks_t cbs = {
+			.on_frame_buf_complete = on_switched,
+		};
+		esp_err_t err = esp_lcd_rgb_panel_register_event_callbacks(panel, &cbs, NULL);
+		if (err != ESP_OK) {
+			ESP_LOGE(TAG, "the panel's frame event could not be had (%s)",
+				 esp_err_to_name(err));
+			s_why_two = err;
+			esp_lcd_panel_del(panel);
+			panel = NULL;
 		}
 	}
 	if (!panel) {
-		/* back as it was: one buffer the driver allocates, the console's
-		   picture copied into it */
-		ESP_LOGE(TAG, "double buffering did not start (%s)", fb1 ? "the panel" : "no memory");
-		free(fb1);
-		panel_config(&cfg, NULL, NULL);
-		panel = panel_start(&cfg, &fb_ptr, &s_why_one);
-		if (!panel) {
-			/* no panel at all now: the console stops drawing (its
-			   buffer was the driver's, freed with the panel) and
-			   says what follows on the UART only (v4.5, the review
-			   of v4.4, F6); v4.6: esp_main.c then restarts, with
-			   lcd_double_why() kept for the next start */
-			s_fb = NULL;
-			globals.panel_fb = NULL;
-			console_set_fb(NULL);
-			return false;
-		}
-		memcpy(fb_ptr, fb, FB_BYTES);
-		esp_cache_msync(fb_ptr, FB_BYTES, ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
-		s_panel = panel;
-		s_fb = fb_ptr;
-		globals.panel = panel;
-		globals.panel_fb = fb_ptr;
-		console_set_fb(fb_ptr);
-		return false;
+		ESP_LOGE(TAG, "two frame buffers: no (%s); the panel with one",
+			 esp_err_to_name(s_why_two));
+		return start_one(&s_why_one);
 	}
+	globals.panel = panel;
+	globals.panel_fb = fb0;
 	s_panel = panel;
-	s_fb = fb;
+	s_fb = fb0;             /* on show first: the driver starts with fbs[0] */
 	s_back = fb1;
-	s_double = true;
+	/* made, not on: lcd_double_set(true) turns it on once the ini asks
+	   (dbuf_boot_start()), with the console's picture copied into the
+	   back buffer then */
+	s_double = false;
 	s_copy_all = false;
 	s_rows_any = false;
 	memset(s_rows, 0, sizeof(s_rows));
-	globals.panel = panel;
-	globals.panel_fb = fb;
-	console_set_fb(fb);
-	return true;
-}
-
-/* with the display lock held: no console line drawn into a frame buffer
-   while it goes away */
-bool lcd_double_start(void *fb)
-{
-	display_lock();
-	bool ok = double_start(fb);
-	display_unlock();
-	return ok;
+	return fb0;
 }
 
 void lcd_double_why(int *two, int *one)
