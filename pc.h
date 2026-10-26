@@ -74,6 +74,8 @@ typedef struct {
 	PCIDevice *pci_ide;
 	PCIDevice *pci_vga;
 	uword pci_vga_ram_addr;
+	CPU_CB *cpu_cb;		/* v5.0: the CPU's callbacks, where pc.c tells it of
+				   the frame buffer (lfb_to_cpu()); NULL: not told */
 
 	EMULINK *emulink;
 

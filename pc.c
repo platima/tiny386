@@ -674,6 +674,28 @@ static void set_irq(void *o, int irq, int level)
 	return i8259_set_irq(s, irq, level);
 }
 
+/* v5.0: the CPU stores into the linear frame buffer itself, with the marks
+   and the flag of iomem_write*() below (CPU_CB's lfb_*, i386.h), where
+   video memory is at pci_vga_ram_addr; with the BAR off (-1) the calls
+   below take every address, as before. */
+static void lfb_to_cpu(PC *pc)
+{
+#if !defined(USE_AMD64)
+	uword base = pc->pci_vga_ram_addr;
+	uword size = pc->vga_mem_size;
+	if (!pc->cpu_cb)
+		return;
+	if (base == (uword) -1) {
+		cpu_cb_set_lfb(pc->cpu_cb, 0, 0, NULL);
+		return;
+	}
+	/* the calls take addr >= base only: none that wraps past 4 GiB */
+	if (base != 0 && size > (uword) -base)
+		size = (uword) -base;
+	cpu_cb_set_lfb(pc->cpu_cb, base, size, (u8 *) pc->vga_mem);
+#endif
+}
+
 static void set_pci_vga_bar(void *opaque, int bar_num, uint32_t addr, bool enabled)
 {
 	PC *pc = opaque;
@@ -688,6 +710,7 @@ static void set_pci_vga_bar(void *opaque, int bar_num, uint32_t addr, bool enabl
 	else
 		cpu_register_mem(pc->cpu, 2, addr, 0,
 				 NULL);
+	lfb_to_cpu(pc);
 }
 
 /* VGA_DIRTY_BLOCKS: a store into the linear frame buffer is noted for the
@@ -930,8 +953,20 @@ PC *pc_new(SimpleFBDrawFunc *redraw, void *redraw_data,
 			   fb, conf->width, conf->height);
 	pc->vga_dirty = vga_dirty_map(pc->vga);
 	vga_set_force_8dm(pc->vga, conf->vga_force_8dm);
+	pc->cpu_cb = NULL;
 	pc->pci_vga = vga_pci_init(pc->vga, pc->pcibus, pc, set_pci_vga_bar);
 	pc->pci_vga_ram_addr = -1;
+#if !defined(USE_AMD64)
+	/* v5.0: the frame buffer's stores in the CPU (lfb_to_cpu()), with
+	   LFB_WRITTEN's marks and vga_wrote */
+	pc->cpu_cb = cb;
+#ifdef VGA_DIRTY_BLOCKS
+	cpu_cb_set_lfb_marks(cb, pc->vga_dirty, VGA_DIRTY_SHIFT, &vga_dirty_blocks, &vga_wrote);
+#else
+	cpu_cb_set_lfb_marks(cb, NULL, 0, NULL, &vga_wrote);
+#endif
+	lfb_to_cpu(pc);
+#endif
 
 	pc->emulink = emulink_init();
 	const char **fdd = conf->fdd;

@@ -834,11 +834,73 @@ static inline uword byte_paddr(OptAddr *res, int i)
 	return res->addr1 + i;
 }
 
+/*
+ * v5.0: the VBE linear frame buffer (CPU_CB's lfb_*, i386.h) without the
+ * calls through pc.c.  An access that in_iomem() takes, from 0xE0000000 up
+ * (in_high_iomem()), and that lies all inside the frame buffer is a load or
+ * a store into video memory here, with the marks and the flag that pc.c's
+ * LFB_WRITTEN and vga_wrote gave it: the bytes first, then a release fence
+ * and the block's byte (two stores of 1, the same byte unless the access
+ * runs into the next block), so that the drawing on the other core, which
+ * clears a block's byte and then reads the block (vga_take_marks()), sees
+ * every store at its next picture at the latest.  What is not all inside
+ * (the end of video memory, no frame buffer, a BAR that pc.c was given
+ * below 0xE0000000) goes to the calls as before, and so do the VGA window
+ * and the other devices.  The RAM path is as it was: the frame buffer is
+ * looked at only after in_iomem() (RV32, the board's compiler: the same
+ * instructions for a store into RAM, two more for one into the window;
+ * tests/host/lfb).
+ */
+static inline void lfb_marked(CPUI386 *cpu, uword off, int n)
+{
+	if (__atomic_load_n(cpu->cb.lfb_marks_on, __ATOMIC_RELAXED)) {
+		u8 *map = cpu->cb.lfb_map;
+		int sh = cpu->cb.lfb_shift;
+		__atomic_thread_fence(__ATOMIC_RELEASE);
+		__atomic_store_n(&map[off >> sh], 1, __ATOMIC_RELAXED);
+		__atomic_store_n(&map[(off + n - 1) >> sh], 1, __ATOMIC_RELAXED);
+	}
+	*cpu->cb.lfb_wrote = 1;
+}
+
+/* the same for len bytes from off (len 1 or more), each block once */
+static void IRAM_ATTR lfb_marked_range(CPUI386 *cpu, uword off, uword len)
+{
+	if (__atomic_load_n(cpu->cb.lfb_marks_on, __ATOMIC_RELAXED)) {
+		u8 *map = cpu->cb.lfb_map;
+		int sh = cpu->cb.lfb_shift;
+		uword b = off >> sh;
+		uword e = (off + len - 1) >> sh;
+		__atomic_thread_fence(__ATOMIC_RELEASE);
+		for (; b <= e; b++)
+			__atomic_store_n(&map[b], 1, __ATOMIC_RELAXED);
+	}
+	*cpu->cb.lfb_wrote = 1;
+}
+
+/* in_iomem() in its two parts: the VGA window, and from 0xE0000000, where
+   the VGA's BAR puts the frame buffer (SeaBIOS gives it 0xFEB00000 with 1M
+   of video memory, 0xFEB80000 with 320K) */
+static inline bool in_window(uword addr)
+{
+	return addr >= 0xa0000 && addr < 0xc0000;
+}
+
+static inline bool in_high_iomem(uword addr)
+{
+	return addr >= 0xe0000000;
+}
+
 static u8 IRAM_ATTR load8(CPUI386 *cpu, OptAddr *res)
 {
 	uword addr = res->addr1;
-	if (in_iomem(addr) && cpu->cb.iomem_read8)
-		return cpu->cb.iomem_read8(cpu->cb.iomem, addr);
+	if (in_iomem(addr)) {
+		uword off = addr - cpu->cb.lfb_base;
+		if (in_high_iomem(addr) && likely(off < cpu->cb.lfb_lim1))
+			return cpu->cb.lfb_mem[off];
+		if (cpu->cb.iomem_read8)
+			return cpu->cb.iomem_read8(cpu->cb.iomem, addr);
+	}
 	if (unlikely(addr >= cpu->phys_mem_size)) {
 		return 0;
 	}
@@ -857,34 +919,54 @@ static u32 noinline load_bytes(CPUI386 *cpu, OptAddr *res, int n)
 
 static u16 IRAM_ATTR load16(CPUI386 *cpu, OptAddr *res)
 {
+	uword addr = res->addr1;
 	if (unlikely(CROSSES_PAGE(res, 2)))
 		return load_bytes(cpu, res, 2);
-	if (in_iomem(res->addr1) && cpu->cb.iomem_read16)
-		return cpu->cb.iomem_read16(cpu->cb.iomem, res->addr1);
-	if (unlikely(res->addr1 >= cpu->phys_mem_size)) {
+	if (in_iomem(addr)) {
+		uword off = addr - cpu->cb.lfb_base;
+		if (in_high_iomem(addr) && likely(off < cpu->cb.lfb_lim2))
+			return ldu16(cpu->cb.lfb_mem + off);
+		if (cpu->cb.iomem_read16)
+			return cpu->cb.iomem_read16(cpu->cb.iomem, addr);
+	}
+	if (unlikely(addr >= cpu->phys_mem_size)) {
 		return 0;
 	}
-	return pload16(cpu, res->addr1);
+	return pload16(cpu, addr);
 }
 
 static u32 IRAM_ATTR load32(CPUI386 *cpu, OptAddr *res)
 {
+	uword addr = res->addr1;
 	if (unlikely(CROSSES_PAGE(res, 4)))
 		return load_bytes(cpu, res, 4);
-	if (in_iomem(res->addr1) && cpu->cb.iomem_read32)
-		return cpu->cb.iomem_read32(cpu->cb.iomem, res->addr1);
-	if (unlikely(res->addr1 >= cpu->phys_mem_size)) {
+	if (in_iomem(addr)) {
+		uword off = addr - cpu->cb.lfb_base;
+		if (in_high_iomem(addr) && likely(off < cpu->cb.lfb_lim4))
+			return ldu32(cpu->cb.lfb_mem + off);
+		if (cpu->cb.iomem_read32)
+			return cpu->cb.iomem_read32(cpu->cb.iomem, addr);
+	}
+	if (unlikely(addr >= cpu->phys_mem_size)) {
 		return 0;
 	}
-	return pload32(cpu, res->addr1);
+	return pload32(cpu, addr);
 }
 
 static void IRAM_ATTR store8(CPUI386 *cpu, OptAddr *res, u8 val)
 {
 	uword addr = res->addr1;
-	if (in_iomem(addr) && cpu->cb.iomem_write8) {
-		cpu->cb.iomem_write8(cpu->cb.iomem, addr, val);
-		return;
+	if (in_iomem(addr)) {
+		uword off = addr - cpu->cb.lfb_base;
+		if (in_high_iomem(addr) && likely(off < cpu->cb.lfb_lim1)) {
+			cpu->cb.lfb_mem[off] = val;
+			lfb_marked(cpu, off, 1);
+			return;
+		}
+		if (cpu->cb.iomem_write8) {
+			cpu->cb.iomem_write8(cpu->cb.iomem, addr, val);
+			return;
+		}
 	}
 	if (unlikely(addr >= cpu->phys_mem_size)) {
 		return;
@@ -902,34 +984,138 @@ static void noinline store_bytes(CPUI386 *cpu, OptAddr *res, int n, u32 val)
 
 static void IRAM_ATTR store16(CPUI386 *cpu, OptAddr *res, u16 val)
 {
+	uword addr = res->addr1;
 	if (unlikely(CROSSES_PAGE(res, 2))) {
 		store_bytes(cpu, res, 2, val);
 		return;
 	}
-	if (in_iomem(res->addr1) && cpu->cb.iomem_write16) {
-		cpu->cb.iomem_write16(cpu->cb.iomem, res->addr1, val);
+	if (in_iomem(addr)) {
+		uword off = addr - cpu->cb.lfb_base;
+		if (in_high_iomem(addr) && likely(off < cpu->cb.lfb_lim2)) {
+			stu16(cpu->cb.lfb_mem + off, val);
+			lfb_marked(cpu, off, 2);
+			return;
+		}
+		if (cpu->cb.iomem_write16) {
+			cpu->cb.iomem_write16(cpu->cb.iomem, addr, val);
+			return;
+		}
+	}
+	if (unlikely(addr >= cpu->phys_mem_size)) {
 		return;
 	}
-	if (unlikely(res->addr1 >= cpu->phys_mem_size)) {
-		return;
-	}
-	pstore16(cpu, res->addr1, val);
+	pstore16(cpu, addr, val);
 }
 
 static void IRAM_ATTR store32(CPUI386 *cpu, OptAddr *res, u32 val)
 {
+	uword addr = res->addr1;
 	if (unlikely(CROSSES_PAGE(res, 4))) {
 		store_bytes(cpu, res, 4, val);
 		return;
 	}
-	if (in_iomem(res->addr1) && cpu->cb.iomem_write32) {
-		cpu->cb.iomem_write32(cpu->cb.iomem, res->addr1, val);
+	if (in_iomem(addr)) {
+		uword off = addr - cpu->cb.lfb_base;
+		if (in_high_iomem(addr) && likely(off < cpu->cb.lfb_lim4)) {
+			stu32(cpu->cb.lfb_mem + off, val);
+			lfb_marked(cpu, off, 4);
+			return;
+		}
+		if (cpu->cb.iomem_write32) {
+			cpu->cb.iomem_write32(cpu->cb.iomem, addr, val);
+			return;
+		}
+	}
+	if (unlikely(addr >= cpu->phys_mem_size)) {
 		return;
 	}
-	if (unlikely(res->addr1 >= cpu->phys_mem_size)) {
-		return;
+	pstore32(cpu, addr, val);
+}
+
+/*
+ * v5.0: REP STOS and REP MOVS with the linear frame buffer at one end, a
+ * piece at a time: the caller's piece of count elements of size bytes
+ * (1, 2 or 4), each aligned to its size, from the physical address of the
+ * first element (dst, and src for MOVS) going up (dir > 0) or down, inside
+ * one 4 KiB page at each end.  If every byte of the piece is in the frame
+ * buffer (STOS; for MOVS, at one end, the other end in the frame buffer or
+ * in RAM outside the VGA window), it is done here with one fill or copy,
+ * and the frame buffer's part marked once (lfb_marked_range()), and the
+ * result is true.  Otherwise false, and the caller stores the elements one
+ * by one, as before.  The bytes stored and the marks set are those of the
+ * element by element path; only their order differs, and the drawing sees
+ * them all at its next picture at the latest (the bytes before the fence
+ * and the marks after it).
+ */
+static bool noinline IRAM_ATTR lfb_stos(CPUI386 *cpu, uword dst, u32 val, int size, int dir,
+					uword count)
+{
+	uword len = count * size;
+	uword lo = dir > 0 ? dst : dst - (len - size);
+	uword off = lo - cpu->cb.lfb_base;
+	if (off >= cpu->cb.lfb_lim1 || len > cpu->cb.lfb_lim1 - off)
+		return false;
+	u8 *p = cpu->cb.lfb_mem + off;
+	if (size == 1) {
+		memset(p, (u8) val, len);
+	} else if (size == 2) {
+		for (uword i = 0; i < count; i++)
+			stu16(p + 2 * i, val);
+	} else {
+		for (uword i = 0; i < count; i++)
+			stu32(p + 4 * i, val);
 	}
-	pstore32(cpu, res->addr1, val);
+	lfb_marked_range(cpu, off, len);
+	return true;
+}
+
+/* a host pointer for the len bytes at physical lo in RAM outside the VGA
+   window (the page as the MOVS path above has always asked), or NULL */
+static inline u8 *ram_piece(CPUI386 *cpu, uword lo)
+{
+	if ((lo | 4095) < cpu->phys_mem_size && !in_iomem(lo) && !in_iomem(lo | 4095))
+		return cpu->phys_mem + lo;
+	return NULL;
+}
+
+static bool noinline IRAM_ATTR lfb_movs(CPUI386 *cpu, uword src, uword dst, int size, int dir,
+					uword count)
+{
+	uword len = count * size;
+	uword slo = dir > 0 ? src : src - (len - size);
+	uword dlo = dir > 0 ? dst : dst - (len - size);
+	uword lim = cpu->cb.lfb_lim1;
+	uword soff = slo - cpu->cb.lfb_base;
+	uword doff = dlo - cpu->cb.lfb_base;
+	bool sl = soff < lim && len <= lim - soff;
+	bool dl = doff < lim && len <= lim - doff;
+	u8 *s, *d;
+	if (sl && dl) {
+		s = cpu->cb.lfb_mem + soff;
+		d = cpu->cb.lfb_mem + doff;
+		/* one element after another, each read before it is stored,
+		   is memmove() unless the destination overlaps the source on
+		   the side the copy goes towards (then each element read may
+		   be one stored already: a pattern repeated) */
+		if (dir > 0 ? (d > s && d < s + len) : (d < s && d + len > s))
+			return false;
+		memmove(d, s, len);
+	} else if (dl) {
+		s = ram_piece(cpu, slo);
+		if (!s)
+			return false;
+		memcpy(cpu->cb.lfb_mem + doff, s, len);
+	} else if (sl) {
+		d = ram_piece(cpu, dlo);
+		if (!d)
+			return false;
+		memcpy(d, cpu->cb.lfb_mem + soff, len);
+		return true;
+	} else {
+		return false;
+	}
+	lfb_marked_range(cpu, doff, len);
+	return true;
 }
 
 #define LOADSTORE(BIT) \
@@ -2747,9 +2933,26 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 		else countd = 1 + (memld.addr1 & 4095) / (BIT / 8); \
 		if (countd < count) \
 			count = countd; \
-		for (uword i = 0; i <= count - 1; i++) { \
-			saddr ## BIT(&memld, ax); \
-			memld.addr1 += dir; \
+		if (in_high_iomem(memld.addr1) && \
+		    lfb_stos(cpu, memld.addr1, ax, BIT / 8, dir, count)) { \
+			sreg ## ABIT(7, lreg ## ABIT(7) + count * dir); \
+			sreg ## ABIT(1, cx - count); \
+			cx = lreg ## ABIT(1); \
+			continue; \
+		} \
+		if (in_window(memld.addr1) && cpu->cb.iomem_write ## BIT) { \
+			/* v5.0: the VGA window, each the call that the store \
+			   would make, without its tests (aligned: none \
+			   crosses a page) */ \
+			for (uword i = 0; i <= count - 1; i++) { \
+				cpu->cb.iomem_write ## BIT(cpu->cb.iomem, memld.addr1, ax); \
+				memld.addr1 += dir; \
+			} \
+		} else { \
+			for (uword i = 0; i <= count - 1; i++) { \
+				saddr ## BIT(&memld, ax); \
+				memld.addr1 += dir; \
+			} \
 		} \
 		sreg ## ABIT(7, lreg ## ABIT(7) + count * dir); \
 		sreg ## ABIT(1, cx - count); \
@@ -2856,6 +3059,14 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 			count = counts; \
 		if (countd < count) \
 			count = countd; \
+		if ((in_high_iomem(memld.addr1) || in_high_iomem(memls.addr1)) && \
+		    lfb_movs(cpu, memls.addr1, memld.addr1, BIT / 8, dir, count)) { \
+			sreg ## ABIT(6, lreg ## ABIT(6) + count * dir); \
+			sreg ## ABIT(7, lreg ## ABIT(7) + count * dir); \
+			sreg ## ABIT(1, cx - count); \
+			cx = lreg ## ABIT(1); \
+			continue; \
+		} \
 		if (cpu->cb.iomem_write_string && in_iomem(memld.addr1) && \
 		    dir > 0  && in_iomem(memld.addr1 + count - 1) && \
 		    (memls.addr1 | 4095) < cpu->phys_mem_size && \
@@ -2870,10 +3081,21 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 				continue; \
 			} \
 		} \
-		for (uword i = 0; i <= count - 1; i++) { \
-			store ## BIT(cpu, &memld, load ## BIT(cpu, &memls)); \
-			memld.addr1 += dir; \
-			memls.addr1 += dir; \
+		if (in_window(memld.addr1) && cpu->cb.iomem_write ## BIT) { \
+			/* v5.0: the same into the window, each element \
+			   loaded first, as before */ \
+			for (uword i = 0; i <= count - 1; i++) { \
+				u ## BIT v = load ## BIT(cpu, &memls); \
+				cpu->cb.iomem_write ## BIT(cpu->cb.iomem, memld.addr1, v); \
+				memld.addr1 += dir; \
+				memls.addr1 += dir; \
+			} \
+		} else { \
+			for (uword i = 0; i <= count - 1; i++) { \
+				store ## BIT(cpu, &memld, load ## BIT(cpu, &memls)); \
+				memld.addr1 += dir; \
+				memls.addr1 += dir; \
+			} \
 		} \
 		sreg ## ABIT(6, lreg ## ABIT(6) + count * dir); \
 		sreg ## ABIT(7, lreg ## ABIT(7) + count * dir); \
