@@ -795,6 +795,36 @@ if [ -n "$T_V4_5" ]; then
     result $st "the DMA test sees v4.5's bytes in the window's phys_mem"
 fi
 
+# ==== 23. the linear frame buffer's own path in i386.c (v5.0) ====
+# tests/host/lfb: the whole PC (pc_new() with the Korvo-1's header), VBE at
+# 800x480 in 16 bits set by the guest, and the guests of guest_lfb.S storing
+# into and loading from video memory every way the CPU can, on 768K and 1M
+# of video memory, with vbe_blocks 1 and 0.  Each case checked for itself
+# (video memory changed only where it stores, the marks exactly its blocks,
+# vga_wrote), and the output the same as v4.6's tree gives, whose path was
+# pc.c's iomem calls (every changed block of video memory and page of RAM by
+# its hash, every mark, the flag, the registers).  Then, with the board's
+# compiler and qemu-riscv32 (SKIP without them), the host instructions of
+# each bench piece, v4.6 against this tree.
+echo
+bash "$HERE/lfb/run_lfb.sh" "$OUT/lfb" > "$OUT/lfb.log" 2>&1
+st=$?
+grep "^SKIP\|^==\|^    |" "$OUT/lfb.log"
+n=0
+while read -r line; do
+    n=$((n + 1))
+    case "$line" in
+    "ok: "*) result 0 "lfb: ${line#ok: }" ;;
+    *) result 1 "lfb: ${line#FAILED: }" ;;
+    esac
+done < <(grep "^  ok: \|^  FAILED: " "$OUT/lfb.log" | sed 's/^  //')
+if [ $st != 0 ] && ! grep -q "^  FAILED: " "$OUT/lfb.log"; then
+    tail -20 "$OUT/lfb.log" | sed 's/^/    | /'
+    result 1 "lfb: tests/host/lfb/run_lfb.sh stopped (exit status $st)"
+elif [ $n = 0 ] && ! grep -q "^SKIP lfb:" "$OUT/lfb.log"; then
+    result 1 "lfb: tests/host/lfb/run_lfb.sh ran nothing"
+fi
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]
