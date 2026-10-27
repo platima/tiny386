@@ -6465,7 +6465,7 @@ is released, unless they say they are from before the reviews.
   bytes against v4.6's 251,846, and `fast_exec()` calls nothing in flash but `cpu_exec1()` (33.8).
 * **The reviews** (33.15): three major findings (helpers of the fast interpreter in flash; single
   stores into the frame buffer five times dearer than v4.6's over RAM; `fast_cpu = 0` called "as
-  v4.6"), one minor bug (levels 1 and 2 used level 3's TLB), and the rest notes; all taken in, none
+  v4.6"), one minor bug (levels 1 and 2 used level 0's TLB), and the rest notes; all taken in, none
   rejected.
 
 ### 33.1 The commits [verified: `git log 35a201c..v50`]
@@ -6782,7 +6782,7 @@ After the reviews: 72 tests, all pass (537 s, with other work on the machine), a
 61; four in section 23 (as below, the RV32 bench in 33.3); seven in section 24, `test_fast_cpu.c`
 as the Korvo-1 builds it and without the board header, 560 scenarios each (fourteen a seed:
 `FAST-CPU.md` 6), and five planted faults, each caught: the fusion fault in 358 of 560 scenarios,
-the count left behind in 320, levels 1 and 2 given level 3's table in 80 (the two hand-written
+the count left behind in 320, levels 1 and 2 given level 0's table in 80 (the two hand-written
 cases, every seed), a MOV into the frame buffer through its entry without its marks in 32, a frame
 buffer page given a plain write entry in 40. Then the same two programs on seeds 41 to 340 (4,200
 scenarios each, 56.3 M guest instructions, 641,707 step ends compared): no difference [verified:

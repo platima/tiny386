@@ -214,7 +214,7 @@ and 239,202 on the DOS board, with `fast_exec()` at 120,198 bytes and `cpu_exec1
   it and into it, ARPL, and an OUT that moves the frame buffer or takes it away, as a write to the
   VGA's BAR does. It runs as the Korvo-1 builds `i386.c` and without the board header, 560
   scenarios each, then on five copies of `i386_fast.h` with a fault put in, which it must catch:
-  the fusion bug below, the count left behind at port accesses, levels 1 and 2 given level 3's
+  the fusion bug below, the count left behind at port accesses, levels 1 and 2 given level 0's
   table, a MOV into the frame buffer through its entry without its marks, and a frame buffer page
   given a plain write entry [verified: `BUILD-NOTES.md` 33.7].
 * **What it found:** the first instruction of a page that the fast interpreter hands to tiny386
