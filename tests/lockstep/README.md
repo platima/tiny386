@@ -221,15 +221,16 @@ From the self-test (bug `page-cross`, b1), pass 3:
 first instruction whose result differs: instruction 476 of step 385711
   it is at 0028:c0375ffd, cycle 36509248 -> 36509249
   bytes (16 of them, from Windows' own code: left out here)
-  mov    ecx,0xffffffff   (b9 ff ff ff ff)
+  mov    ecx,0xffffffff
   before (both): eip=c0375ffd eax=c13b2068 ecx=00000000 ...
-  after ref : eip=c0376002 eax=c13b2068 ecx=ffffffff ...
-  after cand: eip=c0376002 eax=c13b2068 ecx=0d8bffff ...
+  after ref : eip=c0376002 eax=c13b2068 ecx=... ...
+  after cand: eip=c0376002 eax=c13b2068 ecx=... ...
   fields that differ: ecx
 ```
 
 The instruction's immediate runs across a page boundary in Windows' own code, and the planted bug
-fetched its last two bytes from the wrong page.
+fetched its last two bytes from the wrong page: ECX differs in its top half. (The report shows the
+bytes and both values; they are left out here, since they hold Windows' code.)
 
 
 ## 6. The self-test
@@ -345,3 +346,11 @@ What the gate does not cover: the board itself (PSRAM, two cores, the card, USB)
 interpreter's paths that none of these workloads reach (`s31/FAST-CPU.md` 6 lists what its own
 host test covers), and Windows at 800x480 through VMDisp9x, whose image is not in WSL (`vbe` and
 `tests/host/lfb` cover the frame buffer's paths).
+
+**After the two reviews of v5.0** [verified, 2026-10-27, WSL]: the gate was run again on the code
+that took them in (`s31/BUILD-NOTES.md` 33.15: the fast interpreter's helpers out of flash, levels
+1 and 2 given tiny386's table, the frame buffer's pages in its TLB), the fast interpreter on and
+off: no difference in any of the 12, with the same instruction counts, records, interrupts and
+disk images as above (`s31/checks/lockstep-v5.0.txt`). `vbe` reaches the frame buffer from real
+mode with 32-bit addresses, so without paging; `tests/host/cpu/test_fast_cpu.c` gives the CPU a
+frame buffer with paging too, at levels 0 to 3.
