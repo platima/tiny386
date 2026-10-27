@@ -1,0 +1,146 @@
+v5.0 fast interpreter (branch v50-fast): ESP-IDF size reports, idf.py size, the boards' ESP-IDF
+v6.1-dev-8142-g188e3e55bb, built clean from: v4.6 (s31-v4.6), v5.0 (dbb403b), and v5.0 with
+I386_FAST_EXEC1_IRAM defined in board_korvo1.h (cpu_exec1() in internal RAM too).
+
+== v46
+Memory Type Usage Summary
+┏━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Memory Type/Section ┃ Used [bytes] ┃ Used [%] ┃ Remain [bytes] ┃ Total [bytes] ┃
+┡━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ Flash               │       706866 │          │                │               │
+│    .text            │       461194 │          │                │               │
+│    .rodata          │       245336 │          │                │               │
+│    .appdesc         │          256 │          │                │               │
+│    .init_array      │           64 │          │                │               │
+│    .tdata           │           16 │          │                │               │
+│ DIRAM               │       251898 │    50.01 │         251846 │        503744 │
+│    .text            │       217012 │    43.08 │                │               │
+│    .bss             │        20816 │     4.13 │                │               │
+│    .data            │        14070 │     2.79 │                │               │
+│ LP SRAM             │         8444 │    25.77 │          24324 │         32768 │
+Total image size: 937884 bytes (.bin may be padded larger)
+Bootloader binary size 0x5600 bytes. 0xa00 bytes (10%) free.
+warnings outside ESP-IDF and managed components:
+      1 esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+
+== v50final
+Memory Type Usage Summary
+┏━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Memory Type/Section ┃ Used [bytes] ┃ Used [%] ┃ Remain [bytes] ┃ Total [bytes] ┃
+┡━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ Flash               │       835566 │          │                │               │
+│    .text            │       589606 │          │                │               │
+│    .rodata          │       245624 │          │                │               │
+│    .appdesc         │          256 │          │                │               │
+│    .init_array      │           64 │          │                │               │
+│    .tdata           │           16 │          │                │               │
+│ DIRAM               │       262700 │    52.15 │         241044 │        503744 │
+│    .text            │       217534 │    43.18 │                │               │
+│    .bss             │        29024 │     5.76 │                │               │
+│    .data            │        16142 │      3.2 │                │               │
+│ LP SRAM             │         8444 │    25.77 │          24324 │         32768 │
+Total image size: 1069178 bytes (.bin may be padded larger)
+Bootloader binary size 0x5600 bytes. 0xa00 bytes (10%) free.
+warnings outside ESP-IDF and managed components:
+      1 esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+
+== v50iram
+Memory Type Usage Summary
+┏━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Memory Type/Section ┃ Used [bytes] ┃ Used [%] ┃ Remain [bytes] ┃ Total [bytes] ┃
+┡━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ Flash               │       699468 │          │                │               │
+│    .text            │       453508 │          │                │               │
+│    .rodata          │       245624 │          │                │               │
+│    .appdesc         │          256 │          │                │               │
+│    .init_array      │           64 │          │                │               │
+│    .tdata           │           16 │          │                │               │
+│ DIRAM               │       390738 │    77.57 │         113006 │        503744 │
+│    .text            │       345572 │     68.6 │                │               │
+│    .bss             │        29024 │     5.76 │                │               │
+│    .data            │        16142 │      3.2 │                │               │
+│ LP SRAM             │         8444 │    25.77 │          24324 │         32768 │
+Total image size: 1061118 bytes (.bin may be padded larger)
+Bootloader binary size 0x5600 bytes. 0xa00 bytes (10%) free.
+warnings outside ESP-IDF and managed components:
+      1 esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+
+== v46dos
+Memory Type Usage Summary
+┏━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Memory Type/Section ┃ Used [bytes] ┃ Used [%] ┃ Remain [bytes] ┃ Total [bytes] ┃
+┡━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ Flash               │       724168 │          │                │               │
+│    .text            │       452368 │          │                │               │
+│    .rodata          │       271452 │          │                │               │
+│    .appdesc         │          256 │          │                │               │
+│    .init_array      │           68 │          │                │               │
+│    .tdata           │           24 │          │                │               │
+│ DIRAM               │       254104 │    50.44 │         249640 │        503744 │
+│    .text            │       220210 │    43.71 │                │               │
+│    .bss             │        19648 │      3.9 │                │               │
+│    .data            │        14246 │     2.83 │                │               │
+│ LP SRAM             │         8244 │    25.16 │          24524 │         32768 │
+Total image size: 958556 bytes (.bin may be padded larger)
+Bootloader binary size 0x5600 bytes. 0xa00 bytes (10%) free.
+warnings outside ESP-IDF and managed components:
+
+== v50dos
+Memory Type Usage Summary
+┏━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Memory Type/Section ┃ Used [bytes] ┃ Used [%] ┃ Remain [bytes] ┃ Total [bytes] ┃
+┡━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ Flash               │       852868 │          │                │               │
+│    .text            │       580780 │          │                │               │
+│    .rodata          │       271740 │          │                │               │
+│    .appdesc         │          256 │          │                │               │
+│    .init_array      │           68 │          │                │               │
+│    .tdata           │           24 │          │                │               │
+│ DIRAM               │       264942 │    52.59 │         238802 │        503744 │
+│    .text            │       220736 │    43.82 │                │               │
+│    .bss             │        27880 │     5.53 │                │               │
+│    .data            │        16326 │     3.24 │                │               │
+│ LP SRAM             │         8244 │    25.16 │          24524 │         32768 │
+Total image size: 1089862 bytes (.bin may be padded larger)
+Bootloader binary size 0x5600 bytes. 0xa00 bytes (10%) free.
+warnings outside ESP-IDF and managed components:
+
+== the interpreters (nm -S: address, size; 2f... internal RAM, 40... flash)
+-- v46
+2f00619a 00020180 t cpu_exec1
+4000fd36 00000166 t get_OF
+400134d0 00000c00 t pmcall
+40014116 000009a0 t pmret
+40011d5c 0000042a t read_desc
+4001088e 0000022e t refresh_flags
+40012186 00000184 t set_seg
+-- v50final
+4001394a 000213a6 t cpu_exec1
+2f008c76 0001d8ae t fast_exec
+2f004376 000001c4 t fast_lpgno
+2f0046a2 000000f6 t fast_miss
+2f03aad8 00002014 b fast_state0
+2f00494e 0000009e t fast_where
+2f00453a 00000168 t fast_window
+2f002f06 00000168 t get_CF
+2f00306e 00000158 t get_OF
+2f006294 00000b7c t pmcall
+2f006e10 0000094c t pmret
+2f0050e2 00000454 t read_desc
+2f0049ec 000003f4 t refresh_flags
+2f005536 00000184 t set_seg
+-- v50iram
+2f008c76 0001f42a t cpu_exec1
+2f0280a0 0001d8aa t fast_exec
+2f004376 000001c4 t fast_lpgno
+2f0046a2 000000f6 t fast_miss
+2f059ed8 00002014 b fast_state0
+2f00494e 0000009e t fast_where
+2f00453a 00000168 t fast_window
+2f002f06 00000168 t get_CF
+2f00306e 00000158 t get_OF
+2f006294 00000b7c t pmcall
+2f006e10 0000094c t pmret
+2f0050e2 00000454 t read_desc
+2f0049ec 000003f4 t refresh_flags
+2f005536 00000184 t set_seg

@@ -1,0 +1,18 @@
+v5.0 fast interpreter: tests/host/cpu/test_fast_cpu.c run long, on the code of dbb403b, three builds
+(gcc 12.2, -O2): as the Korvo-1 builds i386.c (board_korvo1.h, x86-64), without the board header
+(-DI386_ALIGNED_ONLY, tiny386's own TLB of 512), and as the Korvo-1 builds it for 32-bit x86 (-m32:
+unsigned long of 32 bits, as on the board). Each scenario: about 60 KiB of random guest code in real
+mode, protected mode with paging at level 0, or at level 3, run in random steps (1 to 700
+instructions) with interrupts raised at random, both machines compared after every step.
+
+the Korvo-1's flags, seeds 61 to 360:
+test_fast_cpu: 900 scenarios, 285826 steps, 19075841 instructions, 285826 checks, 0 failed
+without the board header, seeds 1 to 200:
+test_fast_cpu: 600 scenarios, 257327 steps, 13155832 instructions, 257327 checks, 0 failed
+32-bit x86, the Korvo-1's flags, seeds 1 to 200:
+test_fast_cpu: 600 scenarios, 257327 steps, 13155832 instructions, 257327 checks, 0 failed
+
+Before the fix to the fetch cache (the first instruction of a page given to tiny386), seeds 1 to 20
+in the first build: 4 of 60 scenarios differed, all in real mode (seeds 4, 10, 12, 13: tiny386 fused
+a CMP with the JZ after it that it would not have fused alone, so the two machines' counts of
+instructions parted by one).

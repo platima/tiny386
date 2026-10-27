@@ -1,0 +1,32 @@
+v5.0 fast interpreter: the three Windows 95 runs of v4.6's regress46.sh (the PC repro's harness,
+esp flavour, -m32 -funsigned-char, 14M, 320K, gen 3, no FPU, a copy of the pristine image each,
+removed after), built from v50-fast (dbb403b's code) with the fast interpreter on (fast3) and off
+(off3, -DI386_FAST_DEFAULT=0), against v4.6's own runs of 2026-10-25 (v46-*).
+The harness's END line: virtual time, guest instructions, idle, CS:EIP, ESP, SS, CR0, CR3, flags.
+
+== b1
+v46-b1:   END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=00499000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+fast3-b1: END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=00499000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+  against v46-b1: the log same but for host times and addresses; pictures 11 of 11 the same byte for byte; disk check same
+  outcome: desktop (desktop seen at t=211 s)
+off3-b1: END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=00499000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+  against v46-b1: the log same but for host times and addresses; pictures 11 of 11 the same byte for byte; disk check same
+  outcome: desktop (desktop seen at t=211 s)
+
+== restart
+v46-restart:   END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=004ac000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+fast3-restart: END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=004ac000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+  against v46-restart: the log same but for host times and addresses; pictures 149 of 149 the same byte for byte; disk check same
+  outcome: desktop (desktop seen at t=211 s)
+off3-restart: END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=004ac000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+  against v46-restart: the log same but for host times and addresses; pictures 149 of 149 the same byte for byte; disk check same
+  outcome: desktop (desktop seen at t=211 s)
+
+== msdos
+v46-msdos:   END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=003ac000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367af4
+fast3-msdos: END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=003ac000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367af4
+  against v46-msdos: the log same but for host times and addresses; pictures 150 of 150 the same byte for byte; disk check same
+  outcome: desktop (desktop seen at t=211 s)
+off3-msdos: END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s cs:eip=00a8:0000850a esp=c13a1e08 ss=0030 cr0=80000005 cr3=003ac000 fl=00003246 mode=12 pit-behind=0 max=0 esp-min=c0367af4
+  against v46-msdos: the log same but for host times and addresses; pictures 150 of 150 the same byte for byte; disk check same
+  outcome: desktop (desktop seen at t=211 s)

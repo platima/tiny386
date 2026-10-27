@@ -59,6 +59,7 @@ s31/
   FLASH.txt               flashing, and every way back to Linux
   BUILD-NOTES.md          how each release was built and checked
   STATUS-LED.md           the status LED's colours and blinks
+  FAST-CPU.md             v5.0: the fast interpreter from tab5-pc, how it stays tiny386, its tests and counts
   LINE-OUT.md             the DOS board's line out and speakers
   REVIEW-*.md             the independent reviews, as their authors left them
   REVIEW-RESOLUTION.md    every finding, one line each
@@ -92,11 +93,13 @@ If this saved you some time, or you just like seeing Windows 95 on odd hardware,
 - [Espressif's ESP-IDF](https://github.com/espressif/esp-idf) - the framework it all runs on.
 - [SeaBIOS](https://www.seabios.org/) - the BIOS and VGA BIOS the PC boots from.
 - [VMDisp9x](https://github.com/JHRobotics/vmdisp9x) by JHRobotics - the display driver that gets Windows 95 to 800x480.
+- [tab5-pc](https://github.com/yejun/tab5-pc) by Yejun Yang - the fast interpreter in front of tiny386's own (v5.0, `i386_fast.h`, `s31/FAST-CPU.md`).
 - [annoyedmilk's esp32-s31-linux](https://github.com/annoyedmilk/esp32-s31-linux) - the Linux the dual boot keeps.
 
 ## Licence 📄
 
 - tiny386 is under the BSD 3-clause licence - see [LICENSE](../LICENSE) at the top of the tree. My changes to it are offered under the same licence, so they can go back upstream, and so are the notes and scripts in `s31/`.
+- `i386_fast.h` (v5.0) is Yejun Yang's fast interpreter from tab5-pc, under the MIT licence (Copyright (c) 2026 Yejun Yang), with its parts built on tiny386 under tiny386's BSD 3-clause; both notices and the MIT text are in the file, and the changes made to it here are under the same terms.
 - The VGA BIOS in the releases is SeaBIOS's, under the GNU LGPL version 3, and its source goes with it.
 - Windows 95 and its display driver aren't part of this branch or its releases - bring your own. `TEST-PLAN.md` says where to get the driver.
 
