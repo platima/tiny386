@@ -21,6 +21,21 @@
 #define I386_OPT2
 #endif
 
+/* v5.0: I386_FAST compiles in the fast interpreter (i386_fast.h, from
+   tab5-pc); I386_FAST_DEFAULT is whether a new CPU runs it (1) or
+   tiny386's own interpreter (0), until cpui386_set_fast() says */
+#if defined(I386_FAST) && !defined(I386_FAST_DEFAULT)
+#define I386_FAST_DEFAULT 1
+#endif
+/* tiny386's helpers the fast interpreter calls often (the lazy flags'
+   readers, segment loads, far transfers), in internal RAM on the boards
+   beside it; where they were (flash) without it */
+#ifdef I386_FAST
+#define IRAM_ATTR_FAST_HELPER IRAM_ATTR
+#else
+#define IRAM_ATTR_FAST_HELPER
+#endif
+
 #ifdef I386_ENABLE_FPU
 #include "fpu.h"
 #else
@@ -125,6 +140,18 @@ struct CPUI386 {
 #define CPUID_LM0_2 0
 #define CPUID_LM80_0 0
 #define CPUID_LM81_2 0
+#endif
+
+#ifdef I386_FAST
+	/* v5.0: the fast interpreter (i386_fast.h, from tab5-pc) */
+	struct fast_state *fast;   /* its TLB */
+	bool fast_on;              /* cpui386_step() runs it (cpui386_set_fast()) */
+	/* cpu_exec1() run by it for one instruction: exactly one, and an STI
+	   (exec1_hold 1) or a load of SS (2) in it, or the end of the step
+	   by IRET or POPF (exec1_stop), told back instead of acted on */
+	bool exec1_one;
+	u8 exec1_hold;
+	bool exec1_stop;
 #endif
 };
 
@@ -363,7 +390,7 @@ enum {
 	CC_AND, CC_OR, CC_XOR,
 };
 
-static int get_CF(CPUI386 *cpu)
+static int IRAM_ATTR_FAST_HELPER get_CF(CPUI386 *cpu)
 {
 	if (cpu->cc.mask & CF) {
 		switch(cpu->cc.op) {
@@ -433,7 +460,7 @@ const static u8 parity_tab[256] = {
   1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1
 };
 
-static int get_PF(CPUI386 *cpu)
+static int IRAM_ATTR_FAST_HELPER get_PF(CPUI386 *cpu)
 {
 	if (cpu->cc.mask & PF) {
 		return parity_tab[cpu->cc.dst & 0xff];
@@ -442,7 +469,7 @@ static int get_PF(CPUI386 *cpu)
 	}
 }
 
-static int get_AF(CPUI386 *cpu)
+static int IRAM_ATTR_FAST_HELPER get_AF(CPUI386 *cpu)
 {
 	if (cpu->cc.mask & AF) {
 		switch(cpu->cc.op) {
@@ -496,7 +523,7 @@ static int IRAM_ATTR get_SF(CPUI386 *cpu)
 	}
 }
 
-static int get_OF(CPUI386 *cpu)
+static int IRAM_ATTR_FAST_HELPER get_OF(CPUI386 *cpu)
 {
 	if (cpu->cc.mask & OF) {
 		switch(cpu->cc.op) {
@@ -545,7 +572,7 @@ static int get_OF(CPUI386 *cpu)
 	assert(false);
 }
 
-static void refresh_flags(CPUI386 *cpu)
+static void IRAM_ATTR_FAST_HELPER refresh_flags(CPUI386 *cpu)
 {
 	SET_BIT(cpu->flags, get_CF(cpu), CF);
 	SET_BIT(cpu->flags, get_PF(cpu), PF);
@@ -577,8 +604,56 @@ typedef struct {
 	uword addr2;
 } OptAddr;
 
+#ifdef I386_FAST
+/* v5.0: the fast interpreter's TLB (i386_fast.h).  For each of tiny386's
+   entries, one for privilege level 3 and one for 0 to 2 (and for no
+   paging): a linear page's host address, for reads and for writes.  An
+   entry is kept only while tiny386's own entry at the same index holds the
+   same page, so that what hits here would hit in tiny386's TLB too:
+   tiny386's TLB is refilled, and the page tables' accessed bits set, where
+   tiny386 would.  ppte is the page table entry's low byte, where a store
+   sets the dirty bit each time, as translate_lpgno() does. */
+struct fast_tlb_entry {
+	uword rtag, wtag;   /* the linear page for reads, for writes; -1 for none */
+	uintptr_t delta;    /* host address = linear address + delta */
+	u8 *ppte;
+};
+struct fast_state {
+	struct fast_tlb_entry tab[2][tlb_size];
+	uword cr0, cr3;     /* CR0's PG and WP and CR3 the entries were made under */
+	unsigned gen;       /* tlb_clear()s with paging on */
+	unsigned gen_seen;  /* ... when the entries were last emptied */
+	u8 dummy;           /* ppte without paging */
+};
+
+/* tiny386's entry ent was refilled or dropped: the fast interpreter's
+   two at its index go (out of line, so that the places tiny386's
+   translate_lpgno() is inlined in stay as small as they were) */
+static noinline void IRAM_ATTR fast_tlb_slot(CPUI386 *cpu, struct tlb_entry *ent)
+{
+	if (cpu->fast_on) {
+		int i = ent - cpu->tlb.tab;
+		cpu->fast->tab[0][i].rtag = cpu->fast->tab[0][i].wtag = -1;
+		cpu->fast->tab[1][i].rtag = cpu->fast->tab[1][i].wtag = -1;
+	}
+}
+#define FAST_TLB_SLOT(cpu, ent) fast_tlb_slot((cpu), (ent))
+/* tlb_clear(), from tab5-pc's patch 0010 (a hook in tlb_clear()): counted
+   while paging is on, before CR0 changes; fast_tlb_check() empties the
+   fast interpreter's entries when it sees the count move (or CR0's PG or
+   WP, or CR3, change).  Without paging its entries do not go stale. */
+#define FAST_TLB_CLEARED(cpu) do { \
+		if ((cpu)->fast_on) \
+			(cpu)->fast->gen += ((cpu)->cr0 >> 31) & 1; \
+	} while (0)
+#else
+#define FAST_TLB_SLOT(cpu, ent) do {} while (0)
+#define FAST_TLB_CLEARED(cpu) do {} while (0)
+#endif
+
 static void tlb_clear(CPUI386 *cpu)
 {
+	FAST_TLB_CLEARED(cpu);
 	for (int i = 0; i < tlb_size; i++) {
 		cpu->tlb.tab[i].lpgno = -1;
 	}
@@ -618,6 +693,7 @@ static bool IRAM_ATTR tlb_refill(CPUI386 *cpu, struct tlb_entry *ent, uword lpgn
 {
 	if (unlikely(GET_LM_EFER(cpu))) {
 		static u8 _[8];
+		FAST_TLB_SLOT(cpu, ent);
 		ent->lpgno = lpgno;
 		ent->xaddr = 0;
 		ent->pte_lookup = pte_lookup[1][3];
@@ -653,6 +729,7 @@ static bool IRAM_ATTR tlb_refill(CPUI386 *cpu, struct tlb_entry *ent, uword lpgn
 	mem[base_addr2 + j * 4] |= 1 << 5; // accessed
 //	mem[base_addr2 + j * 4] |= 1 << 6; // dirty
 
+	FAST_TLB_SLOT(cpu, ent);
 	ent->lpgno = lpgno;
 	ent->xaddr = (pte & ~0xfff) ^ (lpgno << 12);
 	pte = pte & ((pde & 7) | 0xfffffff8);
@@ -661,7 +738,11 @@ static bool IRAM_ATTR tlb_refill(CPUI386 *cpu, struct tlb_entry *ent, uword lpgn
 	return true;
 }
 
-static bool IRAM_ATTR translate_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uword laddr, int cpl, uword *paddr)
+/* v5.0: translate_lpgno()'s body, for it and for the fast interpreter's
+   own call of it (fast_lpgno()): tiny386's callers then see it as before,
+   with one caller, and inline it as they did (a second caller made the
+   compiler keep it apart, and cpu_exec1() 17 KB larger) */
+static inline __attribute__((always_inline)) bool translate_lpgno_body(CPUI386 *cpu, int rwm, uword lpgno, uword laddr, int cpl, uword *paddr)
 {
 	struct tlb_entry *ent = &(cpu->tlb.tab[lpgno % tlb_size]);
 	if (ent->lpgno != lpgno) {
@@ -684,6 +765,7 @@ static bool IRAM_ATTR translate_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uword 
 			cpu->excerr |= 2;
 		if (cpl)
 			cpu->excerr |= 4;
+		FAST_TLB_SLOT(cpu, ent);
 		ent->lpgno = -1;
 		return false;
 	}
@@ -695,6 +777,18 @@ static bool IRAM_ATTR translate_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uword 
 	}
 	return true;
 }
+
+static bool IRAM_ATTR translate_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uword laddr, int cpl, uword *paddr)
+{
+	return translate_lpgno_body(cpu, rwm, lpgno, laddr, cpl, paddr);
+}
+
+#ifdef I386_FAST
+static noinline bool IRAM_ATTR fast_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uword laddr, int cpl, uword *paddr)
+{
+	return translate_lpgno_body(cpu, rwm, lpgno, laddr, cpl, paddr);
+}
+#endif
 
 static bool IRAM_ATTR translate_laddr(CPUI386 *cpu, OptAddr *res, int rwm, uword laddr, int size, int cpl)
 {
@@ -777,6 +871,7 @@ static bool IRAM_ATTR translate8r(CPUI386 *cpu, OptAddr *res, int seg, uword add
 			cpu->excerr = 1;
 			if (cpu->cpl)
 				cpu->excerr |= 4;
+			FAST_TLB_SLOT(cpu, ent);
 			ent->lpgno = -1;
 			return false;
 		}
@@ -1329,7 +1424,7 @@ static bool IRAM_ATTR modsib(CPUI386 *cpu, int adsz16, int mod, int rm, uword *a
 	else return modsib32(cpu, mod, rm, addr, seg);
 }
 
-static bool read_desc(CPUI386 *cpu, int sel, uword *w1, uword *w2)
+static bool IRAM_ATTR_FAST_HELPER read_desc(CPUI386 *cpu, int sel, uword *w1, uword *w2)
 {
 	OptAddr meml;
 	sel = sel & 0xffff;
@@ -1366,7 +1461,7 @@ static bool read_desc(CPUI386 *cpu, int sel, uword *w1, uword *w2)
 	return true;
 }
 
-static bool set_seg(CPUI386 *cpu, int seg, int sel)
+static bool IRAM_ATTR_FAST_HELPER set_seg(CPUI386 *cpu, int seg, int sel)
 {
 	sel = sel & 0xffff;
 	if (!(cpu->cr0 & 1) || (cpu->flags & VM)) {
@@ -1983,6 +2078,27 @@ GEN___GE_helper(32)
 /*
  * instructions
  */
+
+/* v5.0: cpu_exec1()'s own rules for its count of steps (stepcount): an
+   STI or a load of SS keeps the next instruction in the step, and an IRET
+   or POPF with an interrupt waiting ends it.  When the fast interpreter
+   (i386_fast.h) has cpu_exec1() run one instruction for it
+   (cpu->exec1_one), these are told back to it, which applies the same
+   rules to its own count, and the one instruction stays one. */
+#ifdef I386_FAST
+#define STEP_HOLD(kind, stmt) do { \
+		if (unlikely(cpu->exec1_one)) \
+			cpu->exec1_hold = (kind); \
+		else { \
+			stmt; \
+		} \
+	} while (0)
+#define STEP_STOP() (cpu->exec1_stop = true)
+#else
+#define STEP_HOLD(kind, stmt) do { stmt; } while (0)
+#define STEP_STOP() ((void) 0)
+#endif
+
 #define ACOP_helper(NAME1, NAME2, BIT, OP, a, b, la, sa, lb, sb) \
 	int cf = get_CF(cpu); \
 	cpu->cc.src1 = sext ## BIT(la(a)); \
@@ -2482,7 +2598,7 @@ noinline void IRAM_ATTR try_jcc8(CPUI386 *cpu)
 #define MOVd(a, b, la, sa, lb, sb) sa(a, lb(b));
 #define MOVSeg(a, b, la, sa, lb, sb) \
 	if (a == SEG_CS) THROW0(EX_UD); \
-	if (a == SEG_SS) stepcount++; \
+	if (a == SEG_SS) STEP_HOLD(2, stepcount++); \
 	TRY(set_seg(cpu, a, lb(b)));
 #define MOVZXdb(a, b, la, sa, lb, sb) sa(a, lb(b));
 #define MOVZXwb(a, b, la, sa, lb, sb) sa(a, lb(b));
@@ -2607,7 +2723,7 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 		set_sp(sp + 6, sp_mask); \
 		cpu->next_ip = newip; \
 	} \
-	if (cpu->intr && (cpu->flags & IF)) return true;
+	if (cpu->intr && (cpu->flags & IF)) { STEP_STOP(); return true; }
 
 #define RETFARw(i, li, _) \
 	if ((cpu->cr0 & 1) && !(cpu->flags & VM)) { \
@@ -2675,7 +2791,7 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 #define STI() \
 	if (get_IOPL(cpu) < cpu->cpl) THROW(EX_GP, 0); \
 	cpu->flags |= IF; \
-	if (cpu->intr || stepcount < 2) stepcount = 2;
+	STEP_HOLD(1, if (cpu->intr || stepcount < 2) stepcount = 2);
 
 #define CLD() \
 	cpu->flags &= ~DF;
@@ -2795,7 +2911,7 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 	cpu->flags &= EFLAGS_MASK; \
 	cpu->flags |= 0x2; \
 	cpu->cc.mask = 0; \
-	if (cpu->intr && (cpu->flags & IF)) return true;
+	if (cpu->intr && (cpu->flags & IF)) { STEP_STOP(); return true; }
 
 #define PUSHSeg(seg) \
 	if (opsz16) { \
@@ -2829,7 +2945,7 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 		set_sp(sp + 4, sp_mask); \
 	}
 #define POP_ES() POPSeg(SEG_ES)
-#define POP_SS() POPSeg(SEG_SS) stepcount++;
+#define POP_SS() POPSeg(SEG_SS) STEP_HOLD(2, stepcount++);
 #define POP_DS() POPSeg(SEG_DS)
 #define POP_FS() POPSeg(SEG_FS)
 #define POP_GS() POPSeg(SEG_GS)
@@ -4666,7 +4782,7 @@ static bool task_switch(CPUI386 *cpu, int tss, int sw_type)
 	return true;
 }
 
-static bool pmcall(CPUI386 *cpu, bool opsz16, uword addr, int sel, bool isjmp)
+static bool IRAM_ATTR_FAST_HELPER pmcall(CPUI386 *cpu, bool opsz16, uword addr, int sel, bool isjmp)
 {
 	sel = sel & 0xffff;
 	uword sp_mask = cpu->seg[SEG_SS].flags & SEG_B_BIT ? 0xffffffff : 0xffff;
@@ -5447,7 +5563,7 @@ static bool __pmiret_check_cs_outer(CPUI386 *cpu, int sel)
 	return true;
 }
 
-static bool pmret(CPUI386 *cpu, bool opsz16, int off, bool isiret)
+static bool IRAM_ATTR_FAST_HELPER pmret(CPUI386 *cpu, bool opsz16, int off, bool isiret)
 {
 	if (isiret) {
 		if ((cpu->flags & VM)) THROW(EX_GP, 0);
@@ -5588,6 +5704,14 @@ static bool pmret(CPUI386 *cpu, bool opsz16, int off, bool isiret)
 	return true;
 }
 
+#ifdef I386_FAST
+/* v5.0: the fast interpreter, from tab5-pc (i386_fast.h, MIT, Copyright
+   (c) 2026 Yejun Yang, its parts built on tiny386 BSD-3-Clause as this
+   file); cpui386_step() runs it in place of cpu_exec1() while
+   cpu->fast_on */
+#include "i386_fast.h"
+#endif
+
 void cpui386_step(CPUI386 *cpu, int stepcount)
 {
 	if ((cpu->flags & IF) && cpu->intr) {
@@ -5603,7 +5727,11 @@ void cpui386_step(CPUI386 *cpu, int stepcount)
 		return;
 	}
 
+#ifdef I386_FAST
+	int ret = cpu->fast_on ? fast_exec(cpu, stepcount) : cpu_exec1(cpu, stepcount);
+#else
 	int ret = cpu_exec1(cpu, stepcount);
+#endif
 	cpu->ifetch.paddr = 0;
 	if (!ret) {
 #ifdef AMD64_ENABLE_LEG32
@@ -5689,6 +5817,9 @@ void cpui386_reset(CPUI386 *cpu)
 
 	cpu->cc.mask = 0;
 	tlb_clear(cpu);
+#ifdef I386_FAST
+	cpu->fast->cr0 = -1;   /* the fast interpreter's TLB emptied too, at its next start */
+#endif
 	cpu->excno = 0;
 	cpu->excerr = 0;
 
@@ -5734,6 +5865,39 @@ long IRAM_ATTR cpui386_get_cycle(CPUI386 *cpu)
 	return cpu->cycle;
 }
 
+#ifdef I386_FAST
+/* v5.0: the fast interpreter's TLB, for the first CPU in internal RAM
+   (DRAM_ATTR, beside cpu_exec1()'s state on the boards), for any other
+   from the heap */
+static struct fast_state fast_state0;
+static bool fast_state0_used;
+#endif
+
+/* v5.0: whether cpui386_step() runs the fast interpreter (i386_fast.h) or
+   tiny386's own cpu_exec1(); the same guest either way.  Without
+   I386_FAST there is only tiny386's, and this does nothing. */
+void cpui386_set_fast(CPUI386 *cpu, int on)
+{
+#ifdef I386_FAST
+	if (on && !cpu->fast_on)
+		cpu->fast->cr0 = -1;   /* its entries may be stale: emptied at its next start */
+	cpu->fast_on = on != 0;
+#else
+	(void) cpu;
+	(void) on;
+#endif
+}
+
+int cpui386_get_fast(CPUI386 *cpu)
+{
+#ifdef I386_FAST
+	return cpu->fast_on;
+#else
+	(void) cpu;
+	return 0;
+#endif
+}
+
 CPUI386 *cpui386_new(int gen, char *phys_mem, long phys_mem_size, CPU_CB **cb)
 {
 	CPUI386 *cpu = malloc(sizeof(CPUI386));
@@ -5767,7 +5931,25 @@ CPUI386 *cpui386_new(int gen, char *phys_mem, long phys_mem_size, CPU_CB **cb)
 
 	cpu->fpu = NULL;
 
+#ifdef I386_FAST
+	if (!fast_state0_used) {
+		fast_state0_used = true;
+		cpu->fast = &fast_state0;
+	} else {
+		cpu->fast = malloc(sizeof(struct fast_state));
+		assert(cpu->fast);
+	}
+	cpu->fast->cr0 = -1;
+	cpu->fast->gen = cpu->fast->gen_seen = 0;
+	cpu->fast_on = false;
+	cpu->exec1_one = false;
+	cpu->exec1_hold = 0;
+	cpu->exec1_stop = false;
+#endif
 	cpui386_reset(cpu);
+#ifdef I386_FAST
+	cpui386_set_fast(cpu, I386_FAST_DEFAULT);
+#endif
 
 	memset(&(cpu->cb), 0, sizeof(CPU_CB));
 	if (cb)
@@ -5787,6 +5969,12 @@ void cpui386_delete(CPUI386 *cpu)
 		fpu_delete(cpu->fpu);
 #ifndef BUILD_ESP32
 	free(cpu->tlb.tab);
+#endif
+#ifdef I386_FAST
+	if (cpu->fast == &fast_state0)
+		fast_state0_used = false;
+	else
+		free(cpu->fast);
 #endif
 	free(cpu);
 }

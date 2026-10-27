@@ -115,6 +115,10 @@ void cpui386_step(CPUI386 *cpu, int stepcount);
 void cpui386_raise_irq(CPUI386 *cpu);
 void cpui386_set_gpr(CPUI386 *cpu, int i, u32 val);
 long cpui386_get_cycle(CPUI386 *cpu);
+/* v5.0: the fast interpreter (i386_fast.h, with I386_FAST) on or off for
+   this CPU; without I386_FAST, set does nothing and get says 0 */
+void cpui386_set_fast(CPUI386 *cpu, int on);
+int cpui386_get_fast(CPUI386 *cpu);
 
 #ifndef I386_IN_AMD64
 bool cpu_load8(CPUI386 *cpu, int seg, uword addr, u8 *res);
