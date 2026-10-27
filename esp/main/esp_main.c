@@ -321,6 +321,7 @@ struct esp_ini_config {
 	int pace_quiet;         /* v4.4: vga_pace_quiet, guest instructions; 0 off */
 	int pace_wait_ms;       /* v4.4: the most a picture waits for a quiet moment */
 	int double_buffer;      /* v4.4: a second frame buffer, swapped at the panel's frame */
+	int fast_cpu;           /* v5.0: the fast interpreter (i386_fast.h); 0 tiny386's own */
 };
 
 #ifdef TINY386_CRASH_TEST
@@ -378,6 +379,7 @@ static struct esp_ini_config config = {
 	.pace_quiet = 0,        /* v4.4: pictures when they are due (BUILD-NOTES 29) */
 	.pace_wait_ms = 15,     /* DISPLAY_PACE_WAIT_MS */
 	.double_buffer = 0,     /* v4.4: one frame buffer, as before (BUILD-NOTES 29) */
+	.fast_cpu = 1,          /* v5.0: the fast interpreter, where the board header has it */
 };
 static PCConfig conf;
 
@@ -578,6 +580,17 @@ static void i386_task(void *arg)
 	PCScreen *screen = screen_init(conf->width, conf->height);
 	PC *pc = pc_new(redraw, screen, screen->fb, conf);
 	screen->pc = pc;
+	/* v5.0: [esp] fast_cpu: the fast interpreter in front of tiny386's own
+	   (i386_fast.h, from Yejun Yang's tab5-pc), or tiny386's alone; the
+	   guest sees the same either way */
+	cpui386_set_fast(pc->cpu, config.fast_cpu);
+	if (cpui386_get_fast(pc->cpu))
+		console_puts(CON_INFO, "CPU: the fast interpreter (from tab5-pc, by Yejun Yang) in "
+			     "front of tiny386's own; fast_cpu = 0 in the ini for tiny386's alone.");
+	else if (config.fast_cpu)
+		console_puts(CON_INFO, "CPU: tiny386's own interpreter (this build has no fast one).");
+	else
+		console_puts(CON_INFO, "CPU: tiny386's own interpreter alone (fast_cpu = 0), as v4.6.");
 	globals.pc = pc;
 	globals.kbd = pc->kbd;
 	globals.mouse = pc->mouse;
@@ -664,7 +677,7 @@ static const char *const known_keys[] = {
 	"esp:lcd_invalidate", "esp:led_brightness",
 	"esp:uart_log", "esp:fast_seek", "esp:timer_catchup", "esp:memtest",
 	"esp:verbose_log", "esp:vbe_blocks", "esp:pace_quiet", "esp:pace_wait_ms",
-	"esp:double_buffer",
+	"esp:double_buffer", "esp:fast_cpu",
 #ifdef TINY386_CRASH_TEST
 	"esp:crash_test",
 #endif
@@ -781,6 +794,8 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		ini_whole(name, value, 1, 200, &conf->pace_wait_ms);
 	} else if (NAME("double_buffer")) {
 		ini_whole(name, value, 0, 1, &conf->double_buffer);
+	} else if (NAME("fast_cpu")) {
+		ini_whole(name, value, 0, 1, &conf->fast_cpu);
 	} else if (NAME("crash_test")) {
 		conf->crash_test = atoi(value);
 	}
