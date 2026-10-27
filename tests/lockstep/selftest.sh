@@ -44,9 +44,14 @@ FAST=${FAST:-1}
 [ "$FAST" = 0 ] && export EXTRA_CFLAGS="${EXTRA_CFLAGS:-} -DI386_FAST_DEFAULT=0"
 skip() {  # why a bug is skipped with this FAST, or nothing
     case "$(hdr "$1" needs)" in
-    fast) [ "$FAST" = 0 ] && echo "skipped: it needs the fast interpreter (FAST=1)" ;;
-    tiny386) [ "$FAST" = 1 ] && echo "skipped: only tiny386's own interpreter runs it (FAST=0)" ;;
+    fast) [ "$FAST" = 0 ] && echo "skipped: it needs the fast interpreter (FAST=1)" && return ;;
+    tiny386) [ "$FAST" = 1 ] && echo "skipped: only tiny386's own interpreter runs it (FAST=0)" && return ;;
     esac
+    # v5.1: a workload whose image or program is not on this machine
+    # (t386mon800 needs N16_IMG, its ROMs and T386MON_EXE)
+    local why
+    why=$(. "$HERE/workloads.sh" && workload "${WORKLOAD:-$(hdr "$1" workload)}" 2>&1 > /dev/null) ||
+        echo "skipped: ${why:-its workload cannot run here}"
 }
 bash "$HERE/build.sh" "$TREE" "$OUT/build-ref" > "$OUT/build-ref.log" 2>&1 || {
     cat "$OUT/build-ref.log"; exit 2; }

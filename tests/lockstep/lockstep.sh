@@ -7,7 +7,7 @@
 #
 # REFTREE, CANDTREE  two tiny386 trees (the reference is normally the
 #           release the candidate starts from, s31-v4.6 = 35a201c)
-# WORKLOAD  b1, restart, msdos, bench, vbe or t386mon (workloads.sh)
+# WORKLOAD  b1, restart, msdos, bench, vbe, t386mon or t386mon800 (workloads.sh)
 # OUTDIR    builds, runs and the report (OUTDIR/report.txt)
 #
 # Pass 1 runs both to the end with a record every EVERY instructions and
@@ -128,6 +128,15 @@ else
     say "  disk image after the run: DIFFERS (ref ${da:0:16}, cand ${db:0:16})"
     [ $rc = 0 ] && rc=1
 fi
+# t386mon, t386mon800: T386MON's summary line from each side's log (run.sh's
+# W_POST); the same figures on both sides when they agree, as its clock is
+# the guest's
+for s in ref cand; do
+    [ -f "$OUT/p1-$s/t386mon.txt" ] || continue
+    say "  T386MON, $s: $(head -1 "$OUT/p1-$s/t386mon.txt" | cut -c1-160)"
+    grep -q '^no summary' "$OUT/p1-$s/t386mon.txt" &&
+        say "  (the $s side's T386MON did not reach \"Tests done\": the workload covers less than it should; KEEP=1 run.sh keeps its pictures)"
+done
 if [ $rc = 0 ]; then
     say ""
     say "RESULT: no difference in $WL"

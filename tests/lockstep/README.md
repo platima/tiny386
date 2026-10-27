@@ -11,7 +11,9 @@ It was written for v5.0's three changes (tab5-pc's fast interpreter, a fast path
 VBE frame buffer, a segment descriptor cache), but it takes any two trees the harness can build.
 Nothing in a tree is changed: the hook goes into copies of five of its files at build time. v5.0
 took in the first two (the descriptor cache was left out: it saved under 1 per cent); section 9
-is v5.0 against v4.6, the release's gate.
+is v5.0 against v4.6, the release's gate. Section 10 (v5.1) adds `t386mon800`, Plat's own setup:
+Windows 95 at 800x480 in 16 bits through VMDisp9x on the VBE linear frame buffer, with T386MON's
+tests.
 
 Tags: [verified] seen or measured here, by the method named; [inferred] reasoned, not run.
 
@@ -25,9 +27,17 @@ Tags: [verified] seen or measured here, by the method named; [inferred] reasoned
   image (`W95_IMG`, default `~/win95-debug/pc-repro/img/win95.pristine.img`) and a FreeDOS disk
   with BENCH.COM run from FDAUTO.BAT (`BENCH_IMG`, default `~/org2/jit/bench/run/bench-hd.img`).
   Every run works on its own copy, which is deleted after it.
-* For the `t386mon` workload, `T386MON.EXE` (`T386MON_EXE`): Plat's monitor and benchmark for
-  Windows 95 on tiny386, github.com/platima/T386Mon, built by its `build.sh` or taken from its
-  release.
+* For the `t386mon` and `t386mon800` workloads, `T386MON.EXE` (`T386MON_EXE`): Plat's monitor
+  and benchmark for Windows 95 on tiny386, github.com/platima/T386Mon, built by its `build.sh` or
+  taken from its release (1.2 for `t386mon800`: its keys and times were found with 1.2).
+* For `t386mon800` (v5.1), also never in this tree: a Windows 95 image with VMDisp9x
+  1.2025.0.119's QEMU driver (`QEMUMINI.DRV`) installed through Windows' own dialogs at 800x480 in
+  16 bits, Windows then shut down from its Start menu, as `s31/TEST-PLAN.md` 13 does it (`N16_IMG`,
+  default `~/flicker/repro/h/img/base-n16.img`, the image of v4.1's install run), and the
+  `bios.bin` and `vgabios.bin` it runs with (`N16_ROMS`, default the image's own folder, where the
+  card's are; the harness's `vgabios.bin` is another build). The driver may be as released or
+  already changed: `qemumini-pointer.py` makes Plat's one-byte pointer change
+  (`s31/qemumini-pointer`) in the run's copy.
 
 
 ## 2. Use
@@ -42,12 +52,13 @@ bash tests/lockstep/lockstep.sh REF CAND msdos OUT
 bash tests/lockstep/lockstep.sh REF CAND bench OUT
 bash tests/lockstep/lockstep.sh REF CAND vbe OUT
 T386MON_EXE=~/T386MON.EXE bash tests/lockstep/lockstep.sh REF CAND t386mon OUT
+T386MON_EXE=~/T386MON.EXE bash tests/lockstep/lockstep.sh REF CAND t386mon800 OUT
 
 # a v5.0 candidate with its fast interpreter off: build that side alone, then give it
 EXTRA_CFLAGS=-DI386_FAST_DEFAULT=0 bash tests/lockstep/build.sh CAND ~/out/cand-off
 CAND_BUILD=~/out/cand-off bash tests/lockstep/lockstep.sh REF CAND b1 ~/out/lock-b1-off
 
-# the tool's own test: seven planted bugs, each must be found (or is skipped, and says why)
+# the tool's own test: eight planted bugs, each must be found (or is skipped, and says why)
 bash tests/lockstep/selftest.sh . ~/out/selftest
 FAST=0 bash tests/lockstep/selftest.sh . ~/out/selftest-off
 ```
@@ -71,11 +82,12 @@ The parts can be used alone:
 | script | what it does |
 |-|-|
 | `build.sh TREE OUT` | the harness's headless driver for one tree, with the hook (5 s) |
-| `run.sh BUILD WORKLOAD RUNDIR` | one run; the hook's files in `RUNDIR/ls`; `NOHOOK=1` runs with the hook off |
+| `run.sh BUILD WORKLOAD RUNDIR` | one run; the hook's files in `RUNDIR/ls`; `NOHOOK=1` runs with the hook off; `KEEP=1` keeps the image copy and the pictures; for `t386mon` and `t386mon800`, T386MON's log read out of the image copy (`RUNDIR/T386MON.LOG`, its summary line in `RUNDIR/t386mon.txt`) |
 | `compare.py records A B` | compare two runs' records and interrupts |
 | `compare.py children A B` | compare two split steps, prefix by prefix |
 | `lockstep.sh` | the three passes below |
 | `selftest.sh` | the planted bugs |
+| `qemumini-pointer.py IMAGE` | Plat's one-byte pointer change to `C:\WINDOWS\SYSTEM\QEMUMINI.DRV` in a copy of a Windows image, with `s31/qemumini-pointer`'s checks (v5.1, for `t386mon800`) |
 
 
 ## 3. How it works
@@ -172,10 +184,21 @@ it leaves the main run as it was: the same records, interrupts, end and disk ima
 | `bench` | FreeDOS, then BENCH.COM to its last mark (0AFh at 0000:04F0) | 31,345,925 |
 | `vbe` | FreeDOS, then `guest/vbetest.S`: the VBE linear frame buffer at 800x480x16 and 640x480x32, stored to every way the CPU can (bytes, words, dwords, unaligned, across pages, REP STOS and MOVS both ways, read-modify-write, reads, the end of video memory and past it), to its last mark (0BFh) | 55,090,157 |
 | `t386mon` (v5.0) | Windows 95 to the desktop, then T386MON (`T386MON_EXE`, put in the image copy's root) from Start, Run at 90 s after the taskbar is first seen, with `/top /bench /quit`: its drawing tests (fill, scroll, text three ways, a sprite, a full copy, a full picture) through the VGA window at 640x480 in 16 colours, its log written, closed; to 320 s after the taskbar. Two key releases that do nothing, at 30 s and 300 s, keep the harness's dialog poller paused in between, so that Internet Explorer's setup wizard waits on its first page and T386MON's window is never sent an Enter | 674,307,567 |
+| `t386mon800` (v5.1) | Plat's own setup: Windows 95 at 800x480 in 16 bits through VMDisp9x's QEMU driver with his pointer change, on the VBE linear frame buffer, mem 13M and vga_mem 768K (what his board gives with the card's `win95-800x480.ini`), gen 3, no FPU, the card's ROMs. The logon box's OK at 80 s, then T386MON from Start, Run at 335 s with `/quit`, F5 (its tests) at 380 s, "Tests done" and closed at about 445 s; to 480 s of guest time (section 10) | 792,272,554 |
 
 The three Windows runs are v4.6's regression runs: the same options, the pristine image, mem 14M,
 vga_mem 320K, gen 3, no FPU. That image has the standard VGA driver (640x480, 16 colours, planar),
-so they never touch the linear frame buffer: `vbe` is the workload for a fast path there.
+so they never touch the linear frame buffer: `vbe` is the workload for a fast path there, and
+since v5.1 `t386mon800`, where Windows itself draws into it.
+
+`t386mon800`'s keys go at fixed guest times, not at times after the taskbar is seen: the harness
+looks for the taskbar and for dialogs only when the BIOS's mode byte is not a text mode, and
+VMDisp9x sets its mode through the VBE registers alone, so the byte stays 03h and neither is ever
+seen [verified: a run with the taskbar and the logon box on its pictures said "desktop not seen"].
+The guest's time is the instruction count's, so the times are the same in every run of a guest
+that does the same. If a change to the image, the ROMs or the options moves them, T386MON never
+gets its F5 or never starts: `lockstep.sh` then shows "no summary" for that side (from
+`RUNDIR/t386mon.txt`) and says the workload covers less than it should.
 
 
 ## 4. What a candidate core must keep
@@ -274,6 +297,15 @@ With the fast interpreter on, `movs-count` shows later: the fast interpreter doe
 itself, and the first one it hands to tiny386 that ends a piece at a page's end is in Windows' 16-bit
 code.
 
+**v5.1**: `lost-mark-fast` plants the lost mark where the fast interpreter itself stores into the
+frame buffer (`lfb_st` in `i386_fast.h`: a MOV through a page's `FAST_TAG_LFB` write tag), on
+`t386mon800` (section 10). A bug whose workload cannot run on this machine (`t386mon800` without
+`N16_IMG`, its ROMs or `T386MON_EXE`) is skipped, and the summary says which input is missing.
+
+| bug | `FAST=1` | `FAST=0` |
+|-|-|-|
+| `lost-mark-fast` | t386mon800, instruction 49,345,659, a 32-bit MOV of an immediate into the frame buffer at 0028:C0FD6323 (code at level 0), `dirty` | skipped (needs the fast one) |
+
 
 ## 7. Measured
 
@@ -310,8 +342,8 @@ took 23 s on b1 from the start to the named instruction, the two builds included
   run does not. Both sides' children see the same, so the comparison stays fair, but a state after
   such a write is not the main run's.
 * Both runs must use the same harness, image and options: `lockstep.sh` runs both sides with one
-  harness and one workload, and stops if an image prepared for the run (vbe) is not the same bytes
-  on both sides.
+  harness and one workload, and stops if an image prepared for the run (vbe, t386mon,
+  t386mon800) is not the same bytes on both sides.
 * `LS_SPLIT_STEP` splits one step; for the next, run again.
 * A planted bug is found only where a workload runs it: `sti-shadow` with the fast interpreter on,
   and the fast interpreter's own bugs with it off, are skipped for that reason (section 6).
@@ -345,7 +377,8 @@ in the build with it on, and never in the build with it off.
 What the gate does not cover: the board itself (PSRAM, two cores, the card, USB), the fast
 interpreter's paths that none of these workloads reach (`s31/FAST-CPU.md` 6 lists what its own
 host test covers), and Windows at 800x480 through VMDisp9x, whose image is not in WSL (`vbe` and
-`tests/host/lfb` cover the frame buffer's paths).
+`tests/host/lfb` cover the frame buffer's paths). (v5.1: the flicker work's image with that
+driver was in WSL after all; `t386mon800` covers Windows there, section 10.)
 
 **After the two reviews of v5.0** [verified, 2026-10-27, WSL]: the gate was run again on the code
 that took them in (`s31/BUILD-NOTES.md` 33.15: the fast interpreter's helpers out of flash, levels
@@ -354,3 +387,83 @@ off: no difference in any of the 12, with the same instruction counts, records, 
 disk images as above (`s31/checks/lockstep-v5.0.txt`). `vbe` reaches the frame buffer from real
 mode with 32-bit addresses, so without paging; `tests/host/cpu/test_fast_cpu.c` gives the CPU a
 frame buffer with paging too, at levels 0 to 3.
+
+
+## 10. v5.1: Plat's own setup (`t386mon800`)
+
+v5.0's gate ran Windows only at 640x480 in 16 colours, on the standard VGA driver, so the frame
+buffer's fast path was checked by `vbe` (FreeDOS) and the host tests alone. Plat runs Windows at
+800x480 in 16 bits through VMDisp9x's QEMU driver, where everything Windows draws goes into the
+frame buffer. `t386mon800` is that setup, with T386MON's tests.
+
+**The image copy** (`run.sh`, `prep_t386mon800`). A copy of `N16_IMG` (default the image of v4.1's
+install run: the driver installed through Windows' dialogs, `s31/BUILD-NOTES.md` 23.8);
+`qemumini-pointer.py` changes the one byte of `C:\WINDOWS\SYSTEM\QEMUMINI.DRV` in place, after the
+checks of `s31/qemumini-pointer` (the file found through the FAT, its size and SHA-256, the six
+bytes), and reads the file back: its SHA-256 must then be the changed file's (`e4c47e9a...`)
+[verified: on a copy of the image, `cmp -l` against the original shows that one byte, 01 to 00,
+and nothing else; run again, it says the file is already changed and writes nothing]. Then
+`T386MON.EXE` goes into its root with a fixed time, as for `t386mon`. The ROMs are the ones beside
+the image, the card's (v5.0's package: `bios.bin` SHA-256 `be36f0d3...`, `vgabios.bin`
+`4aeae74f...`) [verified: sha256sum]. After the run, `post_t386mon` reads `C:\T386MON.LOG` out of
+the copy.
+
+**The run** [verified: a run with `KEEP=1` and a picture every 5 s of guest time, and the log]:
+Windows starts at 800x480 (the BIOS's mode byte stays 03h); the logon box is up from 62 s, Enter
+at 80 s; the taskbar at 88 s; Windows is busy until about 325 s, when the Microsoft Network's icon
+comes up and the desktop is drawn again; T386MON 1.2 is started at 335 to 340 s, its window is up
+at about 345 s, F5 at 380 s, its tests start at 00:06:16 by the guest's clock and end with "Tests
+done" and the window closed at about 445 s; the guest is then about 11 per cent busy, to the end at
+480 s. 792,272,554 instructions.
+
+**The gate** [verified, 2026-10-28, WSL, with other v5.1 work on the machine, a load of 10 to 14 on
+28 threads]: v4.6 (35a201c) against v5.0 (0d37002, the commit tagged s31-v5.0), built with this
+branch's `build.sh` with the fast interpreter on and off; each workload alone, its two comparisons
+side by side; pass 1 of each, no difference anywhere, so no pass 2 or 3:
+
+| workload | guest instructions | records | interrupts | disk image after (sha256) | host s, v4.6 / fast on | v4.6 / fast off | `lockstep.sh`, both, wall s |
+|-|-|-|-|-|-|-|-|
+| b1 | 588,301,033 | 590 | 51,878 | `248cdd0473f55199` | 9.9 / 7.5 | 9.9 / 9.8 | 12 |
+| restart | 1,304,341,904 | 1,306 | 238,269 | `0991749feee656d8` | 39.0 / 31.3 | 38.4 / 37.8 | 42 |
+| msdos | 1,337,723,352 | 1,339 | 238,758 | `36979e52115af450` | 41.2 / 31.9 | 41.1 / 41.1 | 45 |
+| bench | 31,345,925 | 33 | 111 | `72fe423a80f365fb` | 0.6 / 0.4 | 0.6 / 0.6 | 1 |
+| vbe | 55,090,157 | 57 | 505 | `482c032f53c3a479` | 0.8 / 0.6 | 0.7 / 0.7 | 1 |
+| t386mon | 674,307,567 | 676 | 64,677 | `35c2db9b72859c03` | 15.3 / 12.7 | 15.0 / 14.8 | 19 |
+| t386mon800 | 792,272,554 | 794 | 148,032 | `b3df8b6bb0474edd` | 15.9 / 10.6 | 15.8 / 13.9 | 18 |
+
+The first six are section 9's figures again, to the hash. In both `t386mon800` comparisons
+T386MON's summary is the same on both sides: fill 490.40, scroll 328.07, text 3.51, text-aside
+3.80, text-nopointer 3.78, sprite 73.41, full-copy 361.76, full-picture 1.13 frames a second. These
+are by the guest's clock in the harness, where a REP string counts as one instruction: they say
+the two cores did the same work, not how fast the board is. The self-test (section 6) took 174 s
+for `FAST=1` and `FAST=0` side by side, and its run of `t386mon800` without a bug agreed.
+
+**Planted faults** [verified, the same day]: six faults in the frame buffer's part of the fast
+interpreter, one at a time in the candidate's copy of `i386_fast.h` (`CAND_SED_I386_FAST`), v5.0
+with the fast interpreter on, `t386mon800`, all three passes. The first ran alone; the other five
+side by side, so their times are longer:
+
+| fault | found | where, and why |
+|-|-|-|
+| `lfb_st` stores without `lfb_marked()`: a MOV through a page's `FAST_TAG_LFB` write tag (`bugs/lost-mark-fast.sed`) | yes, 44 s | instruction 49,345,659, at 0028:C0FD6323 (code at level 0), a 32-bit MOV of an immediate into the frame buffer; only `dirty` differs (pass 1: record 50) |
+| `stos_lfb` (one STOS into a page with the tag) stores without `lfb_marked()` | yes, 88 s | not at the STOS. The blocks it should have marked were marked by other stores before the next picture, so the marks, the picture and memory stayed the same until instruction 661,683,223, where T386MON (at level 3) reads tiny386's information port (`in eax,dx` from F1FCh) and gets 4DEh where v4.6 gives 4DDh. The tool names the first instruction whose result the guest sees, which here comes well after the cause |
+| the fast OUT without its `lfb_gen` check (RC-1 of v5.0's recheck) | no | the frame buffer never moves while Windows draws. `lfb_to_cpu()` runs three times in the whole run: at power-on (no frame buffer), when SeaBIOS maps the BAR at FEB00000h, and when Windows' PCI code writes the BAR again at about 27.5 s, at FEB00000h again [verified: a build of `pc.c` that prints there]. An entry kept over such a "move" still points at the right place |
+| `fast_tlb_check()` without its `lfb_gen` test (RC-1) | no | the same |
+| `FPTR_ST()`'s frame buffer path without the dirty bit (RC-2) | no | [inferred] Windows never clears the dirty bit of a frame buffer page it has mapped, so the bit is never found clear there |
+| `fast_miss()`'s frame buffer branch keeping an old write tag (RC-2) | no | [inferred] it needs a RAM page with a write entry and a frame buffer page at the same index of the 256, a read of the frame buffer page, then a store into the RAM page with nothing between; this run never does it |
+
+The last four are for `tests/host/cpu/test_fast_cpu.c`, which, as v5.0's recheck found, does not
+catch them either (its RC-1 and RC-2).
+
+**Limits of this workload**:
+
+* The keys go at fixed guest times found with this image, these ROMs, these options and T386MON
+  1.2. Another of any of them can move the times; T386MON then never starts or never gets its F5,
+  and `lockstep.sh` says so (section 3.4). `KEEP=1 run.sh ... -snap 5` shows the pictures to find
+  the times again.
+* It is the PC harness's 800x480: the board's drawing (`vga_task` on core 0, the panel), PSRAM
+  and the card are not in it.
+* mem 13M is what Plat's board gives with `mem_size = max`; the image was installed with 14M, and
+  at 13M Windows runs to "Tests done" [verified].
+* The frame buffer does not move during the run (above), so the fast path's handling of a move is
+  not checked here.

@@ -5,7 +5,7 @@
 #   bash tests/lockstep/run.sh BUILD WORKLOAD RUNDIR [headless options...]
 #
 # BUILD     a directory build.sh made (BUILD/headless)
-# WORKLOAD  b1, restart, msdos, bench, vbe or t386mon (workloads.sh)
+# WORKLOAD  b1, restart, msdos, bench, vbe, t386mon or t386mon800 (workloads.sh)
 # RUNDIR    made afresh; the hook's files go in RUNDIR/ls
 #
 # The LS_* variables in the environment go to the hook as they are
@@ -28,7 +28,9 @@ RUN=$3
 shift 3
 case "$RUN" in /*) ;; *) RUN=$PWD/$RUN ;; esac
 HARNESS=${HARNESS:-$HOME/org2/pcm/canary/harness}
-ROMS=${ROMS:-$(cd "$HARNESS/.." && pwd)/img}
+# the ROMs: the workload's own (t386mon800: those beside its image), else
+# ROMS, else the harness's
+ROMS=${W_ROMS:-${ROMS:-$(cd "$HARNESS/.." && pwd)/img}}
 rm -rf "$RUN"
 mkdir -p "$RUN"
 cp "$W_IMG" "$RUN/disk.img"
@@ -65,7 +67,7 @@ else
 fi
 {
     echo "$BIN -out $RUN ${W_OPTS[*]} $* $RUN/run.ini"
-    echo "workload $W_NAME image $W_IMG mem $W_MEM vga $W_VGA gen $W_GEN fpu $W_FPU"
+    echo "workload $W_NAME image $W_IMG roms $ROMS mem $W_MEM vga $W_VGA gen $W_GEN fpu $W_FPU"
     env | grep '^LS_' | sort
     cat "$BUILD/lockstep.txt" 2>/dev/null
 } > "$RUN/cmd.txt"
@@ -76,6 +78,8 @@ t1=$(date +%s.%N)
 echo "$rc" > "$RUN/status.txt"
 python3 -c "print('%.1f' % ($t1 - $t0))" > "$RUN/time.txt"
 sha256sum "$RUN/disk.img" | cut -d' ' -f1 > "$RUN/disk.sha256"
+# what the workload reads out of the image after the run (t386mon: its log)
+[ -n "$W_POST" ] && "$W_POST" "$RUN/disk.img" "$RUN" > "$RUN/post.txt" 2>&1
 if [ -z "${KEEP:-}" ]; then
     rm -f "$RUN/disk.img" "$RUN"/*.ppm "$RUN"/snap*.txt "$RUN"/dialog*.txt "$RUN"/desktop.txt \
         "$RUN"/final.txt
