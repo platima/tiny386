@@ -825,6 +825,54 @@ elif [ $n = 0 ] && ! grep -q "^SKIP lfb:" "$OUT/lfb.log"; then
     result 1 "lfb: tests/host/lfb/run_lfb.sh ran nothing"
 fi
 
+# ==== 24. the fast interpreter against tiny386's own, in lockstep (v5.0) ====
+# tests/host/cpu/test_fast_cpu.c: two machines, one with the fast
+# interpreter (i386_fast.h, from tab5-pc) and one with tiny386's cpu_exec1()
+# alone, run the same random guest code (real mode, protected mode with
+# paging at levels 0 and 3) with the same interrupts, and after every step
+# their registers, lazy flags, instruction counts, CR2, tiny386's fetch
+# cache and TLB, all memory and every port and video memory access (with
+# the count at the access) must be the same.  As the Korvo-1 builds i386.c
+# and without the board header.  Then two copies of i386_fast.h with a
+# fault put in, which the test has to catch: CMP fused with a JZ after it
+# where tiny386 fetched the CMP the slow way (a bug found by this test), and
+# the instruction count left behind at port accesses.
+echo
+FCSEEDS=${FCSEEDS:-40}
+fcbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_fast_cpu-name
+    local name=$1 dir=$2
+    shift 2
+    $CC -O2 -g -w -I"$dir" -I"$TREE" "$@" -o "$OUT/test_fast_cpu-$name" \
+        "$HERE/cpu/test_fast_cpu.c" "$TREE/fpu.c" -lm || exit 1
+}
+fcbuild korvo1 "$TREE" $PCBOARD
+"$OUT/test_fast_cpu-korvo1" $FCSEEDS > "$OUT/fast-cpu-korvo1.log" 2>&1
+st=$?
+grep "FAIL\|^test_fast_cpu" "$OUT/fast-cpu-korvo1.log"
+result $st "the fast interpreter as the Korvo-1 builds it: the same as tiny386's own at every step of random guest code"
+fcbuild plain "$TREE" -DI386_ALIGNED_ONLY -DI386_ENABLE_FPU
+"$OUT/test_fast_cpu-plain" $FCSEEDS > "$OUT/fast-cpu-plain.log" 2>&1
+st=$?
+grep "FAIL\|^test_fast_cpu" "$OUT/fast-cpu-plain.log"
+result $st "the fast interpreter without the board header: the same"
+for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN();$/\t(void) 0;/'; do
+    mname=${m%%:*}
+    mkdir -p "$OUT/mutant-$mname"
+    cp "$TREE/i386.c" "$TREE/i386.h" "$OUT/mutant-$mname/"
+    sed "${m#*:}" "$TREE/i386_fast.h" > "$OUT/mutant-$mname/i386_fast.h"
+    if cmp -s "$TREE/i386_fast.h" "$OUT/mutant-$mname/i386_fast.h"; then
+        echo "    | (the $mname fault was not put in: the sed found nothing)"
+        result 1 "the lockstep test catches a fault in the fast interpreter ($mname)"
+        continue
+    fi
+    fcbuild "mutant-$mname" "$OUT/mutant-$mname" $PCBOARD
+    "$OUT/test_fast_cpu-mutant-$mname" $FCSEEDS > "$OUT/fast-cpu-mutant-$mname.log" 2>&1
+    st=$?
+    echo "    | ($mname: $(grep -c FAIL "$OUT/fast-cpu-mutant-$mname.log") of $((FCSEEDS * 3)) scenarios differ; exit status $st)"
+    [ $st != 0 ]
+    result $? "the lockstep test catches a fault in the fast interpreter ($mname)"
+done
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]
