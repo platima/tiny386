@@ -23,7 +23,11 @@
 #   PATCHES, SED_I386, SED_VGA, SED_PC, SED_IDE, SED_I8042, SED_I8254,
 #   SED_MISC, EXTRA_CFLAGS, BOARD, BOARD_DEFINE, BOARD_UNDEF
 #             passed to the harness's build.sh as they are (a deliberate
-#             bug for selftest.sh goes in through SED_I386)
+#             bug for selftest.sh goes in through SED_I386); EXTRA_CFLAGS
+#             -DI386_FAST_DEFAULT=0 builds a v5.0 tree with its fast
+#             interpreter off
+#   SED_I386_FAST  a sed script for the copy of i386_fast.h (v5.0), put in
+#             the patch
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 [ $# -eq 2 ] || { echo "usage: build.sh TREE OUTDIR"; exit 2; }
@@ -45,6 +49,16 @@ for pair in i386.c:lockstep_cpu.inc i8259.c:lockstep_pic.inc i8254.c:lockstep_pi
     rm -f "$OUT/.$f.new"
 done
 
+# a deliberate bug in the fast interpreter (v5.0, selftest.sh): i386_fast.h
+# is a header, which the harness copies as it is, so its sed goes into the
+# patch
+if [ -n "${SED_I386_FAST:-}" ]; then
+    [ -f "$TREE/i386_fast.h" ] || { echo "$TREE has no i386_fast.h for SED_I386_FAST"; exit 2; }
+    sed -e "$SED_I386_FAST" "$TREE/i386_fast.h" > "$OUT/.i386_fast.h.new"
+    diff -u --label a/i386_fast.h --label b/i386_fast.h "$TREE/i386_fast.h" "$OUT/.i386_fast.h.new" >> "$P" || true
+    rm -f "$OUT/.i386_fast.h.new"
+fi
+
 export PATCHES="${PATCHES:-} $P"
 export EXTRA_CFLAGS="${EXTRA_CFLAGS:-} -Wl,--wrap=cpui386_step -Wl,--wrap=pc_new"
 bash "$HARNESS/build.sh" "$TREE" "${FLAVOUR:-esp}" "$OUT" "${ARCH:-rv}" > "$OUT/build.log" 2>&1 || {
@@ -63,6 +77,7 @@ fi
     git -C "$HERE" rev-parse HEAD 2>/dev/null || true
     echo "harness: $HARNESS flavour ${FLAVOUR:-esp} arch ${ARCH:-rv}"
     echo "SED_I386: ${SED_I386:-}"
+    echo "SED_I386_FAST: ${SED_I386_FAST:-}"
     echo "SED_VGA: ${SED_VGA:-}  SED_PC: ${SED_PC:-}"
     echo "PATCHES: $PATCHES"
     echo "EXTRA_CFLAGS: $EXTRA_CFLAGS"

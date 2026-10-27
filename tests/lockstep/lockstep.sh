@@ -24,7 +24,8 @@
 #   REF_BUILD, CAND_BUILD   use these build.sh outputs instead of building
 #   REF_SED_I386, CAND_SED_I386   the harness's SED_I386 for one side only
 #                (selftest.sh plants its bugs this way); likewise _SED_PC,
-#                _SED_VGA, _SED_IDE, _SED_I8042, _SED_I8254, _SED_MISC
+#                _SED_VGA, _SED_IDE, _SED_I8042, _SED_I8254, _SED_MISC, and
+#                _SED_I386_FAST for i386_fast.h (build.sh)
 #   IGNORE       fields compare.py leaves out, with commas (dirty, for a
 #                candidate that marks video memory in other blocks on
 #                purpose)
@@ -64,7 +65,7 @@ CB=${CAND_BUILD:-$OUT/build-cand}
 pids=()
 seds() {  # the harness's SED_ variables for one side (REF or CAND)
     local v out=()
-    for v in I386 PC VGA IDE I8042 I8254 MISC; do
+    for v in I386 I386_FAST PC VGA IDE I8042 I8254 MISC; do
         local n=${1}_SED_$v
         out+=("SED_$v=${!n:-}")
     done
@@ -83,7 +84,7 @@ fi
 for p in "${pids[@]}"; do wait "$p" || { say "a build failed: $OUT/build-*.log"; exit 2; }; done
 [ -x "$RB/headless" ] && [ -x "$CB/headless" ] || { say "no builds"; exit 2; }
 for side in REF CAND; do
-    for v in I386 PC VGA IDE I8042 I8254 MISC; do
+    for v in I386 I386_FAST PC VGA IDE I8042 I8254 MISC; do
         n=${side}_SED_$v
         [ -n "${!n:-}" ] && say "  ${side,,} built with SED_$v: ${!n}"
     done
