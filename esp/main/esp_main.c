@@ -590,7 +590,8 @@ static void i386_task(void *arg)
 	else if (config.fast_cpu)
 		console_puts(CON_INFO, "CPU: tiny386's own interpreter (this build has no fast one).");
 	else
-		console_puts(CON_INFO, "CPU: tiny386's own interpreter alone (fast_cpu = 0), as v4.6.");
+		console_puts(CON_INFO, "CPU: tiny386's own interpreter alone (fast_cpu = 0): the same "
+			     "guest as v4.6, but slower, since it now runs from flash.");
 	globals.pc = pc;
 	globals.kbd = pc->kbd;
 	globals.mouse = pc->mouse;
@@ -1600,7 +1601,12 @@ void app_main(void)
 #endif
 	}
 
-	if (xTaskCreatePinnedToCore(i386_task, "i386_main", 4096, &conf, 3, NULL, 1) != pdPASS ||
+	/* i386_main: 6 KiB since v5.0 (4 KiB before), as an instruction the fast
+	   interpreter hands to tiny386 (a REP INSW reading the card through
+	   FatFs, say) runs under both interpreters' frames, 224 bytes deeper
+	   than in v4.6, and the margin was never read on a board (the v5.0
+	   review) */
+	if (xTaskCreatePinnedToCore(i386_task, "i386_main", 6144, &conf, 3, NULL, 1) != pdPASS ||
 	    xTaskCreatePinnedToCore(vga_task, "vga_task", 4096, NULL, 0, NULL, 0) != pdPASS)
 		console_fatal("The emulator's tasks could not be started: no memory "
 			      "(%u KiB of internal RAM free).",

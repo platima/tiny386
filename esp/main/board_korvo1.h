@@ -10,14 +10,16 @@
 // build is v4.6's interpreter alone, cpu_exec1() in internal RAM.
 #define I386_FAST
 // Where the two run from.  The fast interpreter's loop (fast_exec(), about
-// 120 KB) is in internal RAM (HP SRAM, no cache in the way).  tiny386's
-// cpu_exec1() (about 130 KB), to which the fast interpreter hands about
-// one instruction in 300 on Windows 95's boot, runs from flash through the
-// instruction cache: internal RAM is then left about as v4.6 left it.  With
+// 120 KB) and its helpers are in internal RAM (HP SRAM, no cache in the
+// way).  tiny386's cpu_exec1() (about 130 KB), to which the fast
+// interpreter hands about one instruction in 500 on Windows 95's boot and
+// one in 40 in T386MON's drawing tests at 16 colours, runs from flash
+// through the instruction cache: internal RAM is then left about as v4.6
+// left it, and fast_cpu = 0 is slower than v4.6.  With
 // I386_FAST_EXEC1_IRAM, cpu_exec1() stays in internal RAM too (fast_cpu = 0
-// then as fast as v4.6), which leaves 110 KiB of internal RAM for ESP-IDF's
-// allocations at run time, against 235 KiB without it and v4.6's 246 KiB
-// (the Korvo-1's build; s31/FAST-CPU.md).
+// then as fast as v4.6), which leaves about 110 KiB of internal RAM for
+// ESP-IDF's allocations at run time, against 236 KiB without it and v4.6's
+// 246 KiB (the Korvo-1's build; s31/FAST-CPU.md).
 #if !defined(I386_FAST) || defined(I386_FAST_EXEC1_IRAM)
 #define IRAM_ATTR_CPU_EXEC1 IRAM_ATTR
 #else
