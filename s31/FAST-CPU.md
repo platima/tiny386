@@ -130,7 +130,8 @@ The Korvo-1 dual-boot app, `idf.py -B build-korvo1 -DBOARD=korvo1`, the boards' 
 | warnings (not ESP-IDF's or managed components') | 1 (`i2s_task` unused) | the same 1 | the same 1 |
 
 The DOS board's app: 249,640 bytes of internal RAM left with v4.6, 238,802 with v5.0, and the
-same warnings (none) [verified].
+same warnings (none) [verified]. (These are the branch `v50-fast`'s builds; v5.0 as put together,
+with the frame buffer's path too, is in `BUILD-NOTES.md` 33.8.)
 
 * **In internal RAM** (HP SRAM, which no cache stands in front of): `fast_exec()` and its jump
   tables (2 KB), its TLB (8 KB, `fast_state0`), its helpers, and the tiny386 functions it calls
@@ -159,7 +160,9 @@ same warnings (none) [verified].
 
 ## 6. Tests
 
-* **The host tests** (`tests/host/run.sh`): 65 pass, v4.6's 61 and four new [verified]. Section 23
+* **The host tests** (`tests/host/run.sh`): 65 pass on the branch `v50-fast`, v4.6's 61 and four
+  new [verified]; with the frame buffer's tests beside them in v5.0, 69 (`BUILD-NOTES.md` 33).
+  Section 24 (23 on `v50-fast`)
   is `tests/host/cpu/test_fast_cpu.c`: two machines, one with the fast interpreter and one with
   tiny386's `cpu_exec1()` alone, run the same random guest code (real mode with 66h and 67h,
   protected mode with paging at level 0 and at level 3, about 20,000 instructions a run) and get
@@ -189,9 +192,14 @@ same warnings (none) [verified].
 * **Under qemu, on the board's RV32 code** (section 7): BENCH's pieces and the first 300 M
   instructions of Windows' boot end on the same state and counts with v4.6, the fast interpreter,
   and the fast interpreter off [verified].
-* **Not tried:** the board; V86-mode and task-switch code beyond what Windows 95's three runs
-  exercise; tiny386's FPU (handed over whole); the lockstep tester being built beside this, which
-  compares the two at instruction-count checkpoints.
+* **Not tried:** the board; V86-mode and task-switch code beyond what Windows 95's runs exercise;
+  tiny386's FPU (handed over whole).
+* **The lockstep tester** (`tests/lockstep`, v5.0): v5.0 with the fast interpreter on against v4.6,
+  through the boot to the desktop, Start and Restart, the MS-DOS mode round trip, BENCH, the frame
+  buffer's guest and T386MON's drawing tests: no difference in any record or interrupt
+  [verified: `tests/lockstep/README.md` 9, `BUILD-NOTES.md` 33]. Its self-test plants two faults in
+  `i386_fast.h` (the fusion bug above, and the count left behind at port accesses) and names the
+  instruction where each first shows in SeaBIOS.
 
 
 ## 7. Host instructions a guest instruction (qemu)
@@ -263,15 +271,20 @@ What the counts say [inferred, from the tables]:
 
 ## 8. With the rest of v5.0
 
-* **The frame buffer's fast path** is being made inside tiny386's store functions; the fast
-  interpreter sends every MMIO store through `store8()` to `store32()`, so it gets faster with it
-  and keeps its dirty marks [inferred: read in both].
-* **The descriptor cache** is being made in `set_seg()` and `read_desc()`; the fast interpreter
-  loads segments through `set_seg()` and far transfers through `pmcall()` and `pmret()`, so it
-  gets that too. Over Windows' boot those were 1.3 host instructions a guest instruction here
-  [verified: section 7's runs].
+This section was written on the branch `v50-fast`, before v5.0 was put together; `BUILD-NOTES.md`
+33 is what happened.
+
+* **The frame buffer's fast path** went into tiny386's load and store functions, and the fast
+  interpreter's single MMIO loads and stores reach it through `load8()` to `store32()`. Its own REP
+  STOS and REP MOVS into video memory now take tiny386's v5.0 string paths too (`lfb_stos()`,
+  `lfb_movs()`, the VGA window's own calls). An instruction with an operand in video memory that is
+  not a MOV or a string instruction (`ADD EBX,[ESI]`, `AND [EDI],EAX`) is still handed to tiny386
+  whole [verified: `BUILD-NOTES.md` 33.3].
+* **The descriptor cache** was left out of v5.0: on Windows' boot it saved 0.8 per cent of host
+  instructions under tiny386, about 2 per cent with the fast interpreter [inferred], under the bar
+  set for it. Its branch, `v50-desc`, is kept.
 * **The lockstep tester** can run one CPU each way (`cpui386_set_fast()`); the two take turns at
-  any step boundary [verified: section 6].
+  any step boundary [verified: section 6]. v5.0 against v4.6: section 6.
 
 
 ## 9. For the board
@@ -291,7 +304,9 @@ What the counts say [inferred, from the tables]:
 
 Scratch of this work: WSL `~/org2/v50/fast` (not in any repository).
 
-* `bash tests/host/run.sh` (65 tests; `FCSEEDS=` sets the lockstep test's seeds, 40 by default).
+* `bash tests/host/run.sh` (69 tests in v5.0; `FCSEEDS=` sets the lockstep test's seeds, 40 by
+  default).
+* `bash tests/lockstep/lockstep.sh REF CAND WORKLOAD OUT` (`tests/lockstep/README.md`).
 * The Windows runs: the PC repro's harness (`~/org2/pcm/canary/harness`) built from this tree
   (`build.sh TREE esp OUT rv`, and with `EXTRA_CFLAGS=-DI386_FAST_DEFAULT=0` for the fast
   interpreter off), then `regress50.sh` (v4.6's `regress46.sh` with the binary as an argument).

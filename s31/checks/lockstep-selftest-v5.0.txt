@@ -1,0 +1,156 @@
+tests/lockstep/selftest.sh on v5.0's tree (84e17ca's code; the bugs and selftest.sh as committed
+in 8c5a39b), FAST=1 (the fast interpreter on) and FAST=0. 2026-10-27, WSL. The bytes of each named
+instruction are left out here (some are Windows' own code); the disassembly is kept.
+
+selftest: tree ~/org2/v50/int/trees/c4, FAST=1
+no bug, vbe: no difference (as it must be)
+no bug, b1: no difference (as it must be)
+
+bug af-dec32 (i386.c, workload b1): a wrong flag: AF after a 32-bit DEC is set when the low nibble of the result is 0xE, not 0xF (nothing in the boot reads it, so Windows still reaches the same desktop)
+pass 3: step 55 (it starts at cycle 27650) split into its prefixes
+  step 55 (after 54 steps) split into 515 prefixes (ref), 515 (cand); child m ran the first m instructions of the step
+  
+  first instruction whose result differs: instruction 26 of step 55
+    it is at 0008:000f3599, cycle 27675 -> 27676
+    dec    edx   (4a)
+    fields that differ: fl
+    fl     ref 00000012
+           cand 00000002
+           flags that differ: AF (ref AF=1, cand AF=0)
+
+bug fast-fold (i386_fast.h, workload b1): the fast interpreter fuses CMP or TEST with a JZ or JNZ after it where tiny386 would not, at the first instruction of a newly cached page (the bug tests/host/cpu/test_fast_cpu.c found in the port): the jump joins the CMP's step
+pass 3: step 14 (it starts at cycle 6658) split into its prefixes
+  step 14 (after 13 steps) split into 515 prefixes (ref), 515 (cand); child m ran the first m instructions of the step
+  
+  first instruction whose result differs: instruction 250 of step 14
+    it is at 0008:000f24ac, cycle 6907 -> 6908
+    test   eax,eax   (85 c0)
+    fields that differ: eip
+    eip    ref 000f24ae
+           cand 000f24cf
+
+bug fast-sync (i386_fast.h, workload b1): the fast interpreter does not bring the instruction count up to date before a port or MMIO access (SYNC_IN() left out): the timer and the clock read a count a few instructions short
+pass 3: step 954 (it starts at cycle 487938) split into its prefixes
+  step 954 (after 953 steps) split into 515 prefixes (ref), 515 (cand); child m ran the first m instructions of the step
+  
+  first instruction whose result differs: instruction 333 of step 954
+    it is at 0008:00dbca51, cycle 488270 -> 488271
+    out    0x40,al   (e6 40)
+    fields that differ: pit
+    pit    ref 10000.0.0.0.0.3.3.0.3.2.0.1.0.0.5272e.0.0,10000.0.0.0.0.0.0.0.0.3.0.1.0.0.0.0.ffffffff,10000.0.0.0.0.0.0.0.0.3.0.0.0.0.0.0.ffffffff
+           cand 10000.0.0.0.0.3.3.0.3.2.0.1.0.0.52688.0.0,10000.0.0.0.0.0.0.0.0.3.0.1.0.0.0.0.ffffffff,10000.0.0.0.0.0.0.0.0.3.0.0.0.0.0.0.ffffffff
+           differs in: ch0.count_load_time 5272e/52688
+
+bug lost-mark-cpu (i386.c, workload vbe): a lost mark in v5.0's own path: a 32-bit store into the VBE linear frame buffer, made by i386.c itself, reaches video memory but marks no block (lost-mark's bug where v5.0 stores)
+pass 3: step 340348 (it starts at cycle 12120659) split into its prefixes
+  step 340348 (after 340347 steps) split into 515 prefixes (ref), 515 (cand); child m ran the first m instructions of the step
+  
+  first instruction whose result differs: instruction 177 of step 340348
+    it is at 22b2:0000024a, cycle 12120835 -> 12120836
+    mov    DWORD PTR fs:[edi],eax   (64 67 66 89 07)
+    fields that differ: dirty
+    dirty  ref 1b697b948bd1419e
+           cand 3146e8b62414c4ed
+
+bug movs-count (i386.c, workload b1): an off-by-one count: REP MOVS copies one element too few when its chunk ends at the end of the destination's page and more is left to copy (the registers move on as if all were copied)
+pass 3: step 605966 (it starts at cycle 144806909) split into its prefixes
+  step 605966 (after 605965 steps) split into 515 prefixes (ref), 515 (cand); child m ran the first m instructions of the step
+  
+  first instruction whose result differs: instruction 362 of step 605966
+    it is at 02f7:00003045, cycle 144807270 -> 144807271
+    rep movs BYTE PTR es:[di],BYTE PTR ds:[si]   (f3 a4)
+    fields that differ: vram
+    vram   ref 8cf9b3f8aeeca879
+           cand 0c6d9c05bbce326d
+
+bug page-cross (i386.c, workload b1): a missed page-cross: a 32-bit access that crosses a page boundary with paging on is not split, so its last bytes come from (or go to) the physical page after the first one instead of the page the next linear page maps to
+pass 3: step 385711 (it starts at cycle 36508773) split into its prefixes
+  step 385711 (after 385710 steps) split into 515 prefixes (ref), 515 (cand); child m ran the first m instructions of the step
+  
+  first instruction whose result differs: instruction 476 of step 385711
+    it is at 0028:c0375ffd, cycle 36509248 -> 36509249
+    mov    ecx,0xffffffff   (b9 ff ff ff ff)
+    fields that differ: ecx
+    ecx    ref ffffffff
+           cand 0d8bffff
+
+bug sti-shadow (i386.c, workload b1): interrupt timing: after STI the CPU runs two more instructions before it takes a waiting interrupt, not one
+  skipped: only tiny386's own interpreter runs it (FAST=0)
+
+SELFTEST PASSED
+
+selftest: tree ~/org2/v50/int/trees/c4, FAST=0
+no bug, vbe: no difference (as it must be)
+no bug, b1: no difference (as it must be)
+
+bug af-dec32 (i386.c, workload b1): a wrong flag: AF after a 32-bit DEC is set when the low nibble of the result is 0xE, not 0xF (nothing in the boot reads it, so Windows still reaches the same desktop)
+pass 3: step 55 (it starts at cycle 27650) split into its prefixes
+  step 55 (after 54 steps) split into 515 prefixes (ref), 515 (cand); child m ran the first m instructions of the step
+  
+  first instruction whose result differs: instruction 26 of step 55
+    it is at 0008:000f3599, cycle 27675 -> 27676
+    dec    edx   (4a)
+    fields that differ: fl
+    fl     ref 00000012
+           cand 00000002
+           flags that differ: AF (ref AF=1, cand AF=0)
+
+bug fast-fold (i386_fast.h, workload b1): the fast interpreter fuses CMP or TEST with a JZ or JNZ after it where tiny386 would not, at the first instruction of a newly cached page (the bug tests/host/cpu/test_fast_cpu.c found in the port): the jump joins the CMP's step
+  skipped: it needs the fast interpreter (FAST=1)
+
+bug fast-sync (i386_fast.h, workload b1): the fast interpreter does not bring the instruction count up to date before a port or MMIO access (SYNC_IN() left out): the timer and the clock read a count a few instructions short
+  skipped: it needs the fast interpreter (FAST=1)
+
+bug lost-mark-cpu (i386.c, workload vbe): a lost mark in v5.0's own path: a 32-bit store into the VBE linear frame buffer, made by i386.c itself, reaches video memory but marks no block (lost-mark's bug where v5.0 stores)
+pass 3: step 340348 (it starts at cycle 12120659) split into its prefixes
+  step 340348 (after 340347 steps) split into 515 prefixes (ref), 515 (cand); child m ran the first m instructions of the step
+  
+  first instruction whose result differs: instruction 177 of step 340348
+    it is at 22b2:0000024a, cycle 12120835 -> 12120836
+    mov    DWORD PTR fs:[edi],eax   (64 67 66 89 07)
+    fields that differ: dirty
+    dirty  ref 1b697b948bd1419e
+           cand 3146e8b62414c4ed
+
+bug movs-count (i386.c, workload b1): an off-by-one count: REP MOVS copies one element too few when its chunk ends at the end of the destination's page and more is left to copy (the registers move on as if all were copied)
+pass 3: step 17 (it starts at cycle 8194) split into its prefixes
+  step 17 (after 16 steps) split into 515 prefixes (ref), 515 (cand); child m ran the first m instructions of the step
+  
+  first instruction whose result differs: instruction 89 of step 17
+    it is at 0008:000f24eb, cycle 8282 -> 8283
+    rep movs BYTE PTR es:[edi],BYTE PTR ds:[esi]   (f3 a4)
+    fields that differ: ram
+    ram    ref 03638c2b8f4e71ef
+           cand c7c3e185773d17e2
+    RAM written since the step began (hex address:old>new), 24 runs in ref, 24 in cand (at most 24 are listed); where they differ:
+      only in ref:  db4ff5:0000000000000000000000>ff39c8720c8038207f0748
+      only in cand: db4ff5:00000000000000000000>ff39c8720c8038207f07
+
+bug page-cross (i386.c, workload b1): a missed page-cross: a 32-bit access that crosses a page boundary with paging on is not split, so its last bytes come from (or go to) the physical page after the first one instead of the page the next linear page maps to
+pass 3: step 385711 (it starts at cycle 36508773) split into its prefixes
+  step 385711 (after 385710 steps) split into 515 prefixes (ref), 515 (cand); child m ran the first m instructions of the step
+  
+  first instruction whose result differs: instruction 476 of step 385711
+    it is at 0028:c0375ffd, cycle 36509248 -> 36509249
+    mov    ecx,0xffffffff   (b9 ff ff ff ff)
+    fields that differ: ecx
+    ecx    ref ffffffff
+           cand 0d8bffff
+
+bug sti-shadow (i386.c, workload b1): interrupt timing: after STI the CPU runs two more instructions before it takes a waiting interrupt, not one
+pass 3: step 2357 (it starts at cycle 1206152) split into its prefixes
+  step 2357 (after 2356 steps) split into 515 prefixes (ref), 515 (cand); child m ran the first m instructions of the step
+  
+  first instruction whose result differs: instruction 426 of step 2357
+    it is at f000:00009e20, cycle 1206581 -> 1206582
+    sti   (fb)
+    NOTE: this prefix ran a different number of instructions in the two cores (ref to cycle 1206583, cand to 1206584): they count instructions, or end a step (HLT, an interrupt after IRET or POPF, the instruction after STI or MOV SS), differently here
+    fields that differ: cyc ut eip
+    cyc    ref 1206583
+           cand 1206584
+    ut     ref 861883
+           cand 861884
+    eip    ref 00009e22
+           cand 00009e24
+
+SELFTEST PASSED

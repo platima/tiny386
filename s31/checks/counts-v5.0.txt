@@ -1,0 +1,161 @@
+v5.0: host instructions a guest instruction, counted under qemu-riscv32-static 7.2
+(-cpu rv32,zba=true,zbb=true,zbs=true; -d in_asm,exec,nochain) by jtrace (research/jit-prototype):
+the PC repro's harness with marks (qh/mkq.py) and the tree cross-built for riscv32 Linux with GCC
+15.3 (Buildroot 2026.08), -march=rv32imac_zba_zbb_zbs, -O3 for i386.c, vga.c, pc.c, -O2 for the
+rest, the Korvo-1's board header (BUILD_ESP32, I386_FAST, I386_ALIGNED_ONLY, tlb_size 256); 14M,
+320K, gen 3, no FPU, the clock made of guest instructions (2,000,000 a second), -uart 0.
+v46: s31-v4.6 (35a201c), the fast interpreter's series' build and runs (~/org2/v50/fast);
+c2: v5.0's code (the integration at d8ed71a, whose code is 31550d7's); c2off: the same,
+-DI386_FAST_DEFAULT=0. all: every host instruction; core 1: without the picture (vga_refresh
+and what it calls in vga.c, the board's core 0) and the harness's own code; i386.c: the CPU's
+functions alone. 2026-10-27.
+
+== BENCH.COM (FreeDOS), a stretch for each of BENCH's pieces (00: the BIOS and FreeDOS's boot)
+stretch         guest                   c-v46-bench                    c-c2-bench                 c-c2off-bench
+                              all / core 1 / i386.c         all / core 1 / i386.c         all / core 1 / i386.c
+00           11779454       156.8    141.0    118.1       107.5     90.6     67.6       158.3    141.4    118.5
+a1            2097152        88.5     86.9     85.4        58.9     57.3     55.7        88.6     86.9     85.4
+a2            1769472       165.4    163.8    162.2        88.6     86.9     85.4       165.9    164.2    162.7
+a3            2555904       120.9    119.3    117.8        64.2     62.5     61.0       121.0    119.3    117.8
+a4              22017     29143.0  29142.1  29140.5      3202.3   3201.4   2681.8     29147.6  29146.6  29145.0
+a5            5714360       140.1    138.5    137.0        76.1     74.5     72.8       140.2    138.6    137.0
+a6            1999872        87.5     85.9     84.4        58.5     56.8     55.3        87.6     85.9     84.4
+a7            1769472       180.7    179.1    177.6        85.1     83.4     81.8       181.1    179.5    177.9
+a8            2599936       142.0    140.4    138.8        65.8     64.2     62.6       141.8    140.1    138.6
+a9            1027072       203.9    202.3    200.7       168.0    166.3    164.8       211.7    210.1    208.5
+
+c-v46-bench     164.4 host instructions a guest instruction (core 1 157.4, i386.c 147.8) over 31.3 M guest instructions; 1.00x fewer than c-v46-bench (core 1 1.00x, i386.c 1.00x)
+c-c2-bench       90.2 host instructions a guest instruction (core 1  82.8, i386.c  72.9) over 31.3 M guest instructions; 1.82x fewer than c-v46-bench (core 1 1.90x, i386.c 2.03x)
+c-c2off-bench   165.2 host instructions a guest instruction (core 1 157.9, i386.c 148.3) over 31.3 M guest instructions; 0.99x fewer than c-v46-bench (core 1 1.00x, i386.c 1.00x)
+
+== Windows 95's boot (the PC repro's pristine image, a copy), the first 300 M guest instructions,
+   a stretch every 50 M
+stretch         guest                     c-v46-win                      c-c2-win
+                              all / core 1 / i386.c         all / core 1 / i386.c
+1            50000435       178.8    139.4    129.7       119.0     79.1     69.3
+2            49999724       153.7    137.5    134.8        90.0     73.8     71.0
+3            49999900       183.2    176.9    174.4        99.7     93.3     90.7
+4            50000030       166.0    158.8    157.1        86.8     79.6     77.8
+5            49999996       167.0    159.8    158.1        87.2     79.9     78.2
+6            50000113       167.0    159.8    158.1        87.2     79.9     78.2
+
+c-v46-win       169.3 host instructions a guest instruction (core 1 155.3, i386.c 152.0) over 300.0 M guest instructions; 1.00x fewer than c-v46-win (core 1 1.00x, i386.c 1.00x)
+c-c2-win         95.0 host instructions a guest instruction (core 1  80.9, i386.c  77.5) over 300.0 M guest instructions; 1.78x fewer than c-v46-win (core 1 1.92x, i386.c 1.96x)
+
+== T386MON 1.2's drawing tests (/top /bench /quit) in a copy of the pristine image, 640x480 in 16
+   colours (qrun-t386.sh: the keys of tests/lockstep's t386mon workload), a stretch every 10 M
+   guest instructions; the tests run from about 539.6 M to 635.4 M (the harness's beat lines:
+   T386MON's log puts them at 00:05:17 to 00:06:23 of the guest's clock)
+   v4.6's traced run was stopped (by its PID) once stretch 64 was counted: stretches 65 and 66
+   (after the tests) are not needed. Its program prints its marks to the pipe jtrace reads, so its
+   66 mark lines were taken from v4.6's own untraced run of the same program (u4-v46-t386), the
+   same lines, line for line, as v5.0's traced run's (the two step alike: tests/lockstep).
+-- stretches 1 to 54 (0 to 540 M: the boot, the desktop, T386MON's start)
+c-v46-t386      189.9 host instructions a guest instruction (core 1 170.4, i386.c 152.5) over 540.0 M guest instructions; 1.00x fewer than c-v46-t386 (core 1 1.00x, i386.c 1.00x)
+c-c2-t386       118.6 host instructions a guest instruction (core 1  98.7, i386.c  80.7) over 540.0 M guest instructions; 1.60x fewer than c-v46-t386 (core 1 1.73x, i386.c 1.89x)
+-- stretches 55 to 64 (540 to 640 M: T386MON's tests)
+stretch         guest                    c-v46-t386                     c-c2-t386
+                              all / core 1 / i386.c         all / core 1 / i386.c
+55            9999854       239.9    212.5    167.0       161.1    132.6     87.0
+56           10000258       382.4    313.7    173.4       305.3    233.3     92.7
+57            9999845       453.7    420.5    171.6       405.6    372.0    119.8
+58           10000225       512.2    481.1    209.5       467.3    435.8    162.2
+59           10000005       230.6    201.4    155.7       159.7    129.5     83.6
+60            9999759       195.9    177.1    153.9       124.8    105.5     82.2
+61           10000151       191.9    174.6    148.9       140.8    123.1     97.2
+62           10000071       153.6    145.7    136.1       117.5    109.5     99.8
+63           10000054       451.6    398.2    218.4       400.1    345.9    163.8
+64           10000103       192.3    177.2    148.2       159.6    144.0    114.9
+
+c-v46-t386      300.4 host instructions a guest instruction (core 1 270.2, i386.c 168.3) over 100.0 M guest instructions; 1.00x fewer than c-v46-t386 (core 1 1.00x, i386.c 1.00x)
+c-c2-t386       244.2 host instructions a guest instruction (core 1 213.1, i386.c 110.3) over 100.0 M guest instructions; 1.23x fewer than c-v46-t386 (core 1 1.27x, i386.c 1.53x)
+
+== where the host instructions went in T386MON's tests (540 to 640 M), the 20 functions with the most
+c-v46-t386: the functions with the most host instructions
+   26.1%      7854677961  cpu_exec1
+   16.6%      4977181775  vga_mem_write
+    5.9%      1758462865  translate.constprop.0
+    5.5%      1661203416  vga_graphic_refresh
+    4.0%      1194039990  translate.constprop.1
+    2.8%       850920168  vga_mem_read
+    2.8%       833617793  __udivdi3
+    2.3%       693419977  __GE_helper32
+    2.3%       686379596  __GE_helper16
+    2.3%       676142056  modsib
+    1.7%       508188993  main
+    1.6%       484290927  vga_mem_write16
+    1.6%       474930944  vnow_us
+    1.5%       448815454  __divdf3
+    1.5%       439361896  __GE_helper8
+    1.4%       428512230  load32
+    1.4%       424170184  __muldf3
+    1.3%       393412269  load16
+    1.2%       355910290  store16
+    1.0%       305773832  i8257_dma_run
+
+c-c2-t386: the functions with the most host instructions
+   29.7%      7251113086  fast_exec
+   20.6%      5036618943  vga_mem_write
+    6.8%      1661203416  vga_graphic_refresh
+    3.8%       935430916  cpu_exec1
+    3.5%       850920168  vga_mem_read
+    3.4%       833617793  __udivdi3
+    2.2%       534297312  vnow_us
+    2.2%       532652485  main
+    2.1%       502227628  vga_mem_write16
+    1.9%       464155183  fast_miss
+    1.8%       448815454  __divdf3
+    1.7%       424170184  __muldf3
+    1.4%       341488704  translate.constprop.0
+    1.3%       320397182  fast_window
+    1.3%       311064203  fast_lpgno
+    1.3%       305773832  i8257_dma_run
+    1.1%       263253118  translate.constprop.1
+    0.8%       207148317  __adddf3
+    0.8%       192940696  pthread_mutex_unlock
+    0.8%       189875686  kbd_step
+
+== where the host instructions went in Windows' boot, first 300 M (the 15 functions with the most)
+c-v46-win: the functions with the most host instructions
+   42.2%     21449328143  cpu_exec1
+   10.5%      5341530522  translate.constprop.0
+    7.1%      3616185890  vga_graphic_refresh
+    6.4%      3244638526  __GE_helper32
+    4.5%      2287497070  fetch32
+    4.2%      2114297210  modsib
+    3.9%      1960711750  load32
+    3.7%      1897634621  translate.constprop.1
+    2.1%      1049020425  fetch8
+    2.0%       991686755  peek8
+    1.7%       868634449  __GE_helper16
+    1.3%       636488134  store32
+    1.2%       628677469  try_jcc8
+    1.0%       512623202  peek8a
+    0.8%       385189823  load16
+
+c-c2-win: the functions with the most host instructions
+   71.0%     20218229327  fast_exec
+   12.7%      3616185890  vga_graphic_refresh
+    4.3%      1233535088  fast_window
+    1.5%       419842716  fast_lpgno
+    1.3%       374783289  __udivdi3
+    1.1%       323305481  get_CF.part.0
+    0.8%       241255008  vnow_us
+    0.6%       184908158  read_desc
+    0.5%       146013662  main
+    0.5%       144741036  set_seg
+    0.4%       123580312  load32
+    0.3%        88043697  cpu_exec1
+    0.3%        87122261  pthread_mutex_unlock
+    0.3%        81553895  i8257_dma_run
+    0.2%        69693822  kbd_step
+
+== the untraced runs' last state (the same for v4.6 and v5.0, the fast interpreter on and off)
+t-c2-bench: END t=18.182 s insns=31334711 idle=5030080 stall=0.0 s cs:eip=0008:00022e63 esp=003f0000 ss=0010 cr0=80000001 cr3=00200000 fl=00000046 mode=03 pit-behind=0 max=0 esp-min=ffffffff
+t-c2off-bench: END t=18.182 s insns=31334711 idle=5030080 stall=0.0 s cs:eip=0008:00022e63 esp=003f0000 ss=0010 cr0=80000001 cr3=00200000 fl=00000046 mode=03 pit-behind=0 max=0 esp-min=ffffffff
+t-c2-win: END t=152.515 s insns=300000198 idle=5029456 stall=0.0 s cs:eip=0028:c0008fc1 esp=c0ed4e04 ss=0030 cr0=80000005 cr3=00499000 fl=00000246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+t-c2off-win: END t=152.515 s insns=300000198 idle=5029456 stall=0.0 s cs:eip=0028:c0008fc1 esp=c0ed4e04 ss=0030 cr0=80000005 cr3=00499000 fl=00000246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+t-v46-bench: END t=18.182 s insns=31334711 idle=5030080 stall=0.0 s cs:eip=0008:00022e63 esp=003f0000 ss=0010 cr0=80000001 cr3=00200000 fl=00000046 mode=03 pit-behind=0 max=0 esp-min=ffffffff
+t-v46-win: END t=152.515 s insns=300000198 idle=5029456 stall=0.0 s cs:eip=0028:c0008fc1 esp=c0ed4e04 ss=0030 cr0=80000005 cr3=00499000 fl=00000246 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+u4-v46-t386: END t=462.598 s insns=660000301 idle=265196400 stall=0.0 s cs:eip=0028:c00012b0 esp=c13a1f90 ss=0030 cr0=80000005 cr3=00499000 fl=00003002 mode=12 pit-behind=0 max=0 esp-min=c0367b54
+u4-c2-t386: END t=462.598 s insns=660000301 idle=265196400 stall=0.0 s cs:eip=0028:c00012b0 esp=c13a1f90 ss=0030 cr0=80000005 cr3=00499000 fl=00003002 mode=12 pit-behind=0 max=0 esp-min=c0367b54

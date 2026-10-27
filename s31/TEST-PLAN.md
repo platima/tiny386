@@ -1516,6 +1516,118 @@ times the board restarted, and whether the band of mixed rows is gone. Then the 
 from 16c: whether double buffering is worth what it costs.
 
 
+## 18. v5.0: the fast interpreter, and the frame buffer's own path
+
+v5.0 answers your word on v4.6: it works, and it is too slow [reported]. Your T386MON log at
+800x480 in 16 bits had the guest busy all the time, at 1.5 to 1.7 million instructions a second;
+the text test about 580,000 guest instructions a picture; fill at 65 pictures a second but only
+0.40 million instructions a second, each store into the frame buffer going the long way through
+tiny386's memory-mapped path. Halving the panel's drawing rate did not change the instruction
+rate [reported], so core 1, the PC's processor, is what holds it back [inferred]. v5.0 makes two
+changes there (`BUILD-NOTES.md` 33):
+
+* **The fast interpreter** (`FAST-CPU.md`): Yejun Yang's, from his tab5-pc, in front of tiny386's
+  own. It does the common instructions itself, about twice as cheaply, and hands the rest to
+  tiny386 one at a time. `[esp] fast_cpu = 0` runs tiny386's own alone.
+* **The frame buffer's own path**: loads and stores into the VBE frame buffer are done by the CPU
+  itself, with the drawing's marks, and a REP STOS or REP MOVS into it is one fill or copy for each
+  page, where each dword was a call through `pc.c`.
+
+On the PC the guest sees exactly what v4.6 shows it, with `fast_cpu` 1 or 0: a lockstep tester
+compares the two through Windows' boot, a restart, MS-DOS mode, BENCH, the frame buffer and
+T386MON's tests, and finds no difference [verified: `BUILD-NOTES.md` 33.4]. Counted on the board's
+RV32 code under qemu, core 1's work for a guest instruction falls to about half (`BUILD-NOTES.md`
+33.6). What that is in time on the board is [unknown]; this section is how to find out. Nothing of
+v5.0 has run on a board.
+
+### 18a. The app
+
+1. `flash-dualboot.bat COM10 app` (FLASH.txt 3), as for v4.6; its lines should say
+   `App version: v5.0`.
+2. No card file has to change. The four Korvo-1 inis in `card\tiny386\` now have a commented
+   `;fast_cpu = 1` line under `[esp]`, with what it does; copy them only if you want the comment.
+   For the A/B below, add `fast_cpu = 0` under `[esp]` in the ini you start, and take it out again
+   (or set it to 1) afterwards.
+3. Keep `double_buffer`, `pace_quiet` and `vbe_blocks` as you had them on v4.6, and the same for
+   both halves of each A/B.
+
+### 18b. The boot console
+
+Start your usual ini (`win95-sd.ini`). After the ini's settings and before `PC built.`:
+
+    CPU: the fast interpreter (from tab5-pc, by Yejun Yang) in front of tiny386's own; fast_cpu = 0 in the ini for tiny386's alone.
+
+With `fast_cpu = 0`: `CPU: tiny386's own interpreter alone (fast_cpu = 0), as v4.6.`
+
+**Photo 1**: the whole console, with the `CPU:` line and the two memory lines: `Internal RAM free
+... KiB (largest block ... KiB); PSRAM free ... KiB.` near the top, and `PC built. ... Internal RAM
+free ... KiB (largest block ... KiB); PSRAM free ...` at the end. v5.0 keeps the fast interpreter
+(120 KB, and its 8 KB TLB) in internal RAM and moves tiny386's own interpreter (132 KB) to flash,
+which leaves 241,778 bytes of internal RAM after code and static data, 10 KB less than v4.6's
+251,846 [verified: the build's size report, `BUILD-NOTES.md` 33.8]; so both lines should read
+about 10 KiB lower than on v4.6. What is free at run time is [unknown] until this photo. If the
+second figure is 150 KiB or more, a build with tiny386's interpreter in internal RAM too (it would
+take about 128 KiB of it) is worth trying (`FAST-CPU.md` 5).
+
+### 18c. BENCH in FreeDOS
+
+`tiny386.ini` (FreeDOS), BENCH as on v3.6: at its end the console shows `BENCH.COM is done ...` and
+a line ` in BENCH (without a4)` with the instructions a second.
+
+1. With the default ini (`fast_cpu` not set, so 1): **Photo 2**, the BENCH lines.
+2. With `fast_cpu = 0` under `[esp]` in `tiny386.ini`: **Photo 3**, the same lines.
+
+v3.6 gave 2.231 million instructions a second [reported]. Expected [inferred: `BUILD-NOTES.md`
+33.6, from the qemu counts and v3.6's figure]: about 4 million with the fast interpreter, anywhere
+from 3.3 to 4.8 for the reasons 33.6 gives; with `fast_cpu = 0` somewhat below v3.6's, because
+tiny386's own interpreter now runs from flash. If `fast_cpu = 1` is not faster than `fast_cpu = 0`,
+that is worth knowing at once.
+
+### 18d. T386MON at 800x480 in 16 bits
+
+As 15d, with Windows at 800x480 and the pointer change in:
+
+1. With `fast_cpu = 1` (the default): start Windows, T386MON, **F5**, leave the mouse alone until
+   "Tests done", maximise, **Photo 4**: the table. Then a minute of ordinary use and **Photo 5**:
+   the live view (the Guest processor line: instructions a second, and how busy).
+2. Shut Windows down, set `fast_cpu = 0` in the ini, start again, and the same: **Photo 6** (the
+   table) and **Photo 7** (the live view).
+3. Close T386MON before switching off, so that its log is on the disk; `C:\T386MON.LOG` has both
+   runs' tables (15f says how to read it on the PC).
+
+What to look for [inferred: `BUILD-NOTES.md` 33.3 and 33.6]: the text tests, which were bound by
+the guest's own work, should gain most from the fast interpreter, up to about twice; fill, scroll
+and the full copy, done by REP STOSD and REP MOVSD into the frame buffer, should gain from the
+frame buffer's path with `fast_cpu` 1 and 0 alike, by how much depends on how fast the PSRAM takes
+the stores; the sprite test's AND and OR into the screen are handed to tiny386 whole, and may gain
+least. Against your v4.6 log, the same tests.
+
+### 18e. Windows as before
+
+With `fast_cpu = 1`: start Windows, Start, Shut Down, Restart; then Start, Shut Down, Restart in
+MS-DOS mode, `mem`, `dir`, `exit`, back to the desktop. On the PC both give v4.6's instruction
+counts exactly [verified: `BUILD-NOTES.md` 33.5]. Anything that looks different from v4.6, or
+different between `fast_cpu = 1` and `0`, is worth a photo.
+
+### 18f. If it goes another way
+
+* **A crash with `fast_cpu = 1` that does not come with `fast_cpu = 0`**: a difference the PC's
+  tests missed. **Photo** the crash screen (its CS:EIP and the lines above it) and note what was
+  running; then `fast_cpu = 0` to carry on.
+* **The `CPU:` line says `this build has no fast one`**: the app is not v5.0's. Check the `App
+  version` line of 18a.
+* **Slower with `fast_cpu = 1` than with `0`** on any test: a photo of both tables; that would say
+  where the hand-over to tiny386 (now in flash) costs more than the fast interpreter saves.
+* **`Internal RAM free` much lower than on v4.6** (by more than about 20 KiB) or a yellow line
+  about memory: a photo of the console.
+
+### 18g. What to send back
+
+Photos 1 to 7, `C:\T386MON.LOG`, and how each felt: Windows' desktop, dragging a window, typing
+in Notepad, with `fast_cpu` 1 and 0. The figures decide what comes next: the board's own
+instructions a second against the PC's counts calibrate every estimate in `BUILD-NOTES.md` 33.6.
+
+
 ## Other ways to run it
 
 * tiny386 alone, replacing Linux: `flash-standalone.bat COM10` (FLASH.txt 5), Linux powered off

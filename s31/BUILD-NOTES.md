@@ -61,7 +61,11 @@ the same day: the fixes from the two reviews of v4.4; its figures replace sectio
 own files are in `previous-v4.4\`. Section 32 is v4.6, 2026-10-25: Plat's run of v4.5 answered
 (double buffering's two frame buffers made at power-on, pacing left off), upstream's fix of the
 device window with three memory checks of our own, and the branch's history rewritten; its figures
-replace section 31's, and v4.5's own files are in `previous-v4.5\`.
+replace section 31's, and v4.5's own files are in `previous-v4.5\`. Section 33 is v5.0, 2026-10-27:
+for Plat's word that v4.6 is too slow, the fast interpreter from Yejun Yang's tab5-pc and the CPU's
+own path into the VBE frame buffer, put together with a lockstep tester and checked against v4.6
+instruction for instruction; its figures replace section 32's, and v4.6's own files are in
+`previous-v4.6\`.
 
 Tags:
 
@@ -6393,3 +6397,469 @@ quick runs of test 3g and its breaks, and `work/`, the scripts), `pkg/` (the pac
 and `pkg-2d076f6/` (the stage made before the review). On Windows the session's scratch folder
 `v46\` holds the notes of each step, the three reviews as their authors wrote them, and
 `REVIEW-RESOLUTION-v46.md`. Nothing started for this is still running.
+
+## 33. v5.0: the fast interpreter from tab5-pc, and the frame buffer's own path (2026-10-27)
+
+Plat ran v4.6 on his Korvo-1: it works, and it is too slow [reported]. His T386MON log at 800x480
+in 16 bits (v4.5 and v4.6) had the guest busy in every test at 1.5 to 1.7 million instructions a
+second, where BENCH gave 2.23 million on v3.6; the text test at 2.9 pictures a second, about
+580,000 guest instructions a picture; fill at 65 pictures a second but only 0.40 million
+instructions a second, each 4-byte store into the frame buffer about 80 cycles through the
+memory-mapped path (`pc.c`'s `iomem_write32()` and its dirty marks); scroll 40, sprite 60, full
+copy 45, full picture 0.9 [reported]. Halving the panel's drawing rate did not change the
+instruction rate, so core 0's drawing is not what holds it back; double buffering and pacing gave
+nothing [reported].
+
+Plat chose v5.0 from `research\JIT-OPTIONS-2026-10-24.md`: (1) tab5-pc's fast interpreter, (2) a
+fast path for the guest's stores into the VBE linear frame buffer that keeps the dirty marks, (3) a
+small cache of segment descriptors, each tested on the PC first, and a study of 2D acceleration;
+not tab5-pc's translator. Four series were made in their own WSL clones of `~/fw/tiny386-s31` from
+35a201c (`s31-v4.6`): the lockstep tester (`~/org2/v50/lock/tree`, branch `v50-lock`), the frame
+buffer's path (`~/org2/v50/lfb/repo`, `v50-lfb`), the descriptor cache (`~/org2/v50/desc/repo`,
+`v50-desc`) and the fast interpreter (`~/org2/v50/fast/repo`, `v50-fast`). They were put together
+in a fifth, `~/org2/v50/int/repo`, branch `v50`, in that order, by cherry-pick, each commit keeping
+its author and message; the descriptor cache was left out (33.2). The 2D acceleration study is
+outside the firmware and this section. Every commit is by Platima with his GitHub noreply address
+and the Co-Authored-By line. Nothing was flashed, no serial port was opened, nothing was pushed or
+tagged.
+
+### 33.0 In one screen
+
+* **The fast interpreter** (`i386_fast.h`, `FAST-CPU.md`): Yejun Yang's, from tab5-pc at `98a442e`
+  (MIT, with its parts built on tiny386 under tiny386's BSD 3-clause; both notices kept,
+  `THIRD_PARTY.md`), in front of tiny386's own `cpu_exec1()`, which it hands what it does not do,
+  one instruction at a time. Its port steps exactly as tiny386 does. `[esp] fast_cpu = 0` runs
+  tiny386's own alone; the boot console's `CPU:` line says which.
+* **The frame buffer's own path** (`i386.c`, `pc.c`): a load or store into the VBE linear frame
+  buffer is done by the CPU itself, with `LFB_WRITTEN`'s marks and `vga_wrote`, and a page's piece
+  of REP STOS or REP MOVS with the frame buffer at one end is one fill or copy and one set of marks.
+  The fast interpreter's own string loops use it too (33.3).
+* **The same guest as v4.6** [verified]: the lockstep tester finds no difference between v5.0 and
+  v4.6, with the fast interpreter on and off, through Windows 95's boot, a restart, MS-DOS mode,
+  BENCH, the frame buffer's own test guest and T386MON's drawing tests: 12 comparisons (six
+  workloads, the fast interpreter on and off), about 4,000 M guest instructions for each of the two
+  candidates (33.4). v4.6's three Windows runs end on its
+  counts exactly, with the same logs, pictures and disk checks; T386MON's log in Windows on the PC
+  is v4.6's byte for byte (33.5).
+* **Host instructions** [verified: qemu-riscv32 and jtrace, the research's method]: core 1's work a
+  guest instruction, v4.6 against v5.0: BENCH without A4 134.6 and 74.7 (1.80 times fewer);
+  Windows' boot, first 300 M instructions, 155.3 and 80.9 (1.92); T386MON's drawing
+  tests at 640x480 in 16 colours 270.2 and 213.1 (1.27) (33.6).
+* **On the board** [inferred: research's calibration, 1.07 cycles a host instruction at 320 MHz]:
+  BENCH about 4.0 million instructions a second (v3.6 gave 2.23), Windows' CPU-bound work about
+  1.92 times faster; the range and why are in 33.6. Nothing of v5.0 has run on a board.
+* **Checks**: 69 host tests pass (33.7); the release built four times from nothing gives the same bytes,
+  every bootloader, table and `flash_args` is v4.6's, the dual-boot app is 1,062,304 bytes of its
+  1,966,080 (33.9); internal RAM left after code and static data 241,778 bytes against v4.6's
+  251,846 (33.8).
+
+### 33.1 The commits [verified: `git log 35a201c..v50`]
+
+| Commit | Series | What |
+|-|-|-|
+| 1fb57c5 | lockstep | `tests/lockstep`: the lockstep tester (33.4; `tests/lockstep/README.md`) |
+| 61e4c00 | frame buffer | `i386.c`, `i386.h`, `pc.c`, `pc.h`: the VBE linear frame buffer stored into by the CPU itself (33.3) |
+| 0bbdddb | frame buffer | `tests/host/lfb`: the frame buffer's own path against v4.6, and its cost on RV32; `run.sh` 23 |
+| 80f5bc8 | frame buffer | `tests/host/lfb`: LFBBOOT, the frame buffer's work from a boot disk |
+| f4c7f8a | fast | `i386.c`, `i386.h`, `i386_fast.h` (new): the fast interpreter from Yejun Yang's tab5-pc in front of `cpu_exec1()` |
+| 127be97 | fast | `esp/main`: `[esp] fast_cpu`; `board_korvo1.h` and `board_dosboard.h` define `I386_FAST` and place `fast_exec()` in internal RAM and `cpu_exec1()` in flash; the four Korvo-1 card inis get a commented `;fast_cpu = 1` |
+| 101197c | fast | `tests/host/cpu/test_fast_cpu.c`: the fast interpreter against tiny386's own on random code; `run.sh` 24 (23 on `v50-fast`; the one conflict, 33.2) |
+| 8e00ca8 | fast | `s31/`: `FAST-CPU.md`, `README.md`'s credit and licence lines, five checks |
+| d8ed71a | integration | `i386_fast.h`: REP STOS and REP MOVS into video memory as tiny386's v5.0 loops do them (33.3) |
+| 070f9c4 | integration | `tests/lockstep`: the `t386mon` workload (33.4) |
+| 8c5a39b | integration | `tests/lockstep`: the self-test for the fast interpreter, and v5.0 against v4.6 in its README (33.4) |
+| 31550d7 | integration | `esp/version.txt`: `v5.0` |
+| (the next commit) | integration | `s31/`: this section, `TEST-PLAN.md` 18, `FLASH.txt`, `FIRMWARE.md`, `README.md`, `FAST-CPU.md` 6, 8 and 10, `THIRD_PARTY.md` (new), `build.sh`'s first comment, and the checks |
+
+`git diff --stat 35a201c 31550d7 -- . ':!s31'`: 41 files changed, 8,051 lines added, 47 taken out;
+`i386_fast.h` 1,907 lines, `i386.c` 500 lines changed. No binary, nothing of Windows'.
+
+### 33.2 How it was put together [verified: git]
+
+* **Order**: the lockstep tester, the frame buffer's path, then the fast interpreter, as the brief
+  set. Each series' commits were cherry-picked onto 35a201c with `git cherry-pick`, their author,
+  author date and message kept; the committer is Platima, as on every commit of this branch.
+* **One conflict**, in `tests/host/run.sh`: the frame buffer's test and the fast interpreter's test
+  were each section 23 at the same place. Both kept, the frame buffer's as 23 and the fast
+  interpreter's as 24; that commit's message has a line added that says so. `i386.c` and `i386.h`
+  merged on their own: the frame buffer's series changed the load and store functions, the string
+  macros and `CPU_CB`, the fast interpreter's the flag helpers, the TLB, the step's rules and
+  `cpui386_step()`, and none of the same lines.
+* **The descriptor cache was left out**, as its own report recommends (`v50-desc`, 813783e, kept on
+  its branch): it is exact (every one of 40 million hits of the three Windows runs checked against
+  v4.6's long way), but on Windows' boot it saved 0.76 per cent of x86 host instructions and 0.83
+  per cent of RV32 ones under tiny386, about 1.9 per cent with the fast interpreter [inferred], under
+  the 3 per cent set for it; only Win16-heavy stretches gained (4.2 per cent in the busiest 50 M).
+  So "the fast interpreter's paths use the descriptor cache" has nothing to apply to; its segment
+  loads go through `set_seg()` and `read_desc()` as tiny386's do.
+* **Sixteen bytes of Windows' code taken out of the history.** The lockstep tester's `README.md`
+  (its section 5, an example from the self-test) quoted the 16 bytes at Windows 95's VMM's
+  0028:C0375FFD, the instruction a planted bug made wrong. Before anything was built for the
+  release, that one line was replaced in every commit of `v50` that has the file (`git
+  filter-branch --tree-filter` over 35a201c..v50, as for v4.6's 32.1), so no commit of the branch
+  holds the bytes; authors, committers, dates and messages are as they were, and no other byte of
+  any tree changed [verified: `git diff` of the old and new branch heads, one line; `git grep` of
+  every commit]. The disassembly (`mov ecx,0xffffffff`) and the address stay. The commit hashes
+  in this section are the new ones; the gate (33.4), the host tests (33.7) and the first two
+  release builds (33.9) were run on the tree of 84e17ca, the old head, whose code and tests are the
+  new head's. The scripts' own output still prints an instruction's bytes, so the check files here
+  leave those lines out.
+
+### 33.3 The fast interpreter on the frame buffer's path [verified: code, tests/host/lfb]
+
+Where the fast interpreter reaches video memory, and what it now uses:
+
+| access | before (v50-fast) | v5.0 |
+|-|-|-|
+| MOV to or from memory, the string instructions' single forms | `fast_io_load()` and `fast_io_store()`: tiny386's `load8()` to `store32()` | the same calls, which now hold the frame buffer's path, so nothing to change |
+| REP STOS into MMIO | `store8()` to `store32()` an element at a time | `lfb_stos()` for a piece in the frame buffer (one fill, one fence, its marks); the window's own call for each element in the VGA window, both as tiny386's `STOS_helper2()` |
+| REP MOVS with MMIO at either end | handed to `cpu_exec1()` (now in flash on the boards) | `lfb_movs()` for a piece with the frame buffer at one end and it or RAM at the other, as tiny386's `MOVS_helper2()`; anything else still to `cpu_exec1()` |
+| any other instruction with its operand in MMIO (`ADD EBX,[ESI]`, `AND [EDI],EAX`) | handed to `cpu_exec1()` | the same |
+| segment loads, far transfers | `set_seg()`, `read_desc()`, `pmcall()`, `pmret()` | the same (no descriptor cache, 33.2) |
+
+The bytes, marks and `vga_wrote` are those of tiny386's own loops, the lookups are the ones tiny386
+makes, in its order (the source before the destination, nothing read before both are known), and
+the new code is in `i386_fast.h` alone (d8ed71a).
+
+`tests/host/lfb`'s RV32 bench (the board's flags, under qemu; v4.6 against this tree, which builds
+the Korvo-1's header and so runs the fast interpreter), host instructions for each guest store or
+dword [verified: `checks\host-tests-v5.0.log`]:
+
+| guest work | v4.6 | v5.0 | times |
+|-|-|-|-|
+| MOV [EDI],EAX into the frame buffer (a loop of 4 instructions) | 463.1 | 376.0 | 1.23 |
+| the same into RAM | 438.1 | 252.1 | 1.74 |
+| MOV [EDI],AX into the frame buffer | 481.1 | 392.0 | 1.23 |
+| MOV [EDI],AL into the frame buffer | 376.1 | 337.1 | 1.12 |
+| ADD EBX,[ESI] from the frame buffer | 479.1 | 664.0 | 0.72 |
+| the same from RAM | 464.1 | 258.0 | 1.80 |
+| fill 400x300, a REP STOSD of 200 a row | 54.0 | 7.5 | 7.23 |
+| fill 800x480, one REP STOSD | 51.1 | 5.2 | 9.78 |
+| RAM to the screen, 400x300, REP MOVSD a row | 7.8 | 7.3 | 1.07 |
+| scroll up a row (screen to screen, going up) | 100.5 | 7.4 | 13.54 |
+| scroll down a row (going down) | 100.3 | 7.3 | 13.66 |
+| the screen to RAM, 400x300 | 75.4 | 7.0 | 10.77 |
+| MOV [EDI],EAX into the bank window | 487.1 | 402.0 | 1.21 |
+| REP STOSD into the bank window | 75.1 | 62.1 | 1.21 |
+| REP MOVSD from the bank window into it | 259.2 | 247.3 | 1.05 |
+
+* **Found and mended while putting it together**: with the first form of d8ed71a (the frame
+  buffer only), a REP STOSD into the bank window took 100.1 host instructions a dword, more than
+  v4.6's 75.1, because the fast interpreter's element loop went through `store32()`'s tests for each
+  dword; it now makes the window's own call, as tiny386's loop does: 62.1 [verified: the same
+  bench before and after]. DOS games in mode 13h and mode X clear the screen this way [inferred].
+* **Left as it is**: an instruction other than MOV or a string instruction with an operand in video
+  memory is handed to tiny386 whole, so `ADD EBX,[ESI]` from the frame buffer costs 664 host
+  instructions in the bench's loop against v4.6's 479 (0.72 times), and on the board the hand-over
+  runs `cpu_exec1()` from flash [verified: the bench; inferred: its weight on the board]. Windows'
+  DIB engine reads the screen for ROPs such as T386MON's sprite test (`SRCAND`, `SRCPAINT`) and for
+  the pointer's save-under [inferred]; whether it uses such instructions there is not known. A read
+  entry in the fast interpreter's TLB for frame buffer pages (loads need no marks; the BAR's moves
+  would have to empty it) would make those loads as cheap as RAM's; a write path would need the
+  marks in the fast interpreter's store paths. Neither is in v5.0 (33.11).
+* **A single store into the frame buffer** costs about 125 host instructions more than one into RAM
+  under the fast interpreter (the TLB miss to `fast_miss()`, `fast_lpgno()`, then `store32()`'s
+  frame buffer branch), against about 25 under v4.6's tiny386; the loop around it is cheaper, so the
+  loop as a whole gains 1.23 times [verified: the bench]. T386MON's text tests are mostly such
+  stores among the guest's own work [inferred].
+
+### 33.4 The release gate: lockstep against v4.6 [verified: `checks\lockstep-v5.0.txt`]
+
+`tests/lockstep` (1fb57c5; `README.md` there): v4.6 (35a201c, exported with `git archive`) as the
+reference, v5.0 as the candidate (84e17ca's tree, exported the same way: 31550d7's but for one
+line of `tests/lockstep/README.md`, 33.2), built by the PC harness as the board's core is built
+(`esp` flavour, `rv`: `-m32 -funsigned-char`), the candidate twice: as it is, the fast interpreter
+on (`board_korvo1.h` defines `I386_FAST`), and with `-DI386_FAST_DEFAULT=0`, tiny386's own
+interpreter alone, which is what `fast_cpu = 0` runs. `gdb` showed `fast_exec()` running from the
+first step in the first build and never in the second.
+
+| workload | guest instructions | records | interrupts | disk image after | fast on | fast off |
+|-|-|-|-|-|-|-|
+| b1: boot to the desktop, 120 s more | 588,301,033 | 590 | 51,878 | `248cdd0473f55199` | no difference | no difference |
+| restart: Start, Shut Down, Restart | 1,304,341,904 | 1,306 | 238,269 | `0991749feee656d8` | no difference | no difference |
+| msdos: MS-DOS mode, MEM, DIR, EXIT | 1,337,723,352 | 1,339 | 238,758 | `36979e52115af450` | no difference | no difference |
+| bench: FreeDOS and BENCH.COM | 31,345,925 | 33 | 111 | `72fe423a80f365fb` | no difference | no difference |
+| vbe: the frame buffer every way the CPU stores (`guest/vbetest.S`) | 55,090,157 | 57 | 505 | `482c032f53c3a479` | no difference | no difference |
+| t386mon: T386MON's drawing tests at 640x480 in 16 colours (new) | 674,307,567 | 676 | 64,677 | `35c2db9b72859c03` | no difference | no difference |
+
+A record holds the CPU with its segment caches and control registers, hashes of RAM by MiB, video
+memory, the drawn picture and the dirty marks, the PICs, the timer, the disk counters, every port
+access so far and the CPU's state after every step; every interrupt is compared with its
+instruction count, vector and CS:EIP. The same runs on the code before the version commit gave the
+same. Before that, the first form of the fast interpreter's string glue (33.3) was also run through
+the five first workloads, with no difference.
+
+* **The t386mon workload** (070f9c4) is new: the pristine image with `T386MON.EXE` (v1.2.0, built
+  from `D:\Repos\T386Mon` at its tag, SHA-256 `0cef24f7c1244f14`) put in its root; at 90 s after
+  the taskbar, Start, Run, `C:\T386MON.EXE /top /bench /quit`. The harness's dialog poller is held
+  off from 29 s, so that Internet Explorer's setup wizard, which the pristine image starts at its
+  first desktop, waits on its first page: pressed on, it brings a page every 9 s, works in the
+  background and once took the focus from the Run box. T386MON's log in the image copy afterwards
+  shows its nine tests run (33.5).
+* **The self-test** (8c5a39b) now plants faults in `i386_fast.h` as well and runs either way:
+  `FAST=1` finds `af-dec32`, `movs-count`, `page-cross`, `lost-mark-cpu`, `fast-fold` (named at
+  SeaBIOS's instruction 6,908, `test eax,eax`, the JNZ wrongly in its step) and `fast-sync` (at
+  instruction 488,271, `out 0x40,al`, the timer's load time); `FAST=0` finds the first four and
+  `sti-shadow`. Both passed [verified: `checks\lockstep-selftest-v5.0.txt`]. `lost-mark` (in
+  `pc.c`) went: v5.0 never reaches that mark for the frame buffer, so `lost-mark-cpu` plants it
+  where v5.0 stores.
+
+### 33.5 Windows 95 and T386MON on the PC [verified: `checks\windows-v5.0.txt`, `checks\t386mon-v5.0.txt`]
+
+* **v4.6's regression runs** (`regress46.sh`'s options, the canary harness, a fresh copy of the
+  pristine image each, deleted after): v5.0 with the fast interpreter on and off, and v4.6 built the
+  same way for comparison. All nine reach the desktop; b1 ends on 588,301,033 instructions, restart
+  on 1,304,341,904, MS-DOS mode on 1,337,723,352, as v4.6. Against v4.6's runs: the logs the same
+  line for line but for host seconds and the pool's address, the disk checks the same, and every
+  picture (11, 149 and 150) the same bytes.
+* **T386MON in Windows 95** (`run-t386.sh`, the t386mon workload's keys, the harness without the
+  hook): v4.6, v5.0 with the fast interpreter on, and off, each end on 674,188,046 instructions with
+  the same last picture, and `C:\T386MON.LOG`, read out of each image copy, is the same bytes in all
+  three: fill 343.84 pictures a second by the harness's clock, scroll 351.47, text 7.33, text with
+  the pointer aside 7.41, with none 7.37, sprite 57.66, full copy 23.44, full picture 0.45 (v4.3's
+  PC figures were 343, 351, 7.31, 7.41, 7.40, 57.9, 23.5, 0.45). The harness's clock is made of
+  guest instructions, so these are the same for any core that runs the same guest; what v5.0
+  changes is what each guest instruction costs, 33.6.
+* **800x480 through VMDisp9x** was not run: no image with the driver is in WSL (the v4.4 harness
+  copies were deleted on 2026-10-25). The frame buffer's paths are covered by `tests/host/lfb` (37
+  guest cases, the same output as v4.6's tree, now with the fast interpreter running them) and by
+  the lockstep's vbe workload.
+
+### 33.6 Host instructions, and what they may mean on the board [verified: `checks\counts-v5.0.txt`]
+
+The research's method (`research\JIT-OPTIONS-2026-10-24.md` 7): the PC repro's harness with marks
+where qemu's log is cut, and the tree, cross-built as an RV32 Linux program with the Linux route's
+GCC 15.3, `-march=rv32imac_zba_zbb_zbs`, `-O3` for `i386.c`, `vga.c`, `pc.c` and `-O2` for the
+rest, the Korvo-1's board header (so `I386_FAST` and `I386_ALIGNED_ONLY`); run under
+`qemu-riscv32-static -d in_asm,exec,nochain`, every host instruction counted by `jtrace`; 14M,
+320K, gen 3, no FPU, the clock made of guest instructions. "core 1" leaves out the picture (core 0's
+work on the board) and the harness's own code; "i386.c" is the CPU's functions alone. v4.6's counts
+are the fast interpreter's series' runs of the same v4.6 program (`~/org2/v50/fast/qruns`); v5.0's
+are this tree's (`~/org2/v50/int/qruns`). Every run ends on the same state and count as its v4.6
+twin.
+
+| work | guest instructions | v4.6 core 1 | v5.0 core 1 | fewer | v4.6 i386.c | v5.0 i386.c | v5.0, fast off, core 1 |
+|-|-|-|-|-|-|-|-|
+| BENCH without A4 and the boot | 19,533,240 | 134.6 | 74.7 | 1.80 times | 133.1 | 73.1 | 135.1 |
+| BENCH, the whole run | 31,334,711 | 157.4 | 82.8 | 1.90 | 147.8 | 72.9 | 157.9 |
+| Windows' boot, first 300 M | 300,000,198 | 155.3 | 80.9 | 1.92 | 152.0 | 77.5 | |
+| T386MON's tests (540 to 640 M) | 100,000,325 | 270.2 | 213.1 | 1.27 | 168.3 | 110.3 | |
+| the boot and T386MON's start (0 to 540 M) | 540.0 M | 170.4 | 98.7 | 1.73 | | | |
+
+In T386MON's tests at 16 colours much of core 1's work is the VGA's planar memory
+(`vga_mem_write()` and `vga_mem_read()`, about 6 G host instructions in both versions: a fifth of
+core 1's work under v4.6, nearly a third under v5.0), which neither part of v5.0 touches: there
+the fast interpreter makes the CPU's own part (`i386.c`) 1.53 times cheaper, and core 1's work as
+a whole 1.27 times [verified: the attribution by function,
+`checks\counts-v5.0.txt`]. `cpu_exec1()` took 3.8 per cent of the tests' host instructions with the
+fast interpreter on (9.4 a guest instruction, against 0.3 on Windows' boot): the 16-colour driver's
+read-modify-write instructions on the VGA window go to tiny386 whole, and on the board that is
+flash (33.3). Plat's Windows at 800x480 in 16 bits draws into the frame buffer instead, where REP
+STOSD and REP MOVSD now cost a tenth of what they did (33.3); that case could not be counted here
+(no VMDisp9x image in WSL) [inferred]. The same run's first 540 M (the boot, the desktop and
+T386MON's start) gains 1.73 times on core 1, as Windows' boot does.
+
+**On the board** [inferred]. The research's calibration: v3.6's BENCH ran at 2.231 million guest
+instructions a second on the board, where the same work counts 134.5 host instructions a guest
+instruction, so the board did about 1.07 cycles a host instruction at 320 MHz. Taking that as it
+is:
+
+| work | v4.6 | v5.0, fast on | v5.0, fast off |
+|-|-|-|-|
+| BENCH without A4 (million guest instructions a second) | 2.22 | 4.0 | 2.2 or a little less |
+| Windows' boot, CPU work | 1.93 | 3.7 | |
+| T386MON's tests at 640x480 in 16 colours | 1.11 | 1.40 | |
+
+How uncertain, and which way:
+
+* **The calibration is one point**, BENCH on v3.6 with `cpu_exec1()` in internal RAM, mostly
+  register and RAM work. `fast_exec()` is in internal RAM too, but it dispatches each instruction
+  with an indirect jump of its own; how well the S31's core predicts those is not documented. A
+  CPI from 0.9 to 1.3 would put BENCH between 3.3 and 4.8 million.
+* **PSRAM**: guest memory is in PSRAM behind the 64 KB data cache. The fast interpreter makes the
+  same guest accesses with fewer host instructions around them, so a larger share of its time is
+  waiting on PSRAM; misses cost the same in both, so the gain on memory-bound work is less than the
+  count's factor [inferred]. Core 0 and the panel's DMA share PSRAM: Plat's T386MON log showed v4.6
+  at 1.5 to 1.7 million in Windows where the counts would give about 1.9, which is roughly this
+  share.
+* **Flash**: `cpu_exec1()` now runs from flash through the 16 KB instruction cache. With the fast
+  interpreter on it runs about one guest instruction in 300 (0.3 per cent of host instructions on
+  Windows' boot), each a likely run of cache misses; with `fast_cpu = 0` it runs everything, so
+  v5.0's `fast_cpu = 0` is slower than v4.6 by an amount only the board can say.
+* **The frame buffer**: in the drawing tests the fast path turns tens of host instructions a dword
+  into a `memset()` or `memcpy()` into PSRAM; there the limit becomes PSRAM's write rate, which
+  qemu does not see. Fill and scroll at 800x480 should gain more than the instruction rate does,
+  by how much is [unknown].
+
+So: BENCH about 4 million (3.3 to 4.8), Windows' CPU-bound work about 1.92 times v4.6's rate
+less what PSRAM takes back, drawing at 16 colours only about 1.27 times (the VGA's planar memory
+is untouched), and the frame buffer's fills and copies at 800x480 several times faster at best.
+The board's own BENCH figure and T386MON log with `fast_cpu` 1 and 0 (`TEST-PLAN.md` 18) will
+replace all of this.
+
+### 33.7 Host tests [verified: `checks\host-tests-v5.0.log`]
+
+69 tests, all pass (380 s, with other work on the machine), at 84e17ca, whose code and tests are
+31550d7's (33.2): v4.6's 61; four in section 23, the frame buffer's
+path (`tests/host/lfb`: its 37 guest cases on this tree with the Korvo-1's header, so the fast
+interpreter running them, and on v4.6's tree, both passing their checks and giving the same 889
+lines, and the RV32 bench of 33.3); four in section 24, the fast interpreter against tiny386's own
+on random code (`test_fast_cpu.c`, as the Korvo-1 builds it and without the board header, 120
+scenarios each, and its two planted faults, caught in 119 and 80 of 120 runs). The fast
+interpreter's series alone gave 65, the frame buffer's 65 (`FAST-CPU.md` 6, the frame buffer's
+notes). Then `test_fast_cpu` run longer on the same programs, seeds 41 to 340 (900 scenarios,
+19.4 M guest instructions, 335,848 step ends compared, in each of the two builds): no difference
+[verified: `~/org2/v50/int/fastlong`]. Its random code has REP string instructions into the VGA
+window and its own frame buffer (`FAST-CPU.md` 6); the test gives the CPU no `cpu_cb_set_lfb()`, so
+there the frame buffer goes through the callbacks and the fast interpreter's new `lfb_*` branches
+fall back, which is what `tests/host/lfb` and the lockstep's vbe workload cover.
+
+### 33.8 Builds, warnings, sizes [verified: `checks\size-*-v5.0.txt`, `checks\reproducible-v5.0.txt`]
+
+The five builds of every round, in the tree (`bt/`, `git archive` of 84e17ca, whose `esp/` and
+core are 31550d7's; `make prepare`, `s31/dependencies.lock`, which is `esp/dependencies.lock`):
+the Korvo-1 dual boot and standalone, the DOS board, and the two crash-test builds
+(`-DCRASH_TEST=1`): all exit 0. The Korvo-1 builds have the one old warning (`i2s_task` unused), the
+DOS board builds none: no new warning. `i386.c` (with `i386_fast.h`) and `pc.c` compiled by the
+host's gcc with `-Wall -Wextra` and the Korvo-1's header give v4.6's one old warning and no other,
+and `i386.c` with `I386_FAST` and no board header v4.6's five [verified: `~/org2/v50/int/wcheck`];
+the board's own `-Wall -Wextra` pass was not run, as before.
+
+| Build | DIRAM used | v4.6 | left for ESP-IDF | v4.6 | flash | v4.6 | total image | v4.6 |
+|-|-|-|-|-|-|-|-|-|
+| Korvo-1 (dual boot and standalone) | 261,966 | 251,898 | 241,778 | 251,846 | 829,246 | 706,866 | 1,062,124 | 937,884 |
+| DOS board | 264,208 | 254,104 | 239,536 | 249,640 | 846,548 | 724,168 | 1,082,808 | 958,556 |
+
+Where it went, on the Korvo-1 [verified: `nm -S` of `tiny386.elf`, the size reports]:
+
+* **In internal RAM** (DIRAM, 0x2F00xxxx): `fast_exec()` 120,432 bytes, the fast interpreter's TLB
+  (`fast_state0`, 8,212 bytes of .bss), its jump tables (.data grew 2,072 bytes), and the helpers
+  it calls most (`fast_miss()`, `fast_where()`, `fast_window()`, `fast_lpgno()`, `get_CF()` and the
+  other lazy-flag readers, `set_seg()`, `read_desc()`, `pmcall()`, `pmret()`), with the frame
+  buffer's `lfb_stos()` (332 bytes) and `lfb_movs()` (374). The internal RAM's code fell by 212
+  bytes in all, because `cpu_exec1()` left it.
+* **In flash** (0x4001xxxx): `cpu_exec1()`, 132,126 bytes; flash grew by 122,380 bytes.
+* So internal RAM left after code and static data is 10,068 bytes less than v4.6's on the Korvo-1
+  (241,778 against 251,846) and 10,104 less on the DOS board. LP SRAM as v4.6 (8,444 and 8,244).
+* The fast interpreter's series alone gave 241,044 bytes left and a 1,069,178-byte image
+  (`FAST-CPU.md` 5); put together with the frame buffer's path the compiler lays the code out a
+  little smaller [verified: the two size reports; why is inferred: the changed load and store
+  functions inline differently into `fast_exec()`].
+* The crash-test builds: Korvo-1 1,062,700 bytes, DOS board 1,083,384, the same internal RAM as
+  the release builds.
+
+### 33.9 `build.sh`, the images, the dual-boot set [verified: `checks\reproducible-v5.0.txt`]
+
+`build.sh` from `s31/` (its first comment moved on to v5.0), with the release's two patches made from
+the branch with `s31/` left out: `git diff 4ce2e06 31550d7 -- . ':(exclude)s31'` (217 files, 46,539
+lines added, 860 taken out; 1,851,561 bytes) and the same against 9ed786b (224 files, 47,169 lines
+added, 875 taken out; 1,879,668 bytes); neither holds a binary. v4.6's patches made the same way from
+v4.6's code (0f7eb09) are the package's v4.6 patches byte for byte. `dependencies.lock` is v4.6's, and
+the patched tree's `esp/dependencies.lock` is the same bytes. Four runs from nothing, each in a clean
+environment, into WSL `~/org2/v50/int/rel/build-a` to `build-d`: a and b with the patch made from
+84e17ca, c and d with the patch from 31550d7 (the two patches differ in the README's one line,
+33.2): 276, 266, 271 and 233 s with other work on the machine, all exit 0, the 23 files of the four
+image trees the same, and the size, bit-bang and `esptool image-info` outputs of c and d the same
+but for the folder's name. Built in the tree (33.8) with the same build folder names, all three
+`tiny386.bin` and `tiny386.elf` are `build.sh`'s byte for byte, and the standalone and DOS board's
+bootloader and table too.
+
+| Image set | `tiny386.bin` | of its partition | SHA-256 | v4.6's |
+|-|-|-|-|-|
+| `korvo1-dualboot` (and `-tiny386-default`) | 1,062,304 bytes | 1,966,080 (54.0 per cent; 903,776 free) | `be20062cf854bf8e` | 938,064 |
+| `korvo1-standalone` | 1,062,304 bytes | 1,835,008 (57.9 per cent) | `e5202d9d03fcea48` | 938,064 |
+| `dosboard` | 1,082,992 bytes | 1,835,008 (59.0 per cent) | `f88b91b2e46b0897` | 958,736 |
+
+Every bootloader, table and `flash_args` of the four sets is v4.6's byte for byte (and so v4.5's,
+v4.4's and v4.3's): the dual-boot bootloader `b57469cd`, the Linux-default table `d41cba3c`, the
+tiny386-default table `5b90d416`, the standalone and DOS board's bootloader `ec0a396b` and table
+`afbe6410`; only `tiny386.bin` and `tiny386.elf` changed. `esptool image-info`: every image and
+bootloader valid, App version `v5.0`. `build.sh`'s check of the status LED's bit-bang passes for all
+three ELFs in all four runs. The flash scripts, `flash-paths.cmd` and every card file but the four
+inis' comment are v4.6's, and what the scripts read from an image is `esptool image-info`'s App
+version, so the flash simulations, the batch harness and the app update simulation were not run
+again (as for v4.6, 32.10): `flash-dualboot.bat COM10 app` writes 1,062,304 bytes at 0xE20000,
+inside tiny386's partition.
+
+### 33.10 The package, staged [verified: `checks\sums-v5.0.txt`]
+
+`D:\Repos\esp32-s31-linux-release\tiny386-idf\v3`, where Plat flashes from, was only read. v5.0's
+package is staged in WSL `~/org2/v50/pkg`, laid out as that folder and holding only what v5.0
+changes or adds (100 files), for the release step to copy over it.
+
+* `previous-v4.6\`: v4.6 as released, copied from the package (37 files): its four image sets, both
+  patches and their diffstats, `build.sh`, `README.md`, `BUILD-NOTES.md`, `TEST-PLAN.md`,
+  `FLASH.txt` and its `SHA256SUMS`, and v4.6's four card inis, which v5.0 changes.
+  `REVIEW-RESOLUTION.md` is not there: v5.0 had no review and does not change it.
+* The v5.0 images (build-c's), both patches and their diffstats, and `build.sh`, in their places.
+* From the branch: `BUILD-NOTES.md`, `TEST-PLAN.md`, `FLASH.txt`, `FAST-CPU.md` and
+  `THIRD_PARTY.md` (new), the four card inis, and in `checks\` v5.0's checks and the fast
+  interpreter's series' five. The package's own `README.md`, edited to match `FIRMWARE.md`.
+* No flash script, `newcard\` file, `STATUS-LED.md`, `LINE-OUT.md`, `REVIEW-*.md`, `dualboot\` file
+  or `dependencies.lock` changed, so none is staged.
+
+The top `SHA256SUMS` is v4.6's 185 files in v4.6's order, then `FAST-CPU.md` and `THIRD_PARTY.md`:
+187 lines, every one OK when each file is read from the stage if it is there and from the package
+folder if not, as the folder will be. Against v4.6's list 20 files' hashes changed: the docs
+(`README.md`, `BUILD-NOTES.md`, `TEST-PLAN.md`, `FLASH.txt`), `build.sh`, the two patches and their
+diffstats, the four card inis, and the seven `tiny386.bin` and `tiny386.elf`. Every bootloader,
+table, `flash_args`, script, review and the other card files are v4.6's. Each image folder's own
+list checks. Every earlier list, `previous-v4.6\` to `previous-v3.2\`, finds every one of its files
+with its hash, in itself, in `v3\` as it will be, or in a later `previous-*` folder: not one missing
+(`previous-v4.6\`'s 185: 32 inside it, 153 from `v3\`; the four card inis of v4.5's and earlier
+lists now from `previous-v4.6\`). As before, the list leaves out `dualboot\` and most of `checks\`.
+
+### 33.11 Not done, and why
+
+* **tab5-pc's translator**: not taken, as Plat chose (`research\JIT-OPTIONS-2026-10-24.md` 3.2).
+* **The descriptor cache**: left out (33.2); its branch is kept.
+* **Read entries for the frame buffer in the fast interpreter's TLB, and its own marked stores**
+  (33.3): would make loads from the screen as cheap as RAM's and single stores cheaper; not asked
+  for, and each needs the BAR's moves and the marks handled inside the fast interpreter, with new
+  tests. Worth doing if the board's T386MON log shows the sprite or text tests lagging [inferred].
+* **`cpu_exec1()` in internal RAM** (`I386_FAST_EXEC1_IRAM`): built and measured by the fast
+  interpreter's series, not made the default (`FAST-CPU.md` 5); the board's `Internal RAM free`
+  line decides it.
+* **Windows at 800x480 through VMDisp9x on the PC**: no image with the driver in WSL (33.5).
+* **T386MON counted at 800x480**: the same reason; its tests were counted at 640x480 in 16
+  colours, which goes through the VGA window, not the frame buffer.
+* **The board's own `-Wall -Wextra` pass**: not run, as in the rounds before.
+
+### 33.12 What only a board can say [unknown]
+
+* How fast: BENCH, T386MON at 800x480 in 16 bits and Windows' feel, with `fast_cpu` 1 and 0
+  (33.6 is a count, not a time).
+* What internal RAM is free at run time, now that the fast interpreter's 125 KB are there and
+  `cpu_exec1()` is in flash.
+* What running `cpu_exec1()` from flash costs: with `fast_cpu = 0` all of it, with 1 the rare
+  hand-overs.
+* Whether anything differs between `fast_cpu = 1` and `0` on the board: on the PC nothing does.
+
+### 33.13 For Plat
+
+* **Try** `TEST-PLAN.md` 18: the boot console's `CPU:` and memory lines, BENCH and T386MON at
+  800x480 with `fast_cpu = 1` and `0`, a restart and MS-DOS mode.
+* **Decide**, with the board's figures: whether `cpu_exec1()` goes back into internal RAM, and
+  whether the frame buffer's read path in the fast interpreter (33.11) is worth a round.
+* **The release**: the tag `s31-v5.0` goes on the last commit of `v50`, the one that adds these
+  notes, and the branch and tag go to the fork from `D:\Repos\tiny386` as before; the staged
+  package goes into the package folder (33.10). `previous-v4.6\` keeps v4.6's images.
+
+### 33.14 Where things are
+
+On the branch (`s31\`): this section; `TEST-PLAN.md` 18; `FAST-CPU.md`; `THIRD_PARTY.md`; `checks\`
+(text only): `host-tests-v5.0.log`, `lockstep-v5.0.txt`, `lockstep-selftest-v5.0.txt`,
+`windows-v5.0.txt`, `t386mon-v5.0.txt`, `counts-v5.0.txt`, `reproducible-v5.0.txt`,
+`build-sh-v5.0-run1.txt`, `build-sh-v5.0-run2.txt`, `image-info-*-v5.0.txt` (six),
+`size-*-v5.0.txt` (three), `sums-v5.0.txt`; and the series' own checks, `*-fast-cpu-v5.0.*`
+(five). In `tests/`: `lockstep/` (the tester and its README, section 9 the gate), `host/lfb/`,
+`host/cpu/test_fast_cpu.c`.
+
+WSL `~/org2/v50/` (all made for v5.0, throw-away): `lock/`, `lfb/`, `desc/`, `fast/` (the four
+series: their clones, builds, runs and notes), `accel/` (the 2D acceleration study), `int/` (this
+integration: `repo/` with the branch `v50`; `trees/` the exported trees; `ls-*/` the lockstep runs;
+`reg/` the Windows runs; `t386mon/` T386MON's build from its tag, the prepared image and the PC
+runs; `qh/` and `qruns/` the counted runs; `selftest-*` the self-tests; `ht-final/` the host tests;
+`rel/` the release's stage and its two builds; `bt/` the in-tree builds) and `pkg/` (the package,
+staged). No copy of a Windows image is left. On Windows the session's scratch folder `v50\` holds
+each series' notes and `integrate.md`.

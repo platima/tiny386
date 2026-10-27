@@ -1,0 +1,209 @@
+v5.0's release gate: tests/lockstep with v4.6 (35a201c) as the reference and v5.0 as the
+candidate, built by the PC harness (~/org2/pcm/canary/harness, esp flavour, rv), the candidate
+as it is (the fast interpreter on, board_korvo1.h's I386_FAST) and with -DI386_FAST_DEFAULT=0
+(tiny386's own interpreter alone, as [esp] fast_cpu = 0). Trees exported with git archive:
+v4.6 from 35a201c, v5.0 from 84e17ca, whose tree is 31550d7's but for one line of
+tests/lockstep/README.md (BUILD-NOTES.md 33.2). 2026-10-27, WSL. Host seconds with other work
+on the machine (ESP-IDF builds, qemu runs).
+
+built /home/owner/org2/v50/int/ls-final/b-ref/headless
+built /home/owner/org2/v50/int/ls-final/b-fast/headless
+built /home/owner/org2/v50/int/ls-final/b-off/headless
+lockstep wall 94 s
+fast  b1       RESULT: no difference in b1 | ref 13.8 s, cand 10.3 s; exit status ref 0, cand 0
+fast  restart  RESULT: no difference in restart | ref 67.4 s, cand 60.0 s; exit status ref 0, cand 0
+fast  msdos    RESULT: no difference in msdos | ref 46.6 s, cand 39.0 s; exit status ref 0, cand 0
+fast  bench    RESULT: no difference in bench | ref 0.5 s, cand 0.4 s; exit status ref 0, cand 0
+fast  vbe      RESULT: no difference in vbe | ref 0.8 s, cand 0.6 s; exit status ref 0, cand 0
+fast  t386mon  RESULT: no difference in t386mon | ref 20.8 s, cand 38.6 s; exit status ref 0, cand 0
+off   b1       RESULT: no difference in b1 | ref 13.9 s, cand 13.8 s; exit status ref 0, cand 0
+off   restart  RESULT: no difference in restart | ref 46.9 s, cand 47.0 s; exit status ref 0, cand 0
+off   msdos    RESULT: no difference in msdos | ref 46.1 s, cand 46.2 s; exit status ref 0, cand 0
+off   bench    RESULT: no difference in bench | ref 0.5 s, cand 0.5 s; exit status ref 0, cand 0
+off   vbe      RESULT: no difference in vbe | ref 0.8 s, cand 0.8 s; exit status ref 0, cand 0
+off   t386mon  RESULT: no difference in t386mon | ref 20.8 s, cand 20.9 s; exit status ref 0, cand 0
+
+================ fast interpreter fast, workload b1
+lockstep: workload b1
+  ref  ~/org2/v50/int/trees/v46 (?)
+  cand ~/org2/v50/int/trees/final (?)
+
+pass 1: a record every 1000000 instructions, every interrupt
+  host time: ref 13.8 s, cand 10.3 s; exit status ref 0, cand 0
+  ref: [harness] END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s wall=13.8 s cs:eip=00a8:0000850a es
+  cand: [harness] END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s wall=10.2 s cs:eip=00a8:0000850a e
+  records: ref 590, cand 590; interrupts: ref 51878, cand 51878
+  last record: ref step 5741395, cycle 588301033, 00a8:0000850b (end), cand step 5741395, cycle 588301033, 00a8:0000850b (end)
+  SAME: every record and every interrupt agree
+  disk image after the run: the same (sha256 248cdd0473f55199)
+
+RESULT: no difference in b1
+
+================ fast interpreter fast, workload restart
+lockstep: workload restart
+  ref  ~/org2/v50/int/trees/v46 (?)
+  cand ~/org2/v50/int/trees/final (?)
+
+pass 1: a record every 1000000 instructions, every interrupt
+  host time: ref 67.4 s, cand 60.0 s; exit status ref 0, cand 0
+  ref: [harness] END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s wall=67.4 s cs:eip=00a8:0000850
+  cand: [harness] END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s wall=60.0 s cs:eip=00a8:000085
+  records: ref 1306, cand 1306; interrupts: ref 238269, cand 238269
+  last record: ref step 97491969, cycle 1304341904, 00a8:0000850b (end), cand step 97491969, cycle 1304341904, 00a8:0000850b (end)
+  SAME: every record and every interrupt agree
+  disk image after the run: the same (sha256 0991749feee656d8)
+
+RESULT: no difference in restart
+
+================ fast interpreter fast, workload msdos
+lockstep: workload msdos
+  ref  ~/org2/v50/int/trees/v46 (?)
+  cand ~/org2/v50/int/trees/final (?)
+
+pass 1: a record every 1000000 instructions, every interrupt
+  host time: ref 46.6 s, cand 39.0 s; exit status ref 0, cand 0
+  ref: [harness] END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s wall=46.6 s cs:eip=00a8:0000850
+  cand: [harness] END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s wall=38.9 s cs:eip=00a8:000085
+  records: ref 1339, cand 1339; interrupts: ref 238758, cand 238758
+  last record: ref step 95515302, cycle 1337723352, 00a8:0000850b (end), cand step 95515302, cycle 1337723352, 00a8:0000850b (end)
+  SAME: every record and every interrupt agree
+  disk image after the run: the same (sha256 36979e52115af450)
+
+RESULT: no difference in msdos
+
+================ fast interpreter fast, workload bench
+lockstep: workload bench
+  ref  ~/org2/v50/int/trees/v46 (?)
+  cand ~/org2/v50/int/trees/final (?)
+
+pass 1: a record every 1000000 instructions, every interrupt
+  host time: ref 0.5 s, cand 0.4 s; exit status ref 0, cand 0
+  records: ref 33, cand 33; interrupts: ref 111, cand 111
+  last record: ref step 375294, cycle 31345925, 0008:00022e63 (stop-byte), cand step 375294, cycle 31345925, 0008:00022e63 (stop-byte)
+  SAME: every record and every interrupt agree
+  disk image after the run: the same (sha256 72fe423a80f365fb)
+
+RESULT: no difference in bench
+
+================ fast interpreter fast, workload vbe
+lockstep: workload vbe
+  ref  ~/org2/v50/int/trees/v46 (?)
+  cand ~/org2/v50/int/trees/final (?)
+
+pass 1: a record every 1000000 instructions, every interrupt
+  host time: ref 0.8 s, cand 0.6 s; exit status ref 0, cand 0
+  records: ref 57, cand 57; interrupts: ref 505, cand 505
+  last record: ref step 424268, cycle 55090157, 22b2:00000214 (stop-byte), cand step 424268, cycle 55090157, 22b2:00000214 (stop-byte)
+  SAME: every record and every interrupt agree
+  disk image after the run: the same (sha256 482c032f53c3a479)
+
+RESULT: no difference in vbe
+
+================ fast interpreter fast, workload t386mon
+lockstep: workload t386mon
+  ref  ~/org2/v50/int/trees/v46 (?)
+  cand ~/org2/v50/int/trees/final (?)
+
+pass 1: a record every 1000000 instructions, every interrupt
+  host time: ref 20.8 s, cand 38.6 s; exit status ref 0, cand 0
+  ref: [harness] END t=533.031 s insns=674307567 idle=390948032 stall=0.4 s wall=20.8 s cs:eip=00a8:0000850a e
+  cand: [harness] END t=533.031 s insns=674307567 idle=390948032 stall=0.4 s wall=38.5 s cs:eip=00a8:0000850a 
+  records: ref 676, cand 676; interrupts: ref 64677, cand 64677
+  last record: ref step 25800397, cycle 674307567, 00a8:0000850b (end), cand step 25800397, cycle 674307567, 00a8:0000850b (end)
+  SAME: every record and every interrupt agree
+  disk image after the run: the same (sha256 35c2db9b72859c03)
+
+RESULT: no difference in t386mon
+
+================ fast interpreter off, workload b1
+lockstep: workload b1
+  ref  ~/org2/v50/int/trees/v46 (?)
+  cand ~/org2/v50/int/trees/final (?)
+
+pass 1: a record every 1000000 instructions, every interrupt
+  host time: ref 13.9 s, cand 13.8 s; exit status ref 0, cand 0
+  ref: [harness] END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s wall=13.8 s cs:eip=00a8:0000850a es
+  cand: [harness] END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s wall=13.7 s cs:eip=00a8:0000850a e
+  records: ref 590, cand 590; interrupts: ref 51878, cand 51878
+  last record: ref step 5741395, cycle 588301033, 00a8:0000850b (end), cand step 5741395, cycle 588301033, 00a8:0000850b (end)
+  SAME: every record and every interrupt agree
+  disk image after the run: the same (sha256 248cdd0473f55199)
+
+RESULT: no difference in b1
+
+================ fast interpreter off, workload restart
+lockstep: workload restart
+  ref  ~/org2/v50/int/trees/v46 (?)
+  cand ~/org2/v50/int/trees/final (?)
+
+pass 1: a record every 1000000 instructions, every interrupt
+  host time: ref 46.9 s, cand 47.0 s; exit status ref 0, cand 0
+  ref: [harness] END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s wall=46.8 s cs:eip=00a8:0000850
+  cand: [harness] END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s wall=46.9 s cs:eip=00a8:000085
+  records: ref 1306, cand 1306; interrupts: ref 238269, cand 238269
+  last record: ref step 97491969, cycle 1304341904, 00a8:0000850b (end), cand step 97491969, cycle 1304341904, 00a8:0000850b (end)
+  SAME: every record and every interrupt agree
+  disk image after the run: the same (sha256 0991749feee656d8)
+
+RESULT: no difference in restart
+
+================ fast interpreter off, workload msdos
+lockstep: workload msdos
+  ref  ~/org2/v50/int/trees/v46 (?)
+  cand ~/org2/v50/int/trees/final (?)
+
+pass 1: a record every 1000000 instructions, every interrupt
+  host time: ref 46.1 s, cand 46.2 s; exit status ref 0, cand 0
+  ref: [harness] END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s wall=46.1 s cs:eip=00a8:0000850
+  cand: [harness] END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s wall=46.2 s cs:eip=00a8:000085
+  records: ref 1339, cand 1339; interrupts: ref 238758, cand 238758
+  last record: ref step 95515302, cycle 1337723352, 00a8:0000850b (end), cand step 95515302, cycle 1337723352, 00a8:0000850b (end)
+  SAME: every record and every interrupt agree
+  disk image after the run: the same (sha256 36979e52115af450)
+
+RESULT: no difference in msdos
+
+================ fast interpreter off, workload bench
+lockstep: workload bench
+  ref  ~/org2/v50/int/trees/v46 (?)
+  cand ~/org2/v50/int/trees/final (?)
+
+pass 1: a record every 1000000 instructions, every interrupt
+  host time: ref 0.5 s, cand 0.5 s; exit status ref 0, cand 0
+  records: ref 33, cand 33; interrupts: ref 111, cand 111
+  last record: ref step 375294, cycle 31345925, 0008:00022e63 (stop-byte), cand step 375294, cycle 31345925, 0008:00022e63 (stop-byte)
+  SAME: every record and every interrupt agree
+  disk image after the run: the same (sha256 72fe423a80f365fb)
+
+RESULT: no difference in bench
+
+================ fast interpreter off, workload vbe
+lockstep: workload vbe
+  ref  ~/org2/v50/int/trees/v46 (?)
+  cand ~/org2/v50/int/trees/final (?)
+
+pass 1: a record every 1000000 instructions, every interrupt
+  host time: ref 0.8 s, cand 0.8 s; exit status ref 0, cand 0
+  records: ref 57, cand 57; interrupts: ref 505, cand 505
+  last record: ref step 424268, cycle 55090157, 22b2:00000214 (stop-byte), cand step 424268, cycle 55090157, 22b2:00000214 (stop-byte)
+  SAME: every record and every interrupt agree
+  disk image after the run: the same (sha256 482c032f53c3a479)
+
+RESULT: no difference in vbe
+
+================ fast interpreter off, workload t386mon
+lockstep: workload t386mon
+  ref  ~/org2/v50/int/trees/v46 (?)
+  cand ~/org2/v50/int/trees/final (?)
+
+pass 1: a record every 1000000 instructions, every interrupt
+  host time: ref 20.8 s, cand 20.9 s; exit status ref 0, cand 0
+  ref: [harness] END t=533.031 s insns=674307567 idle=390948032 stall=0.4 s wall=20.8 s cs:eip=00a8:0000850a e
+  cand: [harness] END t=533.031 s insns=674307567 idle=390948032 stall=0.4 s wall=20.9 s cs:eip=00a8:0000850a 
+  records: ref 676, cand 676; interrupts: ref 64677, cand 64677
+  last record: ref step 25800397, cycle 674307567, 00a8:0000850b (end), cand step 25800397, cycle 674307567, 00a8:0000850b (end)
+  SAME: every record and every interrupt agree
+  disk image after the run: the same (sha256 35c2db9b72859c03)
+
+RESULT: no difference in t386mon
+

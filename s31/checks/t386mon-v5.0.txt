@@ -1,0 +1,29 @@
+v5.0: T386MON 1.2 in Windows 95 on the PC repro's harness (esp flavour, rv). T386MON.EXE built from
+D:\Repos\T386Mon at its tag v1.2.0 by its build.sh (SHA-256 0cef24f7c1244f141aa4be4b7f4166372cc4917f6ccf9588483c5be91cfedf24),
+put in the root of a copy of the pristine image (mcopy); the run's own copy deleted after T386MON.LOG
+was read out of it. Keys as tests/lockstep's t386mon workload: the dialog poller held off from 29 s
+after the taskbar, Start, Run at 90 s, C:\T386MON.EXE /top /bench /quit (run-t386.sh). Windows at
+the image's 640x480 in 16 colours (the standard VGA driver). 2026-10-27, WSL.
+
+final-v46: END t=533.031 s insns=674188046, T386MON.LOG 53ff0fa1a9937aa9
+final-fast: END t=533.031 s insns=674188046, T386MON.LOG 53ff0fa1a9937aa9
+final-off: END t=533.031 s insns=674188046, T386MON.LOG 53ff0fa1a9937aa9
+(final-v46: v4.6 at 35a201c; final-fast and final-off: v5.0, the fast interpreter on and off)
+
+T386MON.LOG: the same bytes in all three; the last picture the same; each of the 59 pictures the
+same in all three. Its tests, as it logged them (by the harness's clock, which is made of guest
+instructions, so the same for any core that runs the same guest):
+# tests at 1980-01-04 00:05:17: 640 x 480 in 16 colours, 4 s each; Windows' own processor figure off
+# the pointer parked at 320,240 (on the tests' drawing), at 60,240 for text-aside, hidden for text-nopointer; it was at 320,240
+# frames/s, ms/fr and Mpix/s by the emulator's clock (emu_secs); settle: seconds waited before the test
+# test          size       secs emu_secs frames frames/s  ms/fr  Mpix/s wcpu gbusy  mips   fps refr/s draw_ms bload rows/s vbe_rows whole tdrop dk_rw flush settle pointer
+idle            -          4.00    4.00      -        -      -       -    -     0  0.00   0.0   33.2     0.0     0      0        0     0     0     0     0   2.5  320,240
+fill            400x300    4.00    4.00   1376   343.84    2.9   41.26    -     0  0.00  33.2   33.2     0.0     0   9899        0     0     0     0     0   2.0  320,240
+scroll          400x300    4.00    4.00   1407   351.47    2.8   42.18    -     0  0.00  33.2   33.2     0.0     0   9934        0     0     0     0     0   1.0  320,240
+text            400x300    4.08    4.09     30     7.33  136.3    0.88    -     0  0.00  33.0   33.0     0.0     0   3857        0     0     0     0     0   1.0  320,240
+text-aside      400x300    4.04    4.05     30     7.41  135.0    0.89    -     0  0.00  33.1   33.1     0.0     0   3505        0     0     0     0     0   2.5  60,240
+text-nopointer  400x300    4.07    4.07     30     7.37  135.7    0.88    -     0  0.00  33.1   33.1     0.0     0   3920        0     0     0     0     0   1.0  320,240
+sprite          48x48      4.00    4.00    231    57.66   17.3    0.13    -     0  0.00  33.2   33.2     0.0     0   1642        0     0     0     0     0   1.0  320,240
+full-copy       640x480    4.00    4.00     94    23.44   42.6    7.20    -     0  0.00  33.2   33.2     0.0     0  14487        0     0     0     0     0   2.0  320,240
+full-picture    640x480    4.43    4.43      2     0.45 2,218.5    0.14    -     0  0.00  33.1   33.1     0.0     0    249        0     0     0     0     0   1.0  320,240
+# summary: fill 343.84, scroll 351.47, text 7.33, text-aside 7.41, text-nopointer 7.37, sprite 57.66, full-copy 23.44, full-picture 0.45, frames a second; idle: guest 0% busy, panel 0.0 fps, 33.2 pictures drawn a second

@@ -1,5 +1,5 @@
 tiny386 v3 bare metal on the ESP32-S31-Korvo-1, beside Linux (dual boot),
-and on the DOS board.  App version v4.6: v3 with every review round's fixes
+and on the DOS board.  App version v5.0: v3 with every review round's fixes
 (REVIEW-RESOLUTION.md), the status LED (STATUS-LED.md), and for the DOS
 board rev A2c its new pins, its line out and speakers and a louder default
 sound (LINE-OUT.md).  v3.7 made the status LED much dimmer and added
@@ -41,10 +41,16 @@ double_buffer = 1 makes both frame buffers with the panel at power-on, by
 one restart of tiny386 itself at each boot, and needs tiny386 the default
 (section 2); pacing stays off by default; and upstream's fix and three
 checks of our own keep the guest's stores and DMA out of the devices'
-state.  The writes and the ways back are the same as v3.2's to v4.5's.
+state.  v5.0 (BUILD-NOTES.md 33, TEST-PLAN.md 18) answers Plat's word
+that v4.6 works and is too slow: a fast interpreter, Yejun Yang's from
+tab5-pc, in front of tiny386's own (FAST-CPU.md, THIRD_PARTY.md), and the
+emulated processor's own path into the VBE frame buffer; fast_cpu = 0
+under [esp] in the ini runs tiny386's own interpreter alone.  On the PC
+the guest sees exactly what v4.6 shows it.  The writes and the ways back
+are the same as v3.2's to v4.6's.
 
-From v3.6 to v4.5 (the dual boot already in): only the app changed, so
-section 3, flash-dualboot.bat COM10 app, is all v4.6 needs.
+From v3.6 to v4.6 (the dual boot already in): only the app changed, so
+section 3, flash-dualboot.bat COM10 app, is all v5.0 needs.
 The dual-boot bootloader and partition table are v3.7's byte for byte,
 and the tiny386-default table is the one added after v3.7.  From v3.6 or
 v3.7, copy the card's two inis again too (card\tiny386\): they list
@@ -54,7 +60,8 @@ v4.3 changed no card file; v4.4 adds commented lines to both and to the
 DOS board's win95-800x600.ini, and win95-sd.ini, new, for Windows on the
 new card's partition 3 (newcard\README.md, TEST-PLAN.md 16e); v4.5 adds
 two comment lines to win95-sd.ini, which goes on the new card only; v4.6
-changed no card file.  No card
+changed no card file; v5.0 adds a commented ;fast_cpu = 1 line, with its
+comment, to the four Korvo-1 inis, which need not be copied.  No card
 layout changes unless you make a new card: the old one works as before.
 For Windows at 800x480, v4.0 adds three files to card\tiny386\: a new
 vgabios.bin (the 800x480 modes added; v3.9's still works for everything
@@ -80,7 +87,8 @@ far too bright (v3.7) and Windows 95 failed (v3.8).  He then had Windows
 flickered (v4.2), and v4.3 with T386MON's tests.  On 2026-10-25 he ran
 v4.5: all he tried worked, the new card too, but double_buffer = 1,
 which crashed at boot (v4.6 answers it), and pacing, which did not help.
-Nothing of v4.6 has run on a board yet; TEST-PLAN.md 17 is what to try.
+He then ran v4.6: it works, and it is too slow (v5.0 answers it).
+Nothing of v5.0 has run on a board yet; TEST-PLAN.md 18 is what to try.
 
 
 What you need
@@ -279,7 +287,7 @@ Use the scripts or the commands below.
   flash-paths.cmd) with esptool image-info and prints its App version line,
   writes that one file at 0xE20000 after Y, and resets the board.  It takes
   no backup and touches nothing else: not the bootloader, not the table (so
-  the default stays as it is), nothing of Linux.  For v3.6 to v4.5 to v4.6
+  the default stays as it is), nothing of Linux.  For v3.6 to v4.6 to v5.0
   this is the whole update.  The same tiny386.bin serves both tables.
   Since v3.9 it also reads the bootloader at 0x2000 first and stops,
   naming "all", if it is not the dual-boot one (then the key does nothing,
