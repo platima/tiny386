@@ -13,6 +13,11 @@
 #            CPU can, to its last mark (0BFh at 0000:04F0).  The Windows runs
 #            never touch the linear frame buffer (the image has the standard
 #            VGA driver), so a fast path for it is checked here.
+#   t386mon  Windows 95 to the desktop, then T386MON (Plat's benchmark, its
+#            T386MON.EXE given in T386MON_EXE and put in the root of the
+#            image copy) started from Start, Run at 90 s after the taskbar
+#            is first seen, its drawing tests at the image's 640x480 in 16
+#            colours, to 320 s after the taskbar (v5.0)
 #
 # The three Windows runs are the ones the v4.6 regression used (its
 # regress46.sh): the same options, the PC repro's pristine image, Plat's
@@ -22,7 +27,9 @@
 # Environment: W95_IMG (default ~/win95-debug/pc-repro/img/win95.pristine.img)
 # and BENCH_IMG (a FreeDOS disk with BENCH.COM started by FDAUTO.BAT; default
 # ~/org2/jit/bench/run/bench-hd.img, made by that work's prep.sh).  Neither
-# image, nor anything of Windows, may be published.
+# image, nor anything of Windows, may be published.  T386MON_EXE: for
+# t386mon, T386MON.EXE (github.com/platima/T386Mon, built by its build.sh
+# or from its release).
 
 W95_IMG=${W95_IMG:-$HOME/win95-debug/pc-repro/img/win95.pristine.img}
 BENCH_IMG=${BENCH_IMG:-$HOME/org2/jit/bench/run/bench-hd.img}
@@ -68,8 +75,23 @@ workload() {
         W_STOP=0x4f0:0xbf
         W_PREP=prep_vbe
         ;;
+    t386mon)
+        W_IMG=$W95_IMG
+        # Two keys up that do nothing (Shift, at 30 s and 300 s) keep the
+        # harness's dialog poller paused from 29 s to 310 s: Internet
+        # Explorer's setup wizard, which comes up at about 40 s, is left
+        # waiting on its first page (pressed on, it brings a page every 9 s
+        # and works in the background), and T386MON's window is never sent
+        # an Enter.  Ctrl+Esc, R (Run), then T386MON with /top (above the
+        # wizard), /bench (its tests 3 s after it starts) and /quit (closed
+        # after them, its log written).
+        W_OPTS=(-wall 3000 -ips 2000000 -idle 16 -insns 8000 -vsecs 100000 -dialogs 20 -snap 10
+                -dku 30:2a -dkd 90:1d -dkd 90.1:01 -dku 90.2:01 -dku 90.3:1d -dk 92:13
+                -dtype '94:C:\T386MON.EXE /top /bench /quit|' -dku 300:2a -after-desktop 320)
+        W_PREP=prep_t386mon
+        ;;
     *)
-        echo "unknown workload $1 (b1, restart, msdos, bench, vbe)" >&2
+        echo "unknown workload $1 (b1, restart, msdos, bench, vbe, t386mon)" >&2
         return 1
         ;;
     esac
@@ -98,4 +120,17 @@ print(struct.unpack("<I", m[454:458])[0] * 512)' "$img") || return 1
         SOURCE_DATE_EPOCH=1767225600 MTOOLS_SKIP_CHECK=1 \
             mcopy -m -o -i "$img@@$start" "$dir/$f" "::/$f" || return 1
     done
+}
+
+# t386mon: T386MON.EXE put in the root of the copy of the Windows image (its
+# first partition) with mtools, with a fixed time, as for vbe.
+prep_t386mon() {  # IMAGE RUNDIR
+    local img=$1 dir=$2 start
+    [ -f "${T386MON_EXE:-}" ] || { echo "t386mon: set T386MON_EXE to a T386MON.EXE"; return 1; }
+    start=$(python3 -I -c 'import struct, sys
+m = open(sys.argv[1], "rb").read(512)
+print(struct.unpack("<I", m[454:458])[0] * 512)' "$img") || return 1
+    cp "$T386MON_EXE" "$dir/T386MON.EXE"
+    touch -d '2026-01-01 00:00:00' "$dir/T386MON.EXE"
+    SOURCE_DATE_EPOCH=1767225600 MTOOLS_SKIP_CHECK=1         mcopy -m -o -i "$img@@$start" "$dir/T386MON.EXE" "::/T386MON.EXE" || return 1
 }

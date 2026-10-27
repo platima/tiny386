@@ -7,7 +7,7 @@
 #
 # REFTREE, CANDTREE  two tiny386 trees (the reference is normally the
 #           release the candidate starts from, s31-v4.6 = 35a201c)
-# WORKLOAD  b1, restart, msdos, bench or vbe (workloads.sh)
+# WORKLOAD  b1, restart, msdos, bench, vbe or t386mon (workloads.sh)
 # OUTDIR    builds, runs and the report (OUTDIR/report.txt)
 #
 # Pass 1 runs both to the end with a record every EVERY instructions and

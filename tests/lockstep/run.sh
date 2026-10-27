@@ -5,7 +5,7 @@
 #   bash tests/lockstep/run.sh BUILD WORKLOAD RUNDIR [headless options...]
 #
 # BUILD     a directory build.sh made (BUILD/headless)
-# WORKLOAD  b1, restart, msdos, bench or vbe (workloads.sh)
+# WORKLOAD  b1, restart, msdos, bench, vbe or t386mon (workloads.sh)
 # RUNDIR    made afresh; the hook's files go in RUNDIR/ls
 #
 # The LS_* variables in the environment go to the hook as they are
