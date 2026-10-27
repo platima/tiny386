@@ -65,12 +65,16 @@ typedef struct {
 	int lfb_shift;
 	const int *lfb_marks_on;
 	u8 *lfb_wrote;
+	/* counts cpu_cb_set_lfb()'s calls: the fast interpreter's TLB entries
+	   for the frame buffer (i386_fast.h) go when it moves */
+	unsigned lfb_gen;
 } CPU_CB;
 
 /* Bytes base to base + size - 1 are mem[0] to mem[size - 1]; size 0 for
    none.  The marks and the flag stay as they were set. */
 static inline void cpu_cb_set_lfb(CPU_CB *cb, uword base, uword size, u8 *mem)
 {
+	cb->lfb_gen++;
 	cb->lfb_base = base;
 	cb->lfb_mem = mem;
 	cb->lfb_lim1 = size;

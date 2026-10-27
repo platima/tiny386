@@ -608,12 +608,13 @@ typedef struct {
 /* v5.0: the fast interpreter's TLB (i386_fast.h).  For each of tiny386's
    entries, one for privilege levels 1 to 3 and one for 0 (and for no
    paging), as tiny386 checks a page's rights for levels 1 to 3 alike: a
-   linear page's host address, for reads and for writes.  An
-   entry is kept only while tiny386's own entry at the same index holds the
-   same page, so that what hits here would hit in tiny386's TLB too:
-   tiny386's TLB is refilled, and the page tables' accessed bits set, where
-   tiny386 would.  ppte is the page table entry's low byte, where a store
-   sets the dirty bit each time, as translate_lpgno() does. */
+   linear page's host address, for reads and for writes (RAM, and the VBE
+   frame buffer's pages, whose write tag is marked).  An entry is kept only
+   while tiny386's own entry at the same index holds the same page, so that
+   what hits here would hit in tiny386's TLB too: tiny386's TLB is
+   refilled, and the page tables' accessed bits set, where tiny386 would.
+   ppte is the page table entry's low byte, where a store sets the dirty
+   bit each time, as translate_lpgno() does. */
 struct fast_tlb_entry {
 	uword rtag, wtag;   /* the linear page for reads, for writes; -1 for none */
 	uintptr_t delta;    /* host address = linear address + delta */
@@ -624,6 +625,7 @@ struct fast_state {
 	uword cr0, cr3;     /* CR0's PG and WP and CR3 the entries were made under */
 	unsigned gen;       /* tlb_clear()s with paging on */
 	unsigned gen_seen;  /* ... when the entries were last emptied */
+	unsigned lfb_gen_seen;   /* the frame buffer's moves (cb.lfb_gen) then */
 	u8 dummy;           /* ppte without paging */
 };
 

@@ -65,7 +65,12 @@
  *   left out), and the translator's hooks are gone.  REP STOS and REP MOVS
  *   with the VBE linear frame buffer at one end go through tiny386's own
  *   lfb_stos() and lfb_movs() (v5.0's frame buffer path in i386.c), as
- *   tiny386's string loops do.
+ *   tiny386's string loops do.  The frame buffer's pages (not the VGA
+ *   window's) get TLB entries: loads read video memory as load8() to
+ *   load32() would, and MOV and STOS store into it and then set the marks
+ *   as store8() to store32() would (FPTR_ST(), lfb_marked()), as does
+ *   ARPL's write through its read entry; every other store there still
+ *   goes through tiny386's store or string functions.
  * - Stack slots that wrap around a 16-bit stack, INT's ESP, BT with an
  *   immediate beyond the operand, ARPL's write, protected-mode loads of SS
  *   and a failed segment load are done as tiny386 does them.
@@ -102,6 +107,11 @@
 
 /* == the TLB (struct fast_state, i386.c) */
 
+/* A write tag with this bit is a page of the VBE frame buffer (fast_miss()):
+   only FPTR_ST() takes it, and stores and marks there.  Linear page numbers
+   have 20 bits, and no tag (-1) never equals a page with this bit. */
+#define FAST_TAG_LFB 0x80000000u
+
 static noinline void IRAM_ATTR_FAST_EXEC fast_tlb_flush(CPUI386 *cpu)
 {
 	struct fast_state *fs = cpu->fast;
@@ -111,6 +121,7 @@ static noinline void IRAM_ATTR_FAST_EXEC fast_tlb_flush(CPUI386 *cpu)
 	fs->cr0 = cpu->cr0 & (CR0_PG | CR0_WP);
 	fs->cr3 = cpu->cr3;
 	fs->gen_seen = fs->gen;
+	fs->lfb_gen_seen = cpu->cb.lfb_gen;
 }
 
 /* The entries depend on paging (CR0, CR3) and, with paging, on whether the
@@ -120,12 +131,15 @@ static noinline void IRAM_ATTR_FAST_EXEC fast_tlb_flush(CPUI386 *cpu)
    switches).  Without paging they are linear = physical, in real and
    protected mode alike, and a tlb_clear() then does not empty them (DOS
    extenders switch modes for every DOS call, each a MOV CR0 that empties
-   tiny386's TLB).  The table for the privilege level the CPU is at. */
+   tiny386's TLB).  The frame buffer's entries go too when it moves
+   (cpu_cb_set_lfb() counts in lfb_gen).  The table for the privilege
+   level the CPU is at. */
 static inline struct fast_tlb_entry *IRAM_ATTR_FAST_EXEC fast_tlb_check(CPUI386 *cpu)
 {
 	struct fast_state *fs = cpu->fast;
 	if (unlikely((cpu->cr0 & (CR0_PG | CR0_WP)) != fs->cr0 ||
-		     ((cpu->cr0 & CR0_PG) && cpu->cr3 != fs->cr3) || fs->gen != fs->gen_seen))
+		     ((cpu->cr0 & CR0_PG) && cpu->cr3 != fs->cr3) || fs->gen != fs->gen_seen ||
+		     cpu->cb.lfb_gen != fs->lfb_gen_seen))
 		fast_tlb_flush(cpu);
 	return fs->tab[(cpu->cr0 & CR0_PG) && cpu->cpl > 0];
 }
@@ -155,16 +169,38 @@ static noinline u8 *IRAM_ATTR_FAST_EXEC fast_miss(CPUI386 *cpu, struct fast_tlb_
 		paddr = pg << 12;
 		ppte = &cpu->fast->dummy;
 	}
+	uintptr_t delta;
 	if (in_iomem(paddr)) {
 		*mmio = paddr + (lin & 0xfff);
-		return NULL;
+		/* A page all inside the VBE frame buffer (v5.0, after the
+		   reviews) gets an entry too: for reads a host address in video
+		   memory, where load8() to load32() would read; for writes only a
+		   tag that FPTR_ST() looks for, the page with FAST_TAG_LFB, which
+		   no RAM store path takes, so that every store into the page sets
+		   the marks as store8() to store32() set them.  The first store
+		   still goes through tiny386's store (NULL is returned). */
+		uword off = paddr - cpu->cb.lfb_base;
+		if (!(in_high_iomem(paddr) && off < cpu->cb.lfb_lim1 && cpu->cb.lfb_lim1 - off >= 0x1000))
+			return NULL;
+		delta = (uintptr_t) cpu->cb.lfb_mem + off - (pg << 12);
+		struct fast_tlb_entry *e = &tab[pg % tlb_size];
+		if (e->rtag != pg || e->delta != delta)
+			e->wtag = -1;
+		e->rtag = pg;
+		e->delta = delta;
+		e->ppte = ppte;
+		if (write) {
+			e->wtag = pg | FAST_TAG_LFB;
+			return NULL;
+		}
+		return (u8 *) (uintptr_t) (lin + delta);
 	}
 	/* RAM, all of the page (the end of RAM is a whole page with mem_size
 	   in MiB; with another size the last part-page goes to tiny386) */
 	if (paddr > (uword) cpu->phys_mem_size - 0x1000)
 		return NULL;
 	struct fast_tlb_entry *e = &tab[pg % tlb_size];
-	uintptr_t delta = (uintptr_t) cpu->phys_mem + paddr - (pg << 12);
+	delta = (uintptr_t) cpu->phys_mem + paddr - (pg << 12);
 	if (e->rtag != pg || e->delta != delta)
 		e->wtag = -1;
 	e->rtag = pg;
@@ -523,6 +559,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	int strn;                 /* string instructions: the element size */
 	uword eip;
 	uword mpaddr;             /* MMIO: the access's physical address */
+	u8 *mhost;                /* the frame buffer: the store's host address (FPTR_ST) */
 	u32 mval;                 /* MMIO: the value to store */
 	int msize, mreg;          /* MMIO: the size, the register to load into */
 
@@ -595,6 +632,43 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 			msize = (size); \
 			goto LABEL; \
 		} \
+	} while (0)
+	/* as FPTR_IO for a store (msize set on a miss), and a store into a
+	   page of the VBE frame buffer that has an entry (its write tag has
+	   FAST_TAG_LFB) goes to LFBLABEL with mhost its host address and the
+	   page's dirty bit set as for RAM; the label stores the bytes and then
+	   sets the marks, as store8() to store32() do (v5.0, after the
+	   reviews) */
+#define FPTR_ST(p, sg, off, size, LABEL, LFBLABEL) do { \
+		if (unlikely(nullsegs) && (nullsegs & (1 << (sg)))) goto slow; \
+		uword _lin = cpu->seg[sg].base + (off); \
+		uword _pg = _lin >> 12; \
+		struct fast_tlb_entry *_e = &ftlb[_pg % tlb_size]; \
+		bool _in = (size) == 1 || (_lin & 0xfff) <= 0x1000 - (size); \
+		if (likely(_e->wtag == _pg && _in)) { \
+			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
+			if (unlikely(!(*_e->ppte & 0x40))) \
+				*_e->ppte |= 0x40; \
+		} else { \
+			msize = (size); \
+			if (_e->wtag == (_pg | FAST_TAG_LFB) && _in) { \
+				mhost = (u8 *) (uintptr_t) (_lin + _e->delta); \
+				if (unlikely(!(*_e->ppte & 0x40))) \
+					*_e->ppte |= 0x40; \
+				goto LFBLABEL; \
+			} \
+			if (!(p = fast_miss(cpu, ftlb, _lin, (size), 1, &mpaddr))) { \
+				if (mpaddr == (uword) -1) goto slow; \
+				goto LABEL; \
+			} \
+		} \
+	} while (0)
+	/* the marks for n bytes stored at host address p through a read entry
+	   (ARPL's write, as tiny386's), if p is in the frame buffer */
+#define LFB_MARK_IF(p, n) do { \
+		uintptr_t _o = (uintptr_t) (p) - (uintptr_t) cpu->cb.lfb_mem; \
+		if (unlikely(_o < cpu->cb.lfb_lim1)) \
+			lfb_marked(cpu, (uword) _o, (n)); \
 	} while (0)
 #define EA_OFF(off, m) \
 	seg = SEG_OVERRIDE; \
@@ -769,14 +843,14 @@ op_87: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	NEXT; }
 op_88: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	if (m >= 0xc0) fw8(rm, fr8(r));
-	else { EA_OFF(off, m) mval = fr8(r); u8 *p; FPTR_IO(p, seg, off, 1, 1, mmio_st); fs8(p, mval); }
+	else { EA_OFF(off, m) mval = fr8(r); u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, lfb_st); fs8(p, mval); }
 	NEXT; }
 op_89: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	if (m >= 0xc0) {
 		if (opsz16) sreg16(rm, lreg16(r));
 		else sreg32(rm, lreg32(r));
-	} else if (opsz16) { EA_OFF(off, m) mval = lreg16(r); u8 *p; FPTR_IO(p, seg, off, 2, 1, mmio_st); fs16(p, mval); }
-	else { EA_OFF(off, m) mval = lreg32(r); u8 *p; FPTR_IO(p, seg, off, 4, 1, mmio_st); fs32(p, mval); }
+	} else if (opsz16) { EA_OFF(off, m) mval = lreg16(r); u8 *p; FPTR_ST(p, seg, off, 2, mmio_st, lfb_st); fs16(p, mval); }
+	else { EA_OFF(off, m) mval = lreg32(r); u8 *p; FPTR_ST(p, seg, off, 4, mmio_st, lfb_st); fs32(p, mval); }
 	NEXT; }
 op_8a: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	if (m >= 0xc0) fw8(r, fr8(rm));
@@ -793,6 +867,13 @@ op_8b: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 mmio_st: {
 	SYNC_IN();
 	fast_io_store(cpu, mpaddr, msize, mval);
+	NEXT; }
+	/* ... and into a page of the frame buffer with an entry (FPTR_ST):
+	   the bytes, then the marks and the flag, as store8() to store32()
+	   (nothing there reads the instruction count) */
+lfb_st: {
+	if (msize == 1) fs8(mhost, mval); else if (msize == 2) fs16(mhost, mval); else fs32(mhost, mval);
+	lfb_marked(cpu, (uword) ((uintptr_t) mhost - (uintptr_t) cpu->cb.lfb_mem), msize);
 	NEXT; }
 mmio_ld: {
 	SYNC_IN();
@@ -864,15 +945,15 @@ op_mov_rv: { int r = pc[-1] & 7;
 op_c6: { u8 m = *pc++; int rm = m & 7;
 	if (((m >> 3) & 7) != 0) goto slow;
 	if (m >= 0xc0) fw8(rm, *pc++);
-	else { EA_OFF(off, m) mval = *pc++; u8 *p; FPTR_IO(p, seg, off, 1, 1, mmio_st); fs8(p, mval); }
+	else { EA_OFF(off, m) mval = *pc++; u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, lfb_st); fs8(p, mval); }
 	NEXT; }
 op_c7: { u8 m = *pc++; int rm = m & 7;
 	if (((m >> 3) & 7) != 0) goto slow;
 	if (m >= 0xc0) {
 		if (opsz16) { sreg16(rm, fm16(pc)); pc += 2; }
 		else { sreg32(rm, fm32(pc)); pc += 4; }
-	} else if (opsz16) { EA_OFF(off, m) mval = fm16(pc); pc += 2; u8 *p; FPTR_IO(p, seg, off, 2, 1, mmio_st); fs16(p, mval); }
-	else { EA_OFF(off, m) mval = fm32(pc); pc += 4; u8 *p; FPTR_IO(p, seg, off, 4, 1, mmio_st); fs32(p, mval); }
+	} else if (opsz16) { EA_OFF(off, m) mval = fm16(pc); pc += 2; u8 *p; FPTR_ST(p, seg, off, 2, mmio_st, lfb_st); fs16(p, mval); }
+	else { EA_OFF(off, m) mval = fm32(pc); pc += 4; u8 *p; FPTR_ST(p, seg, off, 4, mmio_st, lfb_st); fs32(p, mval); }
 	NEXT; }
 #define MOFFS(off) \
 	uword off; \
@@ -883,10 +964,10 @@ op_a1: { MOFFS(off) mreg = 0;
 	if (opsz16) { u8 *p; FPTR_IO(p, seg, off, 2, 0, mmio_ld); sreg16(0, fm16(p)); }
 	else { u8 *p; FPTR_IO(p, seg, off, 4, 0, mmio_ld); sreg32(0, fm32(p)); }
 	NEXT; }
-op_a2: { MOFFS(off) mval = fr8(0); u8 *p; FPTR_IO(p, seg, off, 1, 1, mmio_st); fs8(p, mval); NEXT; }
+op_a2: { MOFFS(off) mval = fr8(0); u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, lfb_st); fs8(p, mval); NEXT; }
 op_a3: { MOFFS(off)
-	if (opsz16) { mval = lreg16(0); u8 *p; FPTR_IO(p, seg, off, 2, 1, mmio_st); fs16(p, mval); }
-	else { mval = lreg32(0); u8 *p; FPTR_IO(p, seg, off, 4, 1, mmio_st); fs32(p, mval); }
+	if (opsz16) { mval = lreg16(0); u8 *p; FPTR_ST(p, seg, off, 2, mmio_st, lfb_st); fs16(p, mval); }
+	else { mval = lreg32(0); u8 *p; FPTR_ST(p, seg, off, 4, mmio_st, lfb_st); fs32(p, mval); }
 	NEXT; }
 op_a8: { u8 i = *pc++; int r = 0; FTESTb(r, i, fr8, fw8, limm, 0) FOLD_JCC(); NEXT; }
 op_a9: { int r = 0;
@@ -961,7 +1042,11 @@ op_arpl: { if (!PROTECTED) goto slow;
 	} else {
 		u8 *p; EA_PTR(p, m, 2, 0);
 		u16 dst = fm16(p);
-		if ((dst & 3) < (src & 3)) { cpu->flags |= ZF; fs16(p, (dst & ~3) | (src & 3)); }
+		if ((dst & 3) < (src & 3)) {
+			cpu->flags |= ZF;
+			fs16(p, (dst & ~3) | (src & 3));
+			LFB_MARK_IF(p, 2);   /* the read entry may be the frame buffer's */
+		}
 		else cpu->flags &= ~ZF;
 	}
 	cpu->cc.mask &= ~ZF;
@@ -1598,7 +1683,13 @@ movs_rep_io: {   /* MMIO at one end or both (v5.0): with the linear frame
 			if (!ks) goto slow;
 			int kd = fast_where(cpu, ftlb, nullsegs, SEG_ES, di, n, 1, &d, &pd);
 			if (!kd) goto slow;
-			if (ks == 1) ps = (uword) (s - (u8 *) cpu->phys_mem);
+			/* (a read entry may be the frame buffer's; a write
+			   entry never is) */
+			if (ks == 1) {
+				uintptr_t o = (uintptr_t) s - (uintptr_t) cpu->cb.lfb_mem;
+				ps = o < cpu->cb.lfb_lim1 ? cpu->cb.lfb_base + (uword) o :
+					(uword) (s - (u8 *) cpu->phys_mem);
+			}
 			if (kd == 1) pd = (uword) (d - (u8 *) cpu->phys_mem);
 			if (!(in_high_iomem(ps) || in_high_iomem(pd)) ||
 			    !lfb_movs(cpu, ps, pd, n, dir, cnt))
@@ -1616,13 +1707,19 @@ stos: { int n = strn;
 	int dir = (cpu->flags & DF) ? -n : n;
 	u32 v = REGi(0);
 	if (!rep) {
-		u8 *d; FPTR_IO(d, SEG_ES, DI_, n, 1, stos_io);
+		u8 *d; FPTR_ST(d, SEG_ES, DI_, n, stos_io, stos_lfb);
 		if (n == 1) fs8(d, v); else if (n == 2) fs16(d, v); else fs32(d, v);
 		SET_DI(DI_ + dir);
 		NEXT;
 stos_io: {
 			SYNC_IN();
 			fast_io_store(cpu, mpaddr, n, v);
+			SET_DI(DI_ + dir);
+			NEXT;
+		}
+stos_lfb: {   /* the frame buffer, as lfb_st */
+			if (n == 1) fs8(mhost, v); else if (n == 2) fs16(mhost, v); else fs32(mhost, v);
+			lfb_marked(cpu, (uword) ((uintptr_t) mhost - (uintptr_t) cpu->cb.lfb_mem), n);
 			SET_DI(DI_ + dir);
 			NEXT;
 		}
@@ -1736,6 +1833,9 @@ op_out_ib: op_out_dx: {
 	if (!(b & 1)) cpu->cb.io_write8(cpu->cb.io, port, fr8(0));
 	else if (opsz16) cpu->cb.io_write16(cpu->cb.io, port, lreg16(0));
 	else cpu->cb.io_write32(cpu->cb.io, port, lreg32(0));
+	/* a write to the VGA's PCI BAR moves the frame buffer: its entries go */
+	if (unlikely(cpu->cb.lfb_gen != cpu->fast->lfb_gen_seen))
+		fast_tlb_flush(cpu);
 	NEXT; }
 
 	/* two-byte opcodes */
