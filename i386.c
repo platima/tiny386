@@ -606,8 +606,9 @@ typedef struct {
 
 #ifdef I386_FAST
 /* v5.0: the fast interpreter's TLB (i386_fast.h).  For each of tiny386's
-   entries, one for privilege level 3 and one for 0 to 2 (and for no
-   paging): a linear page's host address, for reads and for writes.  An
+   entries, one for privilege levels 1 to 3 and one for 0 (and for no
+   paging), as tiny386 checks a page's rights for levels 1 to 3 alike: a
+   linear page's host address, for reads and for writes.  An
    entry is kept only while tiny386's own entry at the same index holds the
    same page, so that what hits here would hit in tiny386's TLB too:
    tiny386's TLB is refilled, and the page tables' accessed bits set, where
@@ -5866,9 +5867,9 @@ long IRAM_ATTR cpui386_get_cycle(CPUI386 *cpu)
 }
 
 #ifdef I386_FAST
-/* v5.0: the fast interpreter's TLB, for the first CPU in internal RAM
-   (DRAM_ATTR, beside cpu_exec1()'s state on the boards), for any other
-   from the heap */
+/* v5.0: the fast interpreter's TLB, for the first CPU a static (in .bss,
+   which the boards' ESP-IDF keeps in internal RAM; DRAM_ATTR would put its
+   8 KB of zeros in the image), for any other from the heap */
 static struct fast_state fast_state0;
 static bool fast_state0_used;
 #endif

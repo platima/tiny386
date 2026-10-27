@@ -17,6 +17,10 @@
  * test whose two arms are alike.  The S31's cores carry out misaligned
  * loads and stores themselves (ESP-IDF has no handler for the trap, and
  * the board runs Windows 95).
+ *
+ * Each is always inlined (v5.0): a copy the compiler leaves out of line
+ * has no IRAM_ATTR, so on the boards it sits in flash, and the fast
+ * interpreter, in internal RAM, would call it there.
  */
 #ifndef UNALIGNED_H
 #define UNALIGNED_H
@@ -25,14 +29,14 @@
 
 #ifdef I386_ALIGNED_ONLY
 
-static inline uint16_t ldu16(const uint8_t *p)
+static inline __attribute__((always_inline)) uint16_t ldu16(const uint8_t *p)
 {
 	if (__builtin_expect(!((uintptr_t) p & 1), 1))
 		return *(const uint16_t *) p;
 	return p[0] | (p[1] << 8);
 }
 
-static inline uint32_t ldu32(const uint8_t *p)
+static inline __attribute__((always_inline)) uint32_t ldu32(const uint8_t *p)
 {
 	if (__builtin_expect(!((uintptr_t) p & 3), 1))
 		return *(const uint32_t *) p;
@@ -43,7 +47,7 @@ static inline uint32_t ldu32(const uint8_t *p)
 		((uint32_t) *(const uint16_t *) (p + 2) << 16);
 }
 
-static inline void stu16(uint8_t *p, uint16_t val)
+static inline __attribute__((always_inline)) void stu16(uint8_t *p, uint16_t val)
 {
 	if (__builtin_expect(!((uintptr_t) p & 1), 1)) {
 		*(uint16_t *) p = val;
@@ -53,7 +57,7 @@ static inline void stu16(uint8_t *p, uint16_t val)
 	}
 }
 
-static inline void stu32(uint8_t *p, uint32_t val)
+static inline __attribute__((always_inline)) void stu32(uint8_t *p, uint32_t val)
 {
 	if (__builtin_expect(!((uintptr_t) p & 3), 1)) {
 		*(uint32_t *) p = val;
@@ -69,22 +73,22 @@ static inline void stu32(uint8_t *p, uint32_t val)
 
 #else
 
-static inline uint16_t ldu16(const uint8_t *p)
+static inline __attribute__((always_inline)) uint16_t ldu16(const uint8_t *p)
 {
 	return *(const uint16_t *) p;
 }
 
-static inline uint32_t ldu32(const uint8_t *p)
+static inline __attribute__((always_inline)) uint32_t ldu32(const uint8_t *p)
 {
 	return *(const uint32_t *) p;
 }
 
-static inline void stu16(uint8_t *p, uint16_t val)
+static inline __attribute__((always_inline)) void stu16(uint8_t *p, uint16_t val)
 {
 	*(uint16_t *) p = val;
 }
 
-static inline void stu32(uint8_t *p, uint32_t val)
+static inline __attribute__((always_inline)) void stu32(uint8_t *p, uint32_t val)
 {
 	*(uint32_t *) p = val;
 }

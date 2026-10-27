@@ -114,19 +114,20 @@ static noinline void IRAM_ATTR_FAST_EXEC fast_tlb_flush(CPUI386 *cpu)
 }
 
 /* The entries depend on paging (CR0, CR3) and, with paging, on whether the
-   privilege level is 3; they go when tiny386's TLB does (tlb_clear():
-   MOV CR0 and CR3, INVLPG, task switches).  Without paging they are linear
-   = physical, in real and protected mode alike, and a tlb_clear() then
-   does not empty them (DOS extenders switch modes for every DOS call, each
-   a MOV CR0 that empties tiny386's TLB).  The table for the privilege
-   level the CPU is at. */
+   privilege level is above 0 (tiny386 checks a page's rights for levels 1
+   to 3 alike: translate_lpgno()'s pte_lookup[cpl > 0]); they go when
+   tiny386's TLB does (tlb_clear(): MOV CR0 and CR3, INVLPG, task
+   switches).  Without paging they are linear = physical, in real and
+   protected mode alike, and a tlb_clear() then does not empty them (DOS
+   extenders switch modes for every DOS call, each a MOV CR0 that empties
+   tiny386's TLB).  The table for the privilege level the CPU is at. */
 static inline struct fast_tlb_entry *IRAM_ATTR_FAST_EXEC fast_tlb_check(CPUI386 *cpu)
 {
 	struct fast_state *fs = cpu->fast;
 	if (unlikely((cpu->cr0 & (CR0_PG | CR0_WP)) != fs->cr0 ||
 		     ((cpu->cr0 & CR0_PG) && cpu->cr3 != fs->cr3) || fs->gen != fs->gen_seen))
 		fast_tlb_flush(cpu);
-	return fs->tab[(cpu->cr0 & CR0_PG) && cpu->cpl == 3];
+	return fs->tab[(cpu->cr0 & CR0_PG) && cpu->cpl > 0];
 }
 
 /* The host address of a size-byte access at linear address lin, filling
@@ -199,14 +200,19 @@ static noinline int IRAM_ATTR_FAST_EXEC fast_where(CPUI386 *cpu, struct fast_tlb
 /* MMIO through tiny386's own load and store functions, as tiny386 makes
    the access once translated: video memory's dirty marks (vga.c, pc.c's
    LFB_WRITTEN) are set there, and anything made faster there is faster
-   here too.  Never across a page. */
-static inline u32 fast_io_load(CPUI386 *cpu, uword paddr, int size)
+   here too.  Never across a page.  Out of line and in internal RAM
+   (IRAM_ATTR_FAST_EXEC), as fast_exec() is: a "static inline" copy the
+   compiler left out of line had no IRAM_ATTR, so on the boards it sat in
+   flash and every call from fast_exec() went there and back (the v5.0
+   review).  Inlined into fast_exec() instead, the RV32 bench's loops cost
+   more host instructions, RAM's too (tests/host/lfb). */
+static noinline u32 IRAM_ATTR_FAST_EXEC fast_io_load(CPUI386 *cpu, uword paddr, int size)
 {
 	OptAddr a = { ADDR_OK1, paddr, 0 };
 	return size == 1 ? load8(cpu, &a) : size == 2 ? load16(cpu, &a) : load32(cpu, &a);
 }
 
-static inline void fast_io_store(CPUI386 *cpu, uword paddr, int size, u32 v)
+static noinline void IRAM_ATTR_FAST_EXEC fast_io_store(CPUI386 *cpu, uword paddr, int size, u32 v)
 {
 	OptAddr a = { ADDR_OK1, paddr, 0 };
 	if (size == 1)
