@@ -2,20 +2,20 @@
  [1;32mDEP[0m	[1;37mi386.c fpu.c ini.c i8259.c i8254.c ide.c vga.c vgafont.c i8042.c misc.c adlib.c ne2000.c i8257.c sb16.c pcspk.c fmopl.c pc.c pci.c win32.c term.c osd/microui.c osd/osd.c[0m [1;32m->[0m [1;37m.depends[0m
 cc -DGENTABLE fmopl.c -o fmoplgen -lm && ./fmoplgen > fmopl.inc && rm -f ./fmoplgen
 == ESP-IDF build: korvo1 (BOARD=korvo1 )
-~/org2/v50/int/rel/build-d/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
-│ DIRAM               │       261966 │     52.0 │         241778 │        503744 │
-Total image size: 1062124 bytes (.bin may be padded larger)
+~/org2/v50/res/rel/build-b/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+│ DIRAM               │       262300 │    52.07 │         241444 │        503744 │
+Total image size: 1062004 bytes (.bin may be padded larger)
 == ESP-IDF build: korvo1-standalone (BOARD=korvo1 -DPARTITION_CSV=partitions.csv)
-~/org2/v50/int/rel/build-d/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
-│ DIRAM               │       261966 │     52.0 │         241778 │        503744 │
-Total image size: 1062124 bytes (.bin may be padded larger)
+~/org2/v50/res/rel/build-b/tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+│ DIRAM               │       262300 │    52.07 │         241444 │        503744 │
+Total image size: 1062004 bytes (.bin may be padded larger)
 == ESP-IDF build: dosboard (BOARD=dosboard )
-│ DIRAM               │       264208 │    52.45 │         239536 │        503744 │
-Total image size: 1082808 bytes (.bin may be padded larger)
+│ DIRAM               │       264542 │    52.52 │         239202 │        503744 │
+Total image size: 1082688 bytes (.bin may be padded larger)
 == images
-  korvo1-dualboot/tiny386.bin: 1062304 of 1966080 bytes
-  korvo1-standalone/tiny386.bin: 1062304 of 1835008 bytes
-  dosboard/tiny386.bin: 1082992 of 1835008 bytes
+  korvo1-dualboot/tiny386.bin: 1062176 of 1966080 bytes
+  korvo1-standalone/tiny386.bin: 1062176 of 1835008 bytes
+  dosboard/tiny386.bin: 1082864 of 1835008 bytes
   korvo1-dualboot/tiny386.elf: the LED's bit-bang stores each straight after its wait
   korvo1-standalone/tiny386.elf: the LED's bit-bang stores each straight after its wait
   dosboard/tiny386.elf: the LED's bit-bang stores each straight after its wait
@@ -28,8 +28,8 @@ Total image size: 1082808 bytes (.bin may be padded larger)
    6fc0ab4111fd630343b9fce8d41df17e6af26eeda1cfc2993742b8c2fde56518  flash_args
    b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  bootloader.bin
    d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346  partition-table.bin
-   be20062cf854bf8eb9c3fde5d91918a0cf5b069a2fa4652f7b4c336916e5fe2b  tiny386.bin
-   1f2f705cb95e386ed326b87d6216a45c7dff67994e144eb5556c9ab6914d7492  tiny386.elf
+   293bba33060c635d8aef39c0e4dec3768e84b829f11ea635145ec0ff52665c4d  tiny386.bin
+   206954874adab64cfb0b83a099b64c7536c021cd57c702393137d88f0ed97f6d  tiny386.elf
 == images/korvo1-dualboot-tiny386-default (esptool write-flash offsets: flash_args)
    -fm keep -ff keep -fs keep
    0x2000 bootloader.bin
@@ -38,7 +38,7 @@ Total image size: 1082808 bytes (.bin may be padded larger)
    6fc0ab4111fd630343b9fce8d41df17e6af26eeda1cfc2993742b8c2fde56518  flash_args
    b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  bootloader.bin
    5b90d4166afc39d72a1d6c7b16f3a2e4a5cc0193a3e0eb50990a4dbb9da58226  partition-table.bin
-   be20062cf854bf8eb9c3fde5d91918a0cf5b069a2fa4652f7b4c336916e5fe2b  tiny386.bin
+   293bba33060c635d8aef39c0e4dec3768e84b829f11ea635145ec0ff52665c4d  tiny386.bin
 == images/korvo1-standalone (esptool write-flash offsets: flash_args)
    --flash-mode dio --flash-freq 80m --flash-size 16MB
    0x2000 bootloader.bin
@@ -47,8 +47,8 @@ Total image size: 1082808 bytes (.bin may be padded larger)
    48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  flash_args
    ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  bootloader.bin
    afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  partition-table.bin
-   e5202d9d03fcea4851ada795ac69b5da4fa6378d66304c6b5a44afe9a45da04e  tiny386.bin
-   0e2149b2dd6840aab00609b9cd69ecb82fb99b6657819527ef609b2d62d825b8  tiny386.elf
+   b44f1b10fc2cce5eab1e3cfac365d0b15f7aa210c4d3f82e3b8bb1a66713c3ae  tiny386.bin
+   1047f091545e6bc9eea5da94b4ae40a2473bac0286113680ea4656fdcf024be9  tiny386.elf
 == images/dosboard (esptool write-flash offsets: flash_args)
    --flash-mode dio --flash-freq 80m --flash-size 16MB
    0x2000 bootloader.bin
@@ -57,5 +57,5 @@ Total image size: 1082808 bytes (.bin may be padded larger)
    48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  flash_args
    ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  bootloader.bin
    afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  partition-table.bin
-   f88b91b2e46b0897a1d0bb0fcd5fc811f46b841fa54512c8c36401ae9514b360  tiny386.bin
-   9121157e93c98cf5f49b063a015888024efb3c94f675272708d1f6ac3d20a796  tiny386.elf
+   50c5e7600dcc19258917c9c222e5eeb38e5d324b7499bf85f29c6214c8df6f8c  tiny386.bin
+   ef894f0c62635157dd34689dab78d6a408cb5eca10cab5ca80b0b26d5e700897  tiny386.elf

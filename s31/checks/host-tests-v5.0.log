@@ -1,5 +1,6 @@
-tests/host/run.sh at 84e17ca (the code and tests of 31550d7: the two differ in one line of
-tests/lockstep/README.md), WSL, gcc 12.2, 2026-10-27, with other work on the machine.
+tests/host/run.sh at 3e26085 (v5.0 after its two reviews: BUILD-NOTES.md 33.15), WSL, gcc
+12, 2026-10-27, with other work on the machine. The FAIL lines inside passing tests are
+the tests' own planted faults and wrong cases, which must fail.
 
 keyboard queue: 256 bytes, then 44 more into the full queue
 mouse queue: 256 bytes, then 44 more into the full queue
@@ -21,20 +22,20 @@ PASS ps2 queue lock, i8042.c of this tree
 PASS ps2 queue lock test catches the bug in pristine i8042.c
 
 previous run and start-up
-  wrote ~/org2/v50/int/ht-final/out/console-1-boot.ppm
+  wrote ~/org2/v50/res/ht/out/console-1-boot.ppm
 scrolling
-  wrote ~/org2/v50/int/ht-final/out/console-2-scrolled.ppm
+  wrote ~/org2/v50/res/ht/out/console-2-scrolled.ppm
 ring
 handing the panel over and back
-  wrote ~/org2/v50/int/ht-final/out/console-3-taken-back.ppm
+  wrote ~/org2/v50/res/ht/out/console-3-taken-back.ppm
 crash screen
-  wrote ~/org2/v50/int/ht-final/out/console-4-crash.ppm
+  wrote ~/org2/v50/res/ht/out/console-4-crash.ppm
 the UART quiet
 lines that repeat
 the UART's queue
 held error lines, held lines at a crash
-  wrote ~/org2/v50/int/ht-final/out/console-5-crash-held.ppm
-  wrote ~/org2/v50/int/ht-final/out/console-6-crash-second-buffer.ppm
+  wrote ~/org2/v50/res/ht/out/console-5-crash-held.ppm
+  wrote ~/org2/v50/res/ht/out/console-6-crash-second-buffer.ppm
 test_console: all checks passed
 PASS boot console: text, colours, scrolling, ring, hand-over, crash screen, repeated lines, UART queue
 
@@ -51,7 +52,7 @@ rows redrawn in 80x25 text (720x400 at 40,40)
   a letter on the cursor's row: 1 call(s), rows 200+16
   a letter on row 20: 1 call(s), rows 200+176
   every cell changed: 1 call(s), rows 40+400
-  wrote ~/org2/v50/int/ht-final/out/vga-text-80x25.ppm
+  wrote ~/org2/v50/res/ht/out/vga-text-80x25.ppm
 rows redrawn in 640x480x16 (at 80,0)
   into graphics: cleared, all of it: 1 call(s), rows 0+480
   nothing changed: 0 call(s), rows -1+-1
@@ -65,10 +66,10 @@ clears asked for by the emulator
   VBE: 60 retraces in 1 s
 mode 13h (320x200x256) placement
   into mode 13h: 1 call(s), rows 0+480
-  wrote ~/org2/v50/int/ht-final/out/vga-13h-320x200.ppm
+  wrote ~/org2/v50/res/ht/out/vga-13h-320x200.ppm
 VBE 800x600x16 on an 800x480 panel
   VBE 800x600 on: 1 call(s), rows 0+480
-  wrote ~/org2/v50/int/ht-final/out/vga-vbe-800x600-scaled.ppm
+  wrote ~/org2/v50/res/ht/out/vga-vbe-800x600-scaled.ppm
   800x600, nothing changed: 0 call(s), rows -1+-1
   800x600, one pixel changed: 1 call(s), rows 240+1
 VBE 640x480x16 shown from line 400 of 1 MiB: past the end
@@ -128,7 +129,7 @@ VBE pictures from the blocks written against every pixel every time, on a 800x48
   512x384x16 in 1024K      the same in every picture
   512x384x24 in 1024K      the same in every picture
   512x384x32 in 1024K      the same in every picture
-  wrote ~/org2/v50/int/ht-final/out/vbe-800x480-last.ppm
+  wrote ~/org2/v50/res/ht/out/vbe-800x480-last.ppm
   800x480x8 in 1536K       the same in every picture
   800x480x15 in 1536K      the same in every picture
   800x480x16 in 1536K      the same in every picture
@@ -269,7 +270,7 @@ VBE pictures from the blocks written against every pixel every time, on a 800x60
   512x384x16 in 1024K      the same in every picture
   512x384x24 in 1024K      the same in every picture
   512x384x32 in 1024K      the same in every picture
-  wrote ~/org2/v50/int/ht-final/out/vbe-800x600-last.ppm
+  wrote ~/org2/v50/res/ht/out/vbe-800x600-last.ppm
   800x600x8 in 1536K       the same in every picture
   800x600x15 in 1536K      the same in every picture
   800x600x16 in 1536K      the same in every picture
@@ -539,11 +540,11 @@ double click at sample rate 20:
 test_ps2_mouse: 29 checks, 0 failed
 PASS PS/2 mouse: backlog, clicks, sample rate, remote mode, reset, mouse off
 two threads: a reporting task and the emulator:
-  4000 reports in, 300 packets out; 4000 right, 8000 down (sent 4000, 8000); 10 presses seen
+  4000 reports in, 305 packets out; 4000 right, 8000 down (sent 4000, 8000); 10 presses seen
 test_ps2_mouse (two threads): 6 checks, 0 failed
 PASS PS/2 mouse: a reporting thread and the emulator's thread
 two threads: a reporting task and the emulator:
-  4000 reports in, 160 packets out; 3757 right, 5984 down (sent 4000, 8000); 10 presses seen
+  4000 reports in, 166 packets out; 3816 right, 6102 down (sent 4000, 8000); 10 presses seen
   6 stalls of 120 ms
 test_ps2_mouse (two threads): 7 checks, 0 failed
 PASS PS/2 mouse: two threads, the emulator held up: every click through the ring's overflow
@@ -781,35 +782,35 @@ PASS usb_input.c: interfaces given up, unplugged, queued behind others; lights a
     | test_usb_input: 5 checks wrong
 PASS usb_input.c test catches requests to a freed device in v3.1's usb_input.c
 
-top folder only: ~/org2/v50/int/ht-final/out/test-setup-card/sdcard/tiny386.ini (other.ini there is not listed)
-the Linux route's folder (~/org2/v50/int/ht-final/out/test-setup-card/sdcard/tiny386):
+top folder only: ~/org2/v50/res/ht/out/test-setup-card/sdcard/tiny386.ini (other.ini there is not listed)
+the Linux route's folder (~/org2/v50/res/ht/out/test-setup-card/sdcard/tiny386):
   1  bench.ini    FreeDOS with 4M, for BENCH.COM on the FreeDOS image, which wants 4 MB:
   2  freedos.ini  FreeDOS from the hard disk image: the first thing to try on the board.
   3  win95.ini    Windows 95 on the board, from an image made on the PC (DISK-IMAGES.txt)
 default: freedos.ini; after win95.ini is chosen: win95.ini (lastboot.txt; not rewritten when the same)
-files named in the Linux route's inis (/mnt/sd -> ~/org2/v50/int/ht-final/out/test-setup-card/sdcard, /mnt/win -> ~/org2/v50/int/ht-final/out/test-setup-card/sdcard3):
+files named in the Linux route's inis (/mnt/sd -> ~/org2/v50/res/ht/out/test-setup-card/sdcard, /mnt/win -> ~/org2/v50/res/ht/out/test-setup-card/sdcard3):
   freedos.ini:
-    bios      bios.bin                 -> ~/org2/v50/int/ht-final/out/test-setup-card/sdcard/tiny386/bios.bin
-    vga_bios  vgabios.bin              -> ~/org2/v50/int/ht-final/out/test-setup-card/sdcard/tiny386/vgabios.bin
-    hda       freedos-hd.img           -> ~/org2/v50/int/ht-final/out/test-setup-card/sdcard/tiny386/freedos-hd.img
+    bios      bios.bin                 -> ~/org2/v50/res/ht/out/test-setup-card/sdcard/tiny386/bios.bin
+    vga_bios  vgabios.bin              -> ~/org2/v50/res/ht/out/test-setup-card/sdcard/tiny386/vgabios.bin
+    hda       freedos-hd.img           -> ~/org2/v50/res/ht/out/test-setup-card/sdcard/tiny386/freedos-hd.img
   bench.ini:
-    bios      bios.bin                 -> ~/org2/v50/int/ht-final/out/test-setup-card/sdcard/tiny386/bios.bin
-    vga_bios  vgabios.bin              -> ~/org2/v50/int/ht-final/out/test-setup-card/sdcard/tiny386/vgabios.bin
-    hda       freedos-hd.img           -> ~/org2/v50/int/ht-final/out/test-setup-card/sdcard/tiny386/freedos-hd.img
+    bios      bios.bin                 -> ~/org2/v50/res/ht/out/test-setup-card/sdcard/tiny386/bios.bin
+    vga_bios  vgabios.bin              -> ~/org2/v50/res/ht/out/test-setup-card/sdcard/tiny386/vgabios.bin
+    hda       freedos-hd.img           -> ~/org2/v50/res/ht/out/test-setup-card/sdcard/tiny386/freedos-hd.img
   win95.ini:
-    bios      bios.bin                 -> ~/org2/v50/int/ht-final/out/test-setup-card/sdcard/tiny386/bios.bin
-    vga_bios  vgabios.bin              -> ~/org2/v50/int/ht-final/out/test-setup-card/sdcard/tiny386/vgabios.bin
-    hda       /mnt/win/win95.img       -> ~/org2/v50/int/ht-final/out/test-setup-card/sdcard3/win95.img
+    bios      bios.bin                 -> ~/org2/v50/res/ht/out/test-setup-card/sdcard/tiny386/bios.bin
+    vga_bios  vgabios.bin              -> ~/org2/v50/res/ht/out/test-setup-card/sdcard/tiny386/vgabios.bin
+    hda       /mnt/win/win95.img       -> ~/org2/v50/res/ht/out/test-setup-card/sdcard3/win95.img
 and with no WIN9X partition on the card:
   win95.ini:
-    bios      bios.bin                 -> ~/org2/v50/int/ht-final/out/test-setup-card/sdcard/tiny386/bios.bin
-    vga_bios  vgabios.bin              -> ~/org2/v50/int/ht-final/out/test-setup-card/sdcard/tiny386/vgabios.bin
+    bios      bios.bin                 -> ~/org2/v50/res/ht/out/test-setup-card/sdcard/tiny386/bios.bin
+    vga_bios  vgabios.bin              -> ~/org2/v50/res/ht/out/test-setup-card/sdcard/tiny386/vgabios.bin
     hda       /mnt/win/win95.img       -> /mnt/win/win95.img  (no WIN9X partition: flagged)
 setup: 31 checks, 0 failed
 PASS setup.c: ini search, the menu's list and default, lastboot.txt, paths of the Linux route's inis
 
-  ok: leftovers tidied first; refused: ~/org2/v50/int/ht-final/out/inisave/a.ini.t386old holds the very bytes of the ini: a save of v4.4 was cut inside a rename, and the two names may share the card's clusters. Both are left as they are: check the card on a PC (chkdsk with /f), then delete the .t386old file
-  ok: errors: ~/org2/v50/int/ht-final/out/inisave/b.ini.t386new could not be written whole
+  ok: leftovers tidied first; refused: ~/org2/v50/res/ht/out/inisave/a.ini.t386old holds the very bytes of the ini: a save of v4.4 was cut inside a rename, and the two names may share the card's clusters. Both are left as they are: check the card on a PC (chkdsk with /f), then delete the .t386old file
+  ok: errors: ~/org2/v50/res/ht/out/inisave/b.ini.t386new could not be written whole
   ok: cut at step 1: the ini as it was after the next start
   ok: cut at step 2: the ini saved after the next start
   ok: cut at step 3: the ini saved after the next start
@@ -1764,19 +1765,19 @@ PASS the DMA test sees v4.5's bytes in the window's phys_mem
     | 148 runs, 889 lines compared
 == host instructions, RV32 (the board's compiler, Zba, Zbb, Zbs), counted under qemu
     | host instructions per guest store/dword                          v4.6  this tree   times
-    | MOV [EDI],EAX into the frame buffer (a loop of 4 instructions)      463.1      376.0    1.23
-    | the same into RAM                                               438.1      252.1    1.74
-    | MOV [EDI],AX into the frame buffer                              481.1      392.0    1.23
-    | MOV [EDI],AL into the frame buffer                              376.1      337.1    1.12
-    | ADD EBX,[ESI] from the frame buffer                             479.1      664.0    0.72
-    | the same from RAM                                               464.1      258.0    1.80
-    | fill 400x300, a REP STOSD of 200 a row                           54.0        7.5    7.23
-    | fill 800x480, one REP STOSD                                      51.1        5.2    9.78
-    | RAM to the screen, 400x300, REP MOVSD a row                       7.8        7.3    1.07
-    | scroll up a row (screen to screen, going up)                    100.5        7.4   13.54
-    | scroll down a row (screen to screen, going down)                100.3        7.3   13.66
-    | the screen to RAM, 400x300                                       75.4        7.0   10.77
-    | MOV [EDI],EAX into the bank window                              487.1      402.0    1.21
+    | MOV [EDI],EAX into the frame buffer (a loop of 4 instructions)      463.1      281.2    1.65
+    | the same into RAM                                               438.1      254.1    1.72
+    | MOV [EDI],AX into the frame buffer                              481.1      298.1    1.61
+    | MOV [EDI],AL into the frame buffer                              376.1      242.2    1.55
+    | ADD EBX,[ESI] from the frame buffer                             479.1      260.0    1.84
+    | the same from RAM                                               464.1      260.0    1.78
+    | fill 400x300, a REP STOSD of 200 a row                           54.0        7.7    7.06
+    | fill 800x480, one REP STOSD                                      51.1        5.2    9.73
+    | RAM to the screen, 400x300, REP MOVSD a row                       7.8        7.8    1.00
+    | scroll up a row (screen to screen, going up)                    100.5        7.7   12.98
+    | scroll down a row (screen to screen, going down)                100.3        7.6   13.20
+    | the screen to RAM, 400x300                                       75.4        5.6   13.47
+    | MOV [EDI],EAX into the bank window                              487.1      411.0    1.18
     | REP STOSD into the bank window                                   75.1       62.1    1.21
     | REP MOVSD from the bank window into it                          259.2      247.3    1.05
 PASS lfb: this tree: video memory changed only where each case stores, the marks exactly its blocks, vga_wrote
@@ -1784,17 +1785,23 @@ PASS lfb: v4.6's tree: the same checks (the cases' expectations hold for the old
 PASS lfb: every byte of video memory and RAM, every mark, vga_wrote and the registers as v4.6 leaves them
 PASS lfb: RV32 host instructions counted for the bench pieces, v4.6 and this tree (the table above)
 
-test_fast_cpu: 120 scenarios, 11507 steps, 2373093 instructions, 11507 checks, 0 failed
+test_fast_cpu: 560 scenarios, 59068 steps, 7316834 instructions, 59068 checks, 0 failed
 PASS the fast interpreter as the Korvo-1 builds it: the same as tiny386's own at every step of random guest code
-test_fast_cpu: 120 scenarios, 11507 steps, 2373093 instructions, 11507 checks, 0 failed
+test_fast_cpu: 560 scenarios, 59068 steps, 7316834 instructions, 59068 checks, 0 failed
 PASS the fast interpreter without the board header: the same
-    | (fold: 119 of 120 scenarios differ; exit status 1)
+    | (fold: 358 of 560 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (fold)
-    | (sync: 80 of 120 scenarios differ; exit status 1)
+    | (sync: 320 of 560 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (sync)
+    | (cpl: 80 of 560 scenarios differ; exit status 1)
+PASS the lockstep test catches a fault in the fast interpreter (cpl)
+    | (lfbmark: 32 of 560 scenarios differ; exit status 1)
+PASS the lockstep test catches a fault in the fast interpreter (lfbmark)
+    | (lfbwtag: 40 of 560 scenarios differ; exit status 1)
+PASS the lockstep test catches a fault in the fast interpreter (lfbwtag)
 
-host tests: 69 passed, 0 failed
+host tests: 72 passed, 0 failed
 
-real	6m20.439s
-user	5m1.051s
-sys	0m33.207s
+real	8m57.044s
+user	6m42.517s
+sys	0m35.044s

@@ -5,7 +5,8 @@ PC emulated on the M5Stack Tab5, built on tiny386), ported to this tree: `i386_f
 few hooks in `i386.c`. It does the common instructions itself, much more cheaply, and hands
 everything else to tiny386 one instruction at a time. The guest sees no difference: the same
 registers, flags, memory, faults and interrupts, at the same instruction counts. Written
-2026-10-27, on the branch `v50-fast` from `s31-v4.6`.
+2026-10-27, on the branch `v50-fast` from `s31-v4.6`; brought up to date the same day after the two
+reviews of v5.0 (section 11, and `BUILD-NOTES.md` 33.15).
 
 Tags, on every claim:
 
@@ -25,7 +26,9 @@ Tags, on every claim:
   with the same log line for line, every picture the same and the disk the same, with the fast
   interpreter on and with it off [verified, section 6]. A new host test runs the two side by side
   on random guest code and compares everything after every step; it found one difference in the
-  port, now fixed, and none since in 2,100 runs [verified, section 6].
+  port, now fixed. A review of v5.0 found a second, with a test of its own: code at privilege
+  levels 1 and 2 could use a page that tiny386 would fault on (section 11); fixed, and none since
+  in 9,520 runs of the wider test [verified, section 6].
 * **Fewer host instructions.** Counted under qemu on the board's RV32 code (section 7), on what
   the board's core 1 does: BENCH without its string piece 134.6 host instructions a guest
   instruction with v4.6, 74.7 with the fast interpreter (1.8 times fewer); the first 300 M
@@ -33,20 +36,24 @@ Tags, on every claim:
   alone (`i386.c`) the factor is 1.8 on BENCH and 2.0 on Windows [verified].
 * **On the board** a guest instruction should take roughly half the time on CPU-bound work
   (Windows booting, applications computing), so about 1.8 times the instructions a second
-  [inferred]. Drawing in the frame buffer is not faster by this alone: those stores go through
-  tiny386's store path, which another part of v5.0 makes faster (section 8) [inferred]. How fast
-  on the board is [unknown] until Plat runs it.
-* **Where it runs.** On the Korvo-1 and the DOS board the fast interpreter's loop (121 KB) and the
-  tiny386 helpers it calls most are in internal RAM; tiny386's `cpu_exec1()` (131 KB), which it
-  hands roughly one instruction in 300, moves to flash. Internal RAM left after code and static
-  data: 241,044 bytes, against v4.6's 251,846 [verified: the build's size report]. A build with
-  `cpu_exec1()` in internal RAM too leaves 113,006 [verified]; what ESP-IDF then still finds free
-  at run time is [unknown] (section 5).
-* **The switch.** `[esp] fast_cpu = 0` in the ini runs tiny386's own interpreter alone, as v4.6;
-  `1` (the default) runs the fast one. The boot console says which. Built without `I386_FAST`
-  the firmware is v4.6's interpreter only [verified].
+  [inferred]. Since the reviews the frame buffer's pages have entries in its TLB too: an
+  instruction reads the screen as it reads RAM, and a MOV or STOS stores there and sets the
+  drawing's marks itself (section 8) [verified: code, tests]. How fast on the board is [unknown]
+  until Plat runs it.
+* **Where it runs.** On the Korvo-1 and the DOS board the fast interpreter's loop (120 KB) and the
+  tiny386 helpers it calls most are in internal RAM; tiny386's `cpu_exec1()` (132 KB), which it
+  hands about one instruction in 500 on Windows' boot and one in 40 in T386MON's tests at 16
+  colours, moves to flash. Internal RAM left after code and static data: 241,444 bytes in v5.0 as
+  released, against v4.6's 251,846 [verified: the build's size report, `BUILD-NOTES.md` 33.8;
+  section 5's table has the `v50-fast` branch's own figures]. A build with `cpu_exec1()` in
+  internal RAM too leaves about 113,000 [verified on `v50-fast`]; what ESP-IDF then still finds
+  free at run time is [unknown] (section 5).
+* **The switch.** `[esp] fast_cpu = 0` in the ini runs tiny386's own interpreter alone: the same
+  guest as v4.6, but slower than v4.6, because tiny386's interpreter now runs from flash (section
+  5); `1` (the default) runs the fast one. The boot console says which. Built without `I386_FAST`
+  the firmware is v4.6's interpreter only, in internal RAM [verified].
 * **For Plat:** the boot console's new `CPU:` line and its `Internal RAM free` line; BENCH and
-  T386MON with `fast_cpu = 1` and `fast_cpu = 0` (section 9).
+  T386MON with the default `fast_cpu = 1`, against v4.6's own figures (section 9).
 
 
 ## 2. Where it came from
@@ -83,8 +90,8 @@ the tests of section 6 check each]:
 | the end of a step | after `stepcount` instructions; STI keeps the next one in, and ends the step after it with an interrupt waiting; MOV SS and POP SS keep the next one in; IRET and POPF end it with an interrupt waiting; HLT ends it | also left at a change of V86 mode, after far transfers and at any interrupt waiting after a handed-over instruction | the same as tiny386, nothing else; `cpu_exec1()` run for one instruction (`cpu->exec1_one`) reports STI, SS loads and the end of a step back (`STEP_HOLD`, `STEP_STOP`) instead of acting on them |
 | CMP or TEST, then JZ or JNZ | a JZ or JNZ right after, if taken, is part of the CMP's step (`try_jcc8()`), when the CMP was fetched the quick way | not done | done where tiny386 does it |
 | the instruction fetch | a cache of one linear page (`cpu->ifetch`), filled by `peek8()` when an instruction starts in another page | its own window | only in the page tiny386's cache holds, filled as `peek8()` fills it, and given back as it was when the first instruction of a page goes to tiny386 |
-| the TLB | 256 entries (on the boards), refilled on a miss, setting the page tables' accessed bits; the dirty bit set on every store | 1,024 entries of its own a privilege level | one entry for each of tiny386's own (and each privilege level), kept only while tiny386's holds the same page (`fast_tlb_slot()`); the dirty bit set on every store; tiny386's TLB and the page tables come out the same |
-| video memory and MMIO | through `load8()` to `store32()` and the callbacks: the frame buffer's dirty marks | partly straight into video memory | through `load8()` to `store32()` |
+| the TLB | 256 entries (on the boards), refilled on a miss, setting the page tables' accessed bits; the dirty bit set on every store; a page's rights checked alike for levels 1 to 3 | 1,024 entries of its own a privilege level | one entry for each of tiny386's own, in two tables (level 0, and levels 1 to 3, as tiny386 checks rights), kept only while tiny386's holds the same page (`fast_tlb_slot()`); the dirty bit set on every store; tiny386's TLB and the page tables come out the same |
+| video memory and MMIO | through `load8()` to `store32()` and the callbacks; v5.0's frame buffer path in them, with the drawing's dirty marks | partly straight into video memory | the VGA window through `load8()` to `store32()`; the frame buffer's pages through TLB entries (since the reviews): loads read video memory, MOV and STOS store and then set the marks as `store8()` to `store32()` do, everything else through tiny386's functions |
 | a 16 or 32-bit access across a page | a byte at a time (v4.6) | its own | to tiny386 |
 | 16-bit stack slots that wrap | each slot's offset masked on its own | one block | to tiny386 |
 | INT in real mode | ESP's top half cleared | kept | cleared |
@@ -101,8 +108,9 @@ after every step]. There is no known place where they differ.
 
 * `[esp] fast_cpu` in the ini: 1 (the default) the fast interpreter, 0 tiny386's own alone. Read
   at boot; the console says `CPU: the fast interpreter (from tab5-pc, by Yejun Yang) in front of
-  tiny386's own` or `CPU: tiny386's own interpreter alone (fast_cpu = 0), as v4.6` [verified:
-  `esp_main.c`].
+  tiny386's own` or `CPU: tiny386's own interpreter alone (fast_cpu = 0): the same guest as v4.6,
+  but slower, since it now runs from flash` [verified: `esp_main.c`]. So `fast_cpu = 0` is the
+  check that the guest behaves the same, not a measure of v4.6's speed (section 5).
 * `I386_FAST` (compile time) puts it in the build: defined in `board_korvo1.h` and
   `board_dosboard.h`. Without it, `i386.c` compiles to v4.6's code [verified: the object's
   `cpu_exec1()` the same size as v4.6's].
@@ -130,22 +138,42 @@ The Korvo-1 dual-boot app, `idf.py -B build-korvo1 -DBOARD=korvo1`, the boards' 
 | warnings (not ESP-IDF's or managed components') | 1 (`i2s_task` unused) | the same 1 | the same 1 |
 
 The DOS board's app: 249,640 bytes of internal RAM left with v4.6, 238,802 with v5.0, and the
-same warnings (none) [verified]. (These are the branch `v50-fast`'s builds; v5.0 as put together,
-with the frame buffer's path too, is in `BUILD-NOTES.md` 33.8.)
+same warnings (none) [verified]. (These are the branch `v50-fast`'s builds. v5.0 as released,
+with the frame buffer's path and the reviews' changes too, leaves 241,444 bytes on the Korvo-1
+and 239,202 on the DOS board, with `fast_exec()` at 120,198 bytes and `cpu_exec1()` at 132,126:
+`BUILD-NOTES.md` 33.8.)
 
 * **In internal RAM** (HP SRAM, which no cache stands in front of): `fast_exec()` and its jump
-  tables (2 KB), its TLB (8 KB, `fast_state0`), its helpers, and the tiny386 functions it calls
-  most: the lazy flags' readers (`get_CF()`, `get_OF()`, `get_AF()`, `get_PF()`,
-  `refresh_flags()`), `set_seg()`, `read_desc()`, `pmcall()` and `pmret()` (which v4.6 kept in
-  flash) [verified: the map]. Over the first 300 M instructions of Windows 95's boot those were
-  2.7 host instructions a guest instruction under qemu, 1.1 of them `get_CF()` [verified,
-  section 7].
-* **In flash:** `cpu_exec1()`. With the fast interpreter on, 0.29 host instructions a guest
-  instruction of Windows 95's boot are spent in it under qemu [verified], roughly one
-  instruction in 300 [inferred: against its 71.5 a guest instruction in v4.6], each
-  then through the 16 KB instruction cache; the cost of that on the board is [unknown], perhaps a
-  few per cent [inferred]. With `fast_cpu = 0` all of tiny386 runs from flash, so `fast_cpu = 0`
-  is slower than v4.6; compare speed with v4.6 itself [inferred].
+  tables (2 KB), its TLB (8 KB, `fast_state0`, in .bss), its helpers (`fast_miss()`,
+  `fast_where()`, `fast_window()`, `fast_lpgno()`, `fast_tlb_flush()`, and since the reviews
+  `fast_io_load()` and `fast_io_store()`), and the tiny386 functions it calls most: the lazy
+  flags' readers (`get_CF()`, `get_OF()`, `get_AF()`, `get_PF()`, `refresh_flags()`), `set_seg()`,
+  `read_desc()`, `pmcall()` and `pmret()` (which v4.6 kept in flash), the load and store functions
+  and the frame buffer's `lfb_stos()` and `lfb_movs()` [verified: the map]. Over the first 300 M
+  instructions of Windows 95's boot those were 2.7 host instructions a guest instruction under
+  qemu, 1.1 of them `get_CF()` [verified, section 7].
+* **In flash:** `cpu_exec1()`, and of the functions `fast_exec()` calls, nothing else [verified:
+  the disassembly of v5.0's `fast_exec()`, every call; `BUILD-NOTES.md` 33.8]. The first build of
+  v5.0 had three more there, which a review found: `fast_io_store()` (the path of every single
+  store into the frame buffer and the VGA window), `ldu32()` and `stu32()`, "static inline" copies
+  the compiler had kept out of line without `IRAM_ATTR`. The two `fast_io_` functions are now
+  `noinline` in internal RAM (inlined, as the review suggested, they made the RV32 bench's loops
+  dearer, RAM's too), and `unaligned.h`'s loads and stores are `always_inline`. The rest of
+  tiny386 that is in flash is cold: the string and page-crossing byte paths, the BCD and segment
+  limit helpers, task switches, the debug printer, and `cpui386_*()`.
+* **The hand-overs.** With the fast interpreter on, `cpu_exec1()` runs one guest instruction in
+  about 526 on Windows 95's boot (0.29 host instructions a guest instruction there under qemu,
+  about 154 for each hand-over) and one in 40 in T386MON's tests at 640x480 in 16 colours (the
+  16-colour driver's read-modify-write instructions on the VGA window) [verified: the counted
+  runs, as the board review counted them]. Each runs through core 1's 16 KB instruction cache. A
+  model of that cache (16 KB, 4 ways, 64-byte lines, fed with the counted runs; the board review's)
+  puts the cost at about 1 per cent in both, 3 to 6 per cent if the cache behaved as 2 ways
+  [verified: model; the cost of a miss, 300 to 600 cycles, inferred].
+* **`fast_cpu = 0` is slower than v4.6.** It runs all of tiny386 from flash. The same model puts
+  it at about 150 flash misses a 1,000 guest instructions on BENCH (v4.6 about 0.001), so BENCH
+  at about 1.4 to 1.7 million instructions a second where v4.6 gave about 2.2, FreeDOS's DOS calls
+  at a third to a half of v4.6's speed, and Windows' boot at a half to two thirds [inferred: the
+  model]. Compare speed with v4.6's own figures, never with `fast_cpu = 0`.
 * **Why not both in internal RAM:** that leaves 113,006 bytes before ESP-IDF's allocations at run
   time (the tasks' stacks, the USB host, the card's buffers), and the firmware has never measured
   those. v4.6 leaves 251,846, and an older note estimated about 180 KB free at run time
@@ -161,28 +189,45 @@ with the frame buffer's path too, is in `BUILD-NOTES.md` 33.8.)
 ## 6. Tests
 
 * **The host tests** (`tests/host/run.sh`): 65 pass on the branch `v50-fast`, v4.6's 61 and four
-  new [verified]; with the frame buffer's tests beside them in v5.0, 69 (`BUILD-NOTES.md` 33).
-  Section 24 (23 on `v50-fast`)
+  new [verified]; with the frame buffer's tests beside them in v5.0, 69, and 72 since the reviews
+  (`BUILD-NOTES.md` 33.7). Section 24 (23 on `v50-fast`)
   is `tests/host/cpu/test_fast_cpu.c`: two machines, one with the fast interpreter and one with
-  tiny386's `cpu_exec1()` alone, run the same random guest code (real mode with 66h and 67h,
-  protected mode with paging at level 0 and at level 3, about 20,000 instructions a run) and get
-  the same interrupts, between steps and from inside an OUT; after every step it compares the
-  registers, the lazy flags, the instruction count, CR2, tiny386's fetch cache and its whole TLB,
-  all of memory (the page tables' accessed and dirty bits too, which the guest clears without
-  INVLPG), and every port and video memory access with the instruction count at it. The code has
-  arithmetic on registers and memory (operands across pages and segment ends), shifts, multiplies
-  and divides, bit tests, string instructions with and without REP (DF either way, video memory
-  too), the stack, CMP or TEST with JZ or JNZ after, near and far jumps, calls and returns, INT and
-  IRET, PUSHF and POPF, STI and CLI, segment and SS loads, ports, the VGA window and a linear frame
-  buffer, pages that fault until a handler maps them, INVLPG and MOV CR3, and instructions only
-  tiny386 does. It runs as the Korvo-1 builds `i386.c` and without the board header, then on two
-  copies of `i386_fast.h` with a fault put in, which it must catch (it does: 119 and 80 of 120
-  runs differ) [verified].
+  tiny386's `cpu_exec1()` alone, run the same random guest code and get the same interrupts,
+  between steps and from inside an OUT; after every step it compares the registers, the lazy
+  flags, the instruction count, CR2, tiny386's fetch cache and its whole TLB, all of memory (the
+  page tables' accessed and dirty bits too, which the guest clears without INVLPG), the frame
+  buffer's marks and flag, and every port and video memory access with the instruction count at
+  it. Since the reviews each seed runs fourteen scenarios (the CPU review's own extended copy of
+  the test, taken in): real mode with 66h and 67h; 32-bit protected mode with paging at levels 0,
+  1 and 3; virtual-8086 mode at IOPL 3, and at IOPL 0 to its first sensitive instruction; 16-bit
+  protected mode with and without paging; 16-bit code on a 32-bit stack and the reverse; and four
+  hand-written cases (levels 1 and 2 reading a supervisor page that level 0 has used,
+  self-modifying real-mode code, CR0.WP set after a supervisor store into a read-only page). The
+  random code has arithmetic on registers and memory (operands across pages and segment ends),
+  shifts, multiplies and divides, bit tests, string instructions with and without REP (DF either
+  way, video memory too), the stack, CMP or TEST with JZ or JNZ after, near and far jumps, calls
+  and returns direct and indirect, PUSH from memory, INT and IRET, PUSHF and POPF, STI and CLI,
+  segment and SS loads, ports, the VGA window and a linear frame buffer, pages that fault until a
+  handler maps them, INVLPG and MOV CR3, and instructions only tiny386 does. With an odd seed the
+  CPU is given the frame buffer, with marks, as `pc.c` gives it, so the fast interpreter's entries
+  for it are compared too: loads, MOV, STOS, MOVS and REP into it and out of it, arithmetic from
+  it and into it, ARPL, and an OUT that moves the frame buffer or takes it away, as a write to the
+  VGA's BAR does. It runs as the Korvo-1 builds `i386.c` and without the board header, 560
+  scenarios each, then on five copies of `i386_fast.h` with a fault put in, which it must catch:
+  the fusion bug below, the count left behind at port accesses, levels 1 and 2 given level 3's
+  table, a MOV into the frame buffer through its entry without its marks, and a frame buffer page
+  given a plain write entry [verified: `BUILD-NOTES.md` 33.7].
 * **What it found:** the first instruction of a page that the fast interpreter hands to tiny386
   saw tiny386's fetch cache already filled, so tiny386 fused a CMP with the JZ after it where,
   alone, it would not have (4 of 60 runs, all in real mode). Fixed (the cache is given back as it
   was); none in 2,100 runs since, about 45 M instructions compared at 800,000 step ends, in three
   builds (the board's flags on x86-64, x86-64 without the board header, 32-bit x86) [verified].
+* **What the CPU review found with its wider copy** (section 11): code at levels 1 and 2 used the
+  fast interpreter's table for level 3, so an entry level 0 had made for a supervisor page let it
+  read or write where tiny386 gives a page fault. Fixed; the hand-written cases differ at their
+  first step without the fix and agree with it. Since then: 560 scenarios in each of the two
+  builds in `run.sh`, and 4,200 more in each (seeds 41 to 340, 56 M guest instructions, 641,707
+  step ends compared), no difference [verified: `BUILD-NOTES.md` 33.7].
 * **Windows 95 on the PC repro** (`~/win95-debug/pc-repro`, the pristine image copied for each run,
   v4.6's three runs of `regress46.sh`: boot to the desktop; Start, Restart; an MS-DOS mode round
   trip): with the fast interpreter on and with it off, each ends on v4.6's count of instructions
@@ -192,8 +237,8 @@ with the frame buffer's path too, is in `BUILD-NOTES.md` 33.8.)
 * **Under qemu, on the board's RV32 code** (section 7): BENCH's pieces and the first 300 M
   instructions of Windows' boot end on the same state and counts with v4.6, the fast interpreter,
   and the fast interpreter off [verified].
-* **Not tried:** the board; V86-mode and task-switch code beyond what Windows 95's runs exercise;
-  tiny386's FPU (handed over whole).
+* **Not tried:** the board; task-switch code beyond what Windows 95's runs exercise; tiny386's FPU
+  (handed over whole).
 * **The lockstep tester** (`tests/lockstep`, v5.0): v5.0 with the fast interpreter on against v4.6,
   through the boot to the desktop, Start and Restart, the MS-DOS mode round trip, BENCH, the frame
   buffer's guest and T386MON's drawing tests: no difference in any record or interrupt
@@ -211,7 +256,8 @@ Zba, Zbb and Zbs; `-O3` for `i386.c`, `vga.c`, `pc.c`, `-O2` for the rest, the K
 header), run under `qemu-riscv32-static -d in_asm,exec,nochain`, every host instruction counted by
 `jtrace`. Machine: 14M, 320K, gen 3, no FPU, the clock made of guest instructions. "core 1" leaves
 out what the board's core 0 does (drawing the picture) and the harness's own code; "i386.c" is the
-CPU alone [verified].
+CPU alone [verified]. These are the `v50-fast` branch's counts; v5.0's, before and after the
+reviews, are in `BUILD-NOTES.md` 33.6 (BENCH and Windows' boot within a few tenths of these).
 
 BENCH (FreeDOS, `BENCH.COM`):
 
@@ -275,11 +321,22 @@ This section was written on the branch `v50-fast`, before v5.0 was put together;
 33 is what happened.
 
 * **The frame buffer's fast path** went into tiny386's load and store functions, and the fast
-  interpreter's single MMIO loads and stores reach it through `load8()` to `store32()`. Its own REP
-  STOS and REP MOVS into video memory now take tiny386's v5.0 string paths too (`lfb_stos()`,
-  `lfb_movs()`, the VGA window's own calls). An instruction with an operand in video memory that is
-  not a MOV or a string instruction (`ADD EBX,[ESI]`, `AND [EDI],EAX`) is still handed to tiny386
-  whole [verified: `BUILD-NOTES.md` 33.3].
+  interpreter's single MMIO loads and stores reached it through `load8()` to `store32()`. Its own
+  REP STOS and REP MOVS into video memory now take tiny386's v5.0 string paths too (`lfb_stos()`,
+  `lfb_movs()`, the VGA window's own calls) [verified: `BUILD-NOTES.md` 33.3].
+* **Since the reviews, the frame buffer's pages are in the fast interpreter's TLB.** A page all
+  inside the frame buffer gets an entry as a RAM page does (only while tiny386's TLB holds it, the
+  rights and the dirty bit as tiny386 has them). For reads it is a host address in video memory,
+  so any instruction reads the screen as it reads RAM (`ADD EBX,[ESI]` no longer goes to tiny386).
+  For writes it is only a tag, which no RAM store path takes: MOV and single STOS find it, store
+  the bytes and then set the marks and the flag with `i386.c`'s own `lfb_marked()`, the same
+  bytes, marks and order as `store8()` to `store32()`. Every other store there (read-modify-write
+  instructions such as `AND [EDI],EAX`, single MOVS, crossing a page) still goes through tiny386's
+  store or string functions; ARPL, which writes through its read entry as tiny386 does, sets the
+  marks too. The entries go when the frame buffer moves: `cpu_cb_set_lfb()` counts its calls
+  (`lfb_gen`), and the fast interpreter compares the count after every OUT and whenever it checks
+  its TLB. The VGA window (A0000h) gets no entries: its planar memory needs `vga.c` on every
+  access [verified: `BUILD-NOTES.md` 33.3 and 33.15].
 * **The descriptor cache** was left out of v5.0: on Windows' boot it saved 0.8 per cent of host
   instructions under tiny386, about 2 per cent with the fast interpreter [inferred], under the bar
   set for it. Its branch, `v50-desc`, is kept.
@@ -292,19 +349,21 @@ This section was written on the branch `v50-fast`, before v5.0 was put together;
 1. Flash the Korvo-1 dual-boot image as usual; the boot console should say `CPU: the fast
    interpreter (from tab5-pc, by Yejun Yang) in front of tiny386's own`, and `Internal RAM free
    ... KiB` (a photograph of both, please).
-2. FreeDOS: BENCH with the default ini, then with `fast_cpu = 0` added under `[esp]`. v3.6 gave
-   2.231 million a second; v5.0 should give about 4 [inferred: section 7's factor].
-3. Windows 95 at 800x480: T386MON's tests and the speed screen, then the same with
-   `fast_cpu = 0`; and anything that looks different between the two (it should not be).
+2. FreeDOS: BENCH with the default ini. v3.6 gave 2.231 million a second; v5.0 should give about
+   4 [inferred: section 7's factor]. With `fast_cpu = 0` it will be slower than v4.6 (section 5):
+   that run only shows that the guest behaves the same.
+3. Windows 95 at 800x480: T386MON's tests and the speed screen with the default ini, against your
+   v4.6 log; and anything that looks different from v4.6 (it should not be).
 4. If anything goes wrong with `fast_cpu = 1` and not with `fast_cpu = 0`, that is a difference
-   the tests here missed: the CS:EIP on the crash screen, or what was running, helps most.
+   the tests here missed: the CS:EIP on the crash screen, or what was running, helps most. To
+   carry on at v4.6's speed meanwhile, write v4.6's app back (`TEST-PLAN.md` 18f).
 
 
 ## 10. Repeating it
 
 Scratch of this work: WSL `~/org2/v50/fast` (not in any repository).
 
-* `bash tests/host/run.sh` (69 tests in v5.0; `FCSEEDS=` sets the lockstep test's seeds, 40 by
+* `bash tests/host/run.sh` (72 tests in v5.0; `FCSEEDS=` sets the lockstep test's seeds, 40 by
   default).
 * `bash tests/lockstep/lockstep.sh REF CAND WORKLOAD OUT` (`tests/lockstep/README.md`).
 * The Windows runs: the PC repro's harness (`~/org2/pcm/canary/harness`) built from this tree
@@ -313,3 +372,35 @@ Scratch of this work: WSL `~/org2/v50/fast` (not in any repository).
 * The counts: `qh/qbuild.sh TREE OUT` (the harness cross-built, with marks), `qh/qrun.sh BIN NAME
   win|bench [trace]` (the image or BENCH's disk copied for the run and removed after), and
   `qh/qreport.py`. A traced Windows run takes 1 to 3 hours.
+
+
+## 11. After the two reviews of v5.0
+
+Two reviews of v5.0 (a CPU correctness review and a board, speed and package review) read this
+port on 2026-10-27; `BUILD-NOTES.md` 33.15 lists every finding and what was done. For the fast
+interpreter:
+
+* **Levels 1 and 2** (the CPU review's CPU-1). The port chose its TLB table by `cpl == 3`, where
+  tiny386 checks a page's rights by `cpl > 0`. An entry level 0 had made for a supervisor page
+  was then used at level 1 or 2 without tiny386's check: the guest read or wrote where tiny386
+  (and v4.6) gives a page fault. Only paged code at level 1 or 2 could see it (OS/2's IOPL code,
+  say); Windows 95 and DOS extenders use levels 0 and 3 [inferred], and the release gate never
+  reached it. Now levels 1 to 3 share one table, as tiny386's rule has it; levels 0 and 3 choose
+  the tables they chose before. The test has levels 1 and 2 now, and catches the old rule.
+* **Helpers in flash** (R1): section 5.
+* **The frame buffer's single stores and its reads** (R2): section 8. tests/host/lfb's RV32
+  bench, host instructions for each guest store or load (v4.6, v5.0 before the reviews, v5.0 now):
+  `MOV [EDI],EAX` into the frame buffer 463.1, 376.0, 281.2; `ADD EBX,[ESI]` from it 479.1, 664.0,
+  260.0; the same two on RAM 438.1, 252.1, 254.1 and 464.1, 258.0, 260.0 [verified:
+  `BUILD-NOTES.md` 33.3].
+* **`fast_cpu = 0`** (R3) is the same guest as v4.6 but slower: section 5.
+* **The test** took in the CPU review's wider copy, and the frame buffer given to the CPU (section 6).
+
+What tiny386 itself does otherwise than the 386 manual, and so both interpreters do, as v4.6 did
+[verified: read in `i386.c` and `i8042.c` by the CPU review]: no single step on the trap flag; the
+debug registers stored only; no segment limit or type checks (only null selectors fault); the A20
+gate does nothing; levels 1 and 2 are user for paging; BT with an immediate adds a byte offset,
+and a register's bit offset is unsigned; REP is never interrupted part way; a 66h near jump is
+masked by the code size; an instruction longer than 16 bytes reads on into the next physical page;
+code fetched from the cached code page is not checked again after a change of privilege level.
+Programs that depend on any of these behave as under v4.6 [inferred].

@@ -79,8 +79,10 @@ time, at 1.5 to 1.7 million instructions a second): a fast interpreter in front 
 Yejun Yang's from his tab5-pc, made to step exactly as tiny386 does (`i386_fast.h`,
 `FAST-CPU.md`, `THIRD_PARTY.md`), and the CPU's own path for loads and stores into the VBE linear
 frame buffer, with the drawing's marks kept, both put together and checked against v4.6 in
-lockstep through Windows 95 (`BUILD-NOTES.md` 33, `TEST-PLAN.md` 18). `fast_cpu = 0` under `[esp]`
-in the ini runs tiny386's own interpreter alone. The app calls itself `v5.0`. Every release is a
+lockstep through Windows 95 (`BUILD-NOTES.md` 33, `TEST-PLAN.md` 18), and the two reviews of it
+taken in (`BUILD-NOTES.md` 33.15). `fast_cpu = 0` under `[esp]` in the ini runs tiny386's own
+interpreter alone: the same guest, but from flash, so slower than v4.6. The app calls itself
+`v5.0`. Every release is a
 tag on this branch, `s31-v3` and `s31-v3.1` to `s31-v4.6`, and `s31-v5.0` once it is released
 (`README.md` beside this file).
 
@@ -316,7 +318,7 @@ board does it too is [unknown] until the first boot.
   tiny386's own, one at a time; its loop is in internal RAM and tiny386's interpreter in flash.
   The emulated processor stores into the VBE frame buffer itself, with the drawing's marks, and a
   REP STOSD or REP MOVSD there is one fill or copy a page. `[esp] fast_cpu = 0` runs tiny386's own
-  alone. On the PC a lockstep tester (`tests/lockstep`) finds no difference from v4.6, instruction
+  alone, from flash, so slower than v4.6. On the PC a lockstep tester (`tests/lockstep`) finds no difference from v4.6, instruction
   for instruction, through Windows 95's boot, a restart, MS-DOS mode, BENCH, the frame buffer's test
   guest and T386MON's drawing tests, with the fast interpreter on and off; counted on the board's
   RV32 code, core 1's work a guest instruction falls to about half (`BUILD-NOTES.md` 33,

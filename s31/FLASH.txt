@@ -45,9 +45,9 @@ state.  v5.0 (BUILD-NOTES.md 33, TEST-PLAN.md 18) answers Plat's word
 that v4.6 works and is too slow: a fast interpreter, Yejun Yang's from
 tab5-pc, in front of tiny386's own (FAST-CPU.md, THIRD_PARTY.md), and the
 emulated processor's own path into the VBE frame buffer; fast_cpu = 0
-under [esp] in the ini runs tiny386's own interpreter alone.  On the PC
-the guest sees exactly what v4.6 shows it.  The writes and the ways back
-are the same as v3.2's to v4.6's.
+under [esp] in the ini runs tiny386's own interpreter alone, from flash,
+so slower than v4.6.  On the PC the guest sees exactly what v4.6 shows
+it.  The writes and the ways back are the same as v3.2's to v4.6's.
 
 From v3.6 to v4.6 (the dual boot already in): only the app changed, so
 section 3, flash-dualboot.bat COM10 app, is all v5.0 needs.

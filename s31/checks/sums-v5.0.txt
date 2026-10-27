@@ -1,6 +1,7 @@
-SHA256SUMS of tiny386-idf v5.0 made in the staged package (WSL ~/org2/v50/pkg), and every checksum
-list checked as the package folder will be once the stage is copied over it (each file from the
-stage if it is there, else from the package folder, which was only read), 2026-10-27.
+SHA256SUMS of tiny386-idf v5.0 (after its two reviews) made in the staged package (WSL
+~/org2/v50/pkg), and every checksum list checked as the package folder will be once the stage is
+copied over it (each file from the stage if it is there, else from the package folder, which was
+only read), 2026-10-28.
 
 == the top SHA256SUMS: 187 lines (v4.6's list: 185, and FAST-CPU.md, THIRD_PARTY.md at its end), files not found: 0
   checked again file by file: 187 OK, 0 not
@@ -41,6 +42,7 @@ stage if it is there, else from the package folder, which was only read), 2026-1
   checks/counts-fast-cpu-v5.0.txt
   checks/host-tests-fast-cpu-v5.0.log
   checks/lockstep-selftest-v5.0.txt
+  checks/placement-v5.0.txt
   checks/build-sh-v5.0-run1.txt
   checks/build-sh-v5.0-run2.txt
   checks/size-korvo1-v5.0.txt

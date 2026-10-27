@@ -1,0 +1,187 @@
+v5.0 after its reviews (R1): where i386.c's functions are in the Korvo-1 and DOS board apps (the
+link map), and every call fast_exec() makes into flash (its disassembly), against the in-tree
+build of 84e17ca before the reviews (~/org2/v50/int/bt; its images were build.sh's byte for byte).
+After: the in-tree builds of 3e26085 (~/org2/v50/res/bt2), whose tiny386.elf is build.sh's byte
+for byte (reproducible-v5.0.txt). Made by ~/org2/v50/res/scripts/placement.sh, 2026-10-27.
+
+== 1e8537d (before the reviews), Korvo-1
+-- i386.c's functions in flash (0x4...), from the link map:
+   .text.__AAD_helper                       0x4000fb52 42 bytes
+   .text.__AAM_helper                       0x4000fb7c 42 bytes
+   .text.ldu32                              0x4000fba6 4 bytes
+   .text.stu32                              0x4000fbaa 22 bytes
+   .text.load_bytes.constprop.0             0x4000fbc0 586 bytes
+   .text.load_bytes.constprop.1             0x4000fe0a 258 bytes
+   .text.store_bytes.constprop.0            0x4000ff0c 258 bytes
+   .text.store_bytes.constprop.1            0x4001000e 250 bytes
+   .text.__AAA_helper                       0x40010108 228 bytes
+   .text.__AAS_helper                       0x400101ec 232 bytes
+   .text.cpu_debug                          0x400102d4 1158 bytes
+   .text.__LSEGw_helper                     0x4001075a 496 bytes
+   .text.__LSEGd_helper                     0x4001094a 492 bytes
+   .text.__DAA_helper                       0x40010b36 568 bytes
+   .text.__DAS_helper                       0x40010d6e 606 bytes
+   .text.__XLAT_helper                      0x40010fcc 388 bytes
+   .text.check_ioperm                       0x40011150 402 bytes
+   .text.fast_io_store                      0x400112e2 510 bytes
+   .text.lldt_check                         0x400114e0 612 bytes
+   .text.verrw_helper                       0x40011744 726 bytes
+   .text.larsl_helper                       0x40011a1a 942 bytes
+   .text.cpu_abort                          0x40011dc8 66 bytes
+   .text.cpu_abort_at.constprop.0           0x40011e0a 68 bytes
+   .text.cpu_abort_at.constprop.1           0x40011e4e 68 bytes
+   .text.cpu_abort_at.constprop.2           0x40011e92 68 bytes
+   .text.task_switch.isra.0                 0x40011ed6 1680 bytes
+   .text.cpu_abort_at.constprop.3           0x40012566 68 bytes
+   .text.cpu_store8                         0x400125aa 438 bytes
+   .text.cpu_load16                         0x40012760 492 bytes
+   .text.cpu_store16                        0x4001294c 546 bytes
+   .text.cpu_load32                         0x40012b6e 490 bytes
+   .text.cpu_store32                        0x40012d58 546 bytes
+   .text.cpu_exec1                          0x40012f7a 132126 bytes
+   .text.cpui386_step                       0x40033398 174 bytes
+   .text.cpu_setax                          0x40033446 4 bytes
+   .text.cpu_setexc                         0x4003344a 10 bytes
+   .text.cpu_setflags                       0x40033454 76 bytes
+   .text.cpu_getflags                       0x400334a0 38 bytes
+   .text.cpui386_reset                      0x400334c6 332 bytes
+   .text.cpui386_reset_pm                   0x40033612 88 bytes
+   .text.cpui386_set_gpr                    0x4003366a 8 bytes
+   .text.cpui386_set_fast                   0x40033672 30 bytes
+   .text.cpui386_get_fast                   0x40033690 6 bytes
+   .text.cpui386_new                        0x40033696 352 bytes
+   .text.cpui386_enable_fpu                 0x400337f6 26 bytes
+-- fast_exec at 0x2f008bd6, 120432 bytes
+-- what fast_exec calls outside internal RAM (jal and tail call targets at 0x4...):
+        7 4000fba6 <ldu32>
+        2 4000fbaa <stu32>
+        3 4000fbc0 <load_bytes.constprop.0>
+        3 4000fe0a <load_bytes.constprop.1>
+        4 400112e2 <fast_io_store>
+        1 40012f7a <cpu_exec1>
+   fast_io_store          400112e2 510 bytes
+   ldu32                  4000fba6 4 bytes
+   stu32                  4000fbaa 22 bytes
+   fast_miss              2f004318 246 bytes
+   fast_miss.constprop.0  2f00440e 230 bytes
+   fast_miss.constprop.1  2f0044f4 208 bytes
+   fast_where             2f0045c4 158 bytes
+   fast_window            2f0041b0 360 bytes
+   fast_lpgno             2f003fec 452 bytes
+   fast_tlb_flush         2f002da4 66 bytes
+   lfb_stos               2f003548 332 bytes
+   lfb_movs               2f0032f8 374 bytes
+
+== after the reviews (3e26085), Korvo-1
+-- i386.c's functions in flash (0x4...), from the link map:
+   .text.__AAD_helper                       0x4000fb56 42 bytes
+   .text.__AAM_helper                       0x4000fb80 42 bytes
+   .text.load_bytes.constprop.0             0x4000fbaa 586 bytes
+   .text.load_bytes.constprop.1             0x4000fdf4 258 bytes
+   .text.store_bytes.constprop.0            0x4000fef6 258 bytes
+   .text.store_bytes.constprop.1            0x4000fff8 250 bytes
+   .text.__AAA_helper                       0x400100f2 228 bytes
+   .text.__AAS_helper                       0x400101d6 232 bytes
+   .text.cpu_debug                          0x400102be 1158 bytes
+   .text.__LSEGw_helper                     0x40010744 496 bytes
+   .text.__LSEGd_helper                     0x40010934 492 bytes
+   .text.__DAA_helper                       0x40010b20 568 bytes
+   .text.__DAS_helper                       0x40010d58 606 bytes
+   .text.__XLAT_helper                      0x40010fb6 388 bytes
+   .text.check_ioperm                       0x4001113a 402 bytes
+   .text.lldt_check                         0x400112cc 612 bytes
+   .text.verrw_helper                       0x40011530 726 bytes
+   .text.larsl_helper                       0x40011806 942 bytes
+   .text.cpu_abort                          0x40011bb4 66 bytes
+   .text.cpu_abort_at.constprop.0           0x40011bf6 68 bytes
+   .text.cpu_abort_at.constprop.1           0x40011c3a 68 bytes
+   .text.cpu_abort_at.constprop.2           0x40011c7e 68 bytes
+   .text.task_switch.isra.0                 0x40011cc2 1680 bytes
+   .text.cpu_abort_at.constprop.3           0x40012352 68 bytes
+   .text.cpu_store8                         0x40012396 438 bytes
+   .text.cpu_load16                         0x4001254c 492 bytes
+   .text.cpu_store16                        0x40012738 546 bytes
+   .text.cpu_load32                         0x4001295a 490 bytes
+   .text.cpu_store32                        0x40012b44 546 bytes
+   .text.cpu_exec1                          0x40012d66 132126 bytes
+   .text.cpui386_step                       0x40033184 174 bytes
+   .text.cpu_setax                          0x40033232 4 bytes
+   .text.cpu_setexc                         0x40033236 10 bytes
+   .text.cpu_setflags                       0x40033240 76 bytes
+   .text.cpu_getflags                       0x4003328c 38 bytes
+   .text.cpui386_reset                      0x400332b2 332 bytes
+   .text.cpui386_reset_pm                   0x400333fe 88 bytes
+   .text.cpui386_set_gpr                    0x40033456 8 bytes
+   .text.cpui386_set_fast                   0x4003345e 30 bytes
+   .text.cpui386_get_fast                   0x4003347c 6 bytes
+   .text.cpui386_new                        0x40033482 352 bytes
+   .text.cpui386_enable_fpu                 0x400335e2 26 bytes
+-- fast_exec at 0x2f008e0e, 120198 bytes
+-- what fast_exec calls outside internal RAM (jal and tail call targets at 0x4...):
+        1 40012d66 <cpu_exec1>
+   fast_io_store          2f0059b2 518 bytes
+   fast_io_load           2f005160 348 bytes
+   fast_miss              2f00433c 350 bytes
+   fast_where             2f00449a 158 bytes
+   fast_window            2f0041d4 360 bytes
+   fast_lpgno             2f004010 452 bytes
+   fast_tlb_flush         2f002da4 72 bytes
+   lfb_stos               2f0034ec 332 bytes
+   lfb_movs               2f00331c 374 bytes
+
+== after the reviews (3e26085), DOS board
+-- i386.c's functions in flash (0x4...), from the link map:
+   .text.__AAD_helper                       0x40012ebc 42 bytes
+   .text.__AAM_helper                       0x40012ee6 42 bytes
+   .text.load_bytes.constprop.0             0x40012f10 586 bytes
+   .text.load_bytes.constprop.1             0x4001315a 258 bytes
+   .text.store_bytes.constprop.0            0x4001325c 258 bytes
+   .text.store_bytes.constprop.1            0x4001335e 250 bytes
+   .text.__AAA_helper                       0x40013458 228 bytes
+   .text.__AAS_helper                       0x4001353c 232 bytes
+   .text.cpu_debug                          0x40013624 1158 bytes
+   .text.__LSEGw_helper                     0x40013aaa 496 bytes
+   .text.__LSEGd_helper                     0x40013c9a 492 bytes
+   .text.__DAA_helper                       0x40013e86 568 bytes
+   .text.__DAS_helper                       0x400140be 606 bytes
+   .text.__XLAT_helper                      0x4001431c 388 bytes
+   .text.check_ioperm                       0x400144a0 402 bytes
+   .text.lldt_check                         0x40014632 612 bytes
+   .text.verrw_helper                       0x40014896 726 bytes
+   .text.larsl_helper                       0x40014b6c 942 bytes
+   .text.cpu_abort                          0x40014f1a 66 bytes
+   .text.cpu_abort_at.constprop.0           0x40014f5c 68 bytes
+   .text.cpu_abort_at.constprop.1           0x40014fa0 68 bytes
+   .text.cpu_abort_at.constprop.2           0x40014fe4 68 bytes
+   .text.task_switch.isra.0                 0x40015028 1680 bytes
+   .text.cpu_abort_at.constprop.3           0x400156b8 68 bytes
+   .text.cpu_store8                         0x400156fc 438 bytes
+   .text.cpu_load16                         0x400158b2 492 bytes
+   .text.cpu_store16                        0x40015a9e 546 bytes
+   .text.cpu_load32                         0x40015cc0 490 bytes
+   .text.cpu_store32                        0x40015eaa 546 bytes
+   .text.cpu_exec1                          0x400160cc 132126 bytes
+   .text.cpui386_step                       0x400364ea 174 bytes
+   .text.cpu_setax                          0x40036598 4 bytes
+   .text.cpu_setexc                         0x4003659c 10 bytes
+   .text.cpu_setflags                       0x400365a6 76 bytes
+   .text.cpu_getflags                       0x400365f2 38 bytes
+   .text.cpui386_reset                      0x40036618 332 bytes
+   .text.cpui386_reset_pm                   0x40036764 88 bytes
+   .text.cpui386_set_gpr                    0x400367bc 8 bytes
+   .text.cpui386_set_fast                   0x400367c4 30 bytes
+   .text.cpui386_get_fast                   0x400367e2 6 bytes
+   .text.cpui386_new                        0x400367e8 352 bytes
+   .text.cpui386_enable_fpu                 0x40036948 26 bytes
+-- fast_exec at 0x2f008e1c, 120198 bytes
+-- what fast_exec calls outside internal RAM (jal and tail call targets at 0x4...):
+        1 400160cc <cpu_exec1>
+   fast_io_store          2f0059c0 518 bytes
+   fast_io_load           2f00516e 348 bytes
+   fast_miss              2f00434a 350 bytes
+   fast_where             2f0044a8 158 bytes
+   fast_window            2f0041e2 360 bytes
+   fast_lpgno             2f00401e 452 bytes
+   fast_tlb_flush         2f002db2 72 bytes
+   lfb_stos               2f0034fa 332 bytes
+   lfb_movs               2f00332a 374 bytes

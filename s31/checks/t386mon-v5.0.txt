@@ -1,3 +1,6 @@
+Before the reviews of v5.0 (84e17ca's code). After them the lockstep's t386mon workload, the same
+keys, found no difference from v4.6 again (lockstep-v5.0.txt); these runs were not repeated.
+
 v5.0: T386MON 1.2 in Windows 95 on the PC repro's harness (esp flavour, rv). T386MON.EXE built from
 D:\Repos\T386Mon at its tag v1.2.0 by its build.sh (SHA-256 0cef24f7c1244f141aa4be4b7f4166372cc4917f6ccf9588483c5be91cfedf24),
 put in the root of a copy of the pristine image (mcopy); the run's own copy deleted after T386MON.LOG

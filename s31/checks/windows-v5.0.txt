@@ -1,31 +1,32 @@
-v5.0: Windows 95 on the PC repro's harness (~/org2/pcm/canary/harness, esp flavour, rv), the
-three runs of v4.6's regress46.sh with its options (b1: boot to the desktop and 120 s; restart:
-Start, Shut Down, Restart; msdos: Restart in MS-DOS mode, MEM, DIR, EXIT), each on a fresh copy
-of the pristine image, deleted after the run (regress50int.sh). v5.0 at 84e17ca (the code of
-31550d7) built twice: as it is (the fast interpreter on) and with -DI386_FAST_DEFAULT=0; v4.6 at
-35a201c built the same way. 2026-10-27, WSL. The runs' pictures and logs stay in WSL
-(~/org2/v50/int/reg/runs): they show Windows' screen and are not for publishing.
+v5.0 after its two reviews: Windows 95 on the PC repro's harness (~/org2/pcm/canary/harness, esp
+flavour, rv), the three runs of v4.6's regress46.sh with its options (b1: boot to the desktop
+and 120 s; restart: Start, Shut Down, Restart; msdos: Restart in MS-DOS mode, MEM, DIR, EXIT),
+each on a fresh copy of the pristine image, deleted after the run (~/org2/v50/res/scripts/
+regress.sh, the integration's regress50int.sh with its own folders). v5.0 at 3e26085 built
+twice: as it is (the fast interpreter on) and with -DI386_FAST_DEFAULT=0. 2026-10-27, WSL. The runs'
+pictures and logs stay in WSL (~/org2/v50/res/reg/runs): they show Windows' screen and are not
+for publishing.
 
-final-fast-b1          END t=331.032 s insns=588301033 | taskbar first seen at t=211.032
-final-off-b1           END t=331.032 s insns=588301033 | taskbar first seen at t=211.032
-final-fast-msdos       END t=1411.032 s insns=1337723352 | taskbar first seen at t=211.032
-final-fast-restart     END t=1411.032 s insns=1304341904 | taskbar first seen at t=211.032
-final-off-msdos        END t=1411.032 s insns=1337723352 | taskbar first seen at t=211.032
-final-off-restart      END t=1411.032 s insns=1304341904 | taskbar first seen at t=211.032
+g2-fast-b1             END t=331.032 s insns=588301033 | taskbar first seen at t=211.032 | 10 s
+g2-off-b1              END t=331.032 s insns=588301033 | taskbar first seen at t=211.032 | 10 s
+g2-fast-msdos          END t=1411.032 s insns=1337723352 | taskbar first seen at t=211.032 | 24 s
+g2-fast-restart        END t=1411.032 s insns=1304341904 | taskbar first seen at t=211.032 | 25 s
+g2-off-msdos           END t=1411.032 s insns=1337723352 | taskbar first seen at t=211.032 | 28 s
+g2-off-restart         END t=1411.032 s insns=1304341904 | taskbar first seen at t=211.032 | 29 s
 reference (v4.6): b1 END insns=588301033, restart 1304341904, msdos 1337723352
-final-fast-b1          outcome: outcome: desktop (desktop seen at t=211 s)
-final-fast-restart     outcome: outcome: desktop (desktop seen at t=211 s)
-final-fast-msdos       outcome: outcome: desktop (desktop seen at t=211 s)
-final-off-b1           outcome: outcome: desktop (desktop seen at t=211 s)
-final-off-restart      outcome: outcome: desktop (desktop seen at t=211 s)
-final-off-msdos        outcome: outcome: desktop (desktop seen at t=211 s)
+g2-fast-b1             outcome: outcome: desktop (desktop seen at t=211 s) | diskcheck: diskcheck.txt 
+g2-fast-restart        outcome: outcome: desktop (desktop seen at t=211 s) | diskcheck: diskcheck.txt 
+g2-fast-msdos          outcome: outcome: desktop (desktop seen at t=211 s) | diskcheck: diskcheck.txt 
+g2-off-b1              outcome: outcome: desktop (desktop seen at t=211 s) | diskcheck: diskcheck.txt 
+g2-off-restart         outcome: outcome: desktop (desktop seen at t=211 s) | diskcheck: diskcheck.txt 
+g2-off-msdos           outcome: outcome: desktop (desktop seen at t=211 s) | diskcheck: diskcheck.txt 
+done
 
-against v4.6's own runs (the logs compared with host seconds and the pool's address taken out;
-every picture compared byte for byte; the disk checks of the image after each run):
-b1 fast: diskcheck same, log same, pictures 11, differing 0; END t=331.032 s insns=588301033
-b1 off: diskcheck same, log same, pictures 11, differing 0; END t=331.032 s insns=588301033
-restart fast: diskcheck same, log same, pictures 149, differing 0; END t=1411.032 s insns=1304341904
-restart off: diskcheck same, log same, pictures 149, differing 0; END t=1411.032 s insns=1304341904
-msdos fast: diskcheck same, log same, pictures 150, differing 0; END t=1411.032 s insns=1337723352
-msdos off: diskcheck same, log same, pictures 150, differing 0; END t=1411.032 s insns=1337723352
-
+Against the same runs before the reviews (~/org2/v50/int/reg/runs/final-*, which were v4.6's
+byte for byte but for host seconds: BUILD-NOTES.md 33.5):
+  fast     b1       pictures  11, the same bytes  11; disk check the same; log lines that differ (host seconds and addresses aside) 0
+  fast     restart  pictures 149, the same bytes 149; disk check the same; log lines that differ (host seconds and addresses aside) 0
+  fast     msdos    pictures 150, the same bytes 150; disk check the same; log lines that differ (host seconds and addresses aside) 0
+  off      b1       pictures  11, the same bytes  11; disk check the same; log lines that differ (host seconds and addresses aside) 0
+  off      restart  pictures 149, the same bytes 149; disk check the same; log lines that differ (host seconds and addresses aside) 0
+  off      msdos    pictures 150, the same bytes 150; disk check the same; log lines that differ (host seconds and addresses aside) 0
