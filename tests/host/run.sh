@@ -829,14 +829,20 @@ fi
 # tests/host/cpu/test_fast_cpu.c: two machines, one with the fast
 # interpreter (i386_fast.h, from tab5-pc) and one with tiny386's cpu_exec1()
 # alone, run the same random guest code (real mode, protected mode with
-# paging at levels 0 and 3) with the same interrupts, and after every step
-# their registers, lazy flags, instruction counts, CR2, tiny386's fetch
-# cache and TLB, all memory and every port and video memory access (with
-# the count at the access) must be the same.  As the Korvo-1 builds i386.c
-# and without the board header.  Then two copies of i386_fast.h with a
-# fault put in, which the test has to catch: CMP fused with a JZ after it
-# where tiny386 fetched the CMP the slow way (a bug found by this test), and
-# the instruction count left behind at port accesses.
+# paging at levels 0, 1 and 3, virtual-8086 mode, 16-bit protected mode with
+# and without paging, mixed code and stack sizes; since the v5.0 reviews,
+# with the frame buffer given to the CPU for odd seeds) and four
+# hand-written cases, with the same interrupts, and after every step their
+# registers, lazy flags, instruction counts, CR2, tiny386's fetch cache and
+# TLB, all memory, the frame buffer's marks and every port and video memory
+# access (with the count at the access) must be the same.  As the Korvo-1
+# builds i386.c and without the board header.  Then copies of i386_fast.h
+# with a fault put in, which the test has to catch: CMP fused with a JZ
+# after it where tiny386 fetched the CMP the slow way (a bug found by this
+# test), the instruction count left behind at port accesses, levels 1 and 2
+# given level 3's TLB (the CPU review's finding), a MOV into the frame
+# buffer through its TLB entry without its marks, and a frame buffer page
+# given a plain write entry.
 echo
 FCSEEDS=${FCSEEDS:-40}
 fcbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_fast_cpu-name
@@ -855,7 +861,10 @@ fcbuild plain "$TREE" -DI386_ALIGNED_ONLY -DI386_ENABLE_FPU
 st=$?
 grep "FAIL\|^test_fast_cpu" "$OUT/fast-cpu-plain.log"
 result $st "the fast interpreter without the board header: the same"
-for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN();$/\t(void) 0;/'; do
+for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN();$/\t(void) 0;/' \
+         cpl:'s/cpu->cpl > 0\];/cpu->cpl == 3];/' \
+         lfbmark:'/^lfb_st: {/,/NEXT; }/s/^\tlfb_marked(cpu, .*$/\t(void) 0;/' \
+         lfbwtag:'s/^\t\t\te->wtag = pg | FAST_TAG_LFB;$/\t\t\te->wtag = pg;/'; do
     mname=${m%%:*}
     mkdir -p "$OUT/mutant-$mname"
     cp "$TREE/i386.c" "$TREE/i386.h" "$OUT/mutant-$mname/"
@@ -868,7 +877,7 @@ for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN
     fcbuild "mutant-$mname" "$OUT/mutant-$mname" $PCBOARD
     "$OUT/test_fast_cpu-mutant-$mname" $FCSEEDS > "$OUT/fast-cpu-mutant-$mname.log" 2>&1
     st=$?
-    echo "    | ($mname: $(grep -c FAIL "$OUT/fast-cpu-mutant-$mname.log") of $((FCSEEDS * 3)) scenarios differ; exit status $st)"
+    echo "    | ($mname: $(grep -c FAIL "$OUT/fast-cpu-mutant-$mname.log") of $(sed -n 's/^test_fast_cpu: \([0-9]*\) scenarios.*/\1/p' "$OUT/fast-cpu-mutant-$mname.log") scenarios differ; exit status $st)"
     [ $st != 0 ]
     result $? "the lockstep test catches a fault in the fast interpreter ($mname)"
 done
