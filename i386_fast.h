@@ -62,7 +62,10 @@
  * - Video memory and other MMIO go through tiny386's load and store
  *   functions (load8() ... store32()), so the frame buffer's dirty marks
  *   are set as by tiny386 (tab5-pc's own direct writes to video memory are
- *   left out), and the translator's hooks are gone.
+ *   left out), and the translator's hooks are gone.  REP STOS and REP MOVS
+ *   with the VBE linear frame buffer at one end go through tiny386's own
+ *   lfb_stos() and lfb_movs() (v5.0's frame buffer path in i386.c), as
+ *   tiny386's string loops do.
  * - Stack slots that wrap around a 16-bit stack, INT's ESP, BT with an
  *   immediate beyond the operand, ARPL's write, protected-mode loads of SS
  *   and a failed segment load are done as tiny386 does them.
@@ -1567,8 +1570,8 @@ movs_io:   /* either side may be MMIO: the source looked up first and the
 		if (adsz16 && (dir > 0 ? (si > di ? si : di) + cnt * n > 0x10000 : (si < di ? si : di) < (cnt - 1) * n))
 			goto slow;   /* the piece would wrap around the segment: tiny386 does it its way */
 		u8 *s, *d;
-		FPTR(s, ss, si, n, 0);
-		FPTR(d, SEG_ES, di, n, 1);
+		FPTR_IO(s, ss, si, n, 0, movs_rep_io);
+		FPTR_IO(d, SEG_ES, di, n, 1, movs_rep_io);
 		if (dir > 0 && (d + cnt * n <= s || d >= s + cnt * n)) {
 			memcpy(d, s, cnt * n);
 		} else {
@@ -1576,6 +1579,26 @@ movs_io:   /* either side may be MMIO: the source looked up first and the
 				if (n == 1) fs8(d, fm8(s)); else if (n == 2) fs16(d, fm16(s)); else fs32(d, fm32(s));
 			}
 		}
+		goto movs_rep_next;
+movs_rep_io: {   /* MMIO at one end or both (v5.0): with the linear frame
+		    buffer at one end and it or RAM at the other, the page's
+		    part in one go, with its marks, as tiny386's MOVS_helper2()
+		    does it (lfb_movs() in i386.c); anything else (the VGA
+		    window) goes to tiny386.  The source is looked up first, as
+		    tiny386 translates it first, and nothing is read before
+		    both ends are known. */
+			uword ps, pd;
+			int ks = fast_where(cpu, ftlb, nullsegs, ss, si, n, 0, &s, &ps);
+			if (!ks) goto slow;
+			int kd = fast_where(cpu, ftlb, nullsegs, SEG_ES, di, n, 1, &d, &pd);
+			if (!kd) goto slow;
+			if (ks == 1) ps = (uword) (s - (u8 *) cpu->phys_mem);
+			if (kd == 1) pd = (uword) (d - (u8 *) cpu->phys_mem);
+			if (!(in_high_iomem(ps) || in_high_iomem(pd)) ||
+			    !lfb_movs(cpu, ps, pd, n, dir, cnt))
+				goto slow;
+		}
+movs_rep_next:
 		SET_SI(si + cnt * dir);
 		SET_DI(di + cnt * dir);
 		SET_CX(CX_ - cnt);
@@ -1612,10 +1635,24 @@ stos_io: {
 			if (n == 1) fs8(d, v); else if (n == 2) fs16(d, v); else fs32(d, v);
 		}
 		goto stos_rep_next;
-stos_rep_io: {   /* MMIO (video memory: a game may clear its floor and ceiling so):
-		    the page's part, an element at a time, through tiny386's store as STOS_helper2() */
+stos_rep_io: {   /* MMIO: the page's part as tiny386's STOS_helper2() does it
+		    (v5.0): in the linear frame buffer in one go, with its marks
+		    (lfb_stos() in i386.c); in the VGA window (a game clearing
+		    the screen, or its floor and ceiling) the window's own call
+		    for each element; anything else an element at a time
+		    through tiny386's store */
 			SYNC_IN();
-			for (uword i = 0; i < cnt; i++) fast_io_store(cpu, mpaddr + i * dir, n, v);
+			uword a = mpaddr;
+			if (in_high_iomem(a) && lfb_stos(cpu, a, v, n, dir, cnt))
+				;
+			else if (in_window(a) && n == 4 && cpu->cb.iomem_write32)
+				for (uword i = 0; i < cnt; i++, a += dir) cpu->cb.iomem_write32(cpu->cb.iomem, a, v);
+			else if (in_window(a) && n == 2 && cpu->cb.iomem_write16)
+				for (uword i = 0; i < cnt; i++, a += dir) cpu->cb.iomem_write16(cpu->cb.iomem, a, v);
+			else if (in_window(a) && n == 1 && cpu->cb.iomem_write8)
+				for (uword i = 0; i < cnt; i++, a += dir) cpu->cb.iomem_write8(cpu->cb.iomem, a, v);
+			else
+				for (uword i = 0; i < cnt; i++) fast_io_store(cpu, mpaddr + i * dir, n, v);
 		}
 stos_rep_next:
 		SET_DI(di + cnt * dir);
