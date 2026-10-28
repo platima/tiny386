@@ -1,4 +1,4 @@
-# The fast interpreter (v5.0)
+# The fast interpreter (v5.0, v5.1)
 
 v5.0 puts a fast interpreter in front of tiny386's own. It is Yejun Yang's, from his tab5-pc (a
 PC emulated on the M5Stack Tab5, built on tiny386), ported to this tree: `i386_fast.h`, with a
@@ -6,7 +6,9 @@ few hooks in `i386.c`. It does the common instructions itself, much more cheaply
 everything else to tiny386 one instruction at a time. The guest sees no difference: the same
 registers, flags, memory, faults and interrupts, at the same instruction counts. Written
 2026-10-27, on the branch `v50-fast` from `s31-v4.6`; brought up to date the same day after the two
-reviews of v5.0 (section 11, and `BUILD-NOTES.md` 33.15).
+reviews of v5.0 (section 11, and `BUILD-NOTES.md` 33.15). v5.1 (2026-10-28) makes it cheaper with
+the same guest, four work items put together in section 13, and puts tiny386's `cpu_exec1()` back
+in internal RAM (section 5); section 12 is v5.1's profiler.
 
 Tags, on every claim:
 
@@ -29,31 +31,38 @@ Tags, on every claim:
   port, now fixed. A review of v5.0 found a second, with a test of its own: code at privilege
   levels 1 and 2 could use a page that tiny386 would fault on (section 11); fixed, and none since
   in 9,520 runs of the wider test [verified, section 6].
-* **Fewer host instructions.** Counted under qemu on the board's RV32 code (section 7), on what
-  the board's core 1 does: BENCH without its string piece 134.6 host instructions a guest
-  instruction with v4.6, 74.7 with the fast interpreter (1.8 times fewer); the first 300 M
-  instructions of Windows 95's boot 155.3 and 81.0 (1.9 times fewer). On the CPU's own code
-  alone (`i386.c`) the factor is 1.8 on BENCH and 2.0 on Windows [verified].
-* **On the board** a guest instruction should take roughly half the time on CPU-bound work
-  (Windows booting, applications computing), so about 1.8 times the instructions a second
-  [inferred]. Since the reviews the frame buffer's pages have entries in its TLB too: an
-  instruction reads the screen as it reads RAM, and a MOV or STOS stores there and sets the
-  drawing's marks itself (section 8) [verified: code, tests]. How fast on the board is [unknown]
-  until Plat runs it.
-* **Where it runs.** On the Korvo-1 and the DOS board the fast interpreter's loop (120 KB) and the
-  tiny386 helpers it calls most are in internal RAM; tiny386's `cpu_exec1()` (132 KB), which it
-  hands about one instruction in 500 on Windows' boot and one in 40 in T386MON's tests at 16
-  colours, moves to flash. Internal RAM left after code and static data: 241,444 bytes in v5.0 as
-  released, against v4.6's 251,846 [verified: the build's size report, `BUILD-NOTES.md` 33.8;
-  section 5's table has the `v50-fast` branch's own figures]. A build with `cpu_exec1()` in
-  internal RAM too leaves about 113,000 [verified on `v50-fast`]; what ESP-IDF then still finds
-  free at run time is [unknown] (section 5).
+* **Fewer host instructions.** Counted under qemu on the board's RV32 code (section 7), on what the
+  board's core 1 does: BENCH without its string piece 134.6 host instructions a guest instruction
+  with v4.6, 74.7 with the fast interpreter (1.8 times fewer); the first 300 M instructions of
+  Windows 95's boot 155.3 and 81.0 (1.9 times fewer). On the CPU's own code alone (`i386.c`) the
+  factor is 1.8 on BENCH and 2.0 on Windows [verified]. v5.1, counted the same way but with the
+  board's own compiler on `i386.c` (ESP-IDF's GCC 16.1; the figures above are the Linux route's GCC
+  15.3): BENCH 71.0 with v5.0 and 59.8 with v5.1, Windows' boot 76.5 and 62.4, T386MON's tests at
+  800x480 in 16 bits 131.5 and 99.8 (the eight tests together) [verified: section 13.5].
+* **On the board** v5.0 runs Windows' CPU-bound work at about 1.7 times v4.6's rate: in Plat's
+  T386MON log at 800x480 in 16 bits the guest ran 2.4 to 2.9 million instructions a busy second
+  against v4.6's 1.5 to 1.7, the text test 5.01 pictures a second against 2.91 [reported]. The frame
+  buffer's pages have entries in its TLB: an instruction reads the screen as it reads RAM, and a MOV
+  or STOS stores there and sets the drawing's marks itself (section 8) [verified: code, tests]. v5.1
+  should be about 1.15 to 1.2 times v5.0 again on Windows' own work (T386MON's text tests 5.8 to 6.0
+  pictures a second against v5.0's 5.01), more in fill, scroll and the copies as far as PSRAM allows
+  [inferred: `BUILD-NOTES.md` 34.7]; [unknown] until Plat's board runs it.
+* **Where it runs.** On the Korvo-1 and the DOS board the fast interpreter's loop (121 KB), its TLB
+  and the tiny386 helpers it calls most are in internal RAM. In v5.0 tiny386's `cpu_exec1()` (132
+  KB), which it hands about one instruction in 500 on Windows' boot and one in 40 in T386MON's
+  tests at 16 colours, ran from flash; since v5.1 it is in internal RAM again
+  (`I386_FAST_EXEC1_IRAM` in both board headers), with ESP-IDF code that need not be there moved
+  to flash to make room. Internal RAM left after code and static data: 124,303 bytes on the
+  Korvo-1 in v5.1 (v5.0 241,444, v4.6 251,846) and 126,475 on the DOS board [verified: the
+  size reports, `BUILD-NOTES.md` 34.8]; what ESP-IDF finds free at run time, at its least, is
+  [unknown] until the board's new least-free line (section 5).
 * **The switch.** `[esp] fast_cpu = 0` in the ini runs tiny386's own interpreter alone: the same
-  guest as v4.6, but slower than v4.6, because tiny386's interpreter now runs from flash (section
-  5); `1` (the default) runs the fast one. The boot console says which. Built without `I386_FAST`
-  the firmware is v4.6's interpreter only, in internal RAM [verified].
-* **For Plat:** the boot console's new `CPU:` line and its `Internal RAM free` line; BENCH and
-  T386MON with the default `fast_cpu = 1`, against v4.6's own figures (section 9).
+  guest as v4.6, and since v5.1 from internal RAM again, so about v4.6's speed [inferred] (in v5.0
+  it ran from flash and was slower, section 5); `1` (the default) runs the fast one. The boot
+  console says which. Built without `I386_FAST` the firmware is v4.6's interpreter only, in internal
+  RAM [verified].
+* **For Plat:** `TEST-PLAN.md` 20 (section 9): the boot console's memory lines with the new
+  least-free figure, T386MON at 800x480 against the v5.0 log, and a profile run.
 
 
 ## 2. Where it came from
@@ -108,9 +117,11 @@ after every step]. There is no known place where they differ.
 
 * `[esp] fast_cpu` in the ini: 1 (the default) the fast interpreter, 0 tiny386's own alone. Read
   at boot; the console says `CPU: the fast interpreter (from tab5-pc, by Yejun Yang) in front of
-  tiny386's own` or `CPU: tiny386's own interpreter alone (fast_cpu = 0): the same guest as v4.6,
-  but slower, since it now runs from flash` [verified: `esp_main.c`]. So `fast_cpu = 0` is the
-  check that the guest behaves the same, not a measure of v4.6's speed (section 5).
+  tiny386's own` or, with 0, `CPU: tiny386's own interpreter alone (fast_cpu = 0): the same guest
+  as v4.6, from internal RAM as in v4.6.` (v5.1; v5.0 said `but slower, since it now runs from
+  flash`, and a build without `I386_FAST_EXEC1_IRAM` still says so) [verified: `esp_main.c`]. In
+  v5.0 `fast_cpu = 0` was the check that the guest behaves the same, not a measure of v4.6's
+  speed; since v5.1 it should be about v4.6's speed again [inferred] (section 5).
 * `I386_FAST` (compile time) puts it in the build: defined in `board_korvo1.h` and
   `board_dosboard.h`. Without it, `i386.c` compiles to v4.6's code [verified: the object's
   `cpu_exec1()` the same size as v4.6's].
@@ -119,13 +130,39 @@ after every step]. There is no known place where they differ.
 * `cpui386_set_fast(cpu, on)` and `cpui386_get_fast(cpu)` (`i386.h`) change and read it for one
   CPU, at any step boundary: a lockstep tester can run one machine each way.
 * `I386_FAST_EXEC1_IRAM` (compile time, in the board header) keeps `cpu_exec1()` in internal RAM
-  as well (section 5).
+  as well; both board headers define it since v5.1 (section 5). `I386_EXEC1_SMALL` (off)
+  compiles `cpu_exec1()` for size, 32,000 bytes back, for a board short of internal RAM; the
+  profiler's `PROFILE_IN_FLASH` (off) puts its code in flash, about 2 KB back.
 
 
 ## 5. Where it runs on the S31
 
-The Korvo-1 dual-boot app, `idf.py -B build-korvo1 -DBOARD=korvo1`, the boards' ESP-IDF
-(v6.1-dev-8142-g188e3e55bb), built clean [verified: the size reports, `nm`]:
+**v5.1** [verified: the release's size reports, `BUILD-NOTES.md` 34.8; `v51-ram`'s study for the
+parts]: `cpu_exec1()` is in internal RAM again, at `-O3`, on both boards (`I386_FAST_EXEC1_IRAM`).
+To make room the boards' `sdkconfig` moves ESP-IDF code that need not be in internal RAM to flash
+(9,097 bytes on the Korvo-1, 13,507 on the DOS board), and the console's last-lines buffer (2,600
+bytes) goes to PSRAM. The rule v5.1 was built to: at least 110,000 bytes left for ESP-IDF in the
+size report, for a board that never has less than 64 KiB free.
+
+| Korvo-1 dual boot | v4.6 | v5.0 | v5.1 |
+|-|-|-|-|
+| `fast_exec()` | | 120,198, internal RAM | 120,768, internal RAM |
+| `cpu_exec1()` | 131,456, internal RAM | 132,126, flash | 122,104, internal RAM |
+| internal RAM (DIRAM) used by code and static data | 251,898 | 262,300 | 379,441 |
+| left for ESP-IDF | 251,846 | 241,444 | 124,303 |
+| image | 937,884 | 1,062,004 | 1,065,593 |
+
+The DOS board leaves 126,475 bytes (v5.0 239,202). `fast_exec()` calls nothing in flash
+now; `i386.c`'s functions still there are cold: the string and page-crossing byte paths, the BCD
+and segment-limit helpers, task switches, the debug printer, `cpui386_*()` and the profiler's
+`cpui386_prof_fields()`, called once [verified: `checks\placement-v5.1.txt`]. With `fast_cpu = 0`
+tiny386 runs from internal RAM again, as in v4.6, so the flash misses of the model below are gone
+[inferred]. What the board has free at its least is the console's new `Internal RAM least free
+since start` figure and the UART's stacks line (`TEST-PLAN.md` 20b).
+
+The rest of this section is v5.0's, as written then. The Korvo-1 dual-boot app, `idf.py -B
+build-korvo1 -DBOARD=korvo1`, the boards' ESP-IDF (v6.1-dev-8142-g188e3e55bb), built clean
+[verified: the size reports, `nm`]:
 
 | | v4.6 | v5.0 (default) | v5.0, `I386_FAST_EXEC1_IRAM` |
 |-|-|-|-|
@@ -365,25 +402,26 @@ This section was written on the branch `v50-fast`, before v5.0 was put together;
 
 ## 9. For the board
 
-1. Flash the Korvo-1 dual-boot image as usual; the boot console should say `CPU: the fast
-   interpreter (from tab5-pc, by Yejun Yang) in front of tiny386's own`, and `Internal RAM free
-   ... KiB` (a photograph of both, please).
-2. FreeDOS: BENCH with the default ini. v3.6 gave 2.231 million a second; v5.0 should give about
-   4 [inferred: section 7's factor]. With `fast_cpu = 0` it will be slower than v4.6 (section 5):
-   that run only shows that the guest behaves the same.
-3. Windows 95 at 800x480: T386MON's tests and the speed screen with the default ini, against your
-   v4.6 log; and anything that looks different from v4.6 (it should not be).
+v5.1 (`TEST-PLAN.md` 20; v5.0's was 18):
+
+1. Flash the Korvo-1 dual-boot image as usual (`App version: v5.1`); a photograph of the boot
+   console with the `CPU:` line and the memory lines, the `PC built.` line's new `Internal RAM
+   least free since start` among them.
+2. Windows 95 at 800x480: T386MON's tests with F5, against your v5.0 log and `BUILD-NOTES.md`
+   34.7's range for each test; then `C:\T386MON.LOG`.
+3. A profile run (`profile = 1`, Ctrl+Alt+F8 just before F5 and after "Tests done"), and one UART
+   log with `uart_log = 1` for the least free internal RAM over a session.
 4. If anything goes wrong with `fast_cpu = 1` and not with `fast_cpu = 0`, that is a difference
-   the tests here missed: the CS:EIP on the crash screen, or what was running, helps most. To
-   carry on at v4.6's speed meanwhile, write v4.6's app back (`TEST-PLAN.md` 18f).
+   the tests here missed: the CS:EIP on the crash screen, or what was running, helps most. v5.0's
+   app is in `previous-v5.0\` to carry on meanwhile (`TEST-PLAN.md` 20f).
 
 
 ## 10. Repeating it
 
 Scratch of this work: WSL `~/org2/v50/fast` (not in any repository).
 
-* `bash tests/host/run.sh` (72 tests in v5.0; `FCSEEDS=` sets the lockstep test's seeds, 40 by
-  default).
+* `bash tests/host/run.sh` (72 tests in v5.0, 106 in v5.1, run in a git clone so that
+  `tests/host/lfb` finds v4.6; `FCSEEDS=` sets the lockstep test's seeds, 40 by default).
 * `bash tests/lockstep/lockstep.sh REF CAND WORKLOAD OUT` (`tests/lockstep/README.md`).
 * The Windows runs: the PC repro's harness (`~/org2/pcm/canary/harness`) built from this tree
   (`build.sh TREE esp OUT rv`, and with `EXTRA_CFLAGS=-DI386_FAST_DEFAULT=0` for the fast
@@ -495,6 +533,8 @@ What changed in `i386_fast.h` [verified: read in the diff]:
   and `refill:` comes only past its end or after a jump below its start) [inferred: the code;
   verified: a build that aborts on it ran `test_fast_cpu`'s 6,600 scenarios of seeds 1 to 300 and
   the `b1`, `msdos` and `t386mon800` workloads to their ends]. `fast_window()` still handles it.
+  (WI-1's check found the one exception, on a 64-bit host only: an EIP wrap at 4 GiB inside a
+  page; never with the board's 32-bit pointers, 13.5.)
 * **Two saved values kept in memory.** `nofold_laddr` and `nofold_xaddr` (the fetch cache before
   a page was newly cached) are `volatile`: they are written at a page change and read only when an
   instruction goes to tiny386. GCC then allocates `fast_exec()`'s registers better: every memory
@@ -1100,3 +1140,77 @@ tiny386's TLB itself, inline in `fast_miss()`, with tiny386's own walk of the pa
   fast TLB and hits tiny386's): the bench's paging fill 3.6 per cent fewer host instructions, its
   paging copy 7.8 [verified]; WI-2 takes those misses away. How much faster the board is stays
   [unknown] until Plat's board runs T386MON.
+
+
+### 13.5 v5.1 put together
+
+Written 2026-10-28, branch `v51` (the integration's clone, from `s31-v5.0`); `BUILD-NOTES.md` 34
+has the whole of it. The items went in as they were, in the plan's order (`v51-lock800`,
+`v51-ram`, `v51-sampler`, WI-1, WI-2, WI-3, WI-4), each commit cherry-picked with its message.
+Left out: none (WI-4, optional, met its gate: a refill 136.9 host instructions, at most 140).
+
+**What the merge changed** [verified: the runs named]:
+
+* **The lean refill keeps `fast_lpgno()`'s two tests.** WI-4 was built from v5.0's code, before WI-1
+  and WI-2 added to `fast_lpgno()` the test of an entry tiny386 holds that refuses the access (13.1)
+  and the test of the code page's entry (13.2). Its `fast_translate()` replaces the call of
+  `fast_lpgno()` in `fast_miss()`, and git merged the two without a conflict, so neither test was
+  left on the boards' path: the test differed from tiny386 in 32 of the 80 scenarios of modes l, m,
+  n and x (seeds 1 to 20, the Korvo-1 header: l 10, m 3, x 19). The two tests are now the macros
+  `FAST_REFUSED()` and `FAST_CODE_PAGE()`, which `fast_lpgno()` (long mode only, so not on the
+  boards) and `fast_translate()` both use; the planted faults `lpgno` and `codepage` change the
+  macros, so they reach both. In `fast_translate()` the code page's test is on the miss path, before
+  the walk, and the refusal test on the hit path, before the rights check. Mode n's probes compared
+  `fast_miss()` with `translate_lpgno()` as v5.0 had them; they now expect such an access left to
+  tiny386 with tiny386's entry, CR2 and the exception as they were, and then let tiny386 do it on
+  the fast machine too, so that the two machines stay comparable.
+* **WI-2's macros in WI-1's shape.** `FPTR_IO_W()`, `FPTR_W()` and `FPTR2()` compare the tag with
+  `FAST_PL()` and test a null segment first in the miss, as `FPTR()` does since WI-1; the frame
+  buffer's tag is compared with the last byte's page, as in `FPTR_ST()`. mb: 33.14 host
+  instructions a guest instruction fewer than v5.0 on average, where the merge alone gave 32.69;
+  REP STOSW and REP STOSD of 4 no longer dearer than v5.0.
+* **`fast_cpu = 0`'s console line and the four inis** say that tiny386's interpreter runs from
+  internal RAM, as `v51-ram` made it (section 4).
+* For 13.4: on the merged tree `fast_lpgno()` has no caller on the boards (only long mode's, off
+  there), so GCC keeps no copy of it; code pages go through `fast_miss()` and the lean refill.
+  For 13.1: the cached page reaches `refill:` only on a 64-bit host, after an EIP wrap at 4 GiB
+  inside a page (WI-1's check, its N1), which `fast_window()` handles; never with 32-bit pointers,
+  so never on the board.
+
+**The proof on the merged tree** [verified, WSL, 2026-10-28]:
+
+* `tests/host/run.sh`: 106 passed, 0 failed, every planted fault of every item caught.
+  `test_fast_cpu` on seeds 41 to 340, every mode (0 to j, k, l, m, n, o, x): 7,800 scenarios in
+  each build (the Korvo-1 header, and plain), 88.8 M guest instructions each, 0 failed.
+* The lockstep tester against v4.6, its seven workloads with the fast interpreter on and off: no
+  difference in any of the 14, each on v4.6's count and disk (`tests/lockstep/README.md` 11).
+* The three Windows runs on v4.6's counts with the fast interpreter on, off, and with the
+  profiler's stand-in sampling.
+
+**Counts** (the board's compiler on `i386.c`, core 1, host instructions a guest instruction)
+[verified]:
+
+| | v5.0 | v5.1 |
+|-|-|-|
+| BENCH without A4 and the boot | 71.03 | 59.81 (1.19 times fewer) |
+| BENCH's A9, a TLB miss every time | 148.5 | 111.4 |
+| Windows' boot, first 300 M | 76.50 | 62.39 (1.23 times fewer) |
+| T386MON's eight tests at 800x480x16 | 131.5 | 99.8 (1.32 times fewer) |
+| of them fill, text, sprite, full copy | 193.9, 83.9, 89.4, 272.6 | 114.2, 69.5, 71.8, 209.0 |
+
+The same guest throughout: each run's guest output and T386MON's log are v5.0's.
+
+mb, every work item's target met on the merged tree; all 165 forms 33.1 fewer than v5.0 on
+average, 163 cheaper, one dearer (32-bit MOVSB, +1.0); with `fast_cpu = 0` 4.4 fewer, none
+dearer (`BUILD-NOTES.md` 34.7 has the table).
+
+**Sizes** [verified: the release's builds]: `fast_exec()` 120,768 bytes (v5.0 120,198),
+`cpu_exec1()` 122,104 in internal RAM (v5.0 132,126 in flash); internal RAM left for ESP-IDF
+124,303 bytes on the Korvo-1 and 126,475 on the DOS board (v5.0 241,444 and 239,202;
+v5.1's rule at least 110,000). `fast_exec()` calls nothing in flash.
+
+**On the board** [inferred: `BUILD-NOTES.md` 34.7]: the text tests 5.8 to 6.0 pictures a second
+(v5.0 5.01 to 5.27, v4.6 2.91 to 3.11), sprite 115 to 120 (97.2), full picture 1.77 to 1.83 (1.55),
+scroll 169 to 190 (145.8), full copy 52 to 61 (47.2) and fill 243 to 307 (185.1), the last three
+likelier at or below their low end, since they wait on PSRAM. [unknown] until Plat's board runs
+`TEST-PLAN.md` 20.

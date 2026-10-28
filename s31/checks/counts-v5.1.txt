@@ -1,0 +1,134 @@
+v5.1's host instructions (BUILD-NOTES.md 34.7), counted under qemu-riscv32-static, every host
+instruction of the RV32 code: the v5.1 ideas work's counting harness (the PC repro's harness
+cross-built for riscv32 Linux, i386.c by the board's own compiler, ESP-IDF's GCC 16.1 with -O3
+-mtune=esp32s31, the rest by the Linux route's GCC 15.3; ~/org2/v51/ideas/qh/qbuild51.sh with
+CC386=esp, qrun51.sh, qreport.py; qexact.py sums the counts), v5.1 = git archive of 038c759 (the
+release's code), v5.0 = the ideas work's runs of the same harness and compiler
+(~/org2/v51/ideas/qruns/c-esp-O3-*), counted again here with the same scripts. Core 1 leaves
+out the picture's drawing and the harness's own code. 2026-10-29, WSL.
+
+== W3: BENCH under FreeDOS (14M, 320K, gen 3, no FPU)
+c-esp-O3-bench   a1+a2+a3+a5+a6+a7+a8+a9: guest 19533240; all 72.694, core 1 71.030, i386.c 69.468 host instructions a guest instruction
+c-final-bench    a1+a2+a3+a5+a6+a7+a8+a9: guest 19533240; all 61.468, core 1 59.805, i386.c 58.242 host instructions a guest instruction
+stretch         guest                c-esp-O3-bench                 c-final-bench
+                              all / core 1 / i386.c         all / core 1 / i386.c
+00           11779454       104.4     87.6     64.6        95.2     78.3     55.3
+a1            2097152        58.0     56.4     54.8        44.3     42.6     41.1
+a2            1769472        86.0     84.3     82.8        76.4     74.8     73.2
+a3            2555904        62.1     60.4     58.9        53.8     52.1     50.6
+a4              22017      2827.7   2826.8   2307.2       847.8    846.8    327.2
+a5            5714360        71.7     70.1     68.5        63.5     61.8     60.2
+a6            1999872        57.7     56.0     54.5        43.8     42.2     40.6
+a7            1769472        82.7     81.0     79.5        72.6     70.9     69.4
+a8            2599936        62.2     60.5     59.0        54.0     52.3     50.8
+a9            1027072       150.2    148.5    147.0       113.1    111.4    109.9
+
+c-esp-O3-bench   86.6 host instructions a guest instruction (core 1  79.2, i386.c  69.2) over 31.3 M guest instructions; 1.00x fewer than c-esp-O3-bench (core 1 1.00x, i386.c 1.00x)
+c-final-bench    74.7 host instructions a guest instruction (core 1  67.3, i386.c  57.3) over 31.3 M guest instructions; 1.16x fewer than c-esp-O3-bench (core 1 1.18x, i386.c 1.21x)
+guest output of v5.1's run against v5.0's: 0 lines differ (wall-clock lines left out)
+
+== W2: Windows 95's boot, the PC repro's pristine image, the first 300 M instructions
+c-esp-O3-win     1+2+3+4+5+6: guest 300000198; all 90.540, core 1 76.498, i386.c 73.113 host instructions a guest instruction
+c-final-win      1+2+3+4+5+6: guest 300000198; all 76.429, core 1 62.387, i386.c 59.002 host instructions a guest instruction
+stretch         guest                  c-esp-O3-win                   c-final-win
+                              all / core 1 / i386.c         all / core 1 / i386.c
+1            50000435       115.7     75.8     65.9       104.3     64.5     54.6
+2            49999724        87.2     71.0     68.2        74.2     57.9     55.1
+3            49999900        95.2     88.9     86.3        78.1     71.7     69.2
+4            50000030        81.6     74.3     72.6        67.2     60.0     58.2
+5            49999996        81.8     74.5     72.8        67.4     60.1     58.4
+6            50000113        81.8     74.5     72.8        67.4     60.1     58.4
+
+c-esp-O3-win     90.5 host instructions a guest instruction (core 1  76.5, i386.c  73.1) over 300.0 M guest instructions; 1.00x fewer than c-esp-O3-win (core 1 1.00x, i386.c 1.00x)
+c-final-win      76.4 host instructions a guest instruction (core 1  62.4, i386.c  59.0) over 300.0 M guest instructions; 1.18x fewer than c-esp-O3-win (core 1 1.23x, i386.c 1.24x)
+guest output of v5.1's run against v5.0's: 0 lines differ (wall-clock lines left out)
+
+== W1: T386MON 1.2 at 800x480 in 16 bits (base-n16.img with Plat's pointer change, 13M, 768K,
+== the card's ROMs, /top /bench /quit, the profile's schedule and keys), the profile's scripts
+== (prun.sh trace, qprof.py) with its qbuild51.sh taught CC386=esp (qbuild51e.sh), v5.0 (d5aa9c9's
+== code = 0d37002's) and v5.1 (2ddbe01's code) both built so; core 1 as qprof.py counts it
+-- v50e
+# qruns/t-800-v50e
+
+| stretch | guest instructions | host, all | host, core 1 | core 1 a guest instruction | all a guest instruction |
+|-|-|-|-|-|-|
+| start | 194,000,067 | 17,993,148,729 | 15,052,317,807 | 77.6 | 92.7 |
+| desktop | 460,000,393 | 40,447,042,533 | 39,476,596,903 | 85.8 | 87.9 |
+| desktop-quiet | 29,072,784 | 4,669,891,983 | 3,716,332,830 | 127.8 | 160.6 |
+| t386-start | 30,787,570 | 3,439,132,970 | 3,116,629,336 | 101.2 | 111.7 |
+| idle | 1,093,833 | 736,762,087 | 520,206,202 | 475.6 | 673.6 |
+| settle-fill | 1,923,568 | 498,713,681 | 385,289,728 | 200.3 | 259.3 |
+| fill | 8,003,949 | 1,665,873,664 | 1,552,309,274 | 193.9 | 208.1 |
+| settle-scroll | 1,962,456 | 342,971,390 | 281,974,750 | 143.7 | 174.8 |
+| scroll | 8,004,553 | 1,456,945,040 | 1,336,427,505 | 167.0 | 182.0 |
+| settle-text | 1,304,199 | 285,587,671 | 226,576,701 | 173.7 | 219.0 |
+| text | 8,560,244 | 745,101,435 | 718,163,233 | 83.9 | 87.0 |
+| settle-text-aside | 1,763,505 | 567,646,830 | 427,853,309 | 242.6 | 321.9 |
+| text-aside | 8,437,108 | 745,845,430 | 718,738,496 | 85.2 | 88.4 |
+| settle-text-nopointer | 1,305,883 | 288,109,658 | 229,689,201 | 175.9 | 220.6 |
+| text-nopointer | 8,421,111 | 744,076,807 | 716,906,913 | 85.1 | 88.4 |
+| settle-sprite | 1,653,241 | 319,372,025 | 259,781,289 | 157.1 | 193.2 |
+| sprite | 8,024,974 | 735,113,615 | 717,592,557 | 89.4 | 91.6 |
+| settle-full-copy | 2,041,985 | 512,548,894 | 399,275,654 | 195.5 | 251.0 |
+| full-copy | 8,005,313 | 2,477,212,263 | 2,182,061,520 | 272.6 | 309.4 |
+| settle-full-picture | 1,862,721 | 318,500,083 | 260,459,511 | 139.8 | 171.0 |
+| full-picture | 8,887,989 | 807,852,367 | 784,578,935 | 88.3 | 90.9 |
+| after | 14,292,464 | 9,491,643,283 | 6,677,752,494 | 467.2 | 664.1 |
+-- v51e
+# qruns/t-800-v51e
+
+| stretch | guest instructions | host, all | host, core 1 | core 1 a guest instruction | all a guest instruction |
+|-|-|-|-|-|-|
+| start | 194,000,067 | 15,292,363,651 | 12,351,526,971 | 63.7 | 78.8 |
+| desktop | 460,000,393 | 33,875,530,637 | 32,905,081,683 | 71.5 | 73.6 |
+| desktop-quiet | 29,072,784 | 4,195,534,337 | 3,241,994,823 | 111.5 | 144.3 |
+| t386-start | 30,787,570 | 2,921,317,147 | 2,598,822,076 | 84.4 | 94.9 |
+| idle | 1,093,833 | 718,390,462 | 501,841,355 | 458.8 | 656.8 |
+| settle-fill | 1,923,568 | 464,419,344 | 350,998,797 | 182.5 | 241.4 |
+| fill | 8,003,949 | 1,027,711,943 | 914,147,720 | 114.2 | 128.4 |
+| settle-scroll | 1,962,456 | 309,403,290 | 248,408,355 | 126.6 | 157.7 |
+| scroll | 8,004,553 | 1,134,809,242 | 1,014,291,717 | 126.7 | 141.8 |
+| settle-text | 1,304,199 | 261,684,138 | 202,674,839 | 155.4 | 200.6 |
+| text | 8,560,244 | 621,648,648 | 594,710,347 | 69.5 | 72.6 |
+| settle-text-aside | 1,763,505 | 535,792,153 | 396,002,870 | 224.6 | 303.8 |
+| text-aside | 8,437,108 | 622,524,302 | 595,417,343 | 70.6 | 73.8 |
+| settle-text-nopointer | 1,305,883 | 263,548,354 | 205,129,579 | 157.1 | 201.8 |
+| text-nopointer | 8,421,111 | 621,257,158 | 594,087,264 | 70.5 | 73.8 |
+| settle-sprite | 1,653,241 | 288,830,896 | 229,241,840 | 138.7 | 174.7 |
+| sprite | 8,024,974 | 593,571,671 | 576,050,554 | 71.8 | 74.0 |
+| settle-full-copy | 2,041,985 | 474,249,640 | 360,979,795 | 176.8 | 232.2 |
+| full-copy | 8,005,313 | 1,968,590,316 | 1,673,439,654 | 209.0 | 245.9 |
+| settle-full-picture | 1,862,721 | 286,332,399 | 228,293,483 | 122.6 | 153.7 |
+| full-picture | 8,887,989 | 682,973,593 | 659,700,406 | 74.2 | 76.8 |
+| after | 14,292,464 | 9,253,603,058 | 6,439,798,916 | 450.6 | 647.4 |
+
+-- T386MON.LOG: v5.0's and v5.1's runs the same bytes, and the profile's own v5.0 run's too; snapshots the same
+trace t386-800 t-800-v51e: 9989 s, exit 0
+trace t386-800 t-800-v50e: 12240 s, exit 0
+
+-- the tests, and the board estimate from Plat's v5.0 board figures (PROFILE-v51.md 1.1)
+| test | guest instructions | v5.0 | v5.1 | saved | fewer |
+|-|-|-|-|-|-|
+| fill | 8,003,949 | 193.9 | 114.2 | 79.7 | 41.1% |
+| scroll | 8,004,553 | 167.0 | 126.7 | 40.2 | 24.1% |
+| text | 8,560,244 | 83.9 | 69.5 | 14.4 | 17.2% |
+| text-aside | 8,437,108 | 85.2 | 70.6 | 14.6 | 17.2% |
+| text-nopointer | 8,421,111 | 85.1 | 70.5 | 14.6 | 17.1% |
+| sprite | 8,024,974 | 89.4 | 71.8 | 17.6 | 19.7% |
+| full-copy | 8,005,313 | 272.6 | 209.0 | 63.5 | 23.3% |
+| full-picture | 8,887,989 | 88.3 | 74.2 | 14.1 | 15.9% |
+| boot to the desktop (0 to 194 M) | 194,000,067 | 77.6 | 63.7 | 13.9 | 17.9% |
+| the eight tests together | 66,345,241 | 131.5 | 99.8 | 31.7 | 24.1% |
+
+| test | v4.6 board | v5.0 board | v5.1 at 1.07 a saved host instruction | v5.1 at the test's own cycles | v5.1 against v5.0 |
+|-|-|-|-|-|-|
+| fill | 65.54 | 185.11 | 242.6 | 306.7 | 1.31 to 1.66 times |
+| scroll | 40.46 | 145.82 | 169.0 | 189.5 | 1.16 to 1.30 times |
+| text | 2.91 | 5.01 | 5.78 | 5.99 | 1.15 to 1.20 times |
+| text-aside | 3.08 | 5.27 | 6.08 | 6.30 | 1.15 to 1.20 times |
+| text-nopointer | 3.11 | 5.27 | 6.08 | 6.30 | 1.15 to 1.20 times |
+| sprite | 60.57 | 97.22 | 114.8 | 120.1 | 1.18 to 1.24 times |
+| full-copy | 45.24 | 47.20 | 51.5 | 60.9 | 1.09 to 1.29 times |
+| full-picture | 0.90 | 1.55 | 1.77 | 1.83 | 1.14 to 1.18 times |
+
+== mb: see mb-v5.1.txt

@@ -1721,6 +1721,156 @@ the ini (or set it to 0). The report is made on the PC with `s31/profile/profile
 that image set's `tiny386.elf` (`PROFILE.md` 6).
 
 
+## 20. v5.1: core 1 faster, the same guest
+
+v5.0 is "definitely faster", and you want more [reported: 2026-10-28]. Your v5.0 log at 800x480 in
+16 bits: fill 185.1 pictures a second, scroll 145.8, text 5.01, text-aside 5.27, text-nopointer
+5.27, sprite 97.2, full copy 47.2, full picture 1.55; the guest at 2.4 to 2.9 million instructions
+a busy second where v4.6 gave 1.5 to 1.7 [reported: your log and photos]. v5.1 (`BUILD-NOTES.md`
+34) does three things:
+
+* **tiny386's own interpreter back in internal RAM** (`cpu_exec1()`, as in v4.6). The fast
+  interpreter's hand-overs no longer run from flash, and `fast_cpu = 0` runs from internal RAM
+  again, so it should be about v4.6's speed again, not slower [inferred]. Some of ESP-IDF's own
+  code goes to flash to make room, and internal RAM is now the tight resource: what the board has
+  free at its least is the first thing to look at (20b).
+* **Four changes to the fast interpreter** (`FAST-CPU.md` 13): the loop's state kept in
+  registers and a cheaper page change; the frame buffer's REP STOS and REP MOVS without a TLB miss
+  each piece, and REP STOSW and STOSD filled by whole words; segment loads, the group opcodes and
+  the flags made cheaper; and tiny386's TLB refilled without three calls. Counted under qemu on
+  the board's own compiler, core 1's work for a guest instruction falls by 18 per cent on
+  Windows' boot and 16 per cent on BENCH (`BUILD-NOTES.md` 34.7).
+* **The profiler** of section 19, in this app, off unless `profile = 1` (20d).
+
+On the PC the guest sees exactly what v4.6 and v5.0 show it, with `fast_cpu` 1 or 0: the lockstep
+tester finds no difference through Windows' boot, a restart, MS-DOS mode, BENCH, the frame buffer,
+T386MON at 640x480 in 16 colours and your own 800x480 setup with T386MON [verified:
+`BUILD-NOTES.md` 34.4]. What that is in time on the board is [unknown]: the estimate for each
+T386MON test is in 20c. Nothing of v5.1 has run on a board.
+
+### 20a. The app
+
+1. `flash-dualboot.bat COM10 app` (FLASH.txt 3), as for v5.0; its lines should say
+   `App version: v5.1`.
+2. No card file has to change. The four Korvo-1 inis in `card\tiny386\` now say that `fast_cpu =
+   0` runs from internal RAM again, and have a commented `;profile = 0` line under `[esp]`; copy
+   them only if you want the comments.
+3. Keep your ini as on v5.0 (`win95-sd.ini`: `fast_cpu` not set, `double_buffer = 0`, `pace_quiet
+   = 0`, `mem_size = max`, `vga_mem_size = 768K`), so that the figures compare with your v5.0 log.
+
+### 20b. The boot console, and internal RAM
+
+Start `win95-sd.ini`. **Photo 1**: the whole console, with three lines in it:
+
+    CPU: the fast interpreter (from tab5-pc, by Yejun Yang) in front of tiny386's own; fast_cpu = 0 in the ini for tiny386's alone.
+    Internal RAM free ... KiB (largest block ... KiB); PSRAM free ... KiB ...
+    PC built. Device memory (the 0xA0000 window): ... Internal RAM free ... KiB (largest block ... KiB); PSRAM free ... KiB (largest block ... KiB). Internal RAM least free since start ... KiB.
+
+The last figure is new in v5.1: the least internal RAM the board has had free since it started.
+v5.1's build leaves 124,303 bytes of internal RAM after code and static data, 117,141
+bytes (about 114 KiB) less than v5.0's 241,444 [verified: the build's size report,
+`BUILD-NOTES.md` 34.8]. Your v5.0 console said 240 KiB free at the start and 208 KiB after `PC
+built.` [reported], so v5.1 should say about 126 KiB and about 94 KiB
+[inferred: the same allocations as v5.0, less what the code took]. The rule v5.1 was built to: at
+least 64 KiB free at the least, at any time. If any figure here is under 64 KiB, tell me:
+there are two ways back, in order (`BUILD-NOTES.md` 34.11).
+
+**One UART log** with `uart_log = 1` under `[esp]`: start Windows, run T386MON's tests once (20c),
+wait 20 s, and save the UART's text. Its line every 10 s now ends with `; internal RAM least free
+since start N, largest free block M` (bytes), after the stacks' least free (`i386_main` among
+them). The least over a whole Windows session, the tests included, is the figure that says how much
+room v5.1 has. Then take `uart_log = 1` out again.
+
+### 20c. T386MON at 800x480 in 16 bits
+
+As 18d, with the default ini (`fast_cpu = 1`, no `profile` line):
+
+1. Start Windows, T386MON, **F5**, leave the mouse alone until "Tests done", maximise, **Photo
+   2**: the table. Then a minute of ordinary use and **Photo 3**: the live view (the Guest
+   processor line, and the board line with internal RAM).
+2. Close T386MON before switching off, so that its log is on the disk (`C:\T386MON.LOG`; 15f says
+   how to read it on the PC).
+
+What to expect, test by test [inferred: `BUILD-NOTES.md` 34.7: core 1's host instructions a guest
+instruction counted for v5.0 and v5.1 on the PC with the board's compiler, each saved host
+instruction taken as 1.07 cycles (the low figure) up to the test's own cycles a host instruction on
+your v5.0 board (the high one)]:
+
+| test | v4.6 (board) | v5.0 (board) | v5.1 at 1.07 a saved host instruction | v5.1 at the test's own cycles | v5.1 against v5.0 |
+|-|-|-|-|-|-|
+| fill | 65.5 | 185.1 | 243 | 307 | 1.31 to 1.66 times |
+| scroll | 40.5 | 145.8 | 169 | 190 | 1.16 to 1.30 times |
+| text | 2.91 | 5.01 | 5.78 | 5.99 | 1.15 to 1.20 times |
+| text-aside | 3.08 | 5.27 | 6.08 | 6.30 | 1.15 to 1.20 times |
+| text-nopointer | 3.11 | 5.27 | 6.08 | 6.30 | 1.15 to 1.20 times |
+| sprite | 60.6 | 97.2 | 115 | 120 | 1.18 to 1.24 times |
+| full copy | 45.2 | 47.2 | 51.5 | 60.9 | 1.09 to 1.29 times |
+| full picture | 0.90 | 1.55 | 1.77 | 1.83 | 1.14 to 1.18 times |
+
+(pictures a second)
+
+Fill, scroll and the full copy wait on PSRAM as much as on core 1 (your v5.0 log showed the panel
+down to 14.5 pictures a second in the full copy), so the low figure is likelier there, or less: most
+of fill's saving is REP STOS now filling by whole words, whose bytes still go to PSRAM, so fill may
+stay nearer v5.0's 185 [unknown]. The text tests, the sprite and the full picture run mostly in
+internal RAM, nearer the high figure [inferred]. A test that gains nothing, or less than the low
+figure, is worth knowing at once.
+
+### 20d. A profile run (`profile = 1`)
+
+Section 19, on this app, once 20c is done:
+
+1. `profile = 1` under `[esp]` in `win95-sd.ini`; start it; **Photo 4**: the yellow `Profile: on`
+   line and the memory lines (19b).
+2. Windows, T386MON; **Ctrl+Alt+F8 just before F5** (`PROF01.TXT`), leave the mouse alone until
+   "Tests done", then **Ctrl+Alt+F8** again (`PROF02.TXT`); a minute of ordinary use and
+   **Ctrl+Alt+F8** once more (`PROF03.TXT`), as 19c.
+3. Ctrl+Alt+F12: **Photo 5**, the `Profile: ... written` lines.
+4. Take `profile = 1` out (or set it to 0) afterwards. This run's T386MON table is not for the
+   speed figures: the guest waits while a file is written.
+
+The report shows how much of core 1 still waits on flash now that `cpu_exec1()` is in internal RAM,
+how much on PSRAM in the fill and the copies, and which instructions are still handed to tiny386
+(`PROFILE.md`). That decides what comes after v5.1 (`BUILD-NOTES.md` 34.11).
+
+### 20e. Windows as before
+
+With `fast_cpu = 1`: start Windows, Start, Shut Down, Restart; then Start, Shut Down, Restart in
+MS-DOS mode, `mem`, `dir`, `exit`, back to the desktop. On the PC both give v4.6's instruction
+counts exactly, with the fast interpreter on, off and with the profiler's stand-in sampling all
+through [verified: `BUILD-NOTES.md` 34.6]. Anything that looks different from v5.0 is worth a photo.
+
+If you have time: BENCH in FreeDOS (`tiny386.ini`), with the default and with `fast_cpu = 0`
+(**Photos 6 and 7**, its lines). v3.6 gave 2.231 million instructions a second [reported] and no
+v5.0 figure was kept; `fast_cpu = 0` should now give about v3.6's again, since tiny386's
+interpreter is back in internal RAM [inferred].
+
+### 20f. If it goes another way
+
+* **A crash with `fast_cpu = 1` that does not come with `fast_cpu = 0`**: a difference the PC's
+  tests missed. **Photo** the crash screen (its CS:EIP and the lines above it) and note what was
+  running. To carry on with v5.0 meanwhile, write v5.0's app back: in the cmd window, from the
+  package folder, `set "TINY386_BIN=%CD%\previous-v5.0\images\korvo1-dualboot\tiny386.bin"`, then
+  `flash-dualboot.bat COM10 app` (FLASH.txt 3); its lines should say `App version: v5.0`. Close
+  that window afterwards, so that the next write is v5.1's app again (18f).
+* **Internal RAM under 64 KiB** in any figure of 20b, or a yellow line about memory, or a crash
+  with a memory message: a photo. v5.1 then has two builds ready to try, in order: the profiler's
+  code in flash (about 2 KiB back), then tiny386's interpreter built for size (about 31 KiB back,
+  `fast_cpu = 0` about 6 per cent slower, the fast interpreter the same) [verified on the PC:
+  `BUILD-NOTES.md` 34.11].
+* **A test slower than on v5.0**: photos of both tables (v5.0's log has them); that would say
+  where internal RAM's or a work item's cost shows on the board.
+* **The `CPU:` line says `this build has no fast one`**: the app is not v5.1's (20a).
+
+### 20g. What to send back
+
+Photos 1 to 5 (6 and 7 if BENCH was run), `C:\T386MON.LOG`, the UART log of 20b, `PROFILE.TXT` and
+`PROF01.TXT` to `PROF03.TXT` from `/sdcard/tiny386` with which image set was flashed (the report
+needs that set's `tiny386.elf`), and how Windows felt against v5.0. The T386MON table against
+20c's figures calibrates every estimate of `BUILD-NOTES.md` 34.7; the least free internal RAM
+settles the RAM decision.
+
+
 ## Other ways to run it
 
 * tiny386 alone, replacing Linux: `flash-standalone.bat COM10` (FLASH.txt 5), Linux powered off

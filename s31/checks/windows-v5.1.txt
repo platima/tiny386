@@ -1,0 +1,47 @@
+v5.1: Windows 95 on the PC repro's harness (~/org2/pcm/canary/harness, esp flavour, rv), the three
+runs of v4.6's regress46.sh with its options (b1: boot to the desktop and 120 s; restart: Start,
+Shut Down, Restart; msdos: Restart in MS-DOS mode, MEM, DIR, EXIT), each on a fresh copy of the
+pristine image, deleted after the run, as v51-sampler's regress51.sh runs them (the integration's
+copy, regress.sh, with its own folders): the merged tree (git archive of 038c759, the release's
+code) built as the board builds the core with the fast interpreter on ('on', the harness as
+tests/host/profile/standin.sh builds it), with -DI386_FAST_DEFAULT=0 ('off'), and with the
+profiler's stand-in sampling all through and writing PROFILE.TXT every 4,000 samples
+('standin'). The pictures each run took were compared with v5.0's own runs of regress50.sh
+(~/org2/v50/fast/runs/fast3-*) by SHA-256 and then deleted: they show Windows' screen. The logs
+stay in WSL (~/org2/v51/int/reg/runs). 2026-10-29, WSL.
+
+on-b1                  END t=331.032 s insns=588301033 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 5 s
+on-restart             END t=1411.032 s insns=1304341904 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 23 s
+on-msdos               END t=1411.032 s insns=1337723352 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 21 s
+off-b1                 END t=331.032 s insns=588301033 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 6 s
+off-restart            END t=1411.032 s insns=1304341904 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 26 s
+off-msdos              END t=1411.032 s insns=1337723352 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 26 s
+standin-b1             END t=331.032 s insns=588301033 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 4 s
+standin-restart        END t=1411.032 s insns=1304341904 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 23 s
+standin-msdos          END t=1411.032 s insns=1337723352 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 21 s
+standin-b1: 3 files written; last: [standin] ~/org2/v51/int/reg/runs/standin-b1.PROFILE.TXT written (end): 8283 samples, 55312 bytes, 169 us
+standin-restart: 10 files written; last: [standin] ~/org2/v51/int/reg/runs/standin-restart.PROFILE.TXT written (end): 36479 samples, 93104 bytes, 300 us
+standin-msdos: 9 files written; last: [standin] ~/org2/v51/int/reg/runs/standin-msdos.PROFILE.TXT written (end): 35699 samples, 93116 bytes, 364 us
+reference (v4.6 and v5.0): b1 END insns=588301033, restart 1304341904, msdos 1337723352
+on-b1                  diskcheck: sectors changed: 6620 in 143 ranges   first ranges: 64, 128-134, 136, 149, 157, 174, 264, 328-334, 336, 349, 357, 374, 464-465, 512, 528-529, 1270, 265520-265551, 265568-265578, 265584-265586, 265632, 265680, 265696-265699, 265712-265800, 265808-266062 ...  | pictures: 0
+on-restart             diskcheck: sectors changed: 56175 in 363 ranges   first ranges: 64, 128-129, 132-133, 136-137, 149, 157, 171, 174, 180, 188-195, 264, 328-329, 332-333, 336-337, 349, 357, 371, 374, 380, 388-395, 464-465, 496-512, 528-529, 545 ...  | pictures: 0
+on-msdos               diskcheck: sectors changed: 56592 in 337 ranges   first ranges: 64, 128-130, 132-133, 136-137, 149, 157, 171, 174, 180, 188-194, 264, 328-330, 332-333, 336-337, 349, 357, 371, 374, 380, 388-394, 464-465, 512, 528-529, 545 ...  | pictures: 0
+off-b1                 diskcheck: sectors changed: 6620 in 143 ranges   first ranges: 64, 128-134, 136, 149, 157, 174, 264, 328-334, 336, 349, 357, 374, 464-465, 512, 528-529, 1270, 265520-265551, 265568-265578, 265584-265586, 265632, 265680, 265696-265699, 265712-265800, 265808-266062 ...  | pictures: 0
+off-restart            diskcheck: sectors changed: 56175 in 363 ranges   first ranges: 64, 128-129, 132-133, 136-137, 149, 157, 171, 174, 180, 188-195, 264, 328-329, 332-333, 336-337, 349, 357, 371, 374, 380, 388-395, 464-465, 496-512, 528-529, 545 ...  | pictures: 0
+off-msdos              diskcheck: sectors changed: 56592 in 337 ranges   first ranges: 64, 128-130, 132-133, 136-137, 149, 157, 171, 174, 180, 188-194, 264, 328-330, 332-333, 336-337, 349, 357, 371, 374, 380, 388-394, 464-465, 512, 528-529, 545 ...  | pictures: 0
+standin-b1             diskcheck: sectors changed: 6620 in 143 ranges   first ranges: 64, 128-134, 136, 149, 157, 174, 264, 328-334, 336, 349, 357, 374, 464-465, 512, 528-529, 1270, 265520-265551, 265568-265578, 265584-265586, 265632, 265680, 265696-265699, 265712-265800, 265808-266062 ...  | pictures: 0
+standin-restart        diskcheck: sectors changed: 56175 in 363 ranges   first ranges: 64, 128-129, 132-133, 136-137, 149, 157, 171, 174, 180, 188-195, 264, 328-329, 332-333, 336-337, 349, 357, 371, 374, 380, 388-395, 464-465, 496-512, 528-529, 545 ...  | pictures: 0
+standin-msdos          diskcheck: sectors changed: 56592 in 337 ranges   first ranges: 64, 128-130, 132-133, 136-137, 149, 157, 171, 174, 180, 188-194, 264, 328-330, 332-333, 336-337, 349, 357, 371, 374, 380, 388-394, 464-465, 512, 528-529, 545 ...  | pictures: 0
+on-b1                  pictures: 11 png, 11 of them v5.0 fast3-b1 byte for byte (v5.0 has 11)
+on-restart             pictures: 149 png, 149 of them v5.0 fast3-restart byte for byte (v5.0 has 149)
+on-msdos               pictures: 150 png, 150 of them v5.0 fast3-msdos byte for byte (v5.0 has 150)
+off-b1                 pictures: 11 png, 11 of them v5.0 fast3-b1 byte for byte (v5.0 has 11)
+off-restart            pictures: 149 png, 149 of them v5.0 fast3-restart byte for byte (v5.0 has 149)
+off-msdos              pictures: 150 png, 150 of them v5.0 fast3-msdos byte for byte (v5.0 has 150)
+standin-b1             pictures: 11 png, 11 of them v5.0 fast3-b1 byte for byte (v5.0 has 11)
+standin-restart        pictures: 149 png, 149 of them v5.0 fast3-restart byte for byte (v5.0 has 149)
+standin-msdos          pictures: 150 png, 150 of them v5.0 fast3-msdos byte for byte (v5.0 has 150)
+image copies left: 0
+done
+
+[exited with code 0]

@@ -1,0 +1,64 @@
+v5.1's merge (BUILD-NOTES.md 34.2): how the three finished branches and the four work items were
+put together, the conflicts and how each was resolved, and the three commits of the merge itself.
+WSL ~/org2/v51/int/repo, a clone of ~/fw/tiny386-s31, branch v51 from 0d37002 (s31-v5.0). Each
+commit cherry-picked with git cherry-pick (no merge commit; author, author date and message kept;
+committer Platima <13729856+platima@users.noreply.github.com>). 2026-10-28 and 29, WSL.
+
+The picks, in order (source commit -> commit on v51):
+  v51-lock800   d62c7f9 -> 5b67c26, d5aa9c9 -> 5e24b49                       no conflict
+  v51-ram       d8ed712 -> 06ca4a0, 29c07a0 -> 24b4774                       no conflict
+  v51-sampler   d0c4764 f3f5b17 6046737 3a4cd1e ee31ab6 0cd5b0a bab8da3 f4733aa
+                -> 92eabe7 51e0f72 81f5d94 e9d82a0 d3356d1 a23e47c a6abf2e 6a01431  no conflict
+  WI-1 v51-loop 7942d92 0c08c97 ac0641a cc2d506 1757381 5fa44cb 9cefbc5 b10a816 2366ebb b441765
+                -> 541073b ab651b3 91780b2 5fcc657 db6231e 57484f5 8e821f2 bc0cb49 e62d082 26a32c6
+                conflict: s31/FAST-CPU.md (2366ebb): sections 12 (the sampler's) and 13 side by side
+  WI-2 v51-lfbrep 9499f39 8abf529 b681507 e82a574 2b1e54f 8c1bfe4 0d163aa 52c9a23 72abc4f fc00527
+                2c56867 488493b 4cf12a6 0715886
+                -> ddc3aab e710c00 6259d0c 01e959f fefb2f2 d99c611 996e10b 0a5fcee 863f187 6b5474a
+                61bcdcc 8587caa 423fef4 3afdb8d
+                conflicts: tests/host/cpu/test_fast_cpu.c (9499f39, fc00527), tests/host/run.sh
+                (8c1bfe4, fc00527, 488493b), s31/FAST-CPU.md (0d163aa), i386.c (2c56867:
+                fast_lpgno(), where WI-1's 0c08c97 had added the same refusal test; WI-2's two
+                tests kept, which hold WI-1's line for line)
+  WI-3 v51-segdisp 056c276 db24f60 71c40d9 366c88d d5738d6 9d1511b a0fce39 9953e47
+                -> 169580f ef073e9 6466fa0 5f2cd8b 0826daa 025329b 964753b 4a1187d
+                conflicts: test_fast_cpu.c (056c276), run.sh (71c40d9, a comment), FAST-CPU.md (9953e47)
+  WI-4 v51-refill ce0f0eb f2969b0 e9c6188 2a32c24 8d75b46
+                -> 3747521 0266da9 6c6a6e9 0872546 fc1517e
+                conflicts: test_fast_cpu.c (ce0f0eb), run.sh (e9c6188: WI-4's loop of faults put at
+                the end of section 24, after WI-3's fcfault(), before the sampler's section 25),
+                FAST-CPU.md (8d75b46)
+
+How the test conflicts were resolved: every side kept whole. test_fast_cpu.c's modes at their own
+indices (k 20, l 21: WI-1; m 22, x 33: WI-2; n 23: WI-4; o 24: WI-3), each with its setup case,
+its name, its level and code size, its step limit and its place in the default list, which is
+now 0 to j, k, l, m, n, o, x (26 scenarios a seed). run.sh section 24: one comment paragraph for
+each item, one fault list (the lpgno fault, which WI-1 and WI-2 both had, once). FAST-CPU.md: one
+"## 13" heading, 13.1 to 13.4 under it.
+
+The merge's own commits:
+  ec3615c  i386.c: the lean TLB refill keeps fast_lpgno()'s two tests
+           WI-4's fast_translate() (built from v5.0's code) replaces fast_miss()'s call of
+           fast_lpgno() outside long mode; git merged it without a conflict, and neither of the two
+           tests WI-1 and WI-2 had added to fast_lpgno() was left on the boards' path.
+           test_fast_cpu, modes l, m, n and x, seeds 1 to 20 (80 scenarios):
+             fc1517e (the picks, before this commit): the Korvo-1 header 32 failed (l 10, m 3,
+                      x 19, n 0), plain 33 failed
+             ec3615c: 0 failed in each; 2ddbe01: 0 failed in each
+           The tests are now FAST_REFUSED() and FAST_CODE_PAGE(), used by fast_lpgno() and
+           fast_translate(); run.sh's faults lpgno and codepage change those macros; mode n's
+           probes leave such an access to tiny386 with its entry, CR2 and the exception as they
+           were (641 such accesses on seeds 41 to 340 with the Korvo-1 header, 651 plain).
+  2ddbe01  i386_fast.h: WI-2's FPTR_IO_W(), FPTR_W() and FPTR2() in WI-1's one-compare shape
+           mb (the board's compiler, 165 forms), host instructions a guest instruction against
+           v5.0: the picks -32.69 on average, REP STOSW of 4 +7.0 and REP STOSD of 4 +4.6;
+           with this commit -33.14, the two -2.9 and -4.4, no form more than 2 dearer.
+           run.sh's repdirty fault follows FPTR_IO_W()'s frame buffer branch (caught: 40 of 1040).
+  038c759  esp/main, s31/card: the fast_cpu = 0 console line and the four Korvo-1 inis say that
+           tiny386's interpreter runs from internal RAM (I386_FAST_EXEC1_IRAM, v51-ram); the inis
+           name [esp] profile, commented out.
+Then 7641f79 (esp/version.txt: v5.1), 38b0fcb (s31/build.sh's first comment), the lockstep
+README's section 11, and the documents.
+
+i386.c, i386.h and i386_fast.h are the same bytes at 2ddbe01 and at every later commit; the gate,
+the host tests, the counts and the builds of BUILD-NOTES.md 34 are of that code.

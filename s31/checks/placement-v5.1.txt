@@ -1,0 +1,53 @@
+v5.1: where i386.c's functions sit on the boards (BUILD-NOTES.md 34.8), in-tree ESP-IDF builds of
+38b0fcb (the code of the release; git archive, make prepare, s31/dependencies.lock), against v5.0's
+released ELFs (the package's images\korvo1-dualboot and images\dosboard tiny386.elf, read only).
+i386.c's functions are the defined functions of its object (suffixes such as .isra cut); a
+function is in flash if its address in tiny386.elf is in 0x40000000 to 0x47FFFFFF. fast_exec()'s
+calls: every jal or jalr in its disassembly to a function in flash. 2026-10-29.
+
+== korvo1
+i386.c's functions in flash, this ELF: 33; v5.0's: 33
+in flash here and in internal RAM in v5.0 (should be none):
+in flash here and not in v5.0's ELF at all (new functions in flash; should be none):
+  cpui386_prof_fields
+in flash in v5.0 and in internal RAM here:
+  cpu_exec1
+  fast_exec        iram 120768 bytes
+  cpu_exec1        iram 122104 bytes
+  fast_miss        iram 716 bytes
+  fast_miss2       iram 68 bytes
+  fast_window      iram 432 bytes
+  fast_lpgno       
+  fast_tlb_flush   iram 92 bytes
+  fill_aligned     iram 108 bytes
+  lfb_stos         iram 316 bytes
+  lfb_movs         iram 374 bytes
+  read_desc        
+  read_desc_slow   iram 588 bytes
+  set_seg          iram 572 bytes
+  tlb_refill       iram 234 bytes
+fast_exec()'s calls into flash:
+(end)
+== dosboard
+i386.c's functions in flash, this ELF: 33; v5.0's: 33
+in flash here and in internal RAM in v5.0 (should be none):
+in flash here and not in v5.0's ELF at all (new functions in flash; should be none):
+  cpui386_prof_fields
+in flash in v5.0 and in internal RAM here:
+  cpu_exec1
+  fast_exec        iram 120768 bytes
+  cpu_exec1        iram 122104 bytes
+  fast_miss        iram 716 bytes
+  fast_miss2       iram 68 bytes
+  fast_window      iram 432 bytes
+  fast_lpgno       
+  fast_tlb_flush   iram 92 bytes
+  fill_aligned     iram 108 bytes
+  lfb_stos         iram 316 bytes
+  lfb_movs         iram 374 bytes
+  read_desc        
+  read_desc_slow   iram 588 bytes
+  set_seg          iram 572 bytes
+  tlb_refill       iram 234 bytes
+fast_exec()'s calls into flash:
+(end)
