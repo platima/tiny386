@@ -599,14 +599,19 @@ static void i386_task(void *arg)
 	   234 KB at 800x600) comes from what the emulator's pool left, and
 	   without room the picture is drawn the slow way (emulator correctness
 	   review, round 2, note 11) */
+	/* v5.1: and the least internal RAM free since the board started (the
+	   sum of each heap's own least, so never above the true least), the
+	   figure that says how much room the board has had at worst */
 	console_printf(CON_INFO, "PC built. Device memory (the 0xA0000 window): %ld "
 		       "of %ld bytes used. Internal RAM free %u KiB (largest "
-		       "block %u KiB); PSRAM free %u KiB (largest block %u KiB).",
+		       "block %u KiB); PSRAM free %u KiB (largest block %u KiB). "
+		       "Internal RAM least free since start %u KiB.",
 		       pcram_off, pcram_len,
 		       (unsigned) (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
 		       (unsigned) (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024),
 		       (unsigned) (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024),
-		       (unsigned) (heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) / 1024));
+		       (unsigned) (heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) / 1024),
+		       (unsigned) (heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024));
 
 	load_bios_and_reset(pc);
 	status_led_stage(STATUS_STAGE_BIOS);

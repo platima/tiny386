@@ -15,6 +15,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
+#include "esp_heap_caps.h"
 
 #include "../../pc.h"
 #include "../../vga.h"
@@ -36,7 +37,10 @@
    ESP-IDF FreeRTOS counts stacks in bytes), to the UART with the drawing's
    cost.  Under the display lock, which the PC's own task needs to switch
    off and end itself (console_hold()), so that it is never looked at once
-   it is gone. */
+   it is gone.  v5.1: then internal RAM, in bytes too: the least free since
+   the board started, and the largest free block now.  ESP-IDF's least is
+   the sum of each of its heaps' own least (HP SRAM in two pieces, and LP
+   SRAM), so it is never above the true least. */
 static void stacks_line(void)
 {
 	static const char *const names[] = {
@@ -44,7 +48,7 @@ static void stacks_line(void)
 		"kbd_repeat", "ch9350", "hdmi", "i2s_task", "status_led", "uart_log",
 		"IDLE0", "IDLE1", NULL
 	};
-	char line[288];
+	char line[352];
 	int o = snprintf(line, sizeof(line), "stacks, least free since start (bytes):");
 
 	display_lock();
@@ -57,6 +61,11 @@ static void stacks_line(void)
 		}
 	}
 	display_unlock();
+	if (o < (int) sizeof(line))
+		snprintf(line + o, sizeof(line) - o, "; internal RAM least free since start %u, "
+			 "largest free block %u",
+			 (unsigned) heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+			 (unsigned) heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 	console_uart_printf("%s", line);
 }
 

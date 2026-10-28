@@ -220,6 +220,13 @@ size_t heap_caps_get_largest_free_block(uint32_t caps)
 	return caps & MALLOC_CAP_SPIRAM ? (size_t) psram_free : DMA_FREE;
 }
 
+/* display.c's stacks line (v5.1): nothing is taken here, so the least is
+   what is free */
+size_t heap_caps_get_minimum_free_size(uint32_t caps)
+{
+	return heap_caps_get_free_size(caps);
+}
+
 struct esp_lcd_panel_t {
 	void *fbs[2];
 	int nfbs;
