@@ -975,6 +975,37 @@ fcfault nullfs i386_fast.h 's/nullsegs = (nullsegs \& ~(1u << (sg)))/if ((sg) !=
 fcfault grp2swap i386_fast.h 's/^#define FAST_GRP2_TAB(P) { \&\&P##0, \&\&P##1,/#define FAST_GRP2_TAB(P) { \&\&P##1, \&\&P##0,/'
 fcfault grp1op i386_fast.h 's/^\(#define FAST_GRP1_TAB(P) { \&\&P##0, \&\&P##1, \)\&\&P##2,/\1\&\&P##0,/'
 
+# v5.1 (WI-4, the lean TLB refill): four faults in the fast interpreter's own
+# refill, put into i386.c's lean copies of the walk and the rights check
+# (TLB_WALK and LPGNO_RIGHTS with LEAN 1) and into fast_translate(), which
+# mode n has to catch: the directory entry's accessed bit set after the table
+# entry is loaded, the fast interpreter's two entries at the index left by
+# the walk, no dirty bit on a store that refills, and tiny386's entry kept
+# after a rights fault.  The first and the last only mode n's probes of
+# fast_miss() can catch: wherever guest code meets them tiny386 does the
+# faulting instruction again, and sets what was left unset.
+for m in pdeacc:'s/^\tmem\[base_addr + i \* 4\] |= 1 << 5; \/\* accessed \*\/ \\$/\tif (!(LEAN)) mem[base_addr + i * 4] |= 1 << 5; \\/;s/^\(\tuword pte = (LEAN) ? ldu32.*\)$/\1\n\tif (LEAN) mem[base_addr + i * 4] |= 1 << 5; \\/' \
+         slot:'s/^\t\tFAST_TLB_SLOT_LEAN(cpu, lpgno % tlb_size); \\$/\t\t(void) 0; \\/' \
+         dirty:'/^static inline __attribute__((always_inline)) bool fast_translate(/,/^}/{s/^\tif (ent->lpgno != lpgno) {$/\tint refilled = ent->lpgno != lpgno;\n\tif (refilled) {/;s/^\treturn lpgno_rights_lean(\(.*\));$/\tu8 d0 = **ppte \& 0x40;\n\tbool r = lpgno_rights_lean(\1);\n\tif (r \&\& write \&\& refilled \&\& !d0)\n\t\t**ppte \&= ~0x40;\n\treturn r;/}' \
+         nodrop:'s/^\t\tent->lpgno = -1; \\$/\t\tif (!(LEAN)) ent->lpgno = -1; \\/'; do
+    mname=${m%%:*}
+    mkdir -p "$OUT/mutant-$mname"
+    cp "$TREE/i386_fast.h" "$TREE/i386.h" "$OUT/mutant-$mname/"
+    sed "${m#*:}" "$TREE/i386.c" > "$OUT/mutant-$mname/i386.c"
+    if cmp -s "$TREE/i386.c" "$OUT/mutant-$mname/i386.c"; then
+        echo "    | (the $mname fault was not put in: the sed found nothing)"
+        result 1 "the lockstep test catches a fault in the fast interpreter's own TLB refill ($mname)"
+        continue
+    fi
+    fcbuild "mutant-$mname" "$OUT/mutant-$mname" $PCBOARD
+    "$OUT/test_fast_cpu-mutant-$mname" $FCSEEDS 1 n > "$OUT/fast-cpu-mutant-$mname.log" 2>&1
+    st=$?
+    nf=$(grep -c FAIL "$OUT/fast-cpu-mutant-$mname.log")
+    echo "    | ($mname: $nf FAIL lines in $FCSEEDS seeds of mode n; exit status $st)"
+    [ $st != 0 ]
+    result $? "the lockstep test catches a fault in the fast interpreter's own TLB refill ($mname)"
+done
+
 # ==== 25. the profiler's counts and PROFILE.TXT (v5.1, s31/PROFILE.md) ====
 # esp/main/prof_hist.c (the tables, the instruction key, the file) and
 # prof_cpu.h (the guest's state read from a CPU's fields) as the board
