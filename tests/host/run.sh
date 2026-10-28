@@ -878,6 +878,9 @@ fi
 # destination up where tiny386's TLB does not hold it (destheld), and, in
 # i386.c, fast_lpgno() without its test of an entry that refuses the
 # access (lpgno, as WI-1's) or of the code page's entry (codepage).
+# v5.1 (WI-3): mode o, descriptor tables across pages with the second page
+# not present, in MMIO, at RAM's end and past it, null selectors, and
+# read_desc() against v5.0's own; faults put into i386.c too (fcfault).
 echo
 FCSEEDS=${FCSEEDS:-40}
 fcbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_fast_cpu-name
@@ -941,6 +944,33 @@ for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN
     [ $st != 0 ]
     result $? "the lockstep test catches a fault in the fast interpreter ($mname)"
 done
+# v5.1 (WI-3): a fault in a copy of either file (i386.c or i386_fast.h),
+# which the test has to catch: read_desc()'s one lookup without its test
+# that the entry is in one page (rdpage), with MMIO taken for RAM
+# (rdmmio), with RAM's end not tested (rdend); FS's null bit not kept when
+# FS is loaded (nullfs)
+fcfault() {     # name file sed-expression
+    local mname=$1 file=$2 d="$OUT/mutant-$1" st nf
+    mkdir -p "$d"
+    cp "$TREE/i386.c" "$TREE/i386.h" "$TREE/i386_fast.h" "$d/"
+    sed "$3" "$TREE/$file" > "$d/$file"
+    if cmp -s "$TREE/$file" "$d/$file"; then
+        echo "    | (the $mname fault was not put in: the sed found nothing)"
+        result 1 "the lockstep test catches a fault in $file ($mname)"
+        return
+    fi
+    fcbuild "mutant-$mname" "$d" $PCBOARD
+    "$OUT/test_fast_cpu-mutant-$mname" $FCSEEDS > "$OUT/fast-cpu-mutant-$mname.log" 2>&1
+    st=$?
+    nf=$(grep -c FAIL "$OUT/fast-cpu-mutant-$mname.log")
+    echo "    | ($mname: $nf FAIL lines; exit status $st)"
+    [ $st != 0 ]
+    result $? "the lockstep test catches a fault in $file ($mname)"
+}
+fcfault rdpage i386.c 's/if (w1 \&\& (la \& 0xfff) <= 0x1000 - 8) {/if (w1) {/'
+fcfault rdmmio i386.c 's/if (!in_iomem(pa) \&\& pa <= /if (pa <= /'
+fcfault rdend i386.c 's/ \&\& pa <= (uword) cpu->phys_mem_size - 8) {/) {/'
+fcfault nullfs i386_fast.h 's/nullsegs = (nullsegs \& ~(1u << (sg)))/if ((sg) != SEG_FS) &/'
 
 # ==== 25. the profiler's counts and PROFILE.TXT (v5.1, s31/PROFILE.md) ====
 # esp/main/prof_hist.c (the tables, the instruction key, the file) and

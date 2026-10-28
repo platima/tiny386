@@ -1825,6 +1825,11 @@ static void o_code(void)
 	e8(0x64); e8(0x8b); e8(0x03); o_gp_err(0);
 	o_st32(O_PTR + 4, 0); e8(0xc4); e8(0x05); e32(O_PTR);             /* LES EAX,[PTR] (selector 0) */
 	e8(0x26); e8(0x8b); e8(0x03); o_gp_err(0);
+	for (int k = 0; k < 6; k++) {   /* FS's again, so that some loads fall inside a step (a step's start counts the null segments afresh) */
+		if (k & 1) { e8(0x6a); e8(0x00); e8(0x0f); e8(0xa1); }
+		else o_sreg(SEG_FS, k & 2 ? 3 : 0);
+		e8(0x64); e8(0x8b); e8(0x03); o_gp_err(0);
+	}
 	o_sreg(SEG_FS, 0); o_sreg(SEG_GS, 0x58); o_read(SEG_GS, 0, O_MARKV(0));
 	o_sreg(SEG_FS, 0x58); o_read(SEG_FS, 0, O_MARKV(0));
 	/* the second GDT, 5 bytes into a page: marks 5 and 6 near the page's

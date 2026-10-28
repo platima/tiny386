@@ -1536,6 +1536,26 @@ static bool IRAM_ATTR_FAST_HELPER read_desc(CPUI386 *cpu, int sel, uword *w1, uw
 		n++;
 		THROW(EX_GP, sel & ~0x3);
 	}
+	/* v5.1: both words, in one page of RAM (always in one page with an
+	   8-aligned table): one lookup, then two loads.  It is what the two
+	   translate_laddr() calls below do there: the second finds the entry
+	   the first made or found; a read at level 0 never faults on a present
+	   page (pte_lookup[..][..][0][0] is 0 in every row) and sets no dirty
+	   bit; so the TLB, the page tables and a fault (CR2 base + off, error
+	   code 0) are the same, and load32() of RAM is pload32().  Across a
+	   page, in MMIO and at the end of RAM, as before; and the second word
+	   alone (w1 NULL) as before, whose fault has CR2 base + off + 4. */
+	uword la = base + off;
+	if (w1 && (la & 0xfff) <= 0x1000 - 8) {
+		uword pa = la;
+		if (cpu->cr0 & CR0_PG)
+			TRY(translate_lpgno(cpu, 1, la >> 12, la, 0, &pa));
+		if (!in_iomem(pa) && pa <= (uword) cpu->phys_mem_size - 8) {
+			*w1 = pload32(cpu, pa);
+			*w2 = pload32(cpu, pa + 4);
+			return true;
+		}
+	}
 	if (w1) {
 		TRY(translate_laddr(cpu, &meml, 1, base + off, 4, 0));
 		*w1 = load32(cpu, &meml);

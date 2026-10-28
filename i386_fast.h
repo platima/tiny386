@@ -895,12 +895,17 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   changes nothing before its checks have passed).  The count first
 	   (v5.1): a descriptor table in MMIO is read with the count tiny386
 	   would have there (test_fast_cpu's mode o found v5.0 one short of
-	   it, by the instructions done in the step so far) */
+	   it, by the instructions done in the step so far).  Then the
+	   null-segment mask for this segment alone (v5.1): set_seg() changes
+	   no other, the macro is used only in protected mode (PROTECTED, so
+	   fast_nullsegs()'s CR0.PE term holds) and never for CS (op_8e sends
+	   it to tiny386; POP and LES/LDS name ES, SS, DS, FS and GS) */
 #define FAST_LOAD_SEG(sg, sel) do { \
 		cpu->ip = EIP_OF(ins); \
 		SYNC_IN(); \
 		if (!set_seg(cpu, (sg), (sel))) goto fault; \
-		nullsegs = fast_nullsegs(cpu); \
+		nullsegs = (nullsegs & ~(1u << (sg))) | \
+			((unsigned) (cpu->seg[sg].limit == 0 && (cpu->seg[sg].sel & ~0x3) == 0) << (sg)); \
 	} while (0)
 	/* after an instruction that changed CS (eip: the next one; cpu->ip
 	   left as tiny386 leaves it) */
