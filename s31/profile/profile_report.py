@@ -819,18 +819,21 @@ def report(prof, elf, elf_path, rom, a2l, top, out, src):
         rows.append((name, share(n, total), n, regions_of.get(name, "?"), split))
     o.table(["function", "share", "samples", "region", "by area"], rows)
     if coarse_n or lost:
-        o("(%d samples counted by 64-byte line only, named by the line's middle; %d in the totals "
-          "only.)" % (coarse_n, lost))
+        o("(%d samples counted by 64-byte line only, named by the line's middle here and in 5 and "
+          "6; %d in the totals only.)" % (coarse_n, lost))
         o()
 
-    # -- fast_exec() by handler and by line, from the source
-    pcs = [pc for pc, a, n in prof.host]
+    # -- fast_exec() by handler and by line, from the source; the coarse
+    # table's samples at their line's middle (a full host table puts the
+    # PCs first seen late there)
+    every = list(prof.host) + [(line + 32, a, n) for line, a, n in prof.coarse]
+    pcs = sorted(set(pc for pc, a, n in every))
     lines = addr2line(a2l, elf_path, pcs)
-    infast = sum(n for pc, a, n in prof.host if (syms.func(pc) or ("",))[0] == "fast_exec")
+    infast = sum(n for pc, a, n in every if (syms.func(pc) or ("",))[0] == "fast_exec")
     if lines and infast:
         byh = collections.Counter()
         own = collections.Counter()
-        for pc, a, n in prof.host:
+        for pc, a, n in every:
             f = syms.func(pc)
             fr = lines.get(pc)
             if not f or f[0] != "fast_exec" or not fr:
@@ -854,7 +857,7 @@ def report(prof, elf, elf_path, rom, a2l, top, out, src):
             start, end, labels = fh
             starts = [a for a, _ in labels]
             byh = collections.Counter()
-            for pc, a, n in prof.host:
+            for pc, a, n in every:
                 if start <= pc < end:
                     i = bisect.bisect_right(starts, pc) - 1
                     byh[labels[i][1] if i >= 0 else "fast_exec's entry, before the first handler"] += n
@@ -872,7 +875,7 @@ def report(prof, elf, elf_path, rom, a2l, top, out, src):
         o()
         inner = collections.Counter()
         fn_of = {}
-        for pc, a, n in prof.host:
+        for pc, a, n in every:
             fr = lines.get(pc)
             if not fr:
                 continue
