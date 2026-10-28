@@ -599,8 +599,14 @@ static void i386_task(void *arg)
 	else if (config.fast_cpu)
 		console_puts(CON_INFO, "CPU: tiny386's own interpreter (this build has no fast one).");
 	else
+#ifdef I386_FAST_EXEC1_IRAM
+		/* v5.1: cpu_exec1() is in internal RAM again, as in v4.6 */
 		console_puts(CON_INFO, "CPU: tiny386's own interpreter alone (fast_cpu = 0): the same "
-			     "guest as v4.6, but slower, since it now runs from flash.");
+			     "guest as v4.6, from internal RAM as in v4.6.");
+#else
+		console_puts(CON_INFO, "CPU: tiny386's own interpreter alone (fast_cpu = 0): the same "
+			     "guest as v4.6, but slower, since it runs from flash.");
+#endif
 	globals.pc = pc;
 	globals.kbd = pc->kbd;
 	globals.mouse = pc->mouse;
