@@ -2,6 +2,7 @@
 #include "unaligned.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <assert.h>
 #include <unistd.h>
 #include <string.h>
@@ -101,13 +102,18 @@ struct CPUI386 {
 		uword paddr;
 	} ifetch;
 
+	/* the lazy flags: the last operation (CC_) and which flags it holds
+	   (a mask of CF to OF).  v5.1: op and mask are 16 bits each and side by
+	   side, so that a result's "cc.op = A; cc.mask = B;" is one 32-bit
+	   store of one constant; every value fits (the checks after CC_'s
+	   enum) */
 	struct {
-		int op;
+		u16 op;
+		u16 mask;
 		uword dst;
 		uword dst2;
 		uword src1;
 		uword src2;
-		uword mask;
 	} cc;
 
 	struct {
@@ -401,7 +407,15 @@ enum {
 	CC_SAR, CC_SHL, CC_SHR,
 	CC_SHLD, CC_SHRD, CC_BSF, CC_BSR,
 	CC_AND, CC_OR, CC_XOR,
+	CC_END_,   /* (v5.1: one past the last; keep it last) */
 };
+/* v5.1: cc.op and cc.mask are u16, side by side (struct CPUI386): every
+   CC_ value (they count up from 0) and every flag a mask holds fit, and
+   the two are one aligned 32-bit word */
+_Static_assert(CC_END_ - 1 <= 0xffff, "every CC_ value fits cc.op (u16)");
+_Static_assert((CF | PF | AF | ZF | SF | OF) <= 0xffff, "every lazy flag fits cc.mask (u16)");
+_Static_assert(offsetof(struct CPUI386, cc.mask) == offsetof(struct CPUI386, cc.op) + 2 &&
+	       offsetof(struct CPUI386, cc.op) % 4 == 0, "cc.op and cc.mask make one aligned word");
 
 static int IRAM_ATTR_FAST_HELPER get_CF(CPUI386 *cpu)
 {
