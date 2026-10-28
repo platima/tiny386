@@ -958,3 +958,145 @@ DIRAM; every build exits 0 with no new warning]
 initializer. `read_desc()` and `FAST_LOAD_SEG()` are this item's; `stos:` and `movs:` are not
 touched. Conflicts are expected only in `test_fast_cpu.c`'s mode list (mode o's lines are each on
 their own) and `run.sh`'s fault list.
+
+
+### 13.4 The lean TLB refill (WI-4, branch `v51-refill`)
+
+Written 2026-10-28. When a guest access misses both TLBs, the fast interpreter now refills
+tiny386's TLB itself, inline in `fast_miss()`, with tiny386's own walk of the page tables; and
+`fast_tlb_flush()` clears four indexes a turn. Nothing was flashed, pushed or published for it.
+
+* **Why.** Windows loads CR3 two to four times a picture in T386MON's fill and scroll, which
+  empties both TLBs. tiny386's TLB is then refilled 71.4 times a 1,000 guest instructions in fill,
+  63.8 in scroll and 103.2 in full copy [verified: `PROFILE-v51.md` 1.9]. Each refill went
+  `fast_miss()`, `fast_lpgno()`, `translate_lpgno()`'s body, `tlb_refill()`, `fast_tlb_slot()`:
+  three calls with their saves, and checks made twice.
+* **What changed** [verified: `i386.c`, `i386_fast.h`]:
+  * `tlb_refill()`'s walk is written once, as the macro `TLB_WALK`, and made twice: `tlb_walk()`
+    (LEAN 0), which `tlb_refill()` calls, and `tlb_walk_lean()` (LEAN 1) for the fast
+    interpreter. Both make the same checks, loads and stores in the same order: `pt_addr_ok()` on
+    the directory entry's address, the entry loaded and tested, its accessed bit set, then the
+    same for the table entry, then the fast interpreter's two entries at the index dropped and
+    tiny386's entry filled. The directory entry's accessed bit is set before the table entry is
+    loaded, which matters when a directory is its own page table.
+  * The lean copy drops the fast interpreter's two entries inline instead of calling
+    `fast_tlb_slot()`. It reads `phys_mem` and its size once: the walk's stores go into guest page
+    tables, never into `*cpu`, a TLB or the fast interpreter's entries (`pt_addr_ok()` keeps them
+    inside guest memory and, on the boards, out of the device window at A0000h, where tiny386's
+    TLB may be). And it tests that window with one shift, `(addr >> 17) == 5`, the same addresses.
+  * `translate_lpgno()`'s fault is `lpgno_fault()`, and its rights check and dirty bit
+    `LPGNO_RIGHTS`, made twice in the same way. `fast_translate()` is `translate_lpgno()`'s body for
+    `fast_miss()`, with the lean walk where `translate_lpgno()` calls `tlb_refill()`. It reads the
+    privilege level after the walk, so that fewer values are held across it.
+  * Long mode keeps the call of `fast_lpgno()`. `fast_window()` is not changed: a new code page is
+    still refilled through `fast_lpgno()`, until WI-1 sends code pages through `fast_miss()`.
+  * `fast_tlb_flush()` clears both tables' tags at an index together, four indexes a turn.
+* **Why macros, not a function with a flag.** The first form was one always_inline function with
+  a `lean` argument, a constant at each call. GCC 16.1 then compiled `tlb_refill()` and five
+  functions it is inlined in with their registers allocated otherwise; and with the argument on
+  `translate_lpgno()`'s body it inlined `tlb_refill()` everywhere, `cpu_exec1()` 54 KB larger
+  [verified: the bench build's objects]. With the macros the code of tiny386's own functions is
+  v5.0's (below).
+* **The same code for tiny386** [verified: `objcmp.py`, every function of `i386.o` but the fast
+  interpreter's, disassembled with relocations, addresses made relative to the function]: in the
+  Korvo-1's ESP-IDF build and in the bench build, `cpu_exec1()` and `tlb_refill()` are the same
+  code as v5.0's. 16 other functions in the ESP-IDF build (6 in the bench build) differ in one
+  thing only: the line number they give `assert()`, 99 more, as `i386.c` has 99 more lines above
+  them. The DOS board's build and the builds with `v51-ram` merged are below.
+* **What it costs** (host instructions, the board's compiler, GCC 16.1 with `-mtune=esp32s31`
+  on `i386.c`, counted under qemu as section 7) [verified: a scratch copy of `tests/host/lfb`
+  with the frame buffer mapped through page tables, the hot-spots design's `bench_ptouch`, and a
+  `bench_pflush` added to it here]:
+
+  | | v5.0 | v5.1, WI-4 |
+  |-|-|-|
+  | a turn of a 4-instruction loop whose load misses both TLBs (512 pages in turn) | 457.2 | 386.3 |
+  | the same turn when every load hits | 249.4 | 249.4 |
+  | so a miss with refill | 207.9 | 136.9 |
+  | a turn with MOV CR3 (both TLBs emptied) and one load | 3,673.3 | 2,755.3 |
+  | of which `fast_tlb_flush()` (the old loop with the new refill: 3,589.3) | about 2,070 | about 1,240 |
+
+  On the way [verified, the same bench]: the walk inlined through `translate_lpgno()`'s body with
+  a flag, 157.9; `fast_translate()` with the window's shift, 145.9; the level read after the walk,
+  136.9.
+* **Counts** (the counting harness, `i386.c` by the board's compiler, section 7's method)
+  [verified]:
+
+  | work | v5.0, core 1 | WI-4, core 1 |
+  |-|-|-|
+  | BENCH without A4 and the boot | 71.03 | 69.54 |
+  | BENCH's A9 (a TLB miss every time) | 148.53 | 120.22 |
+  | BENCH, the whole run | 79.18 | 78.25 |
+  | Windows' boot, first 300 M | 76.50 | 76.06 |
+
+  Each run's guest output is v5.0's line for line, so it ends on the same state and count.
+  `mb` (`IDEAS-v51.md` 7): 163 of its 165 forms the same, none more, and CALL and RET near 7.0
+  fewer in 16 and 32-bit code. Each of those changes code page, through `fast_window()` and
+  `fast_lpgno()` [verified: `mb`'s listing of the piece]; only `fast_window()` calls
+  `fast_lpgno()` now, so GCC compiles a copy of it for a read alone (`fast_lpgno.constprop.0`)
+  [verified: `nm`], which is where the 7 go [inferred]. Both builds end on 5,214,225 instructions
+  with the same registers.
+* **Internal RAM** [verified: the size reports, `nm`]: `fast_miss()` 350 to 688 bytes,
+  `fast_tlb_flush()` 72 to 92, `fast_lpgno()` 452 to 384 (only `fast_window()` calls it now, with a
+  constant), `tlb_refill()` 234 and `fast_exec()` the same: 284 bytes more of DIRAM on both boards.
+
+  | build | DIRAM used | left for ESP-IDF |
+  |-|-|-|
+  | Korvo-1, v5.0 (0d37002) | 262,300 | 241,444 |
+  | Korvo-1, WI-4 (dual boot and standalone) | 262,584 | 241,160 |
+  | DOS board, v5.0 | 264,542 | 239,202 |
+  | DOS board, WI-4 | 264,826 | 238,918 |
+  | Korvo-1, `v51-ram` (29c07a0) | 376,981 | 126,763 |
+  | Korvo-1, WI-4 with `v51-ram` merged | 377,265 | 126,479 |
+  | DOS board, `v51-ram` | 374,813 | 128,931 |
+  | DOS board, WI-4 with `v51-ram` merged | 375,097 | 128,647 |
+
+  `i386.o`'s `.iram1` sections: 147,618 to 147,902 bytes (279,956 to 280,240 with `v51-ram`).
+  `fast_exec()` 120,198 bytes (120,194 with `v51-ram`), `cpu_exec1()` 132,126 in flash (123,782 in
+  internal RAM with `v51-ram`), both the same as before. Every build exits 0 with the same
+  warnings as before (the Korvo-1's `i2s_task` unused, the DOS board none). No function of
+  `i386.c` is in flash that was not there before: the same 42 on both boards (41 with `v51-ram`,
+  which moves `cpu_exec1()` out) [verified: `nm` of each `tiny386.elf` against the functions of
+  `i386.c.obj`]. In all four builds (each board, with and without `v51-ram`) `cpu_exec1()` and
+  `tlb_refill()` are the same code as before and 16 more functions differ only in their line
+  numbers for `assert()`, 99 more [verified: `objcmp.py`, `linecheck.py`]. Compiled by the
+  host's gcc with `-Wall -Wextra`, `i386.c` gives v5.0's warnings and no other, with the board's
+  header, with `I386_FAST` alone and with neither [verified].
+* **The same guest** [verified]:
+  * `tests/host/cpu/test_fast_cpu.c` mode n: first `fast_miss()` itself against
+    `translate_lpgno()`, access by access (900 random actions a seed: accesses at levels 0 to 3,
+    the page tables changed without INVLPG, directory entries pointed beyond RAM, at A0000h or at
+    the directory, CR0.WP changed, CR3 pointed beyond RAM or at A0000h), comparing the result, CR2,
+    the exception and its error code, all memory, tiny386's whole TLB and the fast TLB's
+    invariants after each; then hand-written code through both interpreters (the directory as its
+    own page table with accessed bits cleared without INVLPG, a directory entry and a table entry
+    not present, a table beyond RAM and at A0000h, rights faults at level 3 on user and
+    supervisor pages and at level 0 with CR0.WP clear and set, reads and writes), whose page fault
+    handler logs CR2 and the error code: the log must be the planned 14 faults (13 without the
+    board's header, which allows the table at A0000h). It passes on v5.0's code too.
+  * `tests/host/run.sh`: 80 tests pass (the base's 76 and four new), in 1,177 s. Section 24 then
+    puts four faults into the lean copies, and mode n catches each: the directory entry's
+    accessed bit set after the table entry is loaded (37 of 40 seeds), the fast interpreter's
+    entries left by the walk (40), no dirty bit on a store that refills (40), tiny386's entry
+    kept after a rights fault (40). The first and the last only mode n's probes catch: wherever
+    guest code meets them tiny386 does the faulting instruction again and sets what was left, so
+    the older modes and mode n's own code run with them agree (10 seeds each, checked by hand).
+  * `test_fast_cpu` on seeds 41 to 340, every mode: 6,300 scenarios in each build, no difference;
+    with the Korvo-1's header 81.8 M guest instructions, 1,153,242 step ends compared, 9.3 M fast
+    TLB entries checked; mode n's probes 188,970 accesses, 170,108 of them refills and 134,639
+    page faults.
+  * The lockstep tester against v4.6, the seven workloads with the fast interpreter on and off:
+    no difference in any of the 14, each ending on v4.6's count and disk (b1 588,301,033, restart
+    1,304,341,904, msdos 1,337,723,352, bench 31,345,925, vbe 55,090,157, t386mon 674,307,567,
+    t386mon800 792,272,554); its self-test passes with `FAST=1` and `FAST=0`.
+  * The three Windows 95 runs (`regress50.sh`'s), on and off: 588,301,033, 1,304,341,904 and
+    1,337,723,352 instructions, each to the desktop.
+* **On the board** [inferred: the counted savings times the profile's rates]. About 71 host
+  instructions a refill through `fast_miss()` and 830 a flush: in fill about 5 host instructions a
+  guest instruction (of 201), scroll about 5 (of 174), full copy about 7 (of 282), sprite about
+  1.3, text about 0.6 (Windows' boot: 0.44, counted above). So fill, scroll and full copy about 1
+  to 3 per cent faster, the lower end likelier, since the walk's two loads from PSRAM stay.
+  Before WI-2 is merged, the frame buffer's REP pieces gain too (their first store misses the
+  fast TLB and hits tiny386's): the bench's paging fill 3.6 per cent fewer host instructions, its
+  paging copy 7.8 [verified]; WI-2 takes those misses away. How much faster the board is stays
+  [unknown] until Plat's board runs T386MON.
