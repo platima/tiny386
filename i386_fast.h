@@ -70,7 +70,15 @@
  *   load32() would, and MOV and STOS store into it and then set the marks
  *   as store8() to store32() would (FPTR_ST(), lfb_marked()), as does
  *   ARPL's write through its read entry; every other store there still
- *   goes through tiny386's store or string functions.
+ *   goes through tiny386's store or string functions.  Since v5.1 REP STOS,
+ *   REP MOVS and MOVS find a page of the frame buffer by its write tag too
+ *   (FPTR_IO_W()) and store through lfb_stos(), lfb_movs() and
+ *   fast_io_store() at its physical address, each end looked up once.
+ * - An instruction with two memory operands (MOVS, CMPS, PUSH, CALL and
+ *   CALL FAR through memory, POP into memory) goes to tiny386 before the
+ *   lookup of its second operand would change tiny386's TLB entry that holds
+ *   its first (v5.1, FAST_TWO_OP()): tiny386 then translates each once, as
+ *   it does alone.
  * - Stack slots that wrap around a 16-bit stack, INT's ESP, BT with an
  *   immediate beyond the operand, ARPL's write, protected-mode loads of SS
  *   and a failed segment load are done as tiny386 does them.
@@ -729,6 +737,108 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 		if (unlikely(_o < cpu->cb.lfb_lim1)) \
 			lfb_marked(cpu, (uword) _o, (n)); \
 	} while (0)
+	/* v5.1: the two-operand rule, on the miss path of a lookup (FPTR_IO_W(),
+	   FPTR2(): _lin, _pg and _e its page and fast entry) that may hand the
+	   instruction to tiny386 after fast_miss().  fast_miss() asks tiny386's
+	   TLB, which refills the entry at the page's index, or drops it on a
+	   rights fault.  tiny386, doing the instruction again, then translates
+	   every operand afresh, and finds an entry missing that it would have
+	   found alone: a second refill, which sets the page tables' accessed
+	   bits again (the guest may have cleared them without INVLPG) and reads
+	   an entry the guest may have changed.  So, with paging, before
+	   fast_miss() the instruction goes to tiny386 if
+	   - tiny386's entry holds this page and the access would fault there
+	     (tiny386 alone faults with the entry it has, and drops it), or
+	   - tiny386's entry holds the page of the instruction's first memory
+	     operand, H1 (its host address; NULL if none), which the refill would
+	     drop.  The fast entry at this index maps H1 exactly when it is the
+	     first operand's (that entry is there only while tiny386's holds the
+	     same page).
+	   tiny386 then translates the first operand (a hit) and this one, once
+	   each, in its order.  tlb_refill() changes an entry only when it
+	   succeeds, so a page that is not present drops nothing. */
+#define FAST_TWO_OP(h1, wr) do { \
+		if (cpu->cr0 & CR0_PG) { \
+			struct tlb_entry *_t = &cpu->tlb.tab[_pg % tlb_size]; \
+			if (_t->lpgno == _pg) { \
+				if (_t->pte_lookup[cpu->cpl > 0][(wr)]) \
+					goto slow; \
+			} else if ((h1) && (uword) (((uintptr_t) (h1) - _e->delta) >> 12) == _e->rtag) \
+				goto slow; \
+		} \
+	} while (0)
+	/* the same where the first operand is MMIO and has no fast entry
+	   (MOVS from the VGA window): tiny386's entry at the second's index
+	   holding the first's page PG1 */
+#define FAST_TWO_OP_PG(lin2, pg1, wr) do { \
+		uword _p2 = (lin2) >> 12; \
+		struct tlb_entry *_t = &cpu->tlb.tab[_p2 % tlb_size]; \
+		if ((cpu->cr0 & CR0_PG) && \
+		    (_t->lpgno == _p2 ? _t->pte_lookup[cpu->cpl > 0][(wr)] != 0 : _t->lpgno == (pg1))) \
+			goto slow; \
+	} while (0)
+	/* v5.1: the destination of REP STOS, REP MOVS and MOVS.  As FPTR_IO()
+	   for a store, and a page of the frame buffer with an entry (its write
+	   tag has FAST_TAG_LFB) goes to LABEL as MMIO at its physical address
+	   (mpaddr), the page's dirty bit set as FPTR_ST() sets it, without
+	   fast_miss() or fast_lpgno().  The entry is there only while tiny386's
+	   TLB holds the page with the rights checked for a store at this
+	   privilege level and the frame buffer has not moved, so tiny386's own
+	   lookup would hit and change nothing but the dirty bit.  H1: the source
+	   of MOVS (the two-operand rule), or NULL. */
+#define FPTR_IO_W(p, sg, off, size, LABEL, H1) do { \
+		if (unlikely(nullsegs) && (nullsegs & (1 << (sg)))) goto slow; \
+		uword _lin = cpu->seg[sg].base + (off); \
+		uword _pg = _lin >> 12; \
+		struct fast_tlb_entry *_e = &ftlb[_pg % tlb_size]; \
+		bool _in = (size) == 1 || (_lin & 0xfff) <= 0x1000 - (size); \
+		if (likely(_e->wtag == _pg && _in)) { \
+			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
+			if (unlikely(!(*_e->ppte & 0x40))) \
+				*_e->ppte |= 0x40; \
+		} else if (_e->wtag == (_pg | FAST_TAG_LFB) && _in) { \
+			if (unlikely(!(*_e->ppte & 0x40))) \
+				*_e->ppte |= 0x40; \
+			mpaddr = cpu->cb.lfb_base + (uword) ((uintptr_t) (_lin + _e->delta) - \
+							     (uintptr_t) cpu->cb.lfb_mem); \
+			msize = (size); \
+			goto LABEL; \
+		} else { \
+			FAST_TWO_OP((H1), 1); \
+			if (!(p = fast_miss(cpu, ftlb, _lin, (size), 1, &mpaddr))) { \
+				if (mpaddr == (uword) -1) goto slow; \
+				msize = (size); \
+				goto LABEL; \
+			} \
+		} \
+	} while (0)
+	/* v5.1: as FPTR, for an instruction's second memory operand, its first
+	   at host address H1 (or NULL): the two-operand rule on a miss */
+#define FPTR2(p, sg, off, size, wr, H1) do { \
+		if (unlikely(nullsegs) && (nullsegs & (1 << (sg)))) goto slow; \
+		uword _lin = cpu->seg[sg].base + (off); \
+		uword _pg = _lin >> 12; \
+		struct fast_tlb_entry *_e = &ftlb[_pg % tlb_size]; \
+		if (likely(((wr) ? _e->wtag : _e->rtag) == _pg && \
+			   ((size) == 1 || (_lin & 0xfff) <= 0x1000 - (size)))) { \
+			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
+			if ((wr) && unlikely(!(*_e->ppte & 0x40))) \
+				*_e->ppte |= 0x40; \
+		} else { \
+			FAST_TWO_OP((H1), (wr)); \
+			if (!(p = fast_miss(cpu, ftlb, _lin, (size), (wr), &mpaddr))) \
+				goto slow; \
+		} \
+	} while (0)
+#define STACK_PTR2(p, d, size, wr, H1) do { \
+		uword _sp = (REGi(4) + (d)) & sp_mask; \
+		FPTR2(p, SEG_SS, _sp, size, wr, H1); \
+	} while (0)
+#define STACK_PTR_N2(p, d, size, wr, H1) do { \
+		uword _sp = (REGi(4) + (d)) & sp_mask; \
+		if (_sp > sp_mask - ((size) - 1)) goto slow; \
+		FPTR2(p, SEG_SS, _sp, size, wr, H1); \
+	} while (0)
 #define EA_OFF(off, m) \
 	seg = SEG_OVERRIDE; \
 	uword off = fast_ea(cpu, &pc, m, adsz16, &seg);
@@ -1009,11 +1119,11 @@ op_8f: { u8 m = *pc++; int rm = m & 7;   /* POP Ev */
 		if (opsz16) {
 			STACK_PTR(s, 0, 2, 0); u16 v = fm16(s);
 			SP_ADD(2); EA_OFF(off, m) set_sp(sp0, sp_mask);
-			FPTR(p, seg, off, 2, 1); fs16(p, v); SP_ADD(2);
+			FPTR2(p, seg, off, 2, 1, s); fs16(p, v); SP_ADD(2);
 		} else {
 			STACK_PTR(s, 0, 4, 0); u32 v = fm32(s);
 			SP_ADD(4); EA_OFF(off, m) set_sp(sp0, sp_mask);
-			FPTR(p, seg, off, 4, 1); fs32(p, v); SP_ADD(4);
+			FPTR2(p, seg, off, 4, 1, s); fs32(p, v); SP_ADD(4);
 		}
 		NEXT;
 	}
@@ -1650,12 +1760,12 @@ op_grp5: { u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;
 		if (PROTECTED) PM_FAR(pmcall(cpu, opsz16, off, sel, op == 5), 0);
 		if (op == 3) {
 			if (opsz16) {
-				u8 *s; STACK_PTR_N(s, -4, 4, 1);
+				u8 *s; STACK_PTR_N2(s, -4, 4, 1, p);
 				SP_ADD(-4);
 				fs16(s + 2, cpu->seg[SEG_CS].sel);
 				fs16(s, EIP_OF(pc));
 			} else {
-				u8 *s; STACK_PTR_N(s, -8, 8, 1);
+				u8 *s; STACK_PTR_N2(s, -8, 8, 1, p);
 				SP_ADD(-8);
 				fs32(s + 4, cpu->seg[SEG_CS].sel);
 				fs32(s, EIP_OF(pc));
@@ -1682,16 +1792,16 @@ op_grp5: { u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;
 		}
 		break;
 	case 2:
-		if (opsz16) { u8 *s; STACK_PTR(s, -2, 2, 1); SP_ADD(-2); fs16(s, EIP_OF(pc)); }
-		else { u8 *s; STACK_PTR(s, -4, 4, 1); SP_ADD(-4); fs32(s, EIP_OF(pc)); }
+		if (opsz16) { u8 *s; STACK_PTR2(s, -2, 2, 1, p); SP_ADD(-2); fs16(s, EIP_OF(pc)); }
+		else { u8 *s; STACK_PTR2(s, -4, 4, 1, p); SP_ADD(-4); fs32(s, EIP_OF(pc)); }
 		JUMP_ABS(v);
 		break;
 	case 4:
 		JUMP_ABS(v);
 		break;
 	default:   /* 6: PUSH */
-		if (opsz16) { u8 *s; STACK_PTR(s, -2, 2, 1); SP_ADD(-2); fs16(s, v); }
-		else { u8 *s; STACK_PTR(s, -4, 4, 1); SP_ADD(-4); fs32(s, v); }
+		if (opsz16) { u8 *s; STACK_PTR2(s, -2, 2, 1, p); SP_ADD(-2); fs16(s, v); }
+		else { u8 *s; STACK_PTR2(s, -4, 4, 1, p); SP_ADD(-4); fs32(s, v); }
 		break;
 	}
 	NEXT; }
@@ -1714,18 +1824,32 @@ movs: { int n = strn;
 	if (!rep) {
 		u8 *s, *d;
 		FPTR_IO(s, ss, SI_, n, 0, movs_io);
-		FPTR_IO(d, SEG_ES, DI_, n, 1, movs_io);
+		FPTR_IO_W(d, SEG_ES, DI_, n, movs_dio, s);
 		if (n == 1) fs8(d, fm8(s)); else if (n == 2) fs16(d, fm16(s)); else fs32(d, fm32(s));
 		SET_SI(SI_ + dir);
 		SET_DI(DI_ + dir);
 		NEXT;
-movs_io:   /* either side may be MMIO: the source looked up first and the
-	      destination only if it can be read, as tiny386 does; nothing read
-	      before both are known (an MMIO read has side effects) */
+movs_dio:   /* (v5.1) the source a host address (RAM, or the frame buffer's
+	       read entry), the destination MMIO at mpaddr (the frame buffer by
+	       its write tag, or what fast_miss() found): each end looked up
+	       once, the source first, as tiny386 translates them */
+		{
+			SYNC_IN();
+			u32 v = n == 1 ? fm8(s) : n == 2 ? fm16(s) : fm32(s);
+			fast_io_store(cpu, mpaddr, n, v);
+			SET_SI(SI_ + dir);
+			SET_DI(DI_ + dir);
+			NEXT;
+		}
+movs_io:   /* the source MMIO (v5.1: a destination that is MMIO goes to
+	      movs_dio): the source looked up first and the destination only
+	      if it can be read, as tiny386 does; nothing read before both are
+	      known (an MMIO read has side effects) */
 		{
 			uword ps = 0, pd = 0;
 			int ks = fast_where(cpu, ftlb, nullsegs, ss, SI_, n, 0, &s, &ps);
 			if (!ks) goto slow;
+			FAST_TWO_OP_PG(cpu->seg[SEG_ES].base + DI_, (cpu->seg[ss].base + SI_) >> 12, 1);
 			int kd = fast_where(cpu, ftlb, nullsegs, SEG_ES, DI_, n, 1, &d, &pd);
 			if (!kd) goto slow;
 			SYNC_IN();
@@ -1748,7 +1872,7 @@ movs_io:   /* either side may be MMIO: the source looked up first and the
 			goto slow;   /* the piece would wrap around the segment: tiny386 does it its way */
 		u8 *s, *d;
 		FPTR_IO(s, ss, si, n, 0, movs_rep_io);
-		FPTR_IO(d, SEG_ES, di, n, 1, movs_rep_io);
+		FPTR_IO_W(d, SEG_ES, di, n, movs_rep_dio, s);
 		if (dir > 0 && (d + cnt * n <= s || d >= s + cnt * n)) {
 			memcpy(d, s, cnt * n);
 		} else {
@@ -1757,16 +1881,34 @@ movs_io:   /* either side may be MMIO: the source looked up first and the
 			}
 		}
 		goto movs_rep_next;
-movs_rep_io: {   /* MMIO at one end or both (v5.0): with the linear frame
-		    buffer at one end and it or RAM at the other, the page's
-		    part in one go, with its marks, as tiny386's MOVS_helper2()
-		    does it (lfb_movs() in i386.c); anything else (the VGA
-		    window) goes to tiny386.  The source is looked up first, as
-		    tiny386 translates it first, and nothing is read before
-		    both ends are known. */
+movs_rep_dio: {   /* (v5.1) the source a host address (RAM, or the frame
+		     buffer's read entry), the destination MMIO at mpaddr (the
+		     frame buffer by its write tag, or what fast_miss() found):
+		     with the frame buffer at one end, the page's part in one go
+		     by lfb_movs(), as below, without looking either end up
+		     again; anything else (the VGA window) goes to tiny386 */
+			uintptr_t o = (uintptr_t) s - (uintptr_t) cpu->cb.lfb_mem;
+			uword ps = o < cpu->cb.lfb_lim1 ? cpu->cb.lfb_base + (uword) o :
+				(uword) (s - (u8 *) cpu->phys_mem);
+			if (!(in_high_iomem(ps) || in_high_iomem(mpaddr)) ||
+			    !lfb_movs(cpu, ps, mpaddr, n, dir, cnt))
+				goto slow;
+			goto movs_rep_next;
+		}
+movs_rep_io: {   /* MMIO at one end or both (v5.0; since v5.1 the source
+		    MMIO, a destination that is MMIO going to movs_rep_dio):
+		    with the linear frame buffer at one end and it or RAM at the
+		    other, the page's part in one go, with its marks, as
+		    tiny386's MOVS_helper2() does it (lfb_movs() in i386.c);
+		    anything else (the VGA window) goes to tiny386.  The source
+		    is looked up first, as tiny386 translates it first, and
+		    nothing is read before both ends are known. */
 			uword ps, pd;
 			int ks = fast_where(cpu, ftlb, nullsegs, ss, si, n, 0, &s, &ps);
 			if (!ks) goto slow;
+			if (ks == 2 && !in_high_iomem(ps))
+				goto slow;   /* (v5.1) the VGA window: lfb_movs() takes no piece from it */
+			FAST_TWO_OP_PG(ld, ls >> 12, 1);
 			int kd = fast_where(cpu, ftlb, nullsegs, SEG_ES, di, n, 1, &d, &pd);
 			if (!kd) goto slow;
 			/* (a read entry may be the frame buffer's; a write
@@ -1818,7 +1960,7 @@ stos_lfb: {   /* the frame buffer, as lfb_st */
 		if (c2 < cnt) cnt = c2;
 		if (adsz16 && (dir > 0 ? di + cnt * n > 0x10000 : di < (cnt - 1) * n))
 			goto slow;
-		u8 *d; FPTR_IO(d, SEG_ES, di, n, 1, stos_rep_io);
+		u8 *d; FPTR_IO_W(d, SEG_ES, di, n, stos_rep_io, (const u8 *) NULL);
 		if (n == 1 && dir > 0) memset(d, v, cnt);
 		else for (uword i = 0; i < cnt; i++, d += dir) {
 			if (n == 1) fs8(d, v); else if (n == 2) fs16(d, v); else fs32(d, v);
@@ -1889,7 +2031,7 @@ cmps: { int n = strn;
 		if (rep && !CX_) break;
 		u8 *s, *d;
 		FPTR(s, ss, SI_, n, 0);
-		FPTR(d, SEG_ES, DI_, n, 0);
+		FPTR2(d, SEG_ES, DI_, n, 0, s);
 		SET_SI(SI_ + dir);
 		SET_DI(DI_ + dir);
 		if (rep) SET_CX(CX_ - 1);
