@@ -81,10 +81,10 @@
  *   it does alone.
  * - A lookup here never drops tiny386's TLB entry for the page the code
  *   runs from, nor an entry of tiny386's that refuses the access (v5.1,
- *   fast_miss()): the instruction goes to tiny386 first.  An instruction
- *   handed over, REP pieces done or not, then finds tiny386's TLB as
- *   tiny386 alone would have it, also the first in a page newly cached,
- *   which tiny386 fetches again the slow way (slow:).
+ *   fast_lpgno() in i386.c): the instruction goes to tiny386 first.  An
+ *   instruction handed over, REP pieces done or not, then finds tiny386's
+ *   TLB as tiny386 alone would have it, also the first in a page newly
+ *   cached, which tiny386 fetches again the slow way (slow:).
  * - Stack slots that wrap around a 16-bit stack, INT's ESP, BT with an
  *   immediate beyond the operand, ARPL's write, protected-mode loads of SS
  *   and a failed segment load are done as tiny386 does them.
@@ -170,21 +170,8 @@ static inline struct fast_tlb_entry *IRAM_ATTR_FAST_EXEC fast_tlb_check(CPUI386 
    access reaches within its page without a fault, or -1 if it crosses a
    page or faults (tiny386 raises the fault when it does the instruction
    again).  The lookup is translate_lpgno()'s, as tiny386's translate()
-   makes it.
-   v5.1 (WI-2's check, its F1 and F2): with paging, NULL (and *mmio -1)
-   with tiny386's TLB untouched, so that tiny386 does the instruction
-   from its start and finds its TLB as it would alone, when
-   - tiny386's entry holds the page and refuses the access: tiny386 alone
-     faults with the entry it has; translate_lpgno() would drop it, and
-     tiny386 walk the page again, setting accessed bits the guest cleared
-     without INVLPG and reading an entry it changed without INVLPG;
-   - the refill would drop tiny386's entry for the page the code runs from
-     (cpu->ifetch): tiny386 fetches the first instruction in a page newly
-     cached again the slow way (slow:), through its TLB, and would walk
-     the code page again, before or between the pieces of a REP (a second
-     walk, or the code page left where tiny386 alone keeps the operand's).
-     tiny386 alone translates a page once for its fetch; then its operands
-     may drop it, as here once tiny386 has the instruction. */
+   makes it (v5.1: fast_lpgno() leaves tiny386's entry for the code page,
+   and an entry that refuses the access, to tiny386 untouched: NULL). */
 static noinline u8 *IRAM_ATTR_FAST_EXEC fast_miss(CPUI386 *cpu, struct fast_tlb_entry *tab,
 						  uword lin, int size, int write, uword *mmio)
 {
@@ -195,10 +182,6 @@ static noinline u8 *IRAM_ATTR_FAST_EXEC fast_miss(CPUI386 *cpu, struct fast_tlb_
 	uword paddr;
 	u8 *ppte;
 	if (cpu->cr0 & CR0_PG) {
-		struct tlb_entry *t = &cpu->tlb.tab[pg % tlb_size];
-		if (t->lpgno == pg ? t->pte_lookup[cpu->cpl > 0][write] != 0 :
-		    t->lpgno == (uword) (cpu->ifetch.laddr >> 12))
-			return NULL;
 		if (!fast_lpgno(cpu, write ? 2 : 1, pg, lin, cpu->cpl, &paddr))
 			return NULL;
 		paddr &= ~0xfff;
@@ -290,10 +273,10 @@ static noinline int IRAM_ATTR_FAST_EXEC fast_where(CPUI386 *cpu, struct fast_tlb
    page).  tiny386 then translates the first operand (a hit) and this one,
    once each, in its order.  tlb_refill() changes an entry only when it
    succeeds, so a page that is not present drops nothing; and an entry of
-   this page's own that refuses the access fast_miss() leaves to tiny386
-   untouched, so tiny386 faults with it as it does alone.  Out of line, as
-   fast_miss() is: in line at each lookup it cost about 1.1 KB of internal
-   RAM. */
+   this page's own that refuses the access fast_lpgno() (i386.c) leaves to
+   tiny386 untouched, so tiny386 faults with it as it does alone.  Out of
+   line, as fast_miss() is: in line at each lookup it cost about 1.1 KB of
+   internal RAM. */
 static noinline u8 *IRAM_ATTR_FAST_EXEC fast_miss2(CPUI386 *cpu, struct fast_tlb_entry *tab, uword lin,
 						   int size, int write, uword *mmio, const u8 *h1)
 {
