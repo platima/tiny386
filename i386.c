@@ -1170,6 +1170,43 @@ static void IRAM_ATTR store32(CPUI386 *cpu, OptAddr *res, u32 val)
  * them all at its next picture at the latest (the bytes before the fence
  * and the marks after it).
  */
+
+/*
+ * v5.1: a REP STOSW or STOSD piece of count elements of size bytes (2 or
+ * 4), all val, from p, which is aligned to size: plain aligned 32-bit
+ * stores, eight a loop turn, with a 16-bit store first and last for STOSW
+ * where the piece starts or ends half way into a word.  It fills from the
+ * piece's lowest element up, whatever DF says: every element has the same
+ * value and nothing is read, so the memory after it is what the element
+ * loop leaves.  (unaligned.h's stu16() and stu32() test the alignment of
+ * every element, and the board's compiler keeps that test for stores.)
+ * For lfb_stos() and the fast interpreter's REP STOS piece into RAM
+ * (i386_fast.h), each for 8 elements or more: below that the element loop
+ * is as cheap.
+ */
+typedef u16 __attribute__((may_alias)) fill_u16;
+typedef u32 __attribute__((may_alias)) fill_u32;
+static inline __attribute__((always_inline)) void fill_aligned(u8 *p, u32 val, int size, uword count)
+{
+	u8 *end = p + count * size;
+	u32 v = size == 2 ? (val & 0xffff) * 0x10001u : val;
+	if (size == 2 && ((uintptr_t) p & 2)) {
+		*(fill_u16 *) p = v;
+		p += 2;
+	}
+	fill_u32 *q = (fill_u32 *) p;
+	fill_u32 *qe = (fill_u32 *) ((uintptr_t) end & ~(uintptr_t) 3);
+	while (qe - q >= 8) {
+		q[0] = v; q[1] = v; q[2] = v; q[3] = v;
+		q[4] = v; q[5] = v; q[6] = v; q[7] = v;
+		q += 8;
+	}
+	while (q < qe)
+		*q++ = v;
+	if ((u8 *) q < end)
+		*(fill_u16 *) q = v;
+}
+
 static bool noinline IRAM_ATTR lfb_stos(CPUI386 *cpu, uword dst, u32 val, int size, int dir,
 					uword count)
 {
@@ -1181,6 +1218,8 @@ static bool noinline IRAM_ATTR lfb_stos(CPUI386 *cpu, uword dst, u32 val, int si
 	u8 *p = cpu->cb.lfb_mem + off;
 	if (size == 1) {
 		memset(p, (u8) val, len);
+	} else if (count >= 8 && !((uintptr_t) p & (size - 1))) {
+		fill_aligned(p, val, size, count);   /* v5.1 */
 	} else if (size == 2) {
 		for (uword i = 0; i < count; i++)
 			stu16(p + 2 * i, val);

@@ -1962,6 +1962,8 @@ stos_lfb: {   /* the frame buffer, as lfb_st */
 			goto slow;
 		u8 *d; FPTR_IO_W(d, SEG_ES, di, n, stos_rep_io, (const u8 *) NULL);
 		if (n == 1 && dir > 0) memset(d, v, cnt);
+		else if (n > 1 && cnt >= 8 && !((uintptr_t) d & (n - 1)))   /* (v5.1) by word stores, from the lowest element */
+			fill_aligned(dir > 0 ? d : d - (cnt - 1) * n, v, n, cnt);
 		else for (uword i = 0; i < cnt; i++, d += dir) {
 			if (n == 1) fs8(d, v); else if (n == 2) fs16(d, v); else fs32(d, v);
 		}
