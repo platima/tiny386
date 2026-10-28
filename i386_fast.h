@@ -81,7 +81,9 @@
  *   it does alone.
  * - A lookup here never drops tiny386's TLB entry for the page the code
  *   runs from, nor an entry of tiny386's that refuses the access (v5.1,
- *   fast_lpgno() in i386.c): the instruction goes to tiny386 first.  An
+ *   FAST_CODE_PAGE() and FAST_REFUSED() in i386.c, which fast_translate(),
+ *   the lean refill on the boards' path, and fast_lpgno(), long mode's,
+ *   both test): the instruction goes to tiny386 first.  An
  *   instruction handed over, REP pieces done or not, then finds tiny386's
  *   TLB as tiny386 alone would have it, also the first in a page newly
  *   cached, which tiny386 fetches again the slow way (slow:).
@@ -122,8 +124,9 @@
 /* == the TLB (struct fast_state, i386.c) */
 
 /* A write tag with this bit is a page of the VBE frame buffer (fast_miss()):
-   only FPTR_ST() takes it, and stores and marks there.  Linear page numbers
-   have 20 bits, and no tag (-1) never equals a page with this bit. */
+   only FPTR_ST() (MOV, STOS) and, since v5.1, FPTR_IO_W() (REP STOS, REP
+   MOVS, MOVS) take it, and store and set the marks there.  Linear page
+   numbers have 20 bits, and no tag (-1) never equals a page with this bit. */
 #define FAST_TAG_LFB 0x80000000u
 /* v5.1: fast_exec()'s hit test (FAST_PL()) puts a null segment's bit 20
    beside a 20-bit linear page, and an access across a page must find
@@ -208,10 +211,11 @@ static noinline u8 *IRAM_ATTR_FAST_EXEC fast_miss(CPUI386 *cpu, struct fast_tlb_
 		/* A page all inside the VBE frame buffer (v5.0, after the
 		   reviews) gets an entry too: for reads a host address in video
 		   memory, where load8() to load32() would read; for writes only a
-		   tag that FPTR_ST() looks for, the page with FAST_TAG_LFB, which
-		   no RAM store path takes, so that every store into the page sets
-		   the marks as store8() to store32() set them.  The first store
-		   still goes through tiny386's store (NULL is returned). */
+		   tag that FPTR_ST() and (v5.1) FPTR_IO_W() look for, the page
+		   with FAST_TAG_LFB, which no RAM store path takes, so that every
+		   store into the page sets the marks as store8() to store32() set
+		   them.  The first store still goes through tiny386's store (NULL
+		   is returned). */
 		uword off = paddr - cpu->cb.lfb_base;
 		if (!(in_high_iomem(paddr) && off < cpu->cb.lfb_lim1 && cpu->cb.lfb_lim1 - off >= 0x1000))
 			return NULL;
