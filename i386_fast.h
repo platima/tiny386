@@ -843,26 +843,30 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   privilege level and the frame buffer has not moved, so tiny386's own
 	   lookup would hit and change nothing but the dirty bit.  H1: the source
 	   of MOVS (the two-operand rule, fast_miss2()), or NULL.  (msize is not
-	   set: its labels take the element's size from the handler.) */
+	   set: its labels take the element's size from the handler.)  At the
+	   v5.1 merge FPTR_IO_W(), FPTR_W() and FPTR2() took WI-1's shape: the
+	   hit in one compare with FAST_PL(), the null segment's test first in
+	   the miss, the frame buffer's tag against the last byte's page. */
 #define FPTR_IO_W(p, sg, off, size, LABEL, H1) do { \
-		if (unlikely(nullsegs) && (nullsegs & (1 << (sg)))) goto slow; \
 		uword _lin = cpu->seg[sg].base + (off); \
-		uword _pg = _lin >> 12; \
-		struct fast_tlb_entry *_e = &ftlb[_pg % tlb_size]; \
-		bool _in = (size) == 1 || (_lin & 0xfff) <= 0x1000 - (size); \
-		if (likely(_e->wtag == _pg && _in)) { \
+		struct fast_tlb_entry *_e = &ftlb[(_lin >> 12) % tlb_size]; \
+		if (likely(_e->wtag == FAST_PL(sg, _lin, size))) { \
 			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
 			if (unlikely(!(*_e->ppte & 0x40))) \
 				*_e->ppte |= 0x40; \
-		} else if (_e->wtag == (_pg | FAST_TAG_LFB) && _in) { \
-			if (unlikely(!(*_e->ppte & 0x40))) \
-				*_e->ppte |= 0x40; \
-			mpaddr = cpu->cb.lfb_base + (uword) ((uintptr_t) (_lin + _e->delta) - \
-							     (uintptr_t) cpu->cb.lfb_mem); \
-			goto LABEL; \
-		} else if (!(p = fast_miss2(cpu, ftlb, _lin, (size), 1, &mpaddr, (H1)))) { \
-			if (mpaddr == (uword) -1) goto slow; \
-			goto LABEL; \
+		} else { \
+			if (nullsegs & (1u << (sg))) goto slow; \
+			if (_e->wtag == ((((_lin) + (size) - 1) >> 12) | FAST_TAG_LFB)) { \
+				if (unlikely(!(*_e->ppte & 0x40))) \
+					*_e->ppte |= 0x40; \
+				mpaddr = cpu->cb.lfb_base + (uword) ((uintptr_t) (_lin + _e->delta) - \
+								     (uintptr_t) cpu->cb.lfb_mem); \
+				goto LABEL; \
+			} \
+			if (!(p = fast_miss2(cpu, ftlb, _lin, (size), 1, &mpaddr, (H1)))) { \
+				if (mpaddr == (uword) -1) goto slow; \
+				goto LABEL; \
+			} \
 		} \
 	} while (0)
 	/* v5.1: only the hit of a store's destination, tested as FPTR_IO()
@@ -870,12 +874,9 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   (MOVS: with the whole of FPTR_IO_W() in line, the board's compiler
 	   laid the hit out of line, five host instructions dearer, mb) */
 #define FPTR_W(p, sg, off, size, MISS) do { \
-		if (unlikely(nullsegs) && (nullsegs & (1 << (sg)))) goto slow; \
 		uword _lin = cpu->seg[sg].base + (off); \
-		uword _pg = _lin >> 12; \
-		struct fast_tlb_entry *_e = &ftlb[_pg % tlb_size]; \
-		if (likely(_e->wtag == _pg && \
-			   ((size) == 1 || (_lin & 0xfff) <= 0x1000 - (size)))) { \
+		struct fast_tlb_entry *_e = &ftlb[(_lin >> 12) % tlb_size]; \
+		if (likely(_e->wtag == FAST_PL(sg, _lin, size))) { \
 			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
 			if (unlikely(!(*_e->ppte & 0x40))) \
 				*_e->ppte |= 0x40; \
@@ -886,17 +887,17 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   at host address H1 (or NULL): a miss through fast_miss2(), the
 	   two-operand rule */
 #define FPTR2(p, sg, off, size, wr, H1) do { \
-		if (unlikely(nullsegs) && (nullsegs & (1 << (sg)))) goto slow; \
 		uword _lin = cpu->seg[sg].base + (off); \
-		uword _pg = _lin >> 12; \
-		struct fast_tlb_entry *_e = &ftlb[_pg % tlb_size]; \
-		if (likely(((wr) ? _e->wtag : _e->rtag) == _pg && \
-			   ((size) == 1 || (_lin & 0xfff) <= 0x1000 - (size)))) { \
+		struct fast_tlb_entry *_e = &ftlb[(_lin >> 12) % tlb_size]; \
+		if (likely(((wr) ? _e->wtag : _e->rtag) == FAST_PL(sg, _lin, size))) { \
 			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
 			if ((wr) && unlikely(!(*_e->ppte & 0x40))) \
 				*_e->ppte |= 0x40; \
-		} else if (!(p = fast_miss2(cpu, ftlb, _lin, (size), (wr), &mpaddr, (H1)))) \
-			goto slow; \
+		} else { \
+			if (nullsegs & (1u << (sg))) goto slow; \
+			if (!(p = fast_miss2(cpu, ftlb, _lin, (size), (wr), &mpaddr, (H1)))) \
+				goto slow; \
+		} \
 	} while (0)
 	/* v5.1: the two-operand rule where the first operand is MMIO, which has
 	   no fast entry (MOVS from the VGA window): with paging, the

@@ -912,7 +912,7 @@ for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN
          plnull:'s/^#define FAST_PL(sg, lin, size) ((((lin) + (size) - 1) >> 12) | (((nullsegs >> (sg)) & 1u) << 20))$/#define FAST_PL(sg, lin, size) (((lin) + (size) - 1) >> 12)/' \
          st4fold:'s/^\t*nofold_it = FAST_ITER(); nofold_laddr = cpu->ifetch.laddr; nofold_xaddr = cpu->ifetch.xaddr;.*$/\t\t\t\t(void) 0;/' \
          lpgno:'s/^#define FAST_REFUSED(ent, cpl, wr) .*$/#define FAST_REFUSED(ent, cpl, wr) 0/' \
-         repdirty:'/} else if (_e->wtag == (_pg | FAST_TAG_LFB) && _in) {/,/goto LABEL;/s/\*_e->ppte |= 0x40;/(void) 0;/' \
+         repdirty:'/^#define FPTR_IO_W(/,/goto LABEL;/{/FAST_TAG_LFB)) { \\$/,/goto LABEL;/s/\*_e->ppte |= 0x40;/(void) 0;/}' \
          n2:'s/1, \&mpaddr, (H1)))) { \\$/1, \&mpaddr, (NULL)))) { \\/' \
          cmpsrule:'s/^\t\tFPTR2(d, SEG_ES, DI_, n, 0, s);$/\t\tFPTR(d, SEG_ES, DI_, n, 0);/' \
          restore:'s/^\tif (FAST_ITER() == nofold_it) {$/\tif (0) {/' \
