@@ -687,7 +687,7 @@ static noinline void IRAM_ATTR fast_tlb_slot(CPUI386 *cpu, struct tlb_entry *ent
 	} while (0)
 #else
 #define FAST_TLB_SLOT(cpu, ent) do {} while (0)
-#define FAST_TLB_SLOT_LEAN(cpu, i) do {} while (0)
+#define FAST_TLB_SLOT_LEAN(cpu, i) do { (void) (i); } while (0)
 #define FAST_TLB_CLEARED(cpu) do {} while (0)
 #endif
 
