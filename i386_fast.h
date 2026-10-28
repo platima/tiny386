@@ -572,8 +572,13 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	int nslow = 0;            /* instructions done by tiny386 (which counts them) */
 	int fsync = 0;            /* instructions done here and added to cpu->cycle */
 	int nofold_it = -1;       /* the instruction that tiny386 fetched the slow way */
-	unsigned long nofold_laddr = 0;   /* ... and tiny386's fetch cache before it */
-	uword nofold_xaddr = 0;
+	/* ... and tiny386's fetch cache before it.  v5.1: volatile, so kept in
+	   memory: they are written when a page is newly cached and read only
+	   when an instruction goes to tiny386, and with them in registers GCC
+	   spilt others on the memory operands' path (4 to 5 host instructions
+	   more a MOV r,[m], the board's compiler, mb) */
+	volatile unsigned long nofold_laddr = 0;
+	volatile uword nofold_xaddr = 0;
 	const u8 *pc;             /* the next instruction byte (host address) */
 	const u8 *ins;            /* the current instruction's first byte */
 	const u8 *win_lo;         /* the code window: instructions start in [win_lo, win_lo + FAST_WIN) */
