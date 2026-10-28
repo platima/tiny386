@@ -12,7 +12,11 @@
 #     registers);
 #  3. with the board's compiler and qemu-riscv32-static, when both are there:
 #     both builds again for RV32, and the host instructions of each piece of
-#     guest_lfb.S's bench_ cases counted (tbcount.c), old against new.
+#     guest_lfb.S's bench_ cases counted (tbcount.c), old against new (v5.1:
+#     pfill and pcopy too, the frame buffer through the page tables);
+#  4. (v5.1) the accessed-bit probes (guest_lfb.S's probe_ cases): this tree
+#     with the fast interpreter on and off, and v4.6's tree, must leave the
+#     same words (the first operand's page table entry above all).
 #
 #   bash tests/host/lfb/run_lfb.sh [OUT]
 #
@@ -114,7 +118,7 @@ else
     STATIC=-static build rv-new "$TREE" "$RV32_CC" "$ARCH" || exit 1
     STATIC=-static build rv-old "$OUT/v4.6-tree" "$RV32_CC" "$ARCH" || exit 1
     st=0
-    for b in stores fill copy window; do
+    for b in stores fill copy window pfill pcopy; do
         for v in old new; do
             bin="$OUT/rv-$v/test_lfb"
             mark=$($NM "$bin" | awk '$3 == "perf_mark" { print $1 }')
@@ -151,6 +155,12 @@ rows = [
     ("window", 0, "MOV [EDI],EAX into the bank window", 4096, "a store"),
     ("window", 1, "REP STOSD into the bank window", 0x4000, "a dword"),
     ("window", 2, "REP MOVSD from the bank window into it", 0x2000, "a dword"),
+    ("pfill", 0, "paging: fill 400x300, a REP STOSD of 200 a row", 300 * 200, "a dword"),
+    ("pfill", 1, "paging: fill 800x480, one REP STOSD", 800 * 480 // 2, "a dword"),
+    ("pcopy", 0, "paging: RAM to the screen, 400x300", 300 * 200, "a dword"),
+    ("pcopy", 1, "paging: scroll up a row", 300 * 200, "a dword"),
+    ("pcopy", 2, "paging: scroll down a row", 300 * 200, "a dword"),
+    ("pcopy", 3, "paging: the screen to RAM, 400x300", 300 * 200, "a dword"),
 ]
 print("    | %-58s %10s %10s %7s" % ("host instructions per guest " + "store/dword", "v4.6", "this tree", "times"))
 for b, i, what, div, unit in rows:
@@ -161,6 +171,27 @@ for b, i, what, div, unit in rows:
     print("    | %-58s %10.1f %10.1f %7.2f" % (what, o[i] / div, n[i] / div, o[i] / n[i]))
 PY
     result $st "RV32 host instructions counted for the bench pieces, v4.6 and this tree (the table above)"
+fi
+
+# ==== 4. the accessed bits: the probes (v5.1) ====
+PROBES="abit_rep abit_one abit_ctl abit_win abit_win1 abit_cmps abit_pop abit_push abit_call abit_wsrc abit_wsrc1"
+if [ -z "$OLD" ]; then
+    echo "SKIP lfb probes: no v4.6 here"
+else
+    echo "== the accessed-bit probes: the fast interpreter on, off, and v4.6"
+    st=0
+    for p in $PROBES; do
+        a=$("$OUT/new/test_lfb" "$OUT/guest_lfb.bin" "$OUT/guest_lfb.sym" probe $p 1) || st=1
+        b=$("$OUT/new/test_lfb" "$OUT/guest_lfb.bin" "$OUT/guest_lfb.sym" probe $p 0) || st=1
+        c=$("$OUT/old/test_lfb" "$OUT/guest_lfb.bin" "$OUT/guest_lfb.sym" probe $p) || st=1
+        if [ "$a" = "$b" ] && [ "$a" = "$c" ]; then
+            echo "    | $a"
+        else
+            st=1
+            echo "    | $p differs: fast on: ${a#*: }; off: ${b#*: }; v4.6: ${c#*: }"
+        fi
+    done
+    result $st "the accessed-bit probes (the two-operand rule): the fast interpreter on and off and v4.6 leave the same"
 fi
 
 echo "lfb: $pass passed, $fail failed"

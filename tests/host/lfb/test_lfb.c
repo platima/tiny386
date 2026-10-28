@@ -23,10 +23,20 @@
  * stores into (none with vbe_blocks 0), and vga_wrote.
  *
  *   test_lfb GUEST.bin GUEST.sym            the cases
- *   test_lfb GUEST.bin GUEST.sym bench NAME  bench_NAME once (768K, marks
+ *   test_lfb GUEST.bin GUEST.sym bench NAME [FAST]
+ *                                            bench_NAME once (768K, marks
  *                                             on), perf_mark() at each of
  *                                             its OUT 80h, for counting
  *                                             under qemu (run_lfb.sh)
+ *   test_lfb GUEST.bin GUEST.sym probe NAME [FAST]
+ *                                            probe_NAME once (v5.1), and
+ *                                             the four words it leaves at
+ *                                             OUT printed (run_lfb.sh
+ *                                             compares them)
+ *
+ * FAST: 1 or 0, the fast interpreter on or off (cpui386_set_fast(), a weak
+ * symbol here: v4.6's tree, which this file is built against too, has no
+ * fast interpreter, and there it is left out).
  *
  * Exit status 0 when every check passes.
  */
@@ -37,6 +47,10 @@
 #include <string.h>
 
 #include "pc.h"
+
+/* v5.0's switch (i386.h), weak: v4.6's tree has no such functions */
+void cpui386_set_fast(CPUI386 *cpu, int on) __attribute__((weak));
+int cpui386_get_fast(CPUI386 *cpu) __attribute__((weak));
 
 #define MEM (2u << 20)
 #define LFB 0xE0000000u
@@ -176,10 +190,12 @@ static uint8_t rpat(uint32_t i)
 }
 
 /* the page tables at 0x20000: the first 4 MiB as they are; linear 0x400000
-   onwards page by page as guest_lfb.S expects */
+   onwards page by page as guest_lfb.S expects; and (v5.1) linear 0x800000
+   onwards the frame buffer page by page, as Windows maps it (PD entry 2,
+   its table at 0x23000) */
 static void page_map(uint8_t *mem)
 {
-	uint32_t pd[2] = { 0x22000 | 7, 0x21000 | 7 };
+	uint32_t pd[3] = { 0x22000 | 7, 0x21000 | 7, 0x23000 | 7 };
 	uint32_t pt1[9] = {
 		LFB + 0x3000,		/* 0x400000 */
 		LFB + 0x8000,		/* 0x401000 */
@@ -195,6 +211,10 @@ static void page_map(uint8_t *mem)
 	for (uint32_t i = 0; i < 1024; i++) {
 		uint32_t pte = (i << 12) | 7;
 		memcpy(mem + 0x22000 + i * 4, &pte, 4);
+	}
+	for (uint32_t i = 0; i < 1024 && i < vsize / 4096; i++) {
+		uint32_t pte = (LFB + i * 4096) | 7;
+		memcpy(mem + 0x23000 + i * 4, &pte, 4);
 	}
 	for (int i = 0; i < 9; i++) {
 		uint32_t pte = pt1[i] | 7;
@@ -223,6 +243,13 @@ static void prepare(void)
 }
 
 static CPUI386_State st;
+
+/* the fast interpreter on or off (v5.0's tree and later), if asked */
+static void set_fast(int argc, char **argv)
+{
+	if (argc >= 6 && cpui386_set_fast)
+		cpui386_set_fast(pc->cpu, atoi(argv[5]));
+}
 
 /* from entry to its HLT at "done"; false if it did not get there */
 static bool run(uint32_t entry, int slice, long limit)
@@ -305,6 +332,14 @@ static const struct expect {
 			      { 0x34002, 0x132 }, { 0x35003, 0x40 } } },
 	{ "movs_short", true, { { 0x82000, 7 }, { 0x82200, 4 } } },
 	{ "lods", false, { } },
+	/* v5.1: REP STOSW and STOSD of 1 to 40 elements, at both alignments,
+	   DF either way, each in a 256-byte slot of its own (guest_lfb.S's
+	   stosn_all): into the frame buffer without paging and through the
+	   page tables, and into RAM */
+	{ "stosn_lfb", true, { { 0x90000, 0x19000 } } },
+	{ "stosn_plfb", true, { { 0x90000, 0x19000 } } },
+	{ "stosn_ram", false, { } },
+	{ "stosn_pram", false, { } },
 	{ "bar_off", true, { { 0x100, 4 }, { 0x204, 2 }, { 0x307, 1 }, { 0x400, 0x100 },
 			     { 0x800, 0x100 } } },
 	{ "bar_move", true, { { 0x100, 4 }, { 0x400, 0x100 }, { 0x900, 4 }, { 0xa00, 4 } } },
@@ -428,8 +463,25 @@ int main(int argc, char **argv)
 		make_pc(768 << 10);
 		prepare();
 		vga_dirty_blocks = 1;
+		set_fast(argc, argv);
 		bool ran = run(sym(name), 1 << 16, 1L << 30);
 		printf("%s: %s, %d marks\n", name, ran ? "at done" : "DID NOT GET TO done", marks);
+		return ran ? 0 : 1;
+	}
+
+	/* v5.1: one accessed-bit probe (guest_lfb.S), an instruction a step */
+	if (argc >= 5 && !strcmp(argv[3], "probe")) {
+		char name[80];
+		snprintf(name, sizeof(name), "probe_%s", argv[4]);
+		make_pc(768 << 10);
+		prepare();
+		vga_dirty_blocks = 1;
+		set_fast(argc, argv);
+		bool ran = run(sym(name), 1, 100000);
+		uint32_t w[4];
+		memcpy(w, (uint8_t *) pc->phys_mem + 0x9100, sizeof(w));
+		printf("%s: %s, OUT %08x %08x %08x %08x\n", name, ran ? "at done" : "DID NOT GET TO done",
+		       w[0], w[1], w[2], w[3]);
 		return ran ? 0 : 1;
 	}
 

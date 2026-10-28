@@ -73,10 +73,24 @@
  * host memory is 4 GiB above guest RAM (on a 64-bit host), so that a host
  * address of it taken as a 32-bit physical address lands in RAM.
  *
+ * v5.1 (WI-2, the frame buffer's REP paths and the two-operand rule): case j
+ * also does REP STOSD and REP MOVSD into each page of the frame buffer (and
+ * over two of its pages) with the page's dirty bit cleared without INVLPG
+ * between them, OUTs to port E4h (the VGA's BAR) between REP instructions,
+ * and ends at level 3 storing by REP into a supervisor page of it, which
+ * must fault.  Case m (hand-written, one instruction a step): an instruction
+ * with two memory operands whose second is at the first's TLB index and
+ * goes to tiny386 (past the end of RAM, a read-only page, the VGA window),
+ * with the first's page table entry's accessed bit cleared in both machines
+ * before every step, so that a second translation of the first operand
+ * shows: MOVS, REP MOVS (from RAM and from the VGA window), CMPS, POP,
+ * PUSH and CALL through memory, and CALL FAR through memory in
+ * virtual-8086 mode; the seed picks which.
+ *
  *   test_fast_cpu [SEEDS [FIRST_SEED [MODES]]]
  *
  * MODES: the scenarios for each seed, one character each (run() names
- * them; the default is all twenty-two, 0123456789abcdefghijkl).
+ * them; the default is all of main()'s list).
  *
  * Built with i386.c included (I386_FAST), so that tiny386's internals can
  * be compared.  Exit status 0 when the two agree at every step.
@@ -1674,6 +1688,160 @@ static int compare(const char *what, int seed, long step)
 	return 0;
 }
 
+/* == v5.1 (WI-2): the frame buffer's REP paths, and the two-operand rule */
+
+/* case j, after its single stores: REP STOSD and REP MOVSD into each page
+   of the frame buffer (through the write tag once the page has one), the
+   page's A and D cleared without INVLPG between them, one MOVSD, and a REP
+   STOSD over two pages after both were cleared (two pieces); then OUTs to
+   port E4h (the VGA's BAR: odd seeds move or take away the frame buffer)
+   between REP instructions; then level 3 (IRETD), storing by REP into a
+   supervisor page of the frame buffer, which must fault, again and again
+   (the page fault handler cannot map it) */
+static void frame_buffer_reps(int seed)
+{
+	for (int k = 0; k < 16; k++) {
+		uword pgl = LFB_BASE + k * 0x1000, pte = P_PT + 0x3000 + k * 4;
+		uword other = LFB_BASE + ((k + 5) & 15) * 0x1000;
+		e8(0xb8); e32(0x01020304 * (k + 1));                                   /* MOV EAX,n */
+		e8(0xbf); e32(pgl + 0x100); e8(0xb9); e32(8); e8(0xf3); e8(0xab);      /* REP STOSD */
+		e8(0x81); e8(0x25); e32(pte); e32(0xffffff9f);                         /* AND [pte],~60h */
+		e8(0xbf); e32(pgl + 0x204); e8(0xb9); e32(9); e8(0xf3); e8(0xab);      /* again */
+		e8(0x81); e8(0x25); e32(pte); e32(0xffffff9f);
+		e8(0xbe); e32(P_DATA + 0x100); e8(0xbf); e32(pgl + 0x300);
+		e8(0xb9); e32(8); e8(0xf3); e8(0xa5);                                  /* REP MOVSD from RAM */
+		e8(0x81); e8(0x25); e32(pte); e32(0xffffff9f);
+		e8(0xbe); e32(other + 0x400); e8(0xbf); e32(pgl + 0x500);
+		e8(0xb9); e32(8); e8(0xf3); e8(0xa5);                                  /* from another page of it */
+		e8(0x81); e8(0x25); e32(pte); e32(0xffffff9f);
+		e8(0xbe); e32(P_DATA + 0x200); e8(0xbf); e32(pgl + 0x600); e8(0xa5);   /* MOVSD */
+		e8(0x81); e8(0x25); e32(pte); e32(0xffffff9f);
+		e8(0x66); e8(0xa5);                                                    /* MOVSW */
+		if (k < 15) {
+			e8(0x81); e8(0x25); e32(pte); e32(0xffffff9f);
+			e8(0x81); e8(0x25); e32(pte + 4); e32(0xffffff9f);
+			e8(0xbf); e32(pgl + 0xff0); e8(0xb9); e32(8); e8(0xf3); e8(0xab);   /* over two pages */
+		}
+	}
+	/* E4h: 0 takes it away, 2 leaves its upper half (from E0008000h), 1 all */
+	static const u8 moves[] = { 0, 2, 1 };
+	for (int i = 0; i <= 3; i++) {
+		uword o = i * 0x40;
+		e8(0xbf); e32(LFB_BASE + 0x3800 + o); e8(0xb9); e32(8); e8(0xf3); e8(0xab);
+		e8(0xbf); e32(LFB_BASE + 0x9800 + o); e8(0xb9); e32(8); e8(0xf3); e8(0xab);
+		e8(0xbe); e32(P_DATA + 0x300); e8(0xbf); e32(LFB_BASE + 0x9a00 + o);
+		e8(0xb9); e32(8); e8(0xf3); e8(0xa5);
+		e8(0xbe); e32(LFB_BASE + 0x9a00 + o); e8(0xbf); e32(LFB_BASE + 0x3a00 + o);
+		e8(0xb9); e32(8); e8(0xf3); e8(0xa5);
+		if (i < 3) { e8(0xb0); e8(moves[i]); e8(0xe6); e8(0xe4); }             /* MOV AL,n; OUT E4h,AL */
+	}
+	/* level 3: IRETD to the next instruction with CS 1Bh, SS 23h */
+	e8(0x6a); e8(0x23);
+	e8(0x68); e32(P_USTACK - 0x100);
+	e8(0x9c);
+	e8(0x6a); e8(0x1b);
+	uword at = glin();
+	e8(0x68); e32(at + 6);
+	e8(0xcf);
+	e8(0x66); e8(0xb8); e16(0x23); e8(0x8e); e8(0xd8); e8(0x8e); e8(0xc0);    /* MOV AX,23h; MOV DS,AX; MOV ES,AX */
+	e8(0xbf); e32(LFB_BASE + 0x2100); e8(0xb9); e32(8);
+	if (seed & 2) { e8(0xbe); e32(P_DATA + 0x100); e8(0xf3); e8(0xa5); }    /* REP MOVSD into it */
+	else { e8(0xf3); e8(0xab); }                                              /* REP STOSD into it */
+}
+
+/* case m: the two-operand rule.  An instruction looks its first memory
+   operand up, then its second; if the second is at the same TLB index and
+   the instruction then goes to tiny386, tiny386 must find the first's entry
+   still there.  The pages (equal modulo 512, so the same index on the
+   boards' 256 entries and the host's 512; away from index 0, the code's):
+   S = P_DATA + 2000h (page 502h, RAM), R = 302000h (past the end of RAM),
+   O = 102000h (RAM, made read-only with CR0.WP for a fault), the VGA window
+   (page A0h) and R2 = 2A0000h (past the end of RAM).  Before every step the
+   harness clears the accessed bit of S's and the window's page table
+   entries (and of page 101h's in virtual-8086 mode) in both machines
+   (two_op_clear()), so that a second translation of the first operand sets
+   it in one machine and not the other.  One case a seed. */
+#define TWO_OP_N 11
+static int two_op_v86;
+#define TO_S (P_DATA + 0x2000)
+#define TO_R 0x302000u
+#define TO_O 0x102000u
+#define TO_R2 0x2a0000u
+static void two_op_wp_on(void)
+{
+	e8(0x0f); e8(0x20); e8(0xc0); e8(0x0d); e32(0x10000); e8(0x0f); e8(0x22); e8(0xc0);   /* CR0.WP */
+}
+static void two_op_case(int seed)
+{
+	int k = seed % TWO_OP_N;
+	if (two_op_v86) {
+		/* virtual-8086 mode: the far pointer at FFFF:1010h (linear 101000h,
+		   page 101h, index 1 on the boards), the stack at 0:1800h (page 1,
+		   read-only: the push faults); the pointer is the JMP $ after it
+		   (31 bytes on) */
+		uword t = gp - gcode_phys + 31;
+		e8(0xb8); e16(0xffff); e8(0x8e); e8(0xc0);                         /* MOV AX,FFFFh; MOV ES,AX */
+		e8(0x26); e8(0xc7); e8(0x06); e16(0x1010); e16(t);                 /* MOV WORD ES:[1010h],t */
+		e8(0x26); e8(0xc7); e8(0x06); e16(0x1012); e16(R_CS);              /* MOV WORD ES:[1012h],R_CS */
+		e8(0x31); e8(0xc0); e8(0x8e); e8(0xd0); e8(0xbc); e16(0x1800);     /* XOR AX,AX; MOV SS,AX; MOV SP,1800h */
+		e8(0x26); e8(0xff); e8(0x1e); e16(0x1010);                         /* CALL FAR ES:[1010h] */
+		return;
+	}
+	e8(0xb8); e32(0x12345678);                         /* (the page's first instruction has no operand) */
+	if (k == 2 || k == 3) {
+		/* a write fault: S read-only (2), or O (3), with CR0.WP; the
+		   MOV CR0 empties tiny386's TLB */
+		if (k == 2) { e8(0x81); e8(0x25); e32(P_PT + 0x1000 + ((TO_S >> 12) & 1023) * 4); e32(~2u); }
+		else { e8(0x81); e8(0x25); e32(PT_PHYS + (TO_O >> 12) * 4); e32(~2u); }
+		two_op_wp_on();
+	}
+	if (k >= 8) { e8(0xa1); e32(0xa0000); }            /* MOV EAX,[A0000h]: the window's page in the TLB */
+	else { e8(0xa1); e32(TO_S + 0x100); }              /* MOV EAX,[S+100h] */
+	switch (k) {
+	case 0: /* MOVSD S -> R */
+		e8(0xbe); e32(TO_S + 0x100); e8(0xbf); e32(TO_R + 0x100); e8(0xa5); break;
+	case 1: /* REP MOVSD S -> R */
+		e8(0xbe); e32(TO_S + 0x100); e8(0xbf); e32(TO_R + 0x100); e8(0xb9); e32(8); e8(0xf3); e8(0xa5); break;
+	case 2: /* MOVSD within S, read-only: the same page, a write fault */
+		e8(0xbe); e32(TO_S + 0x100); e8(0xbf); e32(TO_S + 0x200); e8(0xa5); break;
+	case 3: /* MOVSD S -> O, read-only: a refill, then a write fault */
+		e8(0xbe); e32(TO_S + 0x100); e8(0xbf); e32(TO_O + 0x100); e8(0xa5); break;
+	case 4: /* CMPSD S, R */
+		e8(0xbe); e32(TO_S + 0x100); e8(0xbf); e32(TO_R + 0x100); e8(0xa7); break;
+	case 5: /* POP [R], the stack in S */
+		e8(0xbc); e32(TO_S + 0x800); e8(0x8f); e8(0x05); e32(TO_R + 0x100);
+		e8(0xbc); e32(P_STACK - 0x100); break;
+	case 6: /* PUSH [S], the stack in R */
+		e8(0xbc); e32(TO_R + 0x800); e8(0xff); e8(0x35); e32(TO_S + 0x100);
+		e8(0xbc); e32(P_STACK - 0x100); break;
+	case 7: { /* CALL [S], the stack in R: [S+100h] the next instruction */
+		uword at = glin();
+		e8(0xc7); e8(0x05); e32(TO_S + 0x100); e32(at + 10 + 5 + 6);
+		e8(0xbc); e32(TO_R + 0x800);
+		e8(0xff); e8(0x15); e32(TO_S + 0x100);
+		e8(0xbc); e32(P_STACK - 0x100); break;
+	}
+	case 8: /* MOVSD from the window -> R2 */
+		e8(0xbe); e32(0xa0100); e8(0xbf); e32(TO_R2 + 0x100); e8(0xa5); break;
+	default: /* REP MOVSD from the window -> R2 */
+		e8(0xbe); e32(0xa0100); e8(0xbf); e32(TO_R2 + 0x100); e8(0xb9); e32(8); e8(0xf3); e8(0xa5); break;
+	}
+}
+/* before each step: the first operands' accessed bits cleared in both
+   machines, as a guest clears them without INVLPG */
+static void two_op_clear(void)
+{
+	for (int i = 0; i < 2; i++) {
+		u8 *m = M[i].mem;
+		if (two_op_v86) {
+			m[PT_PHYS + 0x101 * 4] &= ~0x20;
+		} else {
+			m[PT2_PHYS + ((TO_S >> 12) & 1023) * 4] &= ~0x20;
+			m[PT_PHYS + 0xa0 * 4] &= ~0x20;
+		}
+	}
+}
+
 /* one scenario: mode 0 real, 1 protected at level 0, 2 at level 3;
    since the v5.0 reviews: 3 virtual-8086, 4 16-bit protected with paging, 5
    level 1, 6 16-bit protected without paging, 7 level 1 reading a
@@ -1740,6 +1908,16 @@ static void setup_mode(int mode, u8 *mem, CPUI386 *cpu)
 	case 20: setup_k(mem, cpu); break;
 	/* v5.1 (WI-1): l, a page read, then written */
 	case 21: setup_l(mem, cpu); break;
+	/* v5.1: the two-operand rule (two_op_case()): level 0 with paging, or
+	   virtual-8086 mode with page 1 read-only for its stack */
+	case 22: if (two_op_v86) {
+			setup_v86(mem, cpu);
+			put32(mem, PT_PHYS + 1 * 4, 0x1000 | 0x005);
+			tlb_clear(cpu);
+		} else {
+			setup_prot(mem, cpu, 0);
+		}
+		break;
 	default: setup_pm16(mem, cpu, 0); break;
 	}
 	if (mode == 7 || mode == 13 || mode == 17)     /* interrupts on, so that the IRQ's handler (level 0) runs first */
@@ -1762,7 +1940,8 @@ static int run(int mode, int seed)
 					      "level 3 IOPL 3 with the frame buffer", "level 1 stores into a frame buffer page level 0 stored into (hand)",
 					      "real mode, FS's base the frame buffer (unreal)", "the frame buffer's dirty bits (hand)",
 					      "jumps, calls and returns across code pages (k)",
-					      "a page read, then written (hand, l)" };
+					      "a page read, then written (hand, l)",
+					      [22] = "the two-operand rule (hand)" };
 	glfb = seed & 1;
 	ksub = seed % 5;   /* (mode k) */
 	lsub = (seed >> 1) & 3;   /* (mode l) */
@@ -1773,13 +1952,15 @@ static int run(int mode, int seed)
 	for (int k = 0; k < 4; k++) rnd(0);
 	gm = M[0].mem;
 	g32 = mode == 1 || mode == 2 || mode == 5 || mode == 7 || mode == 9 || mode == 12 || mode == 13 || mode == 16 || mode == 17 || mode == 19;
+	two_op_v86 = mode == 22 && seed % TWO_OP_N == TWO_OP_N - 1;   /* (v5.1) its last case is in virtual-8086 mode */
+	g32 |= mode == 22 && !two_op_v86;
 	guser = mode == 2 || mode == 16;
 	glfbuser = mode == 16;
 	gv86 = mode == 3 || mode == 10;
 	gpm16 = mode == 4 || mode == 6 || mode == 11 || mode == 14 || mode == 15;
 	gcpl1 = mode == 5 || mode == 7 || mode == 13 || mode == 17;
 	gnopriv = gcpl1;
-	gcs_far = mode == 1 || mode == 9 || mode == 12 || mode == 19 ? 0x08 : mode == 2 || mode == 16 ? 0x1b : mode == 13 ? 0x42 : gcpl1 ? 0x31 : R_CS;
+	gcs_far = mode == 1 || mode == 9 || mode == 12 || mode == 19 || (mode == 22 && g32) ? 0x08 : mode == 2 || mode == 16 ? 0x1b : mode == 13 ? 0x42 : gcpl1 ? 0x31 : R_CS;
 	if (mode == 20) {   /* k: 32-bit at level 0 or 3, 16-bit protected mode at 0, V86 mode, 16-bit protected mode at 3 */
 		g32 = ksub < 2;
 		guser = ksub == 1 || ksub >= 3;
@@ -1831,6 +2012,9 @@ static int run(int mode, int seed)
 			e8(0x66); e8(0x89); e8(0x05); e32(pgl + 20);
 		}
 		e8(0xbf); e32(P_DATA);
+		frame_buffer_reps(seed);
+	} else if (mode == 22) {
+		two_op_case(seed);
 	} else if (mode == 7 || mode == 13) {
 		/* MOV EAX,[CNT] (a supervisor page, which the IRQ handler at
 		   level 0 has just written); then JMP $ */
@@ -1886,17 +2070,18 @@ static int run(int mode, int seed)
 	/* the hand-written cases (7, 8, 9, d, h, j) take a few instructions a
 	   step and end by 200 steps (l by 4,000); the random code and k end
 	   by 50,000 */
-	int hand = (mode >= 7 && mode <= 9) || mode == 13 || mode == 17 || mode == 19 || mode == 21;
-	long steps_max = mode == 21 ? 4000 : hand ? 200 : 50000;
+	int hand = (mode >= 7 && mode <= 9) || mode == 13 || mode == 17 || mode == 19 || mode == 21 || mode == 22;
+	/* (v5.1: case j's REPs and its level 3 part, about 900 instructions) */
+	long steps_max = mode == 21 ? 4000 : mode == 19 ? 800 : hand ? 200 : 50000;
 	crash_name = names[mode];
 	crash_seed = seed;
 	while (step < steps_max) {
 		crash_step = step;
 		int n = chance(4) ? 1 + rnd(8) : 1 + rnd(700);
 		if (hand)
-			n = 1 + rnd(3);
+			n = mode == 22 ? 1 : 1 + rnd(3);
 		if (((mode == 7 || mode == 13 || mode == 17) && step == 0) ||
-		    ((mode < 7 || (mode >= 10 && mode != 13 && mode != 17 && mode != 19 && mode != 21)) && chance(5))) {
+		    ((mode < 7 || (mode >= 10 && mode != 13 && mode != 17 && mode != 19 && mode != 21 && mode != 22)) && chance(5))) {
 			cpui386_raise_irq(a);
 			cpui386_raise_irq(b);
 		}
@@ -1906,6 +2091,8 @@ static int run(int mode, int seed)
 				M[i].wrote = 0;
 			}
 		uword from = a->next_ip, from_lin = a->seg[SEG_CS].base + a->next_ip;
+		if (mode == 22)
+			two_op_clear();
 		cpui386_step(a, n);
 		cpui386_step(b, n);
 		step++;
@@ -1991,11 +2178,13 @@ int main(int argc, char **argv)
 {
 	int seeds = argc > 1 ? atoi(argv[1]) : 40;
 	int first = argc > 2 ? atoi(argv[2]) : 1;
-	/* argv[3]: the modes, a character each (0 to 9, a to l) */
+	/* argv[3]: the modes, a character each (0 to 9, a to m) */
 	const char *modes = argc > 3 ? argv[3] :
 		"0123456789abcdefghij"
 		"k"     /* v5.1 (WI-1): jumps, calls and returns across code pages */
-		"l";    /* v5.1 (WI-1): a page read, then written */
+		"l"     /* v5.1 (WI-1): a page read, then written */
+		"m"     /* v5.1: the two-operand rule */
+		;
 	int bad = 0, nsc = 0;
 	setvbuf(stdout, NULL, _IOLBF, 0);
 	signal(SIGSEGV, on_crash);

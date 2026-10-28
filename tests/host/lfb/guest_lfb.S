@@ -11,7 +11,7 @@
  * are put into RAM from 0x9100, which the test compares.
  *
  * Assembled by run_lfb.sh with "as --32" and linked at 0x10000 as a flat
- * binary; test_lfb.c finds each case_ and bench_ by its symbol.
+ * binary; test_lfb.c finds each case_, bench_ and probe_ by its symbol.
  */
 	.intel_syntax noprefix
 	.code32
@@ -22,6 +22,8 @@
 	.equ PCICFG, 0x8004		/* 0x80000000 | devfn << 8 */
 	.equ OUT, 0x9100		/* where loaded values go */
 	.equ RAMPAT, 0x100000		/* RAM with a pattern in it */
+	.equ PLFB, 0x800000		/* v5.1: the frame buffer through the page tables */
+	.equ PT0, 0x22000		/* the page table of 0 to 4 MiB (identity) */
 
 /* VBE register idx = val, through the ports at 1CEh */
 	.macro VBE idx, val
@@ -601,6 +603,82 @@ CASE movs_short
 	mov [OUT + 4], edi
 	jmp done
 
+/* ==== v5.1: REP STOSW and STOSD of 1 to 40 elements ====
+   STOSW at 0 and 2 mod 4, STOSD at 0 and 4 mod 8 and at 2 mod 4 (not
+   aligned: element by element), each up and down: 400 REP STOS, each into a
+   256-byte slot of its own from EBX, its value EAX changed for each.  The
+   fast interpreter and lfb_stos() fill a piece of 8 elements or more with
+   aligned word stores (a 16-bit store first and last for STOSW where the
+   piece starts or ends half way into a word), and keep the element loop for
+   fewer; the bytes must be v4.6's. */
+	.macro STOSN size, a, df
+	mov ecx, 1
+1:	push ecx
+	.if \df
+	std
+	lea edi, [ebx + 224 + \a]
+	.else
+	cld
+	lea edi, [ebx + 16 + \a]
+	.endif
+	add eax, 0x01030507
+	.if \size == 2
+	rep stosw
+	.else
+	rep stosd
+	.endif
+	cld
+	pop ecx
+	add ebx, 256
+	inc ecx
+	cmp ecx, 40
+	jbe 1b
+	.endm
+
+stosn_all:
+	STOSN 2, 0, 0
+	STOSN 2, 0, 1
+	STOSN 2, 2, 0
+	STOSN 2, 2, 1
+	STOSN 4, 0, 0
+	STOSN 4, 0, 1
+	STOSN 4, 4, 0
+	STOSN 4, 4, 1
+	STOSN 4, 2, 0
+	STOSN 4, 2, 1
+	ret
+
+CASE stosn_lfb
+	mov ebx, LFB + 0x90000
+	mov eax, 0x11223344
+	call stosn_all
+	mov [OUT], ebx
+	jmp done
+
+/* the same through the page tables: the frame buffer at 0x800000 */
+CASE stosn_plfb
+	PAGING_ON
+	mov ebx, PLFB + 0x90000
+	mov eax, 0x99aabbcc
+	call stosn_all
+	mov [OUT], ebx
+	jmp done
+
+CASE stosn_ram
+	mov ebx, 0x180000
+	mov eax, 0x55667788
+	call stosn_all
+	mov [OUT], ebx
+	jmp done
+
+CASE stosn_pram
+	PAGING_ON
+	mov ebx, 0x1a0000
+	mov eax, 0x0f1e2d3c
+	call stosn_all
+	mov [OUT], ebx
+	jmp done
+
 /* LODS, SCAS, CMPS: loads only */
 CASE lods
 	mov esi, LFB + 0x83000
@@ -814,4 +892,236 @@ BENCH window
 	mov ecx, 0x2000
 	rep movsd
 	MARK
+	jmp done
+
+/* ==== v5.1: the frame buffer through the page tables, as Windows maps it
+   (linear 0x800000 on, test_lfb.c's page_map()): the fill and the copies of
+   bench_fill and bench_copy again, where each REP piece looks its pages up
+   in the TLB and tiny386's lookup sets the accessed and dirty bits ==== */
+BENCH pfill
+	PAGING_ON
+	mov eax, 0x5aa55aa5
+	MARK
+	mov edx, PLFB + 0x10000
+	mov ebx, 300
+1:	mov edi, edx
+	mov ecx, 200
+	rep stosd
+	add edx, 1600
+	dec ebx
+	jnz 1b
+	MARK
+	mov edi, PLFB
+	mov ecx, 800 * 480 / 2
+	rep stosd
+	MARK
+	jmp done
+
+BENCH pcopy
+	PAGING_ON
+	MARK
+	mov edx, PLFB + 0x10000
+	mov eax, RAMPAT
+	mov ebx, 300
+1:	mov edi, edx
+	mov esi, eax
+	mov ecx, 200
+	rep movsd
+	add edx, 1600
+	add eax, 800
+	dec ebx
+	jnz 1b
+	MARK
+	mov edx, PLFB + 0x10000
+	mov ebx, 300
+1:	mov edi, edx
+	lea esi, [edx + 1600]
+	mov ecx, 200
+	rep movsd
+	add edx, 1600
+	dec ebx
+	jnz 1b
+	MARK
+	std
+	mov edx, PLFB + 0x10000 + 300 * 1600 + 796
+	mov ebx, 300
+1:	mov edi, edx
+	lea esi, [edx - 1600]
+	mov ecx, 200
+	rep movsd
+	sub edx, 1600
+	dec ebx
+	jnz 1b
+	cld
+	MARK
+	mov edx, PLFB + 0x10000
+	mov eax, RAMPAT
+	mov ebx, 300
+1:	mov esi, edx
+	mov edi, eax
+	mov ecx, 200
+	rep movsd
+	add edx, 1600
+	add eax, 800
+	dec ebx
+	jnz 1b
+	MARK
+	jmp done
+
+/* ==== v5.1: the accessed bits and the two-operand rule (probe mode) ====
+   Each probe turns paging on, reads its first operand's page (tiny386's TLB
+   then holds it), clears that page's accessed bit in its PTE without
+   INVLPG, and runs one instruction whose second memory operand is at the
+   same TLB index (page numbers equal modulo 256, as on the boards) and
+   makes it go to tiny386 (the VGA window, or past the end of RAM).  The PTE
+   is read back into OUT.  tiny386 translates each operand once, so the bit
+   stays clear; v5.0's fast interpreter set it again wherever it made
+   tiny386 translate the first operand a second time.  test_lfb.c's probe
+   mode runs one; run_lfb.sh compares the fast interpreter on, off and
+   v4.6. */
+	.macro PROBE name
+	.globl probe_\name
+probe_\name:
+	mov esp, 0x9f000
+	call vbe_on
+	PAGING_ON
+	.endm
+
+/* REP MOVSD from RAM page 100h into the frame buffer's page 800h (both
+   index 0): tiny386 translates the source (a hit), then the destination (a
+   refill that drops the source's entry) */
+PROBE abit_rep
+	mov eax, [0x100000]
+	and dword ptr [PT0 + 0x100 * 4], ~0x20
+	mov esi, 0x100000
+	mov edi, PLFB
+	mov ecx, 16
+	rep movsd
+	mov eax, [PT0 + 0x100 * 4]
+	mov [OUT], eax
+	mov [OUT + 4], ecx
+	jmp done
+
+/* the same with one MOVSD */
+PROBE abit_one
+	mov eax, [0x100000]
+	and dword ptr [PT0 + 0x100 * 4], ~0x20
+	mov esi, 0x100000
+	mov edi, PLFB
+	movsd
+	mov eax, [PT0 + 0x100 * 4]
+	mov [OUT], eax
+	mov [OUT + 4], edi
+	jmp done
+
+/* control: the destination at index 1 */
+PROBE abit_ctl
+	mov eax, [0x100000]
+	and dword ptr [PT0 + 0x100 * 4], ~0x20
+	mov esi, 0x100000
+	mov edi, PLFB + 0x1000
+	mov ecx, 16
+	rep movsd
+	mov eax, [PT0 + 0x100 * 4]
+	mov [OUT], eax
+	mov [OUT + 4], ecx
+	jmp done
+
+/* REP MOVSD from RAM page 1A0h into the VGA window (page A0h, both index
+   A0h): the window goes to tiny386 */
+PROBE abit_win
+	mov eax, [0x1a0000]
+	and dword ptr [PT0 + 0x1a0 * 4], ~0x20
+	mov esi, 0x1a0000
+	mov edi, 0xa0000
+	mov ecx, 16
+	rep movsd
+	mov eax, [PT0 + 0x1a0 * 4]
+	mov [OUT], eax
+	mov [OUT + 4], ecx
+	jmp done
+
+/* the same with one MOVSD */
+PROBE abit_win1
+	mov eax, [0x1a0000]
+	and dword ptr [PT0 + 0x1a0 * 4], ~0x20
+	mov esi, 0x1a0000
+	mov edi, 0xa0000
+	movsd
+	mov eax, [PT0 + 0x1a0 * 4]
+	mov [OUT], eax
+	mov [OUT + 4], edi
+	jmp done
+
+/* CMPSD: RAM page 1A0h against the VGA window */
+PROBE abit_cmps
+	mov eax, [0x1a0000]
+	and dword ptr [PT0 + 0x1a0 * 4], ~0x20
+	mov esi, 0x1a0000
+	mov edi, 0xa0000
+	cmpsd
+	mov eax, [PT0 + 0x1a0 * 4]
+	mov [OUT], eax
+	mov [OUT + 4], edi
+	jmp done
+
+/* POP into the VGA window, the stack in RAM page 1A0h */
+PROBE abit_pop
+	mov esp, 0x1a0800
+	mov eax, [esp]
+	and dword ptr [PT0 + 0x1a0 * 4], ~0x20
+	pop dword ptr [0xa0100]
+	mov esp, 0x9f000
+	mov eax, [PT0 + 0x1a0 * 4]
+	mov [OUT], eax
+	jmp done
+
+/* PUSH from RAM page 1A0h, the stack in the VGA window */
+PROBE abit_push
+	mov eax, [0x1a0100]
+	and dword ptr [PT0 + 0x1a0 * 4], ~0x20
+	mov esp, 0xa0800
+	push dword ptr [0x1a0100]
+	mov esp, 0x9f000
+	mov eax, [PT0 + 0x1a0 * 4]
+	mov [OUT], eax
+	jmp done
+
+/* CALL through RAM page 1A0h, the stack in the VGA window */
+PROBE abit_call
+	mov dword ptr [0x1a0100], offset 2f
+	and dword ptr [PT0 + 0x1a0 * 4], ~0x20
+	mov esp, 0xa0800
+	call dword ptr [0x1a0100]
+	jmp done
+2:	mov esp, 0x9f000
+	mov eax, [PT0 + 0x1a0 * 4]
+	mov [OUT], eax
+	jmp done
+
+/* REP MOVSD from the VGA window (the first operand, page A0h) into RAM page
+   1A0h */
+PROBE abit_wsrc
+	mov eax, [0xa0000]
+	and dword ptr [PT0 + 0xa0 * 4], ~0x20
+	mov esi, 0xa0000
+	mov edi, 0x1a0000
+	mov ecx, 16
+	rep movsd
+	mov eax, [PT0 + 0xa0 * 4]
+	mov [OUT], eax
+	mov [OUT + 4], ecx
+	jmp done
+
+/* one MOVSD from the VGA window past the end of RAM (page 2A0h, 2 MiB of
+   RAM here): tiny386 does it (a load, and a store that goes nowhere) */
+PROBE abit_wsrc1
+	mov eax, [0xa0000]
+	and dword ptr [PT0 + 0xa0 * 4], ~0x20
+	mov esi, 0xa0000
+	mov edi, 0x2a0000
+	movsd
+	mov eax, [PT0 + 0xa0 * 4]
+	mov [OUT], eax
+	mov [OUT + 4], edi
 	jmp done
