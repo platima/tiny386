@@ -810,6 +810,34 @@ reload:   /* after a change of mode, CS or segment registers made outside the ha
 	DISPATCH;
 refill:   /* the next instruction is outside the code window */
 	eip = EIP_OF(pc);
+	{   /* v5.1: inline, as fast_window() does it, for an instruction in a
+	       page's last 16 bytes (to tiny386) and for the common page change:
+	       paging on, CS not null, another page than the one cached, whose
+	       fast TLB read entry is guest RAM where peek8() would cache it
+	       (below RAM's end less 4 KiB, not in MMIO): cached here, with the
+	       fusion rule's saves, so that the page's first instruction is not
+	       fused (tiny386 would have fetched it the slow way).  Anything
+	       else through fast_window(). */
+		uword lin = cpu->seg[SEG_CS].base + eip;
+		if ((lin & 0xfff) >= FAST_WIN)
+			goto slow_eip;
+		struct fast_tlb_entry *e = &ftlb[(lin >> 12) % tlb_size];
+		if (e->rtag == lin >> 12 && (cpu->cr0 & CR0_PG) && !(nullsegs & (1u << SEG_CS)) &&
+		    (lin ^ cpu->ifetch.laddr) >= 4096) {
+			const u8 *h = (const u8 *) (uintptr_t) (lin + e->delta);
+			uintptr_t po = (uintptr_t) (h - (const u8 *) cpu->phys_mem);
+			if (po < (uintptr_t) cpu->phys_mem_size - 4096 && !in_iomem((uword) po) && !in_iomem((uword) po + 16)) {
+				nofold_it = FAST_ITER(); nofold_laddr = cpu->ifetch.laddr; nofold_xaddr = cpu->ifetch.xaddr;   /* (the page's first instruction) */
+				cpu->ifetch.laddr = lin & (~4095ul);
+				cpu->ifetch.xaddr = (uword) po ^ lin;
+				pc = h;
+				win_lo = h - (lin & 0xfff);
+				win_hi = (uintptr_t) win_lo + FAST_WIN;
+				ipd = (uintptr_t) h - eip;
+				DISPATCH;
+			}
+		}
+	}
 	WINDOW();
 	DISPATCH;
 
