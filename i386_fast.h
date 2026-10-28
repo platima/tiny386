@@ -414,13 +414,15 @@ static inline __attribute__((always_inline)) int fast_cond(CPUI386 *cpu, int c)
    the window comes back in a struct fast_win (the instruction's host
    address, its page's start, and ipd: eip = pc - ipd), so that
    fast_exec()'s own pc, win_lo and ipd are never address-taken and pc
-   stays in a register. */
+   stays in a register.  With paging a page newly cached is found through
+   the fast TLB (tab, the table for the privilege level), as a 1-byte read
+   (v5.1). */
 #define FAST_WIN (4096 - 16)
 struct fast_win {
 	const u8 *pc, *lo;
 	uintptr_t ipd;
 };
-static noinline int IRAM_ATTR_FAST_EXEC fast_window(CPUI386 *cpu, uword eip, struct fast_win *w)
+static noinline int IRAM_ATTR_FAST_EXEC fast_window(CPUI386 *cpu, struct fast_tlb_entry *tab, uword eip, struct fast_win *w)
 {
 	uword lin = cpu->seg[SEG_CS].base + eip;
 	int r = 1;
@@ -433,8 +435,24 @@ static noinline int IRAM_ATTR_FAST_EXEC fast_window(CPUI386 *cpu, uword eip, str
 		if ((cpu->cr0 & 1) && cpu->seg[SEG_CS].limit == 0 && (cpu->seg[SEG_CS].sel & ~0x3) == 0)
 			return 0;
 		if (cpu->cr0 & CR0_PG) {
-			if (!fast_lpgno(cpu, 1, lin >> 12, lin, cpu->cpl, &paddr))
+			/* v5.1: the page's read entry, or fast_miss() making it as
+			   for a 1-byte read (translate_lpgno() as peek8()'s
+			   translate8r() calls it).  An entry exists only while
+			   tiny386's TLB holds the page with its rights checked for
+			   this privilege class, so peek8() would find the same page
+			   there, with nothing changed.  A host address outside guest
+			   RAM is the frame buffer's read entry: code there is
+			   tiny386's (peek8() reads it through the callbacks). */
+			struct fast_tlb_entry *e = &tab[(lin >> 12) % tlb_size];
+			const u8 *h;
+			uword mm;
+			if (e->rtag == lin >> 12)
+				h = (const u8 *) (uintptr_t) (lin + e->delta);
+			else if (!(h = fast_miss(cpu, tab, lin, 1, 0, &mm)))
 				return 0;
+			if ((uintptr_t) (h - (const u8 *) cpu->phys_mem) >= (uintptr_t) cpu->phys_mem_size)
+				return 0;
+			paddr = (uword) (h - (const u8 *) cpu->phys_mem);
 		} else {
 			paddr = lin;
 		}
@@ -748,7 +766,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 		unsigned long _l0 = cpu->ifetch.laddr; \
 		uword _x0 = cpu->ifetch.xaddr; \
 		struct fast_win _w; \
-		int _r = fast_window(cpu, eip, &_w); \
+		int _r = fast_window(cpu, ftlb, eip, &_w); \
 		if (!_r) \
 			goto slow_eip; \
 		pc = _w.pc; \
