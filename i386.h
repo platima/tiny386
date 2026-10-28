@@ -124,6 +124,27 @@ long cpui386_get_cycle(CPUI386 *cpu);
 void cpui386_set_fast(CPUI386 *cpu, int on);
 int cpui386_get_fast(CPUI386 *cpu);
 
+/* v5.1: where a profiler on another core (esp/main/profile.c, the board's;
+   s31/PROFILE.md) reads this CPU's state while it runs: the addresses of
+   the fields, given once.  Nothing here runs during a step, and reading
+   them changes nothing; a value may be a step behind or torn between two
+   fields, which a profile can stand.  fast_on and exec1_one are NULL
+   without I386_FAST. */
+struct cpui386_prof_fields {
+	const volatile uword *ip, *next_ip, *flags, *cr0, *cs_sel, *cs_base;
+	const volatile int *cpl;
+	const volatile bool *code16, *halt;
+	/* tiny386's fetch cache: the linear page of the code (-1 for none)
+	   and the physical page xor the linear one */
+	const volatile unsigned long *code_laddr;
+	const volatile uword *code_xaddr;
+	const volatile bool *fast_on, *exec1_one;
+	const volatile long *cycle;
+	const u8 *phys_mem;
+	long phys_mem_size;
+};
+void cpui386_prof_fields(CPUI386 *cpu, struct cpui386_prof_fields *f);
+
 #ifndef I386_IN_AMD64
 bool cpu_load8(CPUI386 *cpu, int seg, uword addr, u8 *res);
 bool cpu_store8(CPUI386 *cpu, int seg, uword addr, u8 val);

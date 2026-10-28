@@ -5914,6 +5914,33 @@ int cpui386_get_fast(CPUI386 *cpu)
 #endif
 }
 
+/* v5.1: the fields a profiler on another core reads (i386.h); called once,
+   when the profiler starts */
+void cpui386_prof_fields(CPUI386 *cpu, struct cpui386_prof_fields *f)
+{
+	f->ip = &cpu->ip;
+	f->next_ip = &cpu->next_ip;
+	f->flags = &cpu->flags;
+	f->cr0 = &cpu->cr0;
+	f->cs_sel = &cpu->seg[SEG_CS].sel;
+	f->cs_base = &cpu->seg[SEG_CS].base;
+	f->cpl = &cpu->cpl;
+	f->code16 = &cpu->code16;
+	f->halt = &cpu->halt;
+	f->code_laddr = &cpu->ifetch.laddr;
+	f->code_xaddr = &cpu->ifetch.xaddr;
+#ifdef I386_FAST
+	f->fast_on = &cpu->fast_on;
+	f->exec1_one = &cpu->exec1_one;
+#else
+	f->fast_on = NULL;
+	f->exec1_one = NULL;
+#endif
+	f->cycle = &cpu->cycle;
+	f->phys_mem = cpu->phys_mem;
+	f->phys_mem_size = cpu->phys_mem_size;
+}
+
 CPUI386 *cpui386_new(int gen, char *phys_mem, long phys_mem_size, CPU_CB **cb)
 {
 	CPUI386 *cpu = malloc(sizeof(CPUI386));
