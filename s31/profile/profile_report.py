@@ -497,19 +497,21 @@ def tool_dirs():
 def find_addr2line(elf, given):
     if given:
         return given
-    if elf.machine == 243:      # RISC-V
-        names = ["riscv32-esp-elf-addr2line", "riscv32-unknown-elf-addr2line",
-                 "riscv64-unknown-elf-addr2line", "riscv32-linux-addr2line"]
-        for n in names:
-            p = shutil.which(n)
-            if p:
-                return p
+    if elf.machine == 243:      # RISC-V: ESP-IDF's own first, then any other
+        p = shutil.which("riscv32-esp-elf-addr2line")
+        if p:
+            return p
         for r in tool_dirs():
             hits = sorted(glob.glob(os.path.join(r, "tools", "riscv32-esp-elf", "*",
                                                  "riscv32-esp-elf", "bin",
                                                  "riscv32-esp-elf-addr2line*")))
             if hits:
                 return hits[-1]
+        for n in ("riscv32-unknown-elf-addr2line", "riscv64-unknown-elf-addr2line",
+                  "riscv32-linux-addr2line"):
+            p = shutil.which(n)
+            if p:
+                return p
         return None
     return shutil.which("addr2line")
 
