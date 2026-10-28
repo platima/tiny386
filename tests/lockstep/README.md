@@ -13,7 +13,7 @@ Nothing in a tree is changed: the hook goes into copies of five of its files at 
 took in the first two (the descriptor cache was left out: it saved under 1 per cent); section 9
 is v5.0 against v4.6, the release's gate. Section 10 (v5.1) adds `t386mon800`, Plat's own setup:
 Windows 95 at 800x480 in 16 bits through VMDisp9x on the VBE linear frame buffer, with T386MON's
-tests.
+tests. Section 11 is v5.1 against v4.6, v5.1's release gate.
 
 Tags: [verified] seen or measured here, by the method named; [inferred] reasoned, not run.
 
@@ -468,3 +468,34 @@ catch them either (its RC-1 and RC-2). Since v5.1 it does: the recheck's scenari
   at 13M Windows runs to "Tests done" [verified].
 * The frame buffer does not move during the run (above), so the fast path's handling of a move is
   not checked here.
+
+## 11. v5.1 against v4.6
+
+The release gate of v5.1 [verified, 2026-10-29, WSL]: v4.6's reference build
+(`~/org2/v50/lock/builds/ref`, `s31-v4.6` with the tester's hook) against v5.1's merged tree
+(`s31/BUILD-NOTES.md` 34: `cpu_exec1()` in internal RAM, the profiler, and the fast interpreter's
+four work items), built with this branch's `build.sh` with the fast interpreter on and with
+`-DI386_FAST_DEFAULT=0`; `T386MON_EXE` 1.2; one comparison at a time (two image copies); pass 1 of
+each, no difference anywhere, so no pass 2 or 3:
+
+| workload | guest instructions | records | interrupts | disk image after (sha256) | host s, v4.6 / v5.1 on | v4.6 / v5.1 off | result, on / off |
+|-|-|-|-|-|-|-|-|
+| b1 | 588,301,033 | 590 | 51,878 | `248cdd0473f55199` | 7.6 / 5.7 | 7.6 / 7.4 | no difference / no difference |
+| restart | 1,304,341,904 | 1,306 | 238,269 | `0991749feee656d8` | 28.4 / 24.0 | 28.5 / 28.1 | no difference / no difference |
+| msdos | 1,337,723,352 | 1,339 | 238,758 | `36979e52115af450` | 28.6 / 24.0 | 28.5 / 28.1 | no difference / no difference |
+| bench | 31,345,925 | 33 | 111 | `72fe423a80f365fb` | 0.3 / 0.2 | 0.3 / 0.3 | no difference / no difference |
+| vbe | 55,090,157 | 57 | 505 | `482c032f53c3a479` | 0.5 / 0.4 | 0.5 / 0.5 | no difference / no difference |
+| t386mon | 674,307,567 | 676 | 64,677 | `35c2db9b72859c03` | 12.0 / 10.0 | 12.1 / 12.0 | no difference / no difference |
+| t386mon800 | 792,272,554 | 794 | 148,032 | `b3df8b6bb0474edd` | 13.2 / 8.7 | 13.3 / 11.5 | no difference / no difference |
+
+In each, both sides end on the same instruction, every record agrees and so does every
+interrupt, and the disk images after the run are the same: section 9's and 10's figures again,
+to the hash. In both `t386mon800` comparisons T386MON's summary is the reference's: fill 490.40,
+scroll 328.07, text 3.51, text-aside 3.80, text-nopointer 3.78, sprite 73.41, full-copy 361.76,
+full-picture 1.13 frames a second by the guest's clock in the harness.
+
+The tree given first on the command line was v4.6's own (with `REF_BUILD` set it only names the
+reference in the report; WI-4's gate script had named `~/fw/tiny386-s31`, v5.0's tree, there,
+which its check noted). The self-test was not run again for the merged tree: the tester is
+`v51-lock800`'s, unchanged since, and each work item's own run of it passed with `FAST=1` and
+`FAST=0`.
