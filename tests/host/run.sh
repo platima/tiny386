@@ -915,7 +915,7 @@ for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN
          restore:'s/^\tif (FAST_ITER() == nofold_it) {$/\tif (0) {/' \
          destheld:'s/|| cpu->tlb.tab\[((lin) >> 12) % tlb_size\].lpgno == ((lin) >> 12))$/|| 1)/' \
          lpgno:'s/^\tif (ent->lpgno == lpgno && ent->pte_lookup\[cpl > 0\]\[rwm > 1\])$/\tif (0)/' \
-         codepage:'s/^\tif (ent->lpgno != lpgno && ent->lpgno == (uword) (cpu->ifetch.laddr >> 12))$/\tif (0)/'; do
+         codepage:'s/^\tif (ent->lpgno != lpgno && ent->lpgno == ((uword) cpu->ifetch.laddr >> 12))$/\tif (0)/'; do
     mname=${m%%:*}
     mfile=i386_fast.h       # (v5.1: lpgno's fault is in i386.c)
     [ "$mname" = lpgno ] && mfile=i386.c
