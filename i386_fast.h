@@ -77,7 +77,7 @@
  * - An instruction with two memory operands (MOVS, CMPS, PUSH, CALL and
  *   CALL FAR through memory, POP into memory) goes to tiny386 before the
  *   lookup of its second operand would change tiny386's TLB entry that holds
- *   its first (v5.1, FAST_TWO_OP()): tiny386 then translates each once, as
+ *   its first (v5.1, fast_miss2()): tiny386 then translates each once, as
  *   it does alone.
  * - Stack slots that wrap around a 16-bit stack, INT's ESP, BT with an
  *   immediate beyond the operand, ARPL's write, protected-mode loads of SS
@@ -245,6 +245,45 @@ static noinline int IRAM_ATTR_FAST_EXEC fast_where(CPUI386 *cpu, struct fast_tlb
 	if ((*host = fast_miss(cpu, tab, lin, size, write, paddr)))
 		return 1;
 	return *paddr != (uword) -1 ? 2 : 0;
+}
+
+/* v5.1: fast_miss() behind the two-operand rule, for the second memory
+   operand of an instruction whose first (at host address h1; NULL if none)
+   was found before it: MOVS, CMPS, POP into memory, PUSH, CALL and CALL FAR
+   through memory, and REP STOS's destination.  fast_miss() asks tiny386's
+   TLB, which refills the entry at the page's index, or drops it on a rights
+   fault.  If the instruction then goes to tiny386 (MMIO there, the fault,
+   past the end of RAM, a piece lfb_movs() will not take), tiny386
+   translates every operand afresh and finds an entry missing that it would
+   have found alone: a second refill, which sets the page tables' accessed
+   bits again (the guest may have cleared them without INVLPG) and reads an
+   entry the guest may have changed.  So, with paging, NULL with *mmio -1
+   (the caller goes to tiny386 at once) if
+   - tiny386's entry holds this page and the access would fault there
+     (tiny386 alone faults with the entry it has, and drops it), or
+   - tiny386's entry holds the first operand's page, which the refill would
+     drop.  The fast entry at this index maps h1 exactly when it is the
+     first operand's (that entry is there only while tiny386's holds the
+     same page).
+   tiny386 then translates the first operand (a hit) and this one, once
+   each, in its order.  tlb_refill() changes an entry only when it
+   succeeds, so a page that is not present drops nothing.  Out of line, as
+   fast_miss() is: in line at each lookup it cost about 1.1 KB of internal
+   RAM. */
+static noinline u8 *IRAM_ATTR_FAST_EXEC fast_miss2(CPUI386 *cpu, struct fast_tlb_entry *tab, uword lin,
+						   int size, int write, uword *mmio, const u8 *h1)
+{
+	if (cpu->cr0 & CR0_PG) {
+		uword pg = lin >> 12;
+		struct tlb_entry *t = &cpu->tlb.tab[pg % tlb_size];
+		struct fast_tlb_entry *e = &tab[pg % tlb_size];
+		if (t->lpgno == pg ? t->pte_lookup[cpu->cpl > 0][write] != 0 :
+		    h1 && (uword) (((uintptr_t) h1 - e->delta) >> 12) == e->rtag) {
+			*mmio = -1;
+			return NULL;
+		}
+	}
+	return fast_miss(cpu, tab, lin, size, write, mmio);
 }
 
 /* MMIO through tiny386's own load and store functions, as tiny386 makes
@@ -737,46 +776,6 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 		if (unlikely(_o < cpu->cb.lfb_lim1)) \
 			lfb_marked(cpu, (uword) _o, (n)); \
 	} while (0)
-	/* v5.1: the two-operand rule, on the miss path of a lookup (FPTR_IO_W(),
-	   FPTR2(): _lin, _pg and _e its page and fast entry) that may hand the
-	   instruction to tiny386 after fast_miss().  fast_miss() asks tiny386's
-	   TLB, which refills the entry at the page's index, or drops it on a
-	   rights fault.  tiny386, doing the instruction again, then translates
-	   every operand afresh, and finds an entry missing that it would have
-	   found alone: a second refill, which sets the page tables' accessed
-	   bits again (the guest may have cleared them without INVLPG) and reads
-	   an entry the guest may have changed.  So, with paging, before
-	   fast_miss() the instruction goes to tiny386 if
-	   - tiny386's entry holds this page and the access would fault there
-	     (tiny386 alone faults with the entry it has, and drops it), or
-	   - tiny386's entry holds the page of the instruction's first memory
-	     operand, H1 (its host address; NULL if none), which the refill would
-	     drop.  The fast entry at this index maps H1 exactly when it is the
-	     first operand's (that entry is there only while tiny386's holds the
-	     same page).
-	   tiny386 then translates the first operand (a hit) and this one, once
-	   each, in its order.  tlb_refill() changes an entry only when it
-	   succeeds, so a page that is not present drops nothing. */
-#define FAST_TWO_OP(h1, wr) do { \
-		if (cpu->cr0 & CR0_PG) { \
-			struct tlb_entry *_t = &cpu->tlb.tab[_pg % tlb_size]; \
-			if (_t->lpgno == _pg) { \
-				if (_t->pte_lookup[cpu->cpl > 0][(wr)]) \
-					goto slow; \
-			} else if ((h1) && (uword) (((uintptr_t) (h1) - _e->delta) >> 12) == _e->rtag) \
-				goto slow; \
-		} \
-	} while (0)
-	/* the same where the first operand is MMIO and has no fast entry
-	   (MOVS from the VGA window): tiny386's entry at the second's index
-	   holding the first's page PG1 */
-#define FAST_TWO_OP_PG(lin2, pg1, wr) do { \
-		uword _p2 = (lin2) >> 12; \
-		struct tlb_entry *_t = &cpu->tlb.tab[_p2 % tlb_size]; \
-		if ((cpu->cr0 & CR0_PG) && \
-		    (_t->lpgno == _p2 ? _t->pte_lookup[cpu->cpl > 0][(wr)] != 0 : _t->lpgno == (pg1))) \
-			goto slow; \
-	} while (0)
 	/* v5.1: the destination of REP STOS, REP MOVS and MOVS.  As FPTR_IO()
 	   for a store, and a page of the frame buffer with an entry (its write
 	   tag has FAST_TAG_LFB) goes to LABEL as MMIO at its physical address
@@ -785,8 +784,8 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   TLB holds the page with the rights checked for a store at this
 	   privilege level and the frame buffer has not moved, so tiny386's own
 	   lookup would hit and change nothing but the dirty bit.  H1: the source
-	   of MOVS (the two-operand rule), or NULL.  (msize is not set: its
-	   labels take the element's size from the handler.) */
+	   of MOVS (the two-operand rule, fast_miss2()), or NULL.  (msize is not
+	   set: its labels take the element's size from the handler.) */
 #define FPTR_IO_W(p, sg, off, size, LABEL, H1) do { \
 		if (unlikely(nullsegs) && (nullsegs & (1 << (sg)))) goto slow; \
 		uword _lin = cpu->seg[sg].base + (off); \
@@ -803,12 +802,9 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 			mpaddr = cpu->cb.lfb_base + (uword) ((uintptr_t) (_lin + _e->delta) - \
 							     (uintptr_t) cpu->cb.lfb_mem); \
 			goto LABEL; \
-		} else { \
-			FAST_TWO_OP((H1), 1); \
-			if (!(p = fast_miss(cpu, ftlb, _lin, (size), 1, &mpaddr))) { \
-				if (mpaddr == (uword) -1) goto slow; \
-				goto LABEL; \
-			} \
+		} else if (!(p = fast_miss2(cpu, ftlb, _lin, (size), 1, &mpaddr, (H1)))) { \
+			if (mpaddr == (uword) -1) goto slow; \
+			goto LABEL; \
 		} \
 	} while (0)
 	/* v5.1: only the hit of a store's destination, tested as FPTR_IO()
@@ -829,7 +825,8 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 			goto MISS; \
 	} while (0)
 	/* v5.1: as FPTR, for an instruction's second memory operand, its first
-	   at host address H1 (or NULL): the two-operand rule on a miss */
+	   at host address H1 (or NULL): a miss through fast_miss2(), the
+	   two-operand rule */
 #define FPTR2(p, sg, off, size, wr, H1) do { \
 		if (unlikely(nullsegs) && (nullsegs & (1 << (sg)))) goto slow; \
 		uword _lin = cpu->seg[sg].base + (off); \
@@ -840,12 +837,14 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
 			if ((wr) && unlikely(!(*_e->ppte & 0x40))) \
 				*_e->ppte |= 0x40; \
-		} else { \
-			FAST_TWO_OP((H1), (wr)); \
-			if (!(p = fast_miss(cpu, ftlb, _lin, (size), (wr), &mpaddr))) \
-				goto slow; \
-		} \
+		} else if (!(p = fast_miss2(cpu, ftlb, _lin, (size), (wr), &mpaddr, (H1)))) \
+			goto slow; \
 	} while (0)
+	/* v5.1: the two-operand rule where the first operand is MMIO, which has
+	   no fast entry (MOVS from the VGA window): with paging, the
+	   destination is taken only where its fast entry hits, so that its
+	   lookup leaves tiny386's TLB as it is; a miss goes to tiny386 */
+#define FAST_DEST_HIT(lin) (!(cpu->cr0 & CR0_PG) || ftlb[((lin) >> 12) % tlb_size].wtag == ((lin) >> 12))
 #define STACK_PTR2(p, d, size, wr, H1) do { \
 		uword _sp = (REGi(4) + (d)) & sp_mask; \
 		FPTR2(p, SEG_SS, _sp, size, wr, H1); \
@@ -1839,6 +1838,8 @@ movs: { int n = strn;
 	int ss = STR_SEG;
 	if (!rep) {
 		u8 *s, *d;
+		uword ps, pd;   /* (each read only where fast_where() or movs_dio set it) */
+		int ks, kd;
 		FPTR_IO(s, ss, SI_, n, 0, movs_io);
 		FPTR_W(d, SEG_ES, DI_, n, movs_dmiss);
 movs_dgo:
@@ -1853,33 +1854,29 @@ movs_dio:   /* (v5.1) the source a host address (RAM, or the frame buffer's
 	       read entry), the destination MMIO at mpaddr (the frame buffer by
 	       its write tag, or what fast_miss() found): each end looked up
 	       once, the source first, as tiny386 translates them */
-		{
-			SYNC_IN();
-			u32 v = n == 1 ? fm8(s) : n == 2 ? fm16(s) : fm32(s);
-			fast_io_store(cpu, mpaddr, n, v);
-			SET_SI(SI_ + dir);
-			SET_DI(DI_ + dir);
-			NEXT;
-		}
+		ks = 1;
+		kd = 2;
+		pd = mpaddr;
+		goto movs_one;
 movs_io:   /* the source MMIO (v5.1: a destination that is MMIO goes to
 	      movs_dio): the source looked up first and the destination only
 	      if it can be read, as tiny386 does; nothing read before both are
 	      known (an MMIO read has side effects) */
+		ks = fast_where(cpu, ftlb, nullsegs, ss, SI_, n, 0, &s, &ps);
+		if (!ks) goto slow;
+		if (!FAST_DEST_HIT(cpu->seg[SEG_ES].base + DI_)) goto slow;
+		kd = fast_where(cpu, ftlb, nullsegs, SEG_ES, DI_, n, 1, &d, &pd);
+		if (!kd) goto slow;
+movs_one:
+		SYNC_IN();
 		{
-			uword ps = 0, pd = 0;
-			int ks = fast_where(cpu, ftlb, nullsegs, ss, SI_, n, 0, &s, &ps);
-			if (!ks) goto slow;
-			FAST_TWO_OP_PG(cpu->seg[SEG_ES].base + DI_, (cpu->seg[ss].base + SI_) >> 12, 1);
-			int kd = fast_where(cpu, ftlb, nullsegs, SEG_ES, DI_, n, 1, &d, &pd);
-			if (!kd) goto slow;
-			SYNC_IN();
 			u32 v = ks == 1 ? (n == 1 ? fm8(s) : n == 2 ? fm16(s) : fm32(s)) : fast_io_load(cpu, ps, n);
 			if (kd == 2) fast_io_store(cpu, pd, n, v);
 			else if (n == 1) fs8(d, v); else if (n == 2) fs16(d, v); else fs32(d, v);
-			SET_SI(SI_ + dir);
-			SET_DI(DI_ + dir);
-			NEXT;
 		}
+		SET_SI(SI_ + dir);
+		SET_DI(DI_ + dir);
+		NEXT;
 	}
 	while (CX_) {
 		uword si = SI_, di = DI_;
@@ -1926,12 +1923,10 @@ movs_rep_io: {   /* MMIO at one end or both (v5.0; since v5.1 the source
 			uword ps, pd;
 			int ks = fast_where(cpu, ftlb, nullsegs, ss, si, n, 0, &s, &ps);
 			if (!ks) goto slow;
-			if (ks == 2 && !in_high_iomem(ps))
-				goto slow;   /* (v5.1) the VGA window: lfb_movs() takes no piece from it */
-			/* (the pages from si and di again: ls and ld kept alive to
-			   here cost the whole REP loop registers, 4 host
+			/* (the destination's address from di again: ld kept alive
+			   to here cost the whole REP loop registers, 4 host
 			   instructions a REP MOVS, mb) */
-			FAST_TWO_OP_PG(cpu->seg[SEG_ES].base + di, (cpu->seg[ss].base + si) >> 12, 1);
+			if (!FAST_DEST_HIT(cpu->seg[SEG_ES].base + di)) goto slow;
 			int kd = fast_where(cpu, ftlb, nullsegs, SEG_ES, di, n, 1, &d, &pd);
 			if (!kd) goto slow;
 			/* (a read entry may be the frame buffer's; a write

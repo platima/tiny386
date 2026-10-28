@@ -1182,11 +1182,13 @@ static void IRAM_ATTR store32(CPUI386 *cpu, OptAddr *res, u32 val)
  * every element, and the board's compiler keeps that test for stores.)
  * For lfb_stos() and the fast interpreter's REP STOS piece into RAM
  * (i386_fast.h), each for 8 elements or more: below that the element loop
- * is as cheap.
+ * is as cheap.  Out of line and in internal RAM, as lfb_stos() is: the
+ * call is paid once a piece, and inlined into both it cost about 250 bytes
+ * more of internal RAM.
  */
 typedef u16 __attribute__((may_alias)) fill_u16;
 typedef u32 __attribute__((may_alias)) fill_u32;
-static inline __attribute__((always_inline)) void fill_aligned(u8 *p, u32 val, int size, uword count)
+static void noinline IRAM_ATTR fill_aligned(u8 *p, u32 val, int size, uword count)
 {
 	u8 *end = p + count * size;
 	u32 v = size == 2 ? (val & 0xffff) * 0x10001u : val;
