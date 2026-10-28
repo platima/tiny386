@@ -407,11 +407,13 @@ static void one(void)
 		(void) o16;
 		break;
 	}
-	case 10 ... 13: {       /* ALU r/m,imm (v5.1: 82h, 80h's alias, too) */
+	case 10 ... 13: {       /* ALU r/m,imm (v5.1: 82h, 80h's alias, too: one 80h in four, chosen
+				   from the generator's state without moving it on, so that the
+				   code is otherwise what it was) */
 		seg_prefix();
 		o16 = o16pfx();
 		int k = rnd(3), op = rnd(8);
-		e8(k == 0 ? (chance(4) ? 0x82 : 0x80) : k == 1 ? 0x81 : 0x83);
+		e8(k == 0 ? ((rs >> 7) & 3 ? 0x80 : 0x82) : k == 1 ? 0x81 : 0x83);
 		rm(op, k == 0);
 		if (k == 1) ev(rnd(0) | (unsigned) rs, o16); else e8(rnd(256));
 		if (op == 7)
