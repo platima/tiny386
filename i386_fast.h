@@ -410,9 +410,17 @@ static inline __attribute__((always_inline)) int fast_cond(CPUI386 *cpu, int c)
    ifetch.paddr, set only by the quick way) happens where it would.
    Returns 0 when tiny386 must do the instruction at CS:eip; 1 when it can
    run here; 2 when it can run here but is the first in a page newly
-   cached (tiny386 fetched it the slow way, so no fusion for it). */
+   cached (tiny386 fetched it the slow way, so no fusion for it).  v5.1:
+   the window comes back in a struct fast_win (the instruction's host
+   address, its page's start, and ipd: eip = pc - ipd), so that
+   fast_exec()'s own pc, win_lo and ipd are never address-taken and pc
+   stays in a register. */
 #define FAST_WIN (4096 - 16)
-static noinline int IRAM_ATTR_FAST_EXEC fast_window(CPUI386 *cpu, uword eip, const u8 **pc, const u8 **lo, uintptr_t *ipd)
+struct fast_win {
+	const u8 *pc, *lo;
+	uintptr_t ipd;
+};
+static noinline int IRAM_ATTR_FAST_EXEC fast_window(CPUI386 *cpu, uword eip, struct fast_win *w)
 {
 	uword lin = cpu->seg[SEG_CS].base + eip;
 	int r = 1;
@@ -439,9 +447,9 @@ static noinline int IRAM_ATTR_FAST_EXEC fast_window(CPUI386 *cpu, uword eip, con
 		r = 2;
 	}
 	u8 *host = cpu->phys_mem + (cpu->ifetch.xaddr ^ lin);
-	*pc = host;
-	*lo = host - (lin & 0xfff);
-	*ipd = (uintptr_t) host - eip;
+	w->pc = host;
+	w->lo = host - (lin & 0xfff);
+	w->ipd = (uintptr_t) host - eip;
 	return r;
 }
 
@@ -542,6 +550,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	const u8 *pc;             /* the next instruction byte (host address) */
 	const u8 *ins;            /* the current instruction's first byte */
 	const u8 *win_lo;         /* the code window: instructions start in [win_lo, win_lo + FAST_WIN) */
+	uintptr_t win_hi;         /* v5.1: win_lo + FAST_WIN, NEXT's one bound; 0 after a jump below win_lo */
 	uintptr_t ipd;            /* eip = pc - ipd */
 	bool code16;
 	uword sp_mask;
@@ -578,17 +587,26 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	/* every handler ends dispatching the next instruction itself (so that
 	   the host's branch predictor sees one indirect jump per handler) */
 #define DISPATCH do { ins = pc; pfx = pfx0; goto *ops[*pc++]; } while (0)
+	/* v5.1: the window's test against one bound.  Between two refills pc
+	   only moves up (pc++, pc += n), but for JUMP_REL() and JUMP_ABS(),
+	   which set win_hi to 0 when the target is below win_lo, so that the
+	   next NEXT refills.  They are the only backward moves of pc: any new
+	   one must go through them. */
 #define NEXT do { \
 		if (unlikely(--steps < 0)) goto out; \
-		if (unlikely((uword) (pc - win_lo) >= FAST_WIN)) goto refill; \
+		if (unlikely((uintptr_t) pc >= win_hi)) goto refill; \
 		DISPATCH; \
 	} while (0)
 	/* relative and absolute jumps; 16-bit code wraps at 64 KB */
 #define JUMP_REL(d) do { \
 		if (code16) pc = (const u8 *) (ipd + ((EIP_OF(pc) + (d)) & 0xffff)); \
 		else pc += (d); \
+		if (unlikely((uintptr_t) pc < (uintptr_t) win_lo)) win_hi = 0; \
 	} while (0)
-#define JUMP_ABS(neweip) (pc = (const u8 *) (ipd + (uword) (neweip)))
+#define JUMP_ABS(neweip) do { \
+		pc = (const u8 *) (ipd + (uword) (neweip)); \
+		if (unlikely((uintptr_t) pc < (uintptr_t) win_lo)) win_hi = 0; \
+	} while (0)
 	/* tiny386's try_jcc8() after a CMP or TEST: a JZ or JNZ right after it,
 	   if taken, in the same step, unless tiny386 fetched the CMP the slow
 	   way (the first instruction in a newly cached page) */
@@ -724,6 +742,26 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 		RELOAD; \
 	} while (0)
 
+	/* the code window for the instruction at eip, by fast_window(); the
+	   fusion rule's saves when it is the first in a page newly cached */
+#define WINDOW() do { \
+		unsigned long _l0 = cpu->ifetch.laddr; \
+		uword _x0 = cpu->ifetch.xaddr; \
+		struct fast_win _w; \
+		int _r = fast_window(cpu, eip, &_w); \
+		if (!_r) \
+			goto slow_eip; \
+		pc = _w.pc; \
+		win_lo = _w.lo; \
+		win_hi = (uintptr_t) _w.lo + FAST_WIN; \
+		ipd = _w.ipd; \
+		if (_r == 2) { \
+			nofold_it = FAST_ITER(); \
+			nofold_laddr = _l0; \
+			nofold_xaddr = _x0; \
+		} \
+	} while (0)
+
 	eip = cpu->next_ip;
 	cpu->ifetch.paddr = 0;
 reload:   /* after a change of mode, CS or segment registers made outside the handlers below; eip is the next instruction */
@@ -732,33 +770,11 @@ reload:   /* after a change of mode, CS or segment registers made outside the ha
 	pfx0 = code16 ? 3 : 0;
 	sp_mask = cpu->sp_mask;
 	nullsegs = fast_nullsegs(cpu);
-	{
-		unsigned long l0 = cpu->ifetch.laddr;
-		uword x0 = cpu->ifetch.xaddr;
-		int w = fast_window(cpu, eip, &pc, &win_lo, &ipd);
-		if (!w)
-			goto slow_eip;
-		if (w == 2) {
-			nofold_it = FAST_ITER();
-			nofold_laddr = l0;
-			nofold_xaddr = x0;
-		}
-	}
+	WINDOW();
 	DISPATCH;
 refill:   /* the next instruction is outside the code window */
 	eip = EIP_OF(pc);
-	{
-		unsigned long l0 = cpu->ifetch.laddr;
-		uword x0 = cpu->ifetch.xaddr;
-		int w = fast_window(cpu, eip, &pc, &win_lo, &ipd);
-		if (!w)
-			goto slow_eip;
-		if (w == 2) {
-			nofold_it = FAST_ITER();
-			nofold_laddr = l0;
-			nofold_xaddr = x0;
-		}
-	}
+	WINDOW();
 	DISPATCH;
 
 	/* == prefixes */
