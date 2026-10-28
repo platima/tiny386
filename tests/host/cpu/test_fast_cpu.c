@@ -2782,21 +2782,42 @@ static int refill_log_check(int seed, const char *why)
    physical address, one tiny386 translates there; NULL with -1, a page
    crossed (tiny386 not asked), a fault, or a page beyond RAM.  Then the
    two machines compared as after a step, the exception and its error code
-   too, and the fast TLB's invariants. */
-static long np_access, np_fault, np_refill;
+   too, and the fast TLB's invariants.  (v5.1, at the merge: an access
+   that tiny386's entry for the page refuses, or one whose refill would
+   drop tiny386's entry for the code page, fast_miss() leaves to tiny386
+   with nothing changed, WI-1's and WI-2's rule in fast_lpgno(), which
+   fast_translate() keeps: NULL with -1, tiny386's entry, CR2 and the
+   exception as they were; tiny386 then does it on machine 0 too.) */
+static long np_access, np_fault, np_refill, np_left;
 static int verbose_runs;        /* (set below) */
 static const char *probe(uword lin, int size, int wr)
 {
 	CPUI386 *c0 = M[0].cpu, *c1 = M[1].cpu;
 	struct fast_tlb_entry *tab = fast_tlb_check(c0);
 	uword mm = 0, pa = 0;
-	u8 *h = fast_miss(c0, tab, lin, size, wr, &mm);
 	int cross = (lin & 0xfff) > (uword) (0x1000 - size);
+	struct tlb_entry *t0 = &c0->tlb.tab[(lin >> 12) % tlb_size], s0 = *t0;
+	int leave = !cross && (c0->cr0 & CR0_PG) &&
+		(t0->lpgno == lin >> 12 ? t0->pte_lookup[c0->cpl > 0][wr != 0] != 0 :
+		 t0->lpgno == ((uword) c0->ifetch.laddr >> 12));
+	uword cr2 = c0->cr2;
+	int exc = c0->excno, err = c0->excerr;
+	u8 *h = fast_miss(c0, tab, lin, size, wr, &mm);
 	int miss = c1->tlb.tab[(lin >> 12) % tlb_size].lpgno != lin >> 12;
 	bool ok = !cross && translate_lpgno(c1, wr ? 2 : 1, lin >> 12, lin, c1->cpl, &pa);
 	np_access++;
 	np_refill += !cross && miss;
 	np_fault += !cross && !ok;
+	if (leave) {
+		if (h || mm != (uword) -1)
+			return "a host address or MMIO for an access left to tiny386";
+		if (memcmp(t0, &s0, sizeof(s0)) || c0->cr2 != cr2 || c0->excno != exc || c0->excerr != err)
+			return "tiny386's entry, CR2 or the exception changed by an access left to tiny386";
+		uword pa0;
+		translate_lpgno(c0, wr ? 2 : 1, lin >> 12, lin, c0->cpl, &pa0);
+		np_left++;
+		return NULL;
+	}
 	if (cross || !ok)
 		return h || mm != (uword) -1 ? "a host address or MMIO for a page crossed or a fault" : NULL;
 	if (in_iomem(pa & ~0xfffu))
@@ -2842,7 +2863,7 @@ static int refill_probes(int seed)
 	crash_name = what;
 	crash_seed = seed;
 	int bad = 0;
-	long n, acc0 = np_access, ref0 = np_refill, flt0 = np_fault;
+	long n, acc0 = np_access, ref0 = np_refill, flt0 = np_fault, lft0 = np_left;
 	for (n = 0; n < 900 && !bad; n++) {
 		crash_step = n;
 		const char *w = NULL;
@@ -2919,8 +2940,8 @@ static int refill_probes(int seed)
 			bad = 1;
 	}
 	if (verbose_runs)
-		printf("  seed %d, %s: %s after %ld probes, %ld accesses (%ld refills, %ld page faults)\n", seed, what,
-		       bad ? "a difference" : "no difference", n, np_access - acc0, np_refill - ref0, np_fault - flt0);
+		printf("  seed %d, %s: %s after %ld probes, %ld accesses (%ld refills, %ld page faults, %ld left to tiny386)\n", seed, what,
+		       bad ? "a difference" : "no difference", n, np_access - acc0, np_refill - ref0, np_fault - flt0, np_left - lft0);
 	for (int i = 0; i < 2; i++)
 		mach_free(&M[i]);
 	glfb = keep_glfb;

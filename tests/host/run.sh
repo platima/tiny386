@@ -911,14 +911,13 @@ for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN
          codelfb:'/^\t\t\tif ((uintptr_t) (h - (const u8 \*) cpu->phys_mem) >= (uintptr_t) cpu->phys_mem_size)$/{N;d}' \
          plnull:'s/^#define FAST_PL(sg, lin, size) ((((lin) + (size) - 1) >> 12) | (((nullsegs >> (sg)) & 1u) << 20))$/#define FAST_PL(sg, lin, size) (((lin) + (size) - 1) >> 12)/' \
          st4fold:'s/^\t*nofold_it = FAST_ITER(); nofold_laddr = cpu->ifetch.laddr; nofold_xaddr = cpu->ifetch.xaddr;.*$/\t\t\t\t(void) 0;/' \
-         lpgno:'s/^\tif (ent->lpgno == lpgno && ent->pte_lookup\[cpl > 0\]\[rwm > 1\])$/\tif (0)/' \
+         lpgno:'s/^#define FAST_REFUSED(ent, cpl, wr) .*$/#define FAST_REFUSED(ent, cpl, wr) 0/' \
          repdirty:'/} else if (_e->wtag == (_pg | FAST_TAG_LFB) && _in) {/,/goto LABEL;/s/\*_e->ppte |= 0x40;/(void) 0;/' \
          n2:'s/1, \&mpaddr, (H1)))) { \\$/1, \&mpaddr, (NULL)))) { \\/' \
          cmpsrule:'s/^\t\tFPTR2(d, SEG_ES, DI_, n, 0, s);$/\t\tFPTR(d, SEG_ES, DI_, n, 0);/' \
          restore:'s/^\tif (FAST_ITER() == nofold_it) {$/\tif (0) {/' \
          destheld:'s/|| cpu->tlb.tab\[((lin) >> 12) % tlb_size\].lpgno == ((lin) >> 12))$/|| 1)/' \
-         lpgno:'s/^\tif (ent->lpgno == lpgno && ent->pte_lookup\[cpl > 0\]\[rwm > 1\])$/\tif (0)/' \
-         codepage:'s/^\tif (ent->lpgno != lpgno && ent->lpgno == ((uword) cpu->ifetch.laddr >> 12))$/\tif (0)/'; do
+         codepage:'s/^#define FAST_CODE_PAGE(cpu, ent) .*$/#define FAST_CODE_PAGE(cpu, ent) 0/'; do
     mname=${m%%:*}
     mfile=i386_fast.h       # (v5.1: lpgno's fault is in i386.c)
     [ "$mname" = lpgno ] && mfile=i386.c

@@ -908,13 +908,18 @@ static bool IRAM_ATTR translate_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uword 
      new code page this is the old one: then tiny386 does the instruction,
      which is right and only slower.)
    Every other case is translate_lpgno()'s, which tiny386 doing it again
-   (after a refused refill, or a fault) leaves as it would leave it once. */
+   (after a refused refill, or a fault) leaves as it would leave it once.
+   (v5.1, at the merge: the two tests are the macros FAST_REFUSED() and
+   FAST_CODE_PAGE(), which fast_translate() below, the lean refill of
+   WI-4 that fast_miss() calls in place of this function, makes too.) */
+#define FAST_REFUSED(ent, cpl, wr) ((ent)->pte_lookup[(cpl) > 0][(wr)] != 0)
+#define FAST_CODE_PAGE(cpu, ent) ((ent)->lpgno == ((uword) (cpu)->ifetch.laddr >> 12))
 static noinline bool IRAM_ATTR fast_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uword laddr, int cpl, uword *paddr)
 {
 	struct tlb_entry *ent = &(cpu->tlb.tab[lpgno % tlb_size]);
-	if (ent->lpgno == lpgno && ent->pte_lookup[cpl > 0][rwm > 1])
+	if (ent->lpgno == lpgno && FAST_REFUSED(ent, cpl, rwm > 1))
 		return false;
-	if (ent->lpgno != lpgno && ent->lpgno == ((uword) cpu->ifetch.laddr >> 12))
+	if (ent->lpgno != lpgno && FAST_CODE_PAGE(cpu, ent))
 		return false;
 	return translate_lpgno_body(cpu, rwm, lpgno, laddr, cpl, paddr);
 }
@@ -931,16 +936,24 @@ static noinline bool IRAM_ATTR fast_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uw
    level and rwm are read and worked out here, after the walk, not passed
    in, so that fewer values are held across it: with the board's compiler
    a miss with refill then costs about 137 host instructions, against 146
-   with them passed in and 208 in v5.0. */
+   with them passed in and 208 in v5.0.  (v5.1, at the merge: with
+   fast_lpgno()'s two tests, above, which WI-1 and WI-2 added while this
+   was built: false with nothing changed for an entry tiny386 holds that
+   refuses the access, and for a refill over tiny386's entry for the code
+   page.  Without them the merged tree differed from tiny386 in 32 of 80
+   scenarios of test_fast_cpu's modes l, m, n and x, seeds 1 to 20.) */
 static inline __attribute__((always_inline)) bool fast_translate(CPUI386 *cpu, int write, uword lpgno, uword laddr, uword *paddr, u8 **ppte)
 {
 	struct tlb_entry *ent = &(cpu->tlb.tab[lpgno % tlb_size]);
 	if (ent->lpgno != lpgno) {
+		if (FAST_CODE_PAGE(cpu, ent))
+			return false;
 		if (!tlb_walk_lean(cpu, ent, lpgno)) {
 			lpgno_fault(cpu, write ? 2 : 1, laddr, cpu->cpl, 0);
 			return false;
 		}
-	}
+	} else if (FAST_REFUSED(ent, cpu->cpl, write != 0))
+		return false;
 	*ppte = ent->ppte;
 	return lpgno_rights_lean(cpu, ent, write ? 2 : 1, lpgno, laddr, cpu->cpl, paddr);
 }
