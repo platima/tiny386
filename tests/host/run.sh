@@ -842,7 +842,15 @@ fi
 # test), the instruction count left behind at port accesses, levels 1 and 2
 # given level 3's TLB (the CPU review's finding), a MOV into the frame
 # buffer through its TLB entry without its marks, and a frame buffer page
-# given a plain write entry.
+# given a plain write entry.  v5.1 (v5.0's recheck, RC-1 and RC-2): the
+# frame buffer from 16-bit protected mode, level 3 and unreal mode, moved
+# by tiny386 too (OUTSB to port E4h), its dirty bits (case j), and the fast
+# TLB's invariants after every step; and four more faults: no flush after
+# the fast OUT moves the frame buffer, no lfb_gen test in fast_tlb_check(),
+# no dirty bit on a store through a frame buffer page's write tag, and an
+# old write tag kept when fast_miss() gives an entry a frame buffer page.
+# (The lockstep tester's t386mon800 finds none of these four: Windows never
+# moves the frame buffer while it draws, nor clears its dirty bits.)
 echo
 FCSEEDS=${FCSEEDS:-40}
 fcbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_fast_cpu-name
@@ -864,7 +872,11 @@ result $st "the fast interpreter without the board header: the same"
 for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN();$/\t(void) 0;/' \
          cpl:'s/cpu->cpl > 0\];/cpu->cpl == 3];/' \
          lfbmark:'/^lfb_st: {/,/NEXT; }/s/^\tlfb_marked(cpu, .*$/\t(void) 0;/' \
-         lfbwtag:'s/^\t\t\te->wtag = pg | FAST_TAG_LFB;$/\t\t\te->wtag = pg;/'; do
+         lfbwtag:'s/^\t\t\te->wtag = pg | FAST_TAG_LFB;$/\t\t\te->wtag = pg;/' \
+         outflush:'s/if (unlikely(cpu->cb.lfb_gen != cpu->fast->lfb_gen_seen))/if (0)/' \
+         checkgen:'s/cpu->cb.lfb_gen != fs->lfb_gen_seen))/0))/' \
+         lfbdirty:'/mhost = (u8 \*) (uintptr_t) (_lin + _e->delta);/,/goto LFBLABEL;/s/\*_e->ppte |= 0x40;/(void) 0;/' \
+         lfbkeepw:'s/^\t\tif (e->rtag != pg || e->delta != delta)$/\t\tif (0)/'; do
     mname=${m%%:*}
     mkdir -p "$OUT/mutant-$mname"
     cp "$TREE/i386.c" "$TREE/i386.h" "$OUT/mutant-$mname/"
@@ -877,7 +889,13 @@ for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN
     fcbuild "mutant-$mname" "$OUT/mutant-$mname" $PCBOARD
     "$OUT/test_fast_cpu-mutant-$mname" $FCSEEDS > "$OUT/fast-cpu-mutant-$mname.log" 2>&1
     st=$?
-    echo "    | ($mname: $(grep -c FAIL "$OUT/fast-cpu-mutant-$mname.log") of $(sed -n 's/^test_fast_cpu: \([0-9]*\) scenarios.*/\1/p' "$OUT/fast-cpu-mutant-$mname.log") scenarios differ; exit status $st)"
+    nf=$(grep -c FAIL "$OUT/fast-cpu-mutant-$mname.log")
+    nsc=$(sed -n 's/^test_fast_cpu: \([0-9]*\) scenarios.*/\1/p' "$OUT/fast-cpu-mutant-$mname.log")
+    if [ -n "$nsc" ]; then
+        echo "    | ($mname: $nf of $nsc scenarios differ; exit status $st)"
+    else    # v5.1: a crash (a store through a stale entry) ends the run, and is its last FAIL
+        echo "    | ($mname: $nf FAIL lines, the last a crash, which ends the run; exit status $st)"
+    fi
     [ $st != 0 ]
     result $? "the lockstep test catches a fault in the fast interpreter ($mname)"
 done

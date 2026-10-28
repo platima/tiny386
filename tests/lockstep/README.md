@@ -452,8 +452,9 @@ side by side, so their times are longer:
 | `FPTR_ST()`'s frame buffer path without the dirty bit (RC-2) | no | [inferred] Windows never clears the dirty bit of a frame buffer page it has mapped, so the bit is never found clear there |
 | `fast_miss()`'s frame buffer branch keeping an old write tag (RC-2) | no | [inferred] it needs a RAM page with a write entry and a frame buffer page at the same index of the 256, a read of the frame buffer page, then a store into the RAM page with nothing between; this run never does it |
 
-The last four are for `tests/host/cpu/test_fast_cpu.c`, which, as v5.0's recheck found, does not
-catch them either (its RC-1 and RC-2).
+The last four are for `tests/host/cpu/test_fast_cpu.c`, which, as v5.0's recheck found, did not
+catch them either (its RC-1 and RC-2). Since v5.1 it does: the recheck's scenarios are in it, and
+`tests/host/run.sh` 24 plants all four (`outflush`, `checkgen`, `lfbdirty`, `lfbkeepw`).
 
 **Limits of this workload**:
 

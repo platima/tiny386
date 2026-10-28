@@ -245,6 +245,25 @@ and 239,202 on the DOS board, with `fast_exec()` at 120,198 bytes and `cpu_exec1
   [verified: `tests/lockstep/README.md` 9, `BUILD-NOTES.md` 33]. Its self-test plants two faults in
   `i386_fast.h` (the fusion bug above, and the count left behind at port accesses) and names the
   instruction where each first shows in SeaBIOS.
+* **v5.1, Plat's own setup** (`tests/lockstep/README.md` 10): the lockstep tester's `t386mon800`
+  runs Windows 95 at 800x480 in 16 bits through VMDisp9x with his pointer change, on the frame
+  buffer, and T386MON's tests to "Tests done". v5.0 with the fast interpreter on and off against
+  v4.6: no difference, 792,272,554 instructions [verified, 2026-10-28]. A lost mark planted in
+  `lfb_st` is named at its instruction; faults in what the fast interpreter does when the frame
+  buffer moves, or when its dirty bit is cleared, do not show there (Windows does neither while it
+  draws), and are the host test's.
+* **v5.1, the host test** (`run.sh` 24, from v5.0's recheck, its RC-1 and RC-2): twenty scenarios a
+  seed, the six new ones the frame buffer from 16-bit protected mode with and without paging, at
+  level 3 with IOPL 3, at level 1 after level 0, from unreal mode, and each of its pages stored into
+  with its dirty bit cleared in between; tiny386 moves it too (OUTSB to port E4h); the fast TLB's
+  invariants are checked after every step, and a crash is reported as the scenario's failure. 800
+  scenarios in each build, then nine planted faults, all caught, four of them new (no flush after
+  the fast OUT moves the frame buffer, no `lfb_gen` test in `fast_tlb_check()`, no dirty bit on a
+  store through a frame buffer write tag, an old write tag kept by `fast_miss()`'s frame buffer
+  branch), which the fourteen scenarios of v5.0 did not catch; and 10,000 more scenarios in each
+  build (seeds 1001 to 1500, 135.5 M instructions, 1,306,991 step ends, 14.2 M fast TLB entries
+  checked with the board header, 0.41 M of them the frame buffer's), no difference and no
+  invariant broken [verified, 2026-10-28].
 
 
 ## 7. Host instructions a guest instruction (qemu)
