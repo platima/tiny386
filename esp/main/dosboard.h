@@ -14,7 +14,7 @@ typedef struct {
 	int hdmi_mode;           /* hdmi_mode = auto|hdmi|dvi */
 	int audio;               /* hdmi_audio = 0|1 */
 	int rb_swap;             /* rb_swap = 0|1: MS7210 0x1201 bit 4, red and blue swapped */
-	int bounce_px;           /* lcd_bounce_px = 0 or a divisor of 480000 up to 16000, such as 8000 */
+	int bounce_px;           /* lcd_bounce_px = 0 or a divisor of 480000 up to 8000, such as 8000 */
 	int test_card_ms;        /* test_card_ms = how long the colour bars stay at start, 0 = none */
 	int ch9350_state;        /* ch9350_state = 2|0 */
 	int kbd_zero_guard_ms;   /* kbd_zero_guard_ms = 0 (off) or a few ms (ch9350.h) */
@@ -23,9 +23,15 @@ typedef struct {
 	                            AUDIO_SHIFT_DEFAULT (2), 4 = tiny386's own */
 } dosboard_cfg_t;
 
-/* the largest lcd_bounce_px: 20 rows, two buffers of 32,000 bytes in
-   internal RAM */
-#define DOSBOARD_BOUNCE_MAX_PX (LCD_WIDTH * 20)
+/* the largest lcd_bounce_px: 10 rows, two buffers of 16,000 bytes in
+   internal RAM.  v5.0 allowed 20 rows (64,000 bytes).  v5.1 has
+   cpu_exec1() in internal RAM (its build leaves 126,475 bytes for
+   ESP-IDF on this board, v5.0 239,202), and the panel takes its buffers
+   before the sound, the tasks and the PC take theirs, so 20 rows would
+   leave too little for them.  Even 10 rows (31 KiB) likely take the board
+   under v5.1's 64 KiB rule: with them, build with I386_EXEC1_SMALL
+   (board_dosboard.h, 32,042 bytes back). */
+#define DOSBOARD_BOUNCE_MAX_PX (LCD_WIDTH * 10)
 
 extern dosboard_cfg_t dosboard_cfg;
 

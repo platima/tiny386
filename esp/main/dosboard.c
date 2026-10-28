@@ -617,11 +617,12 @@ void dosboard_load_config(void)
 			      "bounce buffers).", dosboard_cfg.bounce_px, LCD_WIDTH * LCD_HEIGHT);
 		dosboard_cfg.bounce_px = 0;
 	}
-	/* and takes two of them from internal RAM: more than 20 rows' worth
-	   (2 x 32,000 bytes) would leave the board with no picture */
+	/* and takes two of them from internal RAM: more than 10 rows' worth
+	   (2 x 16,000 bytes) would leave too little for the rest (v5.1,
+	   dosboard.h) */
 	if (dosboard_cfg.bounce_px > DOSBOARD_BOUNCE_MAX_PX) {
 		dosboard_note("dosboard: lcd_bounce_px %d is more than internal RAM can spare; "
-			      "%d (20 rows) used.", dosboard_cfg.bounce_px, DOSBOARD_BOUNCE_MAX_PX);
+			      "%d (10 rows) used.", dosboard_cfg.bounce_px, DOSBOARD_BOUNCE_MAX_PX);
 		dosboard_cfg.bounce_px = DOSBOARD_BOUNCE_MAX_PX;
 	}
 	/* what the sound path takes from this file, before i2s_main() runs */

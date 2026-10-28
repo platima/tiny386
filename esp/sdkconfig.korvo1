@@ -83,5 +83,11 @@ CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH=y
 # CONFIG_PARLIO_TX_ISR_HANDLER_IN_IRAM is not set
 # CONFIG_PARLIO_RX_ISR_HANDLER_IN_IRAM is not set
 # CONFIG_ANA_CMPR_ISR_HANDLER_IN_IRAM is not set
-# CONFIG_GPTIMER_ISR_HANDLER_IN_IRAM is not set
 # CONFIG_MCPWM_ISR_HANDLER_IN_IRAM is not set
+# The profiler's GPTimer ([esp] profile = 1 only, s31/PROFILE.md 5): its
+# driver's interrupt entry and the next alarm's call run from flash, on
+# core 0; the sample itself (prof_alarm(), prof_sample()) is in internal
+# RAM unless PROFILE_IN_FLASH.  Its interrupt is not marked for internal
+# RAM (CONFIG_GPTIMER_ISR_CACHE_SAFE is off), so it waits while the cache
+# is off.
+# CONFIG_GPTIMER_ISR_HANDLER_IN_IRAM is not set

@@ -29,6 +29,10 @@
 // qemu); the fast interpreter's hand-overs are as quick within a tenth of
 // a per cent.
 //#define I386_EXEC1_SMALL
+// PROFILE_IN_FLASH, the first thing to try when internal RAM is short: the
+// profiler's sample path ([esp] profile = 1, profile.c and prof_hist.c) in
+// flash, 1,878 bytes back; it then runs through core 0's cache.
+//#define PROFILE_IN_FLASH
 #if !defined(I386_FAST) || defined(I386_FAST_EXEC1_IRAM)
 #define IRAM_ATTR_CPU_EXEC1 IRAM_ATTR
 #else

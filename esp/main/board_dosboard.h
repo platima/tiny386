@@ -51,6 +51,10 @@
 // qemu); the fast interpreter's hand-overs are as quick within a tenth of
 // a per cent.
 //#define I386_EXEC1_SMALL
+// PROFILE_IN_FLASH, the first thing to try when internal RAM is short: the
+// profiler's sample path ([esp] profile = 1, profile.c and prof_hist.c) in
+// flash, 1,878 bytes back; it then runs through core 0's cache.
+//#define PROFILE_IN_FLASH
 #if !defined(I386_FAST) || defined(I386_FAST_EXEC1_IRAM)
 #define IRAM_ATTR_CPU_EXEC1 IRAM_ATTR
 #else
@@ -105,7 +109,9 @@
 // Bounce buffers: 0 = the LCD DMA reads the PSRAM frame buffer directly.
 // If the picture tears or shifts, set 800 * 10 (two 16,000-byte buffers in
 // internal RAM, filled by the CPU on core 0), or [dosboard] lcd_bounce_px
-// in dosboard.ini.  The frame (480,000 pixels) must be a multiple of it.
+// in dosboard.ini.  The frame (480,000 pixels) must be a multiple of it,
+// and 8000 is the most (dosboard.h).  Since v5.1 those 31 KiB are more
+// than internal RAM has spare: with them, define I386_EXEC1_SMALL below.
 #define LCD_BOUNCE_BUFFER_PX 0
 
 // microSD on SDMMC slot 0 through the IO MUX, as the Korvo-1.
