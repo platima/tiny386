@@ -797,3 +797,164 @@ other work]:
 [unknown] until Plat runs T386MON]: scroll about 8 to 15 per cent faster, full copy 6 to 9, fill 2
 to 4 before G, and G 0 to 18 per cent more on fill depending on how much of fill is PSRAM's time
 (the sampler's data cache counters say).
+
+
+### 13.3 Descriptor reads, the group opcodes and the lazy flags (WI-3)
+
+Written 2026-10-28 on the branch `v51-segdisp` (from `v51-lock800`). Tags as at the top. "mb" is
+the v5.1 ideas work's micro-benchmark: each instruction form's host instructions a guest
+instruction, `i386.c` built with the board's compiler, run under qemu.
+
+**What changed**
+
+* **A descriptor read with one lookup** (`read_desc()`, `i386.c`). tiny386 read a descriptor's two
+  words with two `translate_laddr()` calls and two `load32()`. When both words are wanted, the
+  entry is inside the table's limit and in one page (always, with an 8-aligned table), and
+  tiny386's TLB holds that page, it now takes that entry and loads the two words from RAM. That is
+  what the two calls did there: both find that entry; a read at level 0 never faults on a present
+  page (`pte_lookup[..][..][0][0]` is 0 in every row) and sets no dirty bit; `load32()` of RAM is
+  `pload32()` [verified: read]. Everything else goes to `read_desc_slow()`, which is v5.0's
+  `read_desc()` unchanged: a limit fault, the page not in the TLB (it refills it), an entry across
+  a page, in MMIO or at the end of RAM, and the second word alone (LAR's and IRET's checks), whose
+  fault has CR2 at base + offset + 4 [verified: read]. The new path makes no call, so it needs no
+  stack frame, and GCC inlines it into `set_seg()`, `pmcall()`, `pmret()` and the LLDT, LAR, LSL,
+  VERR and VERW helpers [verified: the Korvo-1 object's calls of `read_desc_slow()`]. tiny386's
+  own interpreter takes it too. (A first form looked the page up through `translate_lpgno()`,
+  which may call `tlb_refill()`, and so kept a frame: a segment load cost 194 host instructions,
+  not 165.)
+* **Segment loads in the fast interpreter** (`FAST_LOAD_SEG()`, `i386_fast.h`). The null-segment
+  mask is kept for the one segment loaded, in place of `fast_nullsegs()`'s loop over six. The
+  macro is used only in protected mode (`PROTECTED`) and never for CS, and `set_seg()` changes no
+  other segment [verified: read]; a selector with bits above its RPL is never null. And the
+  instruction count is brought up to date before `set_seg()`, as v5.0 already did before
+  `pmcall()` and `pmret()`: v5.0 read a descriptor table in MMIO with the count of the step's
+  start, where tiny386 has the instruction's (the host test's mode o found it: 95 against 97)
+  [verified]. No guest puts its tables in MMIO, and no device here reads the count on a VGA or
+  frame buffer read, so no guest saw it [inferred].
+* **The lazy flags' operation and mask in one store** (`struct CPUI386`'s `cc`). Both are now 16
+  bits and side by side, so `cc.op = A; cc.mask = B;` becomes one 32-bit store of one constant:
+  CMP AX,imm16 was `lui; addi; sw; li; sw`, and is `lui 0x8d50; addi 3; sw` [verified: the
+  disassembly, the Korvo-1's command line]. INC and DEC merge too; ADC and SBB, whose operation
+  depends on CF, store the two halves apart. Every value fits: all 105 stores in `i386.c` and
+  `i386_fast.h` are a `CC_` constant, a mask of the six flags (8D5h at most), 0, or one of those
+  ANDed in [verified: read], and `_Static_assert` checks every `CC_` value, the six flags, and
+  that the two fields make one aligned word. No value changes; the lockstep tester's hook copies
+  the fields by value, and the sampler reads none.
+* **Group opcodes through tables of labels** (80h to 83h, C0h, C1h, D0h to D3h, F6h, F7h). The
+  handler decodes the operand and jumps to the operation through a table of 8 labels by modrm's
+  reg field, a table for each form of the operand, `static const DRAM_ATTR` as `ops[]` is: 22
+  tables, 704 bytes of internal RAM, none in `.rodata` [verified: `objdump -h`, `nm`]. It was a
+  `switch`, which ESP-IDF's `-fno-jump-tables` made a chain of compares. The operand goes to the
+  operation in `pfx` (now `uintptr_t`, the same 32 bits on the boards), which the next dispatch
+  resets. A variable of its own was tried first: GCC lets any computed goto reach any label whose
+  address is taken, so such a variable is live at every dispatch, and GCC kept it on the stack;
+  memory forms got dearer (CMP [m],imm8 +5) and `fast_exec()` 7 KB larger [verified: mb, sizes].
+  An immediate is read by the operation, after the operand's bytes as before, so 80h/82h, 81h and
+  83h have operations of their own. The shifts have a handler for each place their count comes
+  from (an immediate, one, CL); with a memory operand the count is in `gcnt`.
+
+**Tests** (`tests/host/cpu/test_fast_cpu.c`, `run.sh` 24)
+
+* Mode o, hand-written, at level 0 with paging: an LDT 4 bytes into a page and a second GDT 5
+  bytes into one, each with an entry across the page and the second page not present, loaded by
+  MOV, POP and LES (a page fault with CR2 at the second page, error code 0), by LAR (the fault is
+  ZF clear, CR2 set), and IRETD to a CS there (CR2 at base + offset + 4); tables in the VGA
+  window, in the frame buffer, in RAM's last 8 bytes and past RAM (#GP); entries at 0FF4h and
+  0FF5h in their page; null selectors into FS, GS and ES by MOV, POP and LES. Its handlers log
+  every page fault and #GP, the code logs what each segment points at, and both machines' logs
+  must be what the layout says [verified: 40 seeds, and seeds 41 to 340].
+* Mode o also calls `read_desc()` directly against a copy of v5.0's, 300 random trials a seed
+  (tables in RAM, across pages, in MMIO, at RAM's end and past it, near 4 GiB; paging and WP on
+  and off; the TLB emptied or filled near the entry): the same result, words, exception, CR2, TLB,
+  page tables and MMIO accesses. 12,000 trials in 40 seeds, about 3,550 of them in RAM in one
+  page [verified].
+* The random code emits 82h, 80h's alias, too: one 80h in four, chosen without taking a number
+  from the generator, so that each scenario's code is otherwise what it was. A first form took
+  one, which moved every scenario's code, and seed 317 then met, in the Korvo-1 build, the v5.0
+  difference that WI-2 removes: REP MOVSB from page 502h into the frame buffer at E00026C3h, the
+  two pages at one index of the 256-entry TLB, and the source's accessed bit set again after the
+  guest cleared it [verified: the same with v5.0's code; stepped to that instruction].
+* Six planted faults, each caught [verified: 40 seeds, the Korvo-1 header]: the one lookup without
+  its in-page test (`rdpage`, 72 FAIL lines), MMIO taken for RAM (`rdmmio`, 120), RAM's end not
+  tested (`rdend`, 40), FS's null bit not kept (`nullfs`, 40, every seed), ROL and ROR swapped in
+  the group 2 tables (`grp2swap`, 523), ADC's entry on ADD (`grp1op`, 520). `run.sh` plants them
+  with `fcfault()`, which takes a copy of `i386.c` as well as of `i386_fast.h`.
+
+**mb, v5.0 to now** [verified: the board's compiler, every build ending on the same guest state,
+5,214,225 instructions]
+
+| form | v5.0 | now | fast_cpu = 0: v5.0 | now |
+|-|-|-|-|-|
+| MOV ES,r (protected mode, 32-bit code) | 298.4 | 165.4 | 290.1 | 165.1 |
+| LES r,[m] (16-bit) | 356.4 | 226.4 | 519.1 | 394.1 |
+| PUSH DS + POP DS, a guest instruction | 197.9 | 131.4 | 242.1 | 179.6 |
+| CALL FAR + RETF, a guest instruction | 793.7 | 601.2 | 686.6 | 498.6 |
+| CMP r,imm8 (32-bit; 16-bit 67.8 to 51.8) | 65.8 | 50.8 | 113.6 | 112.6 |
+| SHL r,imm | 71.9 | 56.9 | 93.7 | 91.7 |
+| SHL r,1 | 68.9 | 52.9 | | |
+| SHR r,CL | 66.4 | 54.5 | 88.2 | 86.3 |
+| ADD r,imm8 | 56.9 | 47.9 | | |
+| TEST r,imm | 55.4 | 49.4 | | |
+| ADD [m],imm8 | 116.4 | 108.4 | | |
+| CMP [m],imm8 | 107.3 | 106.3 | | |
+| TEST [m],imm8 | 100.3 | 97.4 | | |
+
+* No group form is worse; the 53 other arithmetic forms are 3.6 better on average (the lazy
+  flags' store, and the layout); all 165 forms 4.4 better on average. With the fast interpreter
+  off, no form is worse and all are 4.4 better on average [verified].
+* Six string forms are worse with the fast interpreter on: MOVSB and MOVSD +3, MOVSW +2, REP STOSD
+  of 4, 16 and 256 elements +5, +17 and +257 [verified]. Their source (`movs:`, `stos:`) is not
+  changed here; the extra instructions are loads of locals that GCC now keeps on the stack (REP
+  STOSD's value, `lw a5,72(sp)` once an element) [verified: the listings]. It came with the lazy
+  flags' change, which changes code all through `fast_exec()` [verified: mb of that commit
+  alone]. WI-2 rewrites both loops (REP STOS fills by word stores); the merged tree should be
+  measured again [inferred].
+* The count brought up to date costs 13 host instructions a segment load [verified: mb without
+  it]; the frameless `read_desc()` won back more than that.
+
+**Counts under the harness** (core 1, host instructions a guest instruction; the counting harness
+of the v5.1 ideas work, `i386.c` built with the board's compiler; v5.0's figures are that work's
+runs) [verified]
+
+| | v5.0 | now |
+|-|-|-|
+| BENCH without A4 and the boot | 71.03 | 68.61 |
+| Windows 95's boot, the first 300 M instructions | 76.5 | 73.2 |
+
+Each 50 M of the boot is 2.9 to 5.1 lower; `i386.c` alone 73.1 to 69.8. Both runs end where v5.0's
+did (the harness's final screen the same) [verified]. That is 3.4 per cent fewer host
+instructions on BENCH and 4.3 per cent on the boot; the board should gain at most about that, less
+where waits for PSRAM are a large share of the time [inferred]; how much is [unknown] until Plat
+runs it.
+
+**Internal RAM** [verified: in-tree builds, ESP-IDF v6.1-dev-8142-g188e3e55bb, the size report's
+DIRAM; every build exits 0 with no new warning]
+
+| left for ESP-IDF | v5.0 | WI-3 | v5.1's `v51-ram` | `v51-ram` with WI-3 |
+|-|-|-|-|-|
+| Korvo-1 (dual boot and standalone) | 241,444 | 241,614 | 126,763 | 128,611 |
+| DOS board | 239,202 | 239,372 | 128,931 | 130,779 |
+
+* `fast_exec()` 121,434 to 120,654 bytes; `cpu_exec1()` 132,338 to 130,660; `i386.c`'s internal
+  RAM code 147,618 to 146,696 (with `v51-ram` 279,956 to 277,356); its internal RAM data 3,096 to
+  3,800 (the tables) [verified: the boards' `i386.c.obj`].
+* No `i386.c` function goes to flash that v5.0 had in internal RAM, on either board, with or
+  without `v51-ram` [verified: the maps].
+
+**Checks** [verified]
+
+* The lockstep tester against v4.6, fast_cpu 1 and 0: b1, restart, msdos, bench, vbe, t386mon and
+  t386mon800, no difference in any of the 14, each ending on v5.0's gate figures and disk hashes
+  (588,301,033; 1,304,341,904; 1,337,723,352; 31,345,925; 55,090,157; 674,307,567; 792,272,554).
+* v4.6's three Windows runs on the PC repro (`regress50.sh`), fast_cpu 1 and 0: v4.6's counts;
+  every log line (but the host's own memory address), picture and disk check as v5.0's own runs.
+* The lockstep tester's self-test, `FAST=1` and `FAST=0`: every planted bug named at the
+  instruction section 6 of its README gives, every run without a bug the same.
+* `tests/host/run.sh`: 82 passed; `test_fast_cpu` on seeds 41 to 340 in both builds, 6,300
+  scenarios each, none failed.
+
+**For the merge.** `pfx` is `uintptr_t` now (WI-1 and WI-2 touch `NEXT`, `DISPATCH` and the
+`FPTR` macros, not its type). The new `ops[]` lines are override lines at the end of the
+initializer. `read_desc()` and `FAST_LOAD_SEG()` are this item's; `stos:` and `movs:` are not
+touched. Conflicts are expected only in `test_fast_cpu.c`'s mode list (mode o's lines are each on
+their own) and `run.sh`'s fault list.
