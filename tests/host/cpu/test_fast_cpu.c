@@ -95,6 +95,22 @@
  * entries changed without INVLPG, at levels 0, 1 and 3, with every
  * accessed and dirty bit cleared before every step (fz_one()).
  *
+ * v5.1 (WI-3: a descriptor read with one lookup, the null-segment mask kept
+ * for the one segment loaded, group opcodes by tables): the random code
+ * also has 82h (80h's alias); mode o is hand-written: an LDT and a second
+ * GDT whose bases put a descriptor across a page whose second page is not
+ * present (the page fault's CR2 at that page, error code 0, as tiny386 has
+ * it; and CR2 at base + offset + 4 where only the descriptor's second word
+ * is read, IRET's check of CS), tables in the VGA window, in the frame
+ * buffer and at the end of RAM and past it, bases that are not 8-aligned,
+ * and null selectors loaded into FS, GS and ES by MOV, POP and LES.  Its
+ * handlers log every page fault (CR2, error code) and #GP (error code), and
+ * the code logs what each segment points at; both machines' logs must be
+ * what the layout says.  Mode o also calls read_desc() directly against a
+ * copy of v5.0's read_desc() (two lookups and two loads, always), on random
+ * tables, selectors, paging, page tables and TLB contents: the same result,
+ * fault, CR2, TLB, page tables and MMIO accesses each time.
+ *
  *   test_fast_cpu [SEEDS [FIRST_SEED [MODES]]]
  *
  * MODES: the scenarios for each seed, one character each (run() names
@@ -391,11 +407,11 @@ static void one(void)
 		(void) o16;
 		break;
 	}
-	case 10 ... 13: {       /* ALU r/m,imm */
+	case 10 ... 13: {       /* ALU r/m,imm (v5.1: 82h, 80h's alias, too) */
 		seg_prefix();
 		o16 = o16pfx();
 		int k = rnd(3), op = rnd(8);
-		e8(k == 0 ? 0x80 : k == 1 ? 0x81 : 0x83);
+		e8(k == 0 ? (chance(4) ? 0x82 : 0x80) : k == 1 ? 0x81 : 0x83);
 		rm(op, k == 0);
 		if (k == 1) ev(rnd(0) | (unsigned) rs, o16); else e8(rnd(256));
 		if (op == 7)
@@ -1594,6 +1610,448 @@ static void gen_l(void)
 	e8(0xbf); e32(P_DATA);
 }
 
+/* == v5.1 (WI-3): mode o, descriptor tables where reading a descriptor is
+   not one lookup and two loads from RAM (hand-written), at level 0 with
+   paging; and read_desc() against v5.0's own copy */
+
+/* linear pages in 4 MiB up (PT2, which the page fault handler maps), and
+   where they are in RAM: the second page of each table is not present at
+   first, and lies apart from the first */
+#define O_LDTA   0x00540004u    /* LDT A, 4 bytes into a page: entry 511 runs into the next */
+#define O_GDT2   0x00542005u    /* a second GDT, 5 bytes in: entry 1FFh runs into the next page */
+#define O_LDTD   0x00544000u    /* LDT D: RAM's last page, then a page past RAM */
+#define O_LDTD2  0x00544004u    /* LDT D2: the same, 4 bytes in */
+#define O_MARK   0x00546000u    /* the marks that the data segments' bases point at */
+#define O_LDTB   0x000bf100u    /* LDT B, in the VGA window */
+#define O_LDTC   (LFB_BASE + 0x3020)   /* LDT C, in the frame buffer */
+#define O_MARKV(i) (0x4d4b0000u + (i))
+static const struct { uword lin, phys; int present; } o_pages[] = {
+	{ 0x540000, 0x190000, 1 }, { 0x541000, 0x195000, 0 },   /* LDT A */
+	{ 0x542000, 0x192000, 1 }, { 0x543000, 0x197000, 0 },   /* the second GDT */
+	{ 0x544000, MEM - 0x1000, 1 }, { 0x545000, MEM, 1 },    /* RAM's last page, and the page past it */
+	{ 0x546000, 0x196000, 1 },                              /* the marks */
+};
+#define O_NPAGES ((int) (sizeof(o_pages) / sizeof(o_pages[0])))
+/* the logs (in the counters' page): page faults (CR2, error code), #GP
+   (error code), and what the code read through each segment it loaded */
+#define O_PFCNT  (CNT_PHYS + 0x10)
+#define O_GPCNT  (CNT_PHYS + 0x14)
+#define O_PFLOG  (CNT_PHYS + 0x100)
+#define O_GPLOG  (CNT_PHYS + 0x200)
+#define O_VLOG   (CNT_PHYS + 0x300)
+#define O_PTR    (CNT_PHYS + 0x400)     /* LES's far pointer */
+#define O_GDTR   (CNT_PHYS + 0x480)     /* LGDT's: the first GDT, then (+8) the second */
+#define O_NLOG 32
+static int fails;               /* (the comparison's count of failures, below) */
+
+static uword o_phys(uword lin)
+{
+	for (int i = 0; i < O_NPAGES; i++)
+		if ((lin & ~0xfffu) == o_pages[i].lin)
+			return o_pages[i].phys + (lin & 0xfff);
+	return lin;   /* below 4 MiB: the identity */
+}
+static void o_put8(u8 *mem, uword lin, u8 v)
+{
+	uword p = o_phys(lin);
+	if (p < MEM)
+		mem[p] = v;
+}
+static void desc_w(u32 base, u32 limit, u32 tf, u32 *w1, u32 *w2)
+{
+	*w1 = (limit & 0xffff) | (base << 16);
+	*w2 = ((base >> 16) & 0xff) | ((tf & 0xff) << 8) | (limit & 0xf0000) |
+		((tf & 0xf00) << 12) | (base & 0xff000000);
+}
+/* a descriptor at a linear address of mode o, its bytes wherever its pages are */
+static void o_desc(u8 *mem, uword lin, u32 base, u32 limit, u32 tf)
+{
+	u32 w[2];
+	desc_w(base, limit, tf, &w[0], &w[1]);
+	for (int i = 0; i < 8; i++)
+		o_put8(mem, lin + i, w[i / 4] >> (8 * (i % 4)));
+}
+
+static void setup_o(u8 *mem, CPUI386 *cpu)
+{
+	setup_prot(mem, cpu, 0);
+	for (int i = 0; i < O_NPAGES; i++)
+		put32(mem, PT2_PHYS + ((o_pages[i].lin >> 12) & 1023) * 4,
+		      o_pages[i].phys | (o_pages[i].present ? 0x003 : 0x002));
+	/* the first GDT (8-aligned): five LDTs, mark 0 */
+	desc(mem, GDT_PHYS + 0x30, O_LDTA, 0xfff, 0x082);
+	desc(mem, GDT_PHYS + 0x38, O_LDTB, 0xff, 0x082);
+	desc(mem, GDT_PHYS + 0x40, O_LDTC, 0xff, 0x082);
+	desc(mem, GDT_PHYS + 0x48, O_LDTD, 0x1fff, 0x082);
+	desc(mem, GDT_PHYS + 0x50, O_LDTD2, 0xfff, 0x082);
+	desc(mem, GDT_PHYS + 0x58, O_MARK, 0xfffff, 0xc92);
+	cpu->gdt.limit = 0x5f;
+	/* the second GDT: the first's entries, marks 5 and 6 at 0FE8h and
+	   0FF0h (in the page), and a flat code segment at 0FF8h (across it) */
+	for (int i = 0; i < 0x60; i++)
+		o_put8(mem, O_GDT2 + i, mem[GDT_PHYS + i]);
+	o_desc(mem, O_GDT2 + 0xfe8, O_MARK + 0x50, 0xfffff, 0xc92);
+	o_desc(mem, O_GDT2 + 0xff0, O_MARK + 0x60, 0xfffff, 0xc92);
+	o_desc(mem, O_GDT2 + 0xff8, 0, 0xfffff, 0xc9a);
+	/* LDT A: mark 1; mark 2 (the page's last whole entry); mark 3 across the page */
+	o_desc(mem, O_LDTA + 0x008, O_MARK + 0x10, 0xfffff, 0xc92);
+	o_desc(mem, O_LDTA + 0xff0, O_MARK + 0x20, 0xfffff, 0xc92);
+	o_desc(mem, O_LDTA + 0xff8, O_MARK + 0x30, 0xfffff, 0xc92);
+	/* LDT D: mark 8 in RAM's last 8 bytes; LDT D2: mark 9, 20 bytes from the end */
+	o_desc(mem, O_LDTD + 0xff8, O_MARK + 0x80, 0xfffff, 0xc92);
+	o_desc(mem, O_LDTD2 + 0xfe8, O_MARK + 0x90, 0xfffff, 0xc92);
+	for (int i = 0; i < 10; i++)
+		put32(mem, o_phys(O_MARK) + 0x10 * i, O_MARKV(i));
+	/* LGDT's operands: limit, then base */
+	put32(mem, O_GDTR, 0x5f | (GDT_PHYS << 16));
+	put32(mem, O_GDTR + 4, GDT_PHYS >> 16);
+	put32(mem, O_GDTR + 8, 0xfff | (O_GDT2 << 16));
+	put32(mem, O_GDTR + 12, O_GDT2 >> 16);
+	/* page fault: PUSH EAX; PUSH EBX; MOV EBX,CS:[PFCNT]; MOV EAX,CR2;
+	   MOV CS:[PFLOG+EBX*8],EAX; MOV EAX,[ESP+8] (the error code);
+	   MOV CS:[PFLOG+4+EBX*8],EAX; INC DWORD CS:[PFCNT]; then the page
+	   mapped as setup_prot()'s handler maps it; POP EBX; POP EAX;
+	   ADD ESP,4; IRETD */
+	{
+		u8 *h = mem + HND_PHYS + 0x300;
+		const u8 c[] = { 0x50, 0x53, 0x2e, 0x8b, 0x1d, 0, 0, 0, 0, 0x0f, 0x20, 0xd0,
+				 0x2e, 0x89, 0x04, 0xdd, 0, 0, 0, 0, 0x8b, 0x44, 0x24, 0x08,
+				 0x2e, 0x89, 0x04, 0xdd, 0, 0, 0, 0, 0x2e, 0xff, 0x05, 0, 0, 0, 0,
+				 0x0f, 0x20, 0xd0, 0xc1, 0xe8, 0x0c, 0x25, 0xff, 0x03, 0, 0,
+				 0x2e, 0x81, 0x0c, 0x85, 0, 0, 0, 0, 1, 0, 0, 0,
+				 0x5b, 0x58, 0x83, 0xc4, 0x04, 0xcf };
+		memcpy(h, c, sizeof(c));
+		put32(mem, HND_PHYS + 0x300 + 5, O_PFCNT);
+		put32(mem, HND_PHYS + 0x300 + 16, O_PFLOG);
+		put32(mem, HND_PHYS + 0x300 + 28, O_PFLOG + 4);
+		put32(mem, HND_PHYS + 0x300 + 35, O_PFCNT);
+		put32(mem, HND_PHYS + 0x300 + 54, P_PT + 0x1000);
+		gate(mem, 14, 0x08, HND_PHYS + 0x300, 0x8e);
+	}
+	/* #GP: PUSH EAX; PUSH EBX; DS, ES, FS and GS loaded with 10h;
+	   MOV EBX,CS:[GPCNT]; MOV EAX,[ESP+8]; MOV CS:[GPLOG+EBX*4],EAX;
+	   INC DWORD CS:[GPCNT]; POP EBX; POP EAX; MOV EAX,10h (so that a MOV of
+	   AX into a segment register, made again, loads 10h); ADD ESP,4; IRETD */
+	{
+		u8 *h = mem + HND_PHYS + 0x380;
+		const u8 c[] = { 0x50, 0x53, 0x66, 0xb8, 0x10, 0x00, 0x8e, 0xd8, 0x8e, 0xc0, 0x8e, 0xe0, 0x8e, 0xe8,
+				 0x2e, 0x8b, 0x1d, 0, 0, 0, 0, 0x8b, 0x44, 0x24, 0x08,
+				 0x2e, 0x89, 0x04, 0x9d, 0, 0, 0, 0, 0x2e, 0xff, 0x05, 0, 0, 0, 0,
+				 0x5b, 0x58, 0xb8, 0x10, 0, 0, 0, 0x83, 0xc4, 0x04, 0xcf };
+		memcpy(h, c, sizeof(c));
+		put32(mem, HND_PHYS + 0x380 + 17, O_GPCNT);
+		put32(mem, HND_PHYS + 0x380 + 29, O_GPLOG);
+		put32(mem, HND_PHYS + 0x380 + 36, O_GPCNT);
+		gate(mem, 13, 0x08, HND_PHYS + 0x380, 0x8e);
+	}
+}
+
+/* the code, and what its logs must hold */
+static int o_npf, o_ngp, o_nv;
+static u32 o_pf[O_NLOG][2], o_gp[O_NLOG], o_v[O_NLOG];
+static void o_ax(unsigned v) { e8(0x66); e8(0xb8); e16(v); }   /* MOV AX,v */
+static void o_sreg(int s, unsigned sel) { o_ax(sel); e8(0x8e); e8(0xc0 | s << 3); }   /* ... MOV Sreg,AX */
+static void o_lldt(unsigned sel) { o_ax(sel); e8(0x0f); e8(0x00); e8(0xd0); }         /* ... LLDT AX */
+static void o_lgdt(uword at) { e8(0x0f); e8(0x01); e8(0x15); e32(at); }               /* LGDT [at] */
+static void o_st32(uword at, u32 v) { e8(0xc7); e8(0x05); e32(at); e32(v); }           /* MOV DWORD [at],v */
+static void o_log_eax(u32 expect) { e8(0xa3); e32(O_VLOG + 4 * o_nv); o_v[o_nv++] = expect; }   /* MOV [VLOG+4n],EAX */
+static void o_read(int s, uword off, u32 expect)   /* MOV EAX,Sreg:[off]; logged */
+{
+	static const u8 pfx[6] = { 0x26, 0x2e, 0x36, 0x3e, 0x64, 0x65 };
+	e8(pfx[s]); e8(0xa1); e32(off);
+	o_log_eax(expect);
+}
+static void o_rearm(uword lin)   /* the page not present again: its PTE's P cleared, INVLPG */
+{
+	e8(0x81); e8(0x25); e32(P_PT + 0x1000 + ((lin >> 12) & 1023) * 4); e32(0xfffffffe);
+	e8(0x0f); e8(0x01); e8(0x3d); e32(lin);
+}
+/* a page fault in a descriptor read: a read at level 0 of a page not
+   present (read_desc() reads as level 0), so error code 0 */
+static void o_pf_at(u32 cr2) { o_pf[o_npf][0] = cr2; o_pf[o_npf][1] = 0; o_npf++; }
+static void o_gp_err(u32 err) { o_gp[o_ngp++] = err; }
+
+static void o_code(void)
+{
+	u32 w1, w2;
+	o_npf = o_ngp = o_nv = 0;
+	/* mark 0 through the first GDT */
+	o_sreg(SEG_FS, 0x58); o_read(SEG_FS, 0, O_MARKV(0));
+	/* LDT A: entry 1; entry 510 (at 0FF4h in its page); entry 511 across
+	   the page, its second word in the page not present: #PF at that
+	   page, mapped by the handler, the load made again.  By MOV, POP and
+	   LES; then LAR, which takes the fault as ZF clear but leaves CR2 */
+	o_lldt(0x30);
+	o_sreg(SEG_GS, 0x0c); o_read(SEG_GS, 0, O_MARKV(1));
+	o_sreg(SEG_FS, 0xff4); o_read(SEG_FS, 0, O_MARKV(2));
+	o_sreg(SEG_FS, 0xffc); o_pf_at(0x541000); o_read(SEG_FS, 0, O_MARKV(3));
+	o_rearm(0x541000);
+	e8(0x68); e32(0xffc); e8(0x0f); e8(0xa9);            /* PUSH 0FFCh; POP GS */
+	o_pf_at(0x541000); o_read(SEG_GS, 0, O_MARKV(3));
+	o_rearm(0x541000);
+	o_st32(O_PTR, 0x11223344); o_st32(O_PTR + 4, 0xffc);
+	e8(0xc4); e8(0x05); e32(O_PTR);                      /* LES EAX,[PTR] */
+	o_pf_at(0x541000); o_log_eax(0x11223344); o_read(SEG_ES, 0, O_MARKV(3));
+	o_rearm(0x541000);
+	o_ax(0xffc); e8(0x0f); e8(0x02); e8(0xc0);           /* LAR EAX,AX */
+	e8(0x0f); e8(0x20); e8(0xd0); o_log_eax(0x541000);   /* MOV EAX,CR2 */
+	o_sreg(SEG_ES, 0x10);
+	/* LDT B in the VGA window: its entry 2 stored there first */
+	desc_w(O_MARK + 0x40, 0xfffff, 0xc92, &w1, &w2);
+	o_st32(O_LDTB + 0x10, w1); o_st32(O_LDTB + 0x14, w2);
+	o_lldt(0x38);
+	o_sreg(SEG_FS, 0x14); o_read(SEG_FS, 0, O_MARKV(4));
+	/* LDT C in the frame buffer: entry 3 */
+	desc_w(O_MARK + 0x70, 0xfffff, 0xc92, &w1, &w2);
+	o_st32(O_LDTC + 0x18, w1); o_st32(O_LDTC + 0x1c, w2);
+	o_lldt(0x40);
+	o_sreg(SEG_GS, 0x1c); o_read(SEG_GS, 0, O_MARKV(7));
+	/* LDT D: entry 511 in RAM's last 8 bytes; entry 512 past RAM (read
+	   as 0: #GP(1004h), the handler loads 10h) */
+	o_lldt(0x48);
+	o_sreg(SEG_FS, 0xffc); o_read(SEG_FS, 0, O_MARKV(8));
+	o_sreg(SEG_FS, 0x1004); o_gp_err(0x1004);
+	/* LDT D2: entry 509, 20 bytes before RAM's end; entry 511, its first
+	   word RAM's last 4 bytes, its second past RAM (0: #GP(0FFCh)) */
+	o_lldt(0x50);
+	o_sreg(SEG_GS, 0xfec); o_read(SEG_GS, 0, O_MARKV(9));
+	o_sreg(SEG_GS, 0xffc); o_gp_err(0xffc);
+	/* null selectors into FS, GS and ES by MOV, POP and LES: the next
+	   access through them is #GP(0) (the handler loads 10h, and the access
+	   is made again); then FS null while GS is used, and FS loaded again */
+	o_sreg(SEG_FS, 0); e8(0x64); e8(0x8b); e8(0x03); o_gp_err(0);   /* MOV EAX,FS:[EBX] */
+	o_sreg(SEG_GS, 3); e8(0x65); e8(0x8b); e8(0x03); o_gp_err(0);
+	e8(0x6a); e8(0x00); e8(0x0f); e8(0xa1);                           /* PUSH 0; POP FS */
+	e8(0x64); e8(0x8b); e8(0x03); o_gp_err(0);
+	o_st32(O_PTR + 4, 0); e8(0xc4); e8(0x05); e32(O_PTR);             /* LES EAX,[PTR] (selector 0) */
+	e8(0x26); e8(0x8b); e8(0x03); o_gp_err(0);
+	o_sreg(SEG_FS, 0); o_sreg(SEG_GS, 0x58); o_read(SEG_GS, 0, O_MARKV(0));
+	o_sreg(SEG_FS, 0x58); o_read(SEG_FS, 0, O_MARKV(0));
+	/* the second GDT, 5 bytes into a page: marks 5 and 6 near the page's
+	   end; the code segment at 0FF8h across it (#PF at the second page) */
+	o_lgdt(O_GDTR + 8);
+	o_sreg(SEG_FS, 0xfe8); o_read(SEG_FS, 0, O_MARKV(5));
+	o_sreg(SEG_GS, 0xff0); o_read(SEG_GS, 0, O_MARKV(6));
+	o_sreg(SEG_FS, 0xff8); o_pf_at(0x543000); o_read(SEG_FS, O_MARK + 0x10, O_MARKV(1));
+	o_rearm(0x543000);
+	/* IRETD to CS 0FF8h: tiny386 first reads the entry's second word alone
+	   (CR2 at base + offset + 4, not the page), then the whole entry */
+	e8(0x9c); e8(0x68); e32(0xff8); e8(0x68); e32(glin() + 4 + 1); e8(0xcf);   /* PUSHFD; PUSH 0FF8h; PUSH next; IRETD */
+	o_pf_at(O_GDT2 + 0xff8 + 4);
+	e8(0x31); e8(0xc0); e8(0x66); e8(0x8c); e8(0xc8); o_log_eax(0xff8);         /* XOR EAX,EAX; MOV AX,CS */
+	e8(0xea); e32(glin() + 4 + 2); e16(0x08);                                    /* JMP FAR 08h:next */
+	o_lgdt(O_GDTR);
+	o_sreg(SEG_FS, 0x10); o_sreg(SEG_GS, 0x10); o_sreg(SEG_ES, 0x10);
+}
+
+/* after the run: both machines' logs as o_code() said */
+static int o_check(const char *name, int seed)
+{
+	int bad = 0;
+	for (int i = 0; i < 2; i++) {
+		const u8 *mem = M[i].mem;
+		char why[160] = "";
+		u32 n, a, b;
+		memcpy(&n, mem + O_PFCNT, 4);
+		if (n != (u32) o_npf)
+			snprintf(why, sizeof(why), "%u page faults, %d expected", n, o_npf);
+		for (int k = 0; !why[0] && k < o_npf; k++) {
+			memcpy(&a, mem + O_PFLOG + 8 * k, 4); memcpy(&b, mem + O_PFLOG + 8 * k + 4, 4);
+			if (a != o_pf[k][0] || b != o_pf[k][1])
+				snprintf(why, sizeof(why), "page fault %d: CR2 %08x error %x, expected %08x %x", k, a, b, o_pf[k][0], o_pf[k][1]);
+		}
+		memcpy(&n, mem + O_GPCNT, 4);
+		if (!why[0] && n != (u32) o_ngp)
+			snprintf(why, sizeof(why), "%u #GP, %d expected", n, o_ngp);
+		for (int k = 0; !why[0] && k < o_ngp; k++) {
+			memcpy(&a, mem + O_GPLOG + 4 * k, 4);
+			if (a != o_gp[k])
+				snprintf(why, sizeof(why), "#GP %d: error %x, expected %x", k, a, o_gp[k]);
+		}
+		for (int k = 0; !why[0] && k < O_NLOG; k++) {
+			memcpy(&a, mem + O_VLOG + 4 * k, 4);
+			if (a != (k < o_nv ? o_v[k] : 0))
+				snprintf(why, sizeof(why), "read %d: %08x, expected %08x", k, a, k < o_nv ? o_v[k] : 0);
+		}
+		if (why[0]) {
+			printf("  FAIL %s seed %d: %s (%s)\n", name, seed, why, i ? "tiny386" : "fast");
+			fails++;
+			bad = 1;
+		}
+	}
+	return bad;
+}
+
+/* v5.0's read_desc(), as it was: two lookups and two loads, always */
+static bool ref_read_desc(CPUI386 *cpu, int sel, uword *w1, uword *w2)
+{
+	OptAddr meml;
+	sel = sel & 0xffff;
+	uword off = sel & ~0x7;
+	uword base;
+	uword limit;
+	if (sel & 0x4) {
+		base = cpu->seg[SEG_LDT].base;
+		limit = cpu->seg[SEG_LDT].limit;
+	} else {
+		base = cpu->gdt.base;
+		limit = cpu->gdt.limit;
+	}
+	if (off + 7 > limit)
+		THROW(EX_GP, sel & ~0x3);
+	if (w1) {
+		TRY(translate_laddr(cpu, &meml, 1, base + off, 4, 0));
+		*w1 = load32(cpu, &meml);
+	}
+	TRY(translate_laddr(cpu, &meml, 1, base + off + 4, 4, 0));
+	*w2 = load32(cpu, &meml);
+	return true;
+}
+
+/* a linear address's physical one by mode o's page tables, without
+   touching anything (for the counts below) */
+static int o_walk(const u8 *mem, const CPUI386 *c, uword la, uword *pa)
+{
+	u32 pde, pte;
+	if (!(c->cr0 & CR0_PG)) { *pa = la; return 1; }
+	memcpy(&pde, mem + (c->cr3 & ~0xfffu) + (la >> 22) * 4, 4);
+	if (!(pde & 1) || (pde & ~0xfffu) > MEM - 0x1000) return 0;
+	memcpy(&pte, mem + (pde & ~0xfffu) + ((la >> 12) & 1023) * 4, 4);
+	if (!(pte & 1)) return 0;
+	*pa = (pte & ~0xfffu) | (la & 0xfff);
+	return 1;
+}
+
+/* read_desc() on one machine and ref_read_desc() on another, the same in
+   every other way, on random tables (in RAM, across pages with the second
+   present or not, in the VGA window, in the frame buffer, at the end of RAM
+   and past it, near 4 GiB), selectors, limits, paging and WP, and TLB
+   contents: the same result, words, exception, CR2, TLB, page tables and
+   MMIO accesses */
+static struct mach RX[2];
+static long rd_trials, rd_one, rd_faults, rd_mmio, rd_end;
+static int rd_check(int seed)
+{
+	char why[200] = "";
+	int t;
+	for (int i = 0; i < 2; i++)
+		mach_new(&RX[i], 0);
+	setup_o(RX[0].mem, RX[0].cpu);
+	setup_o(RX[1].mem, RX[1].cpu);
+	for (uword a = 0; a < 0xa0000; a++) RX[0].mem[a] = rnd(256);
+	for (uword a = 0x190000; a < 0x1a0000; a++) RX[0].mem[a] = rnd(256);
+	for (uword a = MEM - 0x1000; a < MEM; a++) RX[0].mem[a] = rnd(256);
+	memcpy(RX[1].mem, RX[0].mem, MEM);
+	for (unsigned k = 0; k < sizeof(RX[0].vga); k++) RX[0].vga[k] = RX[1].vga[k] = rnd(256);
+	for (unsigned k = 0; k < LFB_SIZE; k++) RX[0].lfb[k] = RX[1].lfb[k] = rnd(256);
+	for (t = 0; t < 300 && !why[0]; t++) {
+		CPUI386 *c0 = RX[0].cpu, *c1 = RX[1].cpu;
+		int pg = !chance(5), wp = chance(2), ldt = chance(2), nul = chance(4), cpl = rnd(4);
+		unsigned pres = rnd(8);
+		uword base;
+		if (pg) {
+			switch (rnd(10)) {
+			case 0: base = O_LDTA; break;
+			case 1: base = O_GDT2; break;
+			case 2: base = O_LDTD2 - rnd(8); break;
+			case 3: base = 0x540000 + rnd(0x7000); break;
+			case 4: base = P_DATA + rnd(0x4000); break;
+			case 5: base = 0x9f000 + rnd(0x22000); break;              /* RAM, the VGA window, RAM */
+			case 6: base = LFB_BASE + rnd(LFB_SIZE + 0x3000); break;   /* the frame buffer, two pages after it, none */
+			case 7: base = 0x7ff000 + rnd(0x1000); break;              /* the next 4 MiB not present */
+			case 8: base = 0xfffff000 + rnd(0x1000); break;            /* wrapping at 4 GiB */
+			default: base = rnd(0x800000); break;
+			}
+		} else {
+			switch (rnd(8)) {
+			case 0: base = 0x190000 + rnd(0x10000); break;
+			case 1: base = MEM - rnd(0x40); break;
+			case 2: base = MEM - 0x1000 + rnd(0x1100); break;
+			case 3: base = 0x9f000 + rnd(0x22000); break;
+			case 4: base = LFB_BASE + rnd(LFB_SIZE + 0x1000); break;
+			case 5: base = 0xfffff000 + rnd(0x1000); break;
+			default: base = rnd(0x1a0000); break;
+			}
+		}
+		uword limit = chance(8) ? rnd(0x2000) : 0xffff;
+		uword off;
+		if (chance(2)) {   /* the entry near the end of a page: across it, or its last whole entries */
+			uword at = 0xfe8 + rnd(24);
+			off = ((at - base) & 0xfff) & ~7u;
+		} else
+			off = rnd(0x2000) & ~7u;
+		int sel = off | (ldt ? 4 : 0) | rnd(4);
+		for (int i = 0; i < 2; i++) {
+			CPUI386 *c = RX[i].cpu;
+			c->cr0 = (c->cr0 & ~(CR0_PG | CR0_WP)) | (pg ? CR0_PG : 0) | (wp ? CR0_WP : 0);
+			c->cpl = cpl;
+			for (int k = 0; k < 3; k++) {
+				static const uword pgs[3] = { 0x541000, 0x543000, P_DATA + 0x1000 };
+				u8 *pte = RX[i].mem + PT2_PHYS + ((pgs[k] >> 12) & 1023) * 4;
+				*pte = (*pte & ~1) | ((pres >> k) & 1);
+			}
+			if (ldt) { c->seg[SEG_LDT].base = base; c->seg[SEG_LDT].limit = limit; }
+			else { c->gdt.base = base; c->gdt.limit = limit; }
+			c->cr2 = 0x5a5a5a5a; c->excno = -1; c->excerr = 0x1234;
+			RX[i].log = 0; RX[i].nlog = 0;
+		}
+		/* tiny386's TLB: emptied, or with entries made by reads and writes near the descriptor */
+		if (chance(3)) {
+			tlb_clear(c0); tlb_clear(c1);
+		} else {
+			int n = rnd(4);
+			for (int k = 0; k < n; k++) {
+				uword la = base + off + rnd(32) - 16;
+				int rwm = chance(3) ? 2 : 1;
+				OptAddr o;
+				translate_laddr(c0, &o, rwm, la, 1, 0);
+				translate_laddr(c1, &o, rwm, la, 1, 0);
+			}
+		}
+		uword a1 = 0x11111111, a2 = 0x22222222, b1 = a1, b2 = a2;
+		bool r0 = read_desc(c0, sel, nul ? NULL : &a1, &a2);
+		bool r1 = ref_read_desc(c1, sel, nul ? NULL : &b1, &b2);
+		rd_trials++;
+		if (r0 != r1)
+			snprintf(why, sizeof(why), "returns %d, v5.0's %d", r0, r1);
+		else if (r0 && (a1 != b1 || a2 != b2))
+			snprintf(why, sizeof(why), "words %08x %08x, v5.0's %08x %08x", a1, a2, b1, b2);
+		else if (!r0 && (c0->excno != c1->excno || c0->excerr != c1->excerr))
+			snprintf(why, sizeof(why), "exception %d (%x), v5.0's %d (%x)", c0->excno, c0->excerr, c1->excno, c1->excerr);
+		else if (c0->cr2 != c1->cr2)
+			snprintf(why, sizeof(why), "CR2 %08x, v5.0's %08x", c0->cr2, c1->cr2);
+		else if (RX[0].log != RX[1].log || RX[0].nlog != RX[1].nlog)
+			snprintf(why, sizeof(why), "MMIO accesses (%u / %u)", RX[0].nlog, RX[1].nlog);
+		else if (memcmp(RX[0].mem + PD_PHYS, RX[1].mem + PD_PHYS, 0x4000))
+			snprintf(why, sizeof(why), "the page tables (accessed or dirty bits)");
+		for (int i = 0; !why[0] && i < tlb_size; i++) {
+			struct tlb_entry *x = &c0->tlb.tab[i], *y = &c1->tlb.tab[i];
+			if (x->lpgno != y->lpgno || (x->lpgno != (uword) -1 && (x->xaddr != y->xaddr || x->pte_lookup != y->pte_lookup ||
+									     x->ppte - RX[0].mem != y->ppte - RX[1].mem)))
+				snprintf(why, sizeof(why), "tiny386's TLB entry %d (%08x / %08x)", i, x->lpgno, y->lpgno);
+		}
+		if (why[0])
+			printf("  FAIL descriptor reads (mode o) seed %d trial %d: %s; selector %04x, table at %08x limit %x, paging %d, %s\n",
+			       seed, t, why, sel, base, limit, pg, nul ? "second word only" : "both words");
+		/* what kind of read it was (v5.1's read_desc(): one lookup, or the old way) */
+		uword la = base + (sel & ~7), pa;
+		if (!r1) rd_faults++;
+		if (RX[1].nlog || (o_walk(RX[1].mem, c1, la, &pa) && in_iomem(pa))) rd_mmio++;
+		else if (r1 && !nul && (la & 0xfff) <= 0xff8 && o_walk(RX[1].mem, c1, la, &pa) && pa <= MEM - 8) rd_one++;
+		if (o_walk(RX[1].mem, c1, la, &pa) && pa >= MEM - 0x20 && pa < MEM + 0x20) rd_end++;
+	}
+	if (!why[0] && (memcmp(RX[0].mem, RX[1].mem, MEM) || memcmp(RX[0].vga, RX[1].vga, sizeof(RX[0].vga)) ||
+			memcmp(RX[0].lfb, RX[1].lfb, LFB_SIZE))) {
+		snprintf(why, sizeof(why), "memory after the trials");
+		printf("  FAIL descriptor reads (mode o) seed %d: %s\n", seed, why);
+	}
+	for (int i = 0; i < 2; i++)
+		mach_free(&RX[i]);
+	if (why[0])
+		fails++;
+	return why[0] != 0;
+}
+
 /* == the fast interpreter's TLB (v5.1, from v5.0's recheck): its
    invariants, on machine 0 after each step.  First fast_tlb_check(), which
    the fast interpreter itself calls at the start of every step: it empties
@@ -2174,6 +2632,7 @@ static void setup_mode(int mode, u8 *mem, CPUI386 *cpu)
 		}
 		break;
 	case 33: fz_setup(mem, cpu); break;   /* v5.1 (WI-2's check): two memory operands at random */
+	case 24: setup_o(mem, cpu); break;   /* v5.1 (o): descriptor tables (hand) */
 	default: setup_pm16(mem, cpu, 0); break;
 	}
 	if (mode == 7 || mode == 13 || mode == 17)     /* interrupts on, so that the IRQ's handler (level 0) runs first */
@@ -2198,6 +2657,7 @@ static int run(int mode, int seed)
 					      "jumps, calls and returns across code pages (k)",
 					      "a page read, then written (hand, l)",
 					      [22] = "the two-operand rule (hand)",
+					      [24] = "descriptor tables across pages, in MMIO, at RAM's end; null selectors (hand)",
 					      [33] = "two memory operands at random" };
 	glfb = seed & 1;
 	ksub = seed % 5;   /* (mode k) */
@@ -2208,11 +2668,13 @@ static int run(int mode, int seed)
 		mach_new(&M[i], i == 0);
 	rs = 0x9e3779b97f4a7c15ull ^ ((uint64_t) seed * 0x100000001b3ull) ^ mode;
 	for (int k = 0; k < 4; k++) rnd(0);
+	int rdbad = mode == 24 ? rd_check(seed) : 0;   /* v5.1 (o): read_desc() against v5.0's */
 	gm = M[0].mem;
 	g32 = mode == 1 || mode == 2 || mode == 5 || mode == 7 || mode == 9 || mode == 12 || mode == 13 || mode == 16 || mode == 17 || mode == 19;
 	two_op_v86 = mode == 22 && seed % TWO_OP_N == TWO_OP_N - 1;   /* (v5.1) its last case is in virtual-8086 mode */
 	g32 |= mode == 22 && !two_op_v86;
 	g32 |= mode == 33;
+	if (mode == 24) g32 = 1;
 	guser = mode == 2 || mode == 16 || (mode == 33 && fz_level == 3);
 	glfbuser = mode == 16;
 	gv86 = mode == 3 || mode == 10;
@@ -2233,6 +2695,7 @@ static int run(int mode, int seed)
 		gcpl1 = gnopriv = lsub == 3;
 		gcs_far = lsub == 0 ? 0x1b : lsub == 3 ? 0x31 : 0x08;
 	}
+	if (mode == 24) gcs_far = 0x08;
 	if (mode == 33)
 		gcs_far = fz_level == 0 ? 0x08 : fz_level == 1 ? 0x31 : 0x1b;
 	setup_mode(mode, M[0].mem, M[0].cpu);
@@ -2311,6 +2774,8 @@ static int run(int mode, int seed)
 		gen_k();
 	} else if (mode == 21) {
 		gen_l();
+	} else if (mode == 24) {
+		o_code();   /* v5.1 (o) */
 	} else {
 		uword limit = gcode_phys + 0xf000;
 		while (gp < limit)
@@ -2335,11 +2800,13 @@ static int run(int mode, int seed)
 	int bad = 0;
 	char why[96] = "the step limit";
 	/* the hand-written cases (7, 8, 9, d, h, j) take a few instructions a
-	   step and end by 200 steps (l by 4,000); the random code and k end
-	   by 50,000 */
+	   step and end by 200 steps (l by 4,000, o by 5,000); the random code
+	   and k end by 50,000 */
 	int hand = (mode >= 7 && mode <= 9) || mode == 13 || mode == 17 || mode == 19 || mode == 21 || mode == 22;
+	if (mode == 24) hand = 1;
 	/* (v5.1: case j's REPs and its level 3 part, about 900 instructions) */
 	long steps_max = mode == 21 ? 4000 : mode == 19 ? 800 : hand ? 200 : 50000;
+	if (mode == 24) steps_max = 5000;   /* (o: about 330 instructions with its handlers) */
 	crash_name = names[mode];
 	crash_seed = seed;
 	while (step < steps_max) {
@@ -2440,6 +2907,13 @@ static int run(int mode, int seed)
 		       seed, names[mode], why, step, a->cycle, M[0].nlog, !!(a->flags & VM), a->cpl, a->code16,
 		       c0, c1, p21 & 0xfff, p2b & 0xfff, more);
 	}
+	if (mode == 24 && !bad) {   /* v5.1 (o): its logs as the layout says, on both machines */
+		if (strncmp(why, "the end of the code", 19))
+			{ printf("  FAIL %s seed %d: %s\n", names[mode], seed, why); fails++; bad = 1; }
+		else
+			bad = o_check(names[mode], seed);
+	}
+	bad |= rdbad;
 	total_insns += a->cycle;
 	total_steps += step;
 	for (int i = 0; i < 2; i++)
@@ -2465,12 +2939,13 @@ int main(int argc, char **argv)
 {
 	int seeds = argc > 1 ? atoi(argv[1]) : 40;
 	int first = argc > 2 ? atoi(argv[2]) : 1;
-	/* argv[3]: the modes, a character each (0 to 9, a to m) */
+	/* argv[3]: the modes, a character each (0 to 9, a to o, x) */
 	const char *modes = argc > 3 ? argv[3] :
 		"0123456789abcdefghij"
 		"k"     /* v5.1 (WI-1): jumps, calls and returns across code pages */
 		"l"     /* v5.1 (WI-1): a page read, then written */
 		"m"     /* v5.1: the two-operand rule */
+		"o"     /* v5.1, WI-3: descriptor tables */
 		"x"     /* v5.1 (WI-2's check): two memory operands at random */
 		;
 	int bad = 0, nsc = 0;
@@ -2483,5 +2958,8 @@ int main(int argc, char **argv)
 	printf("test_fast_cpu: %d scenarios, %ld steps, %ld instructions, %d checks, %d failed\n",
 	       nsc, total_steps, total_insns, checks, fails);
 	printf("fast TLB invariants: %ld checks, %ld entries, %ld of the frame buffer, %ld of them with a write tag\n", inv_runs, inv_entries, inv_lfb_r, inv_lfb_w);
+	if (rd_trials)
+		printf("descriptor reads against v5.0's (mode o): %ld, %ld in RAM in one page (one lookup since v5.1), %ld faults, %ld in MMIO, %ld at RAM's end or past it\n",
+		       rd_trials, rd_one, rd_faults, rd_mmio, rd_end);
 	return bad ? 1 : 0;
 }
