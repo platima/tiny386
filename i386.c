@@ -668,6 +668,15 @@ static noinline void IRAM_ATTR fast_tlb_slot(CPUI386 *cpu, struct tlb_entry *ent
 	}
 }
 #define FAST_TLB_SLOT(cpu, ent) fast_tlb_slot((cpu), (ent))
+/* v5.1: the same inline, for the fast interpreter's own walk
+   (tlb_walk_lean(), in fast_miss()), the entry's index i given.
+   fast_miss() runs only inside fast_exec(), which cpui386_step() calls
+   only while cpu->fast_on, so fast_on is not tested here. */
+#define FAST_TLB_SLOT_LEAN(cpu, i) do { \
+		struct fast_state *_fs = (cpu)->fast; \
+		_fs->tab[0][(i)].rtag = _fs->tab[0][(i)].wtag = -1; \
+		_fs->tab[1][(i)].rtag = _fs->tab[1][(i)].wtag = -1; \
+	} while (0)
 /* tlb_clear(), from tab5-pc's patch 0010 (a hook in tlb_clear()): counted
    while paging is on, before CR0 changes; fast_tlb_check() empties the
    fast interpreter's entries when it sees the count move (or CR0's PG or
@@ -678,6 +687,7 @@ static noinline void IRAM_ATTR fast_tlb_slot(CPUI386 *cpu, struct tlb_entry *ent
 	} while (0)
 #else
 #define FAST_TLB_SLOT(cpu, ent) do {} while (0)
+#define FAST_TLB_SLOT_LEAN(cpu, i) do {} while (0)
 #define FAST_TLB_CLEARED(cpu) do {} while (0)
 #endif
 
@@ -719,6 +729,85 @@ static inline bool pt_addr_ok(CPUI386 *cpu, uword addr)
 	return true;
 }
 
+/* v5.1: the same test for the fast interpreter's own walk (tlb_walk_lean()),
+   the memory's size read already, and the window's bounds as one shift:
+   0xA0000 to 0xBFFFF are the addresses whose bits from 17 up are 5 */
+static inline bool pt_addr_lean(long phys_mem_size, uword addr)
+{
+	if (addr > (uword) (phys_mem_size - 4))
+		return false;
+#ifdef BUILD_ESP32
+	if ((addr >> 17) == 5)
+		return false;
+#endif
+	return true;
+}
+
+/* tlb_refill()'s walk of the page tables (not long mode's).  v5.1: written
+   once, here, and made twice: tlb_walk() (LEAN 0) for tlb_refill(), which
+   compiles to the same code as before, and tlb_walk_lean() (LEAN 1) for the
+   fast interpreter's own refill (fast_translate(), below, in fast_miss()).
+   So both make the same checks, loads and stores in the same order: the
+   directory entry's accessed bit is set before the table entry is loaded,
+   which matters when a directory is its own page table.  (A macro, not a
+   function with a flag: GCC compiles a flag folded away after inlining
+   into other code for tlb_refill() than it had, with its registers
+   allocated otherwise.)  In the lean one the fast interpreter's two
+   entries at the index go inline, and phys_mem and its size are read
+   once: the bytes stored here are page table entries inside guest memory
+   (pt_addr_ok()), never *cpu, which is malloc()'s, nor the fast
+   interpreter's entries, nor tiny386's TLB, which the boards may put in
+   the device window at 0xA0000 that pt_addr_ok() refuses there; so
+   tiny386's own reading them again finds the same values.
+
+   A page directory or page table outside the guest's memory (a corrupt CR3
+   or directory entry) is taken as not present: a page fault for the guest,
+   not a load from, or accessed and dirty bits stored into, the host's
+   memory beyond phys_mem.  On the ESP-IDF port the devices' state lives in
+   phys_mem at 0xA0000 to 0xBFFFF, which a guest reaches only through the
+   VGA, so not there either.  The dirty bit is translate_lpgno()'s, at each
+   store. */
+#define TLB_WALK(NAME, LEAN) \
+static inline __attribute__((always_inline)) bool NAME(CPUI386 *cpu, struct tlb_entry *ent, uword lpgno) \
+{ \
+	uword base_addr = cpu->cr3 & ~0xfff; \
+	uword i = lpgno >> 10; \
+	uword j = lpgno & 1023; \
+ \
+	u8 *mem = (u8 *) cpu->phys_mem; \
+	long mem_size = cpu->phys_mem_size; \
+	if (unlikely(!((LEAN) ? pt_addr_lean(mem_size, base_addr + i * 4) : pt_addr_ok(cpu, base_addr + i * 4)))) \
+		return false; \
+	uword pde = (LEAN) ? ldu32(&mem[base_addr + i * 4]) : pload32(cpu, base_addr + i * 4); \
+	if (!(pde & 1)) \
+		return false; \
+	mem[base_addr + i * 4] |= 1 << 5; /* accessed */ \
+ \
+	uword base_addr2 = pde & ~0xfff; \
+	if (unlikely(!((LEAN) ? pt_addr_lean(mem_size, base_addr2 + j * 4) : pt_addr_ok(cpu, base_addr2 + j * 4)))) \
+		return false; \
+	uword pte = (LEAN) ? ldu32(&mem[base_addr2 + j * 4]) : pload32(cpu, base_addr2 + j * 4); \
+	if (!(pte & 1)) \
+		return false; \
+ \
+	mem[base_addr2 + j * 4] |= 1 << 5; /* accessed */ \
+ \
+	if (LEAN) \
+		FAST_TLB_SLOT_LEAN(cpu, lpgno % tlb_size); \
+	else \
+		FAST_TLB_SLOT(cpu, ent); \
+	ent->lpgno = lpgno; \
+	ent->xaddr = (pte & ~0xfff) ^ (lpgno << 12); \
+	pte = pte & ((pde & 7) | 0xfffffff8); \
+	ent->pte_lookup = pte_lookup[!!(cpu->cr0 & CR0_WP)][(pte >> 1) & 3]; \
+	ent->ppte = &(mem[base_addr2 + j * 4]); \
+	return true; \
+}
+TLB_WALK(tlb_walk, 0)
+#ifdef I386_FAST
+TLB_WALK(tlb_walk_lean, 1)
+#endif
+
 static bool IRAM_ATTR tlb_refill(CPUI386 *cpu, struct tlb_entry *ent, uword lpgno)
 {
 	if (unlikely(GET_LM_EFER(cpu))) {
@@ -730,82 +819,66 @@ static bool IRAM_ATTR tlb_refill(CPUI386 *cpu, struct tlb_entry *ent, uword lpgn
 		ent->ppte = _;
 		return true;
 	}
-
-	uword base_addr = cpu->cr3 & ~0xfff;
-	uword i = lpgno >> 10;
-	uword j = lpgno & 1023;
-
-	/* A page directory or page table outside the guest's memory (a
-	   corrupt CR3 or directory entry) is taken as not present: a page
-	   fault for the guest, not a load from, or accessed and dirty bits
-	   stored into, the host's memory beyond phys_mem.  On the ESP-IDF
-	   port the devices' state lives in phys_mem at 0xA0000 to 0xBFFFF,
-	   which a guest reaches only through the VGA, so not there either. */
-	u8 *mem = (u8 *) cpu->phys_mem;
-	if (unlikely(!pt_addr_ok(cpu, base_addr + i * 4)))
-		return false;
-	uword pde = pload32(cpu, base_addr + i * 4);
-	if (!(pde & 1))
-		return false;
-	mem[base_addr + i * 4] |= 1 << 5; // accessed
-
-	uword base_addr2 = pde & ~0xfff;
-	if (unlikely(!pt_addr_ok(cpu, base_addr2 + j * 4)))
-		return false;
-	uword pte = pload32(cpu, base_addr2 + j * 4);
-	if (!(pte & 1))
-		return false;
-
-	mem[base_addr2 + j * 4] |= 1 << 5; // accessed
-//	mem[base_addr2 + j * 4] |= 1 << 6; // dirty
-
-	FAST_TLB_SLOT(cpu, ent);
-	ent->lpgno = lpgno;
-	ent->xaddr = (pte & ~0xfff) ^ (lpgno << 12);
-	pte = pte & ((pde & 7) | 0xfffffff8);
-	ent->pte_lookup = pte_lookup[!!(cpu->cr0 & CR0_WP)][(pte >> 1) & 3];
-	ent->ppte = &(mem[base_addr2 + j * 4]);
-	return true;
+	return tlb_walk(cpu, ent, lpgno);
 }
+
+/* v5.1: the page fault translate_lpgno() raises, err 0 (not present) or 1
+   (the rights), for it and for the fast interpreter's own refill
+   (fast_translate()) */
+static inline __attribute__((always_inline)) void lpgno_fault(CPUI386 *cpu, int rwm, uword laddr, int cpl, uword err)
+{
+	cpu->cr2 = laddr;
+	cpu->excno = EX_PF;
+	cpu->excerr = err;
+	if (rwm & 2)
+		cpu->excerr |= 2;
+	if (cpl)
+		cpu->excerr |= 4;
+}
+
+/* v5.1: translate_lpgno()'s rights check and dirty bit on the entry ent
+   that holds lpgno, written once and made twice as the walk is:
+   lpgno_rights() for it, and lpgno_rights_lean() for fast_translate(),
+   which drops the fast interpreter's two entries inline on a fault */
+#define LPGNO_RIGHTS(NAME, LEAN) \
+static inline __attribute__((always_inline)) bool NAME(CPUI386 *cpu, struct tlb_entry *ent, int rwm, uword lpgno, uword laddr, int cpl, uword *paddr) \
+{ \
+	if (ent->pte_lookup[cpl > 0][rwm > 1]) { \
+		lpgno_fault(cpu, rwm, laddr, cpl, 1); \
+		if (LEAN) \
+			FAST_TLB_SLOT_LEAN(cpu, lpgno % tlb_size); \
+		else \
+			FAST_TLB_SLOT(cpu, ent); \
+		ent->lpgno = -1; \
+		return false; \
+	} \
+	*paddr = ent->xaddr ^ laddr; \
+	if (rwm & 2) { \
+		*(ent->ppte) |= 1 << 6; /* dirty */ \
+	} \
+	return true; \
+}
+LPGNO_RIGHTS(lpgno_rights, 0)
+#ifdef I386_FAST
+LPGNO_RIGHTS(lpgno_rights_lean, 1)
+#endif
 
 /* v5.0: translate_lpgno()'s body, for it and for the fast interpreter's
    own call of it (fast_lpgno()): tiny386's callers then see it as before,
    with one caller, and inline it as they did (a second caller made the
-   compiler keep it apart, and cpu_exec1() 17 KB larger) */
+   compiler keep it apart, and cpu_exec1() 17 KB larger).  v5.1: its fault
+   and its rights check are in lpgno_fault() and lpgno_rights(), which
+   fast_translate() shares. */
 static inline __attribute__((always_inline)) bool translate_lpgno_body(CPUI386 *cpu, int rwm, uword lpgno, uword laddr, int cpl, uword *paddr)
 {
 	struct tlb_entry *ent = &(cpu->tlb.tab[lpgno % tlb_size]);
 	if (ent->lpgno != lpgno) {
 		if (!tlb_refill(cpu, ent, lpgno)) {
-			cpu->cr2 = laddr;
-			cpu->excno = EX_PF;
-			cpu->excerr = 0;
-			if (rwm & 2)
-				cpu->excerr |= 2;
-			if (cpl)
-				cpu->excerr |= 4;
+			lpgno_fault(cpu, rwm, laddr, cpl, 0);
 			return false;
 		}
 	}
-	if (ent->pte_lookup[cpl > 0][rwm > 1]) {
-		cpu->cr2 = laddr;
-		cpu->excno = EX_PF;
-		cpu->excerr = 1;
-		if (rwm & 2)
-			cpu->excerr |= 2;
-		if (cpl)
-			cpu->excerr |= 4;
-		FAST_TLB_SLOT(cpu, ent);
-		ent->lpgno = -1;
-		return false;
-	}
-	*paddr = ent->xaddr ^ laddr;
-	if (rwm & 2) {
-		*(ent->ppte) |= 1 << 6; // dirty
-//		pstore8(cpu, ent->ppte,
-//			pload8(cpu, ent->ppte) | (1 << 6)); // dirty
-	}
-	return true;
+	return lpgno_rights(cpu, ent, rwm, lpgno, laddr, cpl, paddr);
 }
 
 static bool IRAM_ATTR translate_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uword laddr, int cpl, uword *paddr)
@@ -844,6 +917,32 @@ static noinline bool IRAM_ATTR fast_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uw
 	if (ent->lpgno != lpgno && ent->lpgno == ((uword) cpu->ifetch.laddr >> 12))
 		return false;
 	return translate_lpgno_body(cpu, rwm, lpgno, laddr, cpl, paddr);
+}
+
+/* v5.1: translate_lpgno()'s body for the fast interpreter's fast_miss(),
+   at the CPU's privilege level, for a read (write 0) or a write, with
+   tlb_refill()'s walk inline (tlb_walk_lean()) where translate_lpgno_body()
+   calls tlb_refill(): the same probe, walk, fault, rights check and dirty
+   bit in the same order, without the three calls on the way (fast_lpgno(),
+   tlb_refill(), fast_tlb_slot()).  Not for long mode, which the walk does
+   not do: fast_miss() calls fast_lpgno() there.  False after a page fault
+   (cr2, excno and excerr set as translate_lpgno() sets them); else *paddr
+   as translate_lpgno() gives it, and *ppte the entry's.  The privilege
+   level and rwm are read and worked out here, after the walk, not passed
+   in, so that fewer values are held across it: with the board's compiler
+   a miss with refill then costs about 137 host instructions, against 146
+   with them passed in and 208 in v5.0. */
+static inline __attribute__((always_inline)) bool fast_translate(CPUI386 *cpu, int write, uword lpgno, uword laddr, uword *paddr, u8 **ppte)
+{
+	struct tlb_entry *ent = &(cpu->tlb.tab[lpgno % tlb_size]);
+	if (ent->lpgno != lpgno) {
+		if (!tlb_walk_lean(cpu, ent, lpgno)) {
+			lpgno_fault(cpu, write ? 2 : 1, laddr, cpu->cpl, 0);
+			return false;
+		}
+	}
+	*ppte = ent->ppte;
+	return lpgno_rights_lean(cpu, ent, write ? 2 : 1, lpgno, laddr, cpu->cpl, paddr);
 }
 #endif
 
