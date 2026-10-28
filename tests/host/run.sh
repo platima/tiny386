@@ -869,6 +869,13 @@ fi
 # two-operand rule by hand; and three more faults: no dirty bit where a REP
 # piece or MOVS finds the frame buffer's write tag (FPTR_IO_W()), the
 # two-operand rule taken out of MOVS's destination, and out of CMPS.
+# v5.1 (WI-2's check): case m's REP string instruction handed to tiny386
+# part way as the first in a page newly cached, and mode x, two memory
+# operands at random on pages that share TLB indices; and three more
+# faults: fast_miss() refilling over tiny386's entry for the code page
+# (codepage), MOVS from MMIO looking its destination up where tiny386's
+# TLB does not hold it (destheld), and fast_miss() taking an access that
+# tiny386's entry refuses (refuse).
 echo
 FCSEEDS=${FCSEEDS:-40}
 fcbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_fast_cpu-name
@@ -902,7 +909,10 @@ for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN
          lpgno:'s/^\tif (ent->lpgno == lpgno && ent->pte_lookup\[cpl > 0\]\[rwm > 1\])$/\tif (0)/' \
          repdirty:'/} else if (_e->wtag == (_pg | FAST_TAG_LFB) && _in) {/,/goto LABEL;/s/\*_e->ppte |= 0x40;/(void) 0;/' \
          n2:'s/1, \&mpaddr, (H1)))) { \\$/1, \&mpaddr, (NULL)))) { \\/' \
-         cmpsrule:'s/^\t\tFPTR2(d, SEG_ES, DI_, n, 0, s);$/\t\tFPTR(d, SEG_ES, DI_, n, 0);/'; do
+         cmpsrule:'s/^\t\tFPTR2(d, SEG_ES, DI_, n, 0, s);$/\t\tFPTR(d, SEG_ES, DI_, n, 0);/' \
+         codepage:'s/^\t\t    t->lpgno == (uword) (cpu->ifetch.laddr >> 12))$/\t\t    0)/' \
+         destheld:'s/|| cpu->tlb.tab\[((lin) >> 12) % tlb_size\].lpgno == ((lin) >> 12))$/|| 1)/' \
+         refuse:'s/^\t\tif (t->lpgno == pg ? t->pte_lookup\[cpu->cpl > 0\]\[write\] != 0 :$/\t\tif (t->lpgno == pg ? 0 :/'; do
     mname=${m%%:*}
     mfile=i386_fast.h       # (v5.1: lpgno's fault is in i386.c)
     [ "$mname" = lpgno ] && mfile=i386.c
