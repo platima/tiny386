@@ -236,7 +236,7 @@ static const struct prof_meta META = {
 	.firmware = "v5.1-test", .board = "the PC", .idf = "none",
 	.elf_sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	.sampler = "host-test", .ini = "/sdcard/tiny386/test.ini", .why = "timer",
-	.fast_cpu = 1, .rate_hz = 2000, .file_no = 3, .cpu_mhz = 320,
+	.fast_cpu = 1, .rate_hz = 2000, .file_no = 3, .run = 0x5eed0b07, .cpu_mhz = 320,
 	.uptime_us = 123456789, .sampling_us = 120000000, .paused_us = 150000,
 	.last_write_us = 48000, .guest_insns = 333000000, .run_us = 110000000, .halt_us = 9000000,
 };
@@ -289,7 +289,7 @@ static void test_file(void)
 	const char *want[] = {
 		"\nelf_sha256 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n",
 		"\nsampler host-test 2000\n", "\nini /sdcard/tiny386/test.ini\n", "\nfast_cpu 1\n",
-		"\nfile 3 timer\n", "\ncpu_mhz 320\n",
+		"\nfile 3 timer\nrun 5eed0b07\n", "\ncpu_mhz 320\n",
 		"\ntime_us uptime 123456789 sampling 120000000 paused 150000\n",
 		"\nlast_write_us 48000\n", "\nguest insns 333000000 run_us 110000000 halt_us 9000000\n",
 		"\nsampler_cost samples 2 cycles 2000 max 1300\n",

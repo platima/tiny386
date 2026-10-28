@@ -59,6 +59,7 @@ static uint32_t rng = 0x2545f491u;
 static uint64_t every, next_write;     /* samples between files, the next file's */
 static struct timespec t0;
 static unsigned files;
+static uint32_t run_id;                 /* this run's word, as the board draws one */
 static uint32_t last_write_us;
 static uint64_t paused_us;
 static PC *the_pc;
@@ -147,7 +148,7 @@ static void write_file(const char *why)
 		.elf_sha256 = getenv("PROF_ELF_SHA"), .sampler = "standin-sigprof",
 		.ini = "-", .why = why,
 		.fast_cpu = the_pc ? cpui386_get_fast(the_pc->cpu) : -1,
-		.rate_hz = (uint32_t) hz, .file_no = files, .cpu_mhz = 0,
+		.rate_hz = (uint32_t) hz, .file_no = files, .run = run_id, .cpu_mhz = 0,
 		.uptime_us = us_since(&t0), .sampling_us = us_since(&t0), .paused_us = paused_us,
 		.last_write_us = last_write_us,
 		.guest_insns = the_pc ? (uint64_t) cpui386_get_cycle(the_pc->cpu) : 0,
@@ -209,6 +210,7 @@ PC *__wrap_pc_new(SimpleFBDrawFunc *redraw, void *redraw_data, u8 *fb, PCConfig 
 		return pc;
 	}
 	host_now(&t0);
+	run_id = (uint32_t) t0.tv_nsec ^ ((uint32_t) getpid() << 12);
 	atexit(at_end);
 	armed = 1;
 	arm_next();

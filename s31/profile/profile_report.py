@@ -71,79 +71,111 @@ class Profile:
         self.guest = []         # (area, mode, cpl, cs, page, guess, count)
         self.ops = []           # (key, count)
         self.complete = False
+        self.cut = None         # where a file cut short stops making sense
         self.samples = 0
 
 
 def parse_profile(path):
+    """The file's lines.  A file cut short (a power cut or a full card in
+    the write) is read up to its last whole line that makes sense: the line
+    the cut fell in, and anything after a line that does not parse, are
+    left out, and the report says so."""
     p = Profile()
     section = None
     with open(path, "r", encoding="utf-8", errors="replace") as f:
-        lines = f.read().splitlines()
+        text = f.read()
+    lines = text.splitlines()
     if not lines or not lines[0].startswith("tiny386 profile "):
         raise SystemExit("%s is not a tiny386 PROFILE.TXT (its first line is %r)" %
                          (path, lines[0] if lines else ""))
-    p.meta["format"] = lines[0].split()[2]
-    for line in lines[1:]:
+    p.meta["format"] = lines[0].split()[2] if len(lines[0].split()) > 2 else "?"
+    if not text.endswith("\n"):         # the last line is cut: its figures would be wrong
+        p.cut = "line %d, which has no end" % len(lines)
+        lines = lines[:-1]
+    for n, line in enumerate(lines[1:], 2):
         if not line.strip():
             continue
         if line == "end":
             p.complete = True
             break
-        if line.startswith("["):
-            section = line[1:line.index("]")]
-            continue
-        w = line.split()
-        if section == "host":
-            p.host.append((int(w[0], 16), int(w[1]), int(w[2])))
-        elif section == "coarse":
-            p.coarse.append((int(w[0], 16), int(w[1]), int(w[2])))
-        elif section == "guest":
-            p.guest.append((int(w[0]), int(w[1]), int(w[2]), int(w[3], 16), int(w[4], 16),
-                            int(w[5]), int(w[6])))
-        elif section == "ops":
-            p.ops.append((int(w[0], 16), int(w[1])))
-        else:
-            key, rest = w[0], w[1:]
-            if key in ("firmware", "board", "idf", "elf_sha256", "ini"):
-                p.meta[key] = " ".join(rest)
-            elif key == "sampler":
-                p.meta["sampler"] = rest[0]
-                p.meta["rate_hz"] = int(rest[1])
-            elif key == "file":
-                p.meta["file_no"] = int(rest[0])
-                p.meta["why"] = rest[1] if len(rest) > 1 else "-"
-            elif key in ("fast_cpu", "cpu_mhz", "last_write_us", "samples", "op_unread",
-                         "page_guess", "cache_reads"):
-                p.meta[key] = int(rest[0])
-            elif key == "range":
-                p.ranges[rest[0]] = (int(rest[1], 16), int(rest[2], 16))
-            elif key == "table":
-                d = dict(zip(rest[1::2], rest[2::2]))
-                p.tables[rest[0]] = (int(d["slots"]), int(d["used"]), int(d["lost"]))
-            elif key == "cache":
-                name, core, kind = rest[0], rest[1], rest[2]
-                c = {}
-                for k, v in zip(rest[3::2], rest[4::2]):
-                    c[k] = None if v == "-" else int(v)
-                p.cache.append((name, core, kind, c))
-            elif key in ("area_region", "mode_area"):
-                d = {}
-                i = 0
-                while i < len(rest):
-                    d[rest[i]] = [int(x) for x in rest[i + 1:i + 5]]
-                    i += 5
-                p.kv[key] = d
-            else:
-                # name value name value ...
-                d = {}
-                for k, v in zip(rest[0::2], rest[1::2]):
-                    try:
-                        d[k] = int(v)
-                    except ValueError:
-                        d[k] = v
-                p.kv[key] = d
+        try:
+            section = parse_line(p, line, section)
+        except (ValueError, IndexError, KeyError):
+            p.cut = "line %d, which does not parse: %r" % (n, line[:60])
+            break
     p.samples = p.meta.get("samples", 0)
     return p
+
+
+def fields(w, n):
+    if len(w) != n:
+        raise ValueError("%d fields, not %d" % (len(w), n))
+    return w
+
+
+def parse_line(p, line, section):
+    """One line of the file into p; returns the table section it is in.
+    ValueError, IndexError or KeyError for a line that does not parse."""
+    if line.startswith("["):
+        return line[1:line.index("]")]
+    w = line.split()
+    if section == "host":
+        w = fields(w, 3)
+        p.host.append((int(w[0], 16), int(w[1]), int(w[2])))
+    elif section == "coarse":
+        w = fields(w, 3)
+        p.coarse.append((int(w[0], 16), int(w[1]), int(w[2])))
+    elif section == "guest":
+        w = fields(w, 7)
+        p.guest.append((int(w[0]), int(w[1]), int(w[2]), int(w[3], 16), int(w[4], 16),
+                        int(w[5]), int(w[6])))
+    elif section == "ops":
+        w = fields(w, 2)
+        p.ops.append((int(w[0], 16), int(w[1])))
+    else:
+        key, rest = w[0], w[1:]
+        if key in ("firmware", "board", "idf", "elf_sha256", "ini"):
+            p.meta[key] = " ".join(rest)
+        elif key == "sampler":
+            p.meta["sampler"] = rest[0]
+            p.meta["rate_hz"] = int(rest[1])
+        elif key == "file":
+            p.meta["file_no"] = int(rest[0])
+            p.meta["why"] = rest[1] if len(rest) > 1 else "-"
+        elif key == "run":
+            int(rest[0], 16)
+            p.meta["run"] = rest[0]
+        elif key in ("fast_cpu", "cpu_mhz", "last_write_us", "samples", "op_unread",
+                     "page_guess", "cache_reads"):
+            p.meta[key] = int(rest[0])
+        elif key == "range":
+            p.ranges[rest[0]] = (int(rest[1], 16), int(rest[2], 16))
+        elif key == "table":
+            d = dict(zip(rest[1::2], rest[2::2]))
+            p.tables[rest[0]] = (int(d["slots"]), int(d["used"]), int(d["lost"]))
+        elif key == "cache":
+            name, core, kind = rest[0], rest[1], rest[2]
+            c = {}
+            for k, v in zip(rest[3::2], rest[4::2]):
+                c[k] = None if v == "-" else int(v)
+            p.cache.append((name, core, kind, c))
+        elif key in ("area_region", "mode_area"):
+            d = {}
+            i = 0
+            while i < len(rest):
+                d[rest[i]] = [int(x) for x in fields(rest[i + 1:i + 5], 4)]
+                i += 5
+            p.kv[key] = d
+        else:
+            # name value name value ...
+            d = {}
+            for k, v in zip(rest[0::2], rest[1::2]):
+                try:
+                    d[k] = int(v)
+                except ValueError:
+                    d[k] = v
+            p.kv[key] = d
+    return section
 
 
 def subtract(later, earlier, names):
@@ -154,6 +186,14 @@ def subtract(later, earlier, names):
         if later.meta.get(k) != earlier.meta.get(k):
             raise SystemExit("--since: %s and %s differ in %s: not two files of one run" %
                              (names[1], names[0], k))
+    # each boot draws its own run word (v5.1): files numbered from 1 again by
+    # a later boot of the same app are refused here
+    if "run" in later.meta and "run" in earlier.meta and later.meta["run"] != earlier.meta["run"]:
+        raise SystemExit("--since: %s is from run %s and %s from run %s: two boots, not one run" %
+                         (names[1], earlier.meta["run"], names[0], later.meta["run"]))
+    if not earlier.complete:
+        later.meta["since_cut"] = "%s was cut short%s" % (
+            names[1], (", read to before its " + earlier.cut) if earlier.cut else "")
     if earlier.samples > later.samples or earlier.meta.get("file_no", 0) >= later.meta.get("file_no", 0):
         raise SystemExit("--since: %s (file %s, %d samples) is not earlier than %s (file %s, %d "
                          "samples) in the same run" % (names[1], earlier.meta.get("file_no"),
@@ -699,9 +739,11 @@ def report(prof, elf, elf_path, rom, a2l, top, out, src):
     o()
     o("Firmware %s on %s (ESP-IDF %s); ELF %s." % (m.get("firmware"), m.get("board"), m.get("idf"),
                                                   m.get("elf_sha256", "")[:16]))
-    o("Sampler: %s at about %d a second; file %d (%s); ini %s; fast_cpu %d." %
+    if m.get("elf_check"):
+        o(m["elf_check"])
+    o("Sampler: %s at about %d a second; file %d (%s)%s; ini %s; fast_cpu %d." %
       (m.get("sampler"), m.get("rate_hz", 0), m.get("file_no", 0), m.get("why", "-"),
-       m.get("ini"), m.get("fast_cpu", -1)))
+       (" of run " + m["run"]) if m.get("run") else "", m.get("ini"), m.get("fast_cpu", -1)))
     t = prof.kv.get("time_us", {})
     samp_s = t.get("sampling", 0) / 1e6
     paused_s = t.get("paused", 0) / 1e6
@@ -711,7 +753,11 @@ def report(prof, elf, elf_path, rom, a2l, top, out, src):
         o("A stretch of the run (--since): %s; the counts below are that stretch's alone." %
           m["stretch"])
     if not prof.complete:
-        o("WARNING: the file has no \"end\" line: it was cut short (power off during a write?).")
+        o("WARNING: the file has no \"end\" line: it was cut short (power off or a full card during "
+          "a write?). It is read as far as it goes%s." %
+          ((", to before its " + prof.cut) if prof.cut else ""))
+    if m.get("since_cut"):
+        o("WARNING: --since: %s; the stretch's counts are too high where it stops." % m["since_cut"])
     o("The write before this file: %d ms, the guest waiting." % (m.get("last_write_us", 0) // 1000))
     cost = prof.kv.get("sampler_cost", {})
     if cost.get("samples"):
@@ -985,14 +1031,26 @@ def main(argv):
         prof = subtract(prof, parse_profile(a.since), (a.profile, a.since))
     with open(a.elf, "rb") as f:
         sha = hashlib.sha256(f.read()).hexdigest()
-    want = prof.meta.get("elf_sha256", "")
-    if sha != want:
+    # The file names the ELF by its SHA-256: all 64 hex digits since v5.1's
+    # reviews; ESP-IDF's esp_app_get_elf_sha256() gives only the first
+    # CONFIG_APP_RETRIEVE_LEN_ELF_SHA of them (9 by default, at least 8),
+    # which v5.1's first images wrote.  A file's digits are taken as a
+    # prefix, from 8 up.
+    want = prof.meta.get("elf_sha256", "").strip().lower()
+    if re.match(r"^[0-9a-f]{8,64}$", want) and sha.startswith(want):
+        prof.meta["elf_check"] = ("The ELF's SHA-256 matches the file's %d hex digits of it%s." %
+                                  (len(want), "" if len(want) == 64 else " (the file has no more)"))
+    else:
         msg = ("%s has SHA-256 %s, but %s was written by the ELF %s: the names would be wrong" %
-               (a.elf, sha[:16], a.profile, want[:16]))
+               (a.elf, sha[:16], a.profile, want[:16] or "(none named)"))
+        if want and not re.match(r"^[0-9a-f]{8,64}$", want):
+            msg = ("%s names its ELF by %r, not by 8 to 64 hex digits of its SHA-256: it cannot be "
+                   "checked against %s" % (a.profile, want[:70], a.elf))
         if not a.force:
             raise SystemExit(msg + ". The release's images\\*\\tiny386.elf of the same version "
                              "and board has it; --force to go on anyway.")
         sys.stderr.write("warning: " + msg + "\n")
+        prof.meta["elf_check"] = "WARNING (--force): " + msg + "."
     elf = Elf(a.elf)
     rom_path = find_rom_elf(prof, a.rom_elf)
     rom = Elf(rom_path) if rom_path and os.path.exists(rom_path) else None

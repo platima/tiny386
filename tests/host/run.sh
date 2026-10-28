@@ -1109,6 +1109,48 @@ if command -v python3 > /dev/null; then
     ! python3 "$TREE/s31/profile/profile_report.py" "$OUT/DEMO-PROFILE.TXT.early" "$OUT/test_prof_hist" \
         --since "$OUT/DEMO-PROFILE.TXT" > /dev/null 2>&1
     result $? "profile_report.py --since: the stretch between two files alone; the files the wrong way round refused"
+    # v5.1, after the sampler review (R1, R3, R8): the ELF named by its first
+    # 9 hex digits (as ESP-IDF's esp_app_get_elf_sha256() gives them, which
+    # v5.1's first images wrote) is taken, 9 digits of another ELF and 7
+    # digits are refused; a file cut short anywhere (every 7th byte) is read
+    # as far as it goes, with a warning, never a Python traceback; and
+    # --since refuses a file of another boot (another run word)
+    sed 's/^\(elf_sha256 .........\).*$/\1/' "$OUT/DEMO-PROFILE.TXT" > "$OUT/DEMO9.TXT"
+    sed 's/^\(elf_sha256 .......\).*$/\1/' "$OUT/DEMO-PROFILE.TXT" > "$OUT/DEMO7.TXT"
+    python3 "$TREE/s31/profile/profile_report.py" "$OUT/DEMO9.TXT" "$OUT/test_prof_hist" \
+        -o "$OUT/demo9-report.txt" &&
+    grep -q "matches the file's 9 hex digits" "$OUT/demo9-report.txt" &&
+    grep -Eq '^demo_hot +75\.0% \+-2\.7 +750 ' "$OUT/demo9-report.txt" &&
+    ! python3 "$TREE/s31/profile/profile_report.py" "$OUT/DEMO9.TXT" "$OUT/test_bootmenu" > /dev/null 2>&1 &&
+    ! python3 "$TREE/s31/profile/profile_report.py" "$OUT/DEMO7.TXT" "$OUT/test_prof_hist" > /dev/null 2>&1
+    result $? "profile_report.py: the ELF's first 9 hex digits, as the board's ESP-IDF call gives them, taken; another ELF's and 7 digits refused"
+    sz=$(stat -c %s "$OUT/DEMO-PROFILE.TXT")
+    tables=$(grep -b '^\[host\]' "$OUT/DEMO-PROFILE.TXT" | cut -d: -f1)
+    cutbad=0; ncut=0; nwarn=0
+    for c in $(seq 20 7 $((sz - 1))); do
+        head -c $c "$OUT/DEMO-PROFILE.TXT" > "$OUT/CUT.TXT"
+        python3 "$TREE/s31/profile/profile_report.py" "$OUT/CUT.TXT" "$OUT/test_prof_hist" \
+            -o "$OUT/cut-report.txt" > /dev/null 2> "$OUT/cut.err"
+        st=$?
+        ncut=$((ncut + 1))
+        if grep -q Traceback "$OUT/cut.err"; then
+            echo "    | (cut at byte $c: a traceback)"; cutbad=1
+        elif [ "$c" -gt "$tables" ]; then
+            if [ $st = 0 ] && grep -q 'WARNING: the file has no "end" line' "$OUT/cut-report.txt"; then
+                nwarn=$((nwarn + 1))
+            else
+                echo "    | (cut at byte $c, in the tables: exit $st, or no warning)"; cutbad=1
+            fi
+        fi
+    done
+    echo "    | ($ncut cuts, $nwarn of them in the tables read with the warning; no traceback)"
+    [ $cutbad = 0 ]
+    result $? "profile_report.py: a file cut short is read as far as it goes, with a warning"
+    sed 's/^run .*$/run 00000001/' "$OUT/DEMO-PROFILE.TXT.early" > "$OUT/DEMO-PROFILE.TXT.otherrun"
+    ! python3 "$TREE/s31/profile/profile_report.py" "$OUT/DEMO-PROFILE.TXT" "$OUT/test_prof_hist" \
+        --since "$OUT/DEMO-PROFILE.TXT.otherrun" > /dev/null 2>&1 &&
+    grep -q '^run 5eed0b07$' "$OUT/DEMO-PROFILE.TXT.early"
+    result $? "profile_report.py --since: a file of another boot (another run word) refused"
 else
     echo "    | (no python3 here: profile_report.py is not tried)"
 fi

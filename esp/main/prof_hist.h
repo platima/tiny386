@@ -128,13 +128,14 @@ struct prof_meta {
 	const char *firmware;   /* the app's version, as esp_app_get_description() has it */
 	const char *board;
 	const char *idf;
-	const char *elf_sha256; /* the ELF the firmware was built as: 64 hex digits */
+	const char *elf_sha256; /* the ELF the firmware was built as: its SHA-256, 64 hex digits */
 	const char *sampler;    /* how the samples were taken: "core0-pc-record", "standin-sigprof" */
 	const char *ini;
 	const char *why;        /* "timer", "key", "end" */
 	int fast_cpu;
 	uint32_t rate_hz;       /* samples a second asked for */
 	uint32_t file_no;       /* this run's files so far, this one too */
+	uint32_t run;           /* this run's own word, drawn at random when it began */
 	uint32_t cpu_mhz;
 	uint64_t uptime_us;     /* since power-on */
 	uint64_t sampling_us;   /* since sampling started */

@@ -364,6 +364,8 @@ long prof_write2(const struct prof *p, const struct prof_meta *m, FILE *f, FILE 
 	out_u(&o, m->file_no);
 	out_ch(&o, ' ');
 	out_str(&o, m->why);
+	out_s(&o, "\nrun ");
+	out_x(&o, m->run, 8);
 	out_s(&o, "\ncpu_mhz ");
 	out_u(&o, m->cpu_mhz);
 	out_s(&o, "\ntime_us");

@@ -21,8 +21,10 @@
  * console says how long it took.  Ctrl+Alt+F8 also writes the same text to
  * PROF01.TXT, PROF02.TXT and so on (to PROF99.TXT), so that two presses
  * mark a stretch of the run: profile_report.py's --since takes the earlier
- * file's counts from the later's.  Only those files are written, through
- * FatFs on /sdcard: never a partition the guest has whole.
+ * file's counts from the later's.  Only those files (and PROFILE.NEW, the
+ * next PROFILE.TXT until it is whole) are written, through FatFs on
+ * /sdcard: never a partition the guest has whole.  Each file names this
+ * boot's run (a random word), so that --since can tell two boots apart.
  *
  * With profile = 0 (the default) profile_setup() returns at once: no table,
  * no timer, no interrupt, no key, and core 1's loop is v5.0's.
@@ -36,6 +38,7 @@
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
+#include "esp_random.h"
 #include "esp_app_desc.h"
 #include "esp_idf_version.h"
 #include "soc/soc_caps.h"
@@ -73,8 +76,11 @@
 #define PROFILE_KEEP_PSRAM (256 * 1024) /* PSRAM left free beside the tables */
 #define PROFILE_BUF 4096                /* the file is written through this */
 
-/* the code's regions, from ESP-IDF's linker script */
-extern char _iram_text_start[], _iram_text_end[], _text_start[], _text_end[];
+/* the code's regions, from ESP-IDF's linker script; internal RAM from its
+   start, so that the vector table and the interrupt entry and exit below
+   _iram_text_start count there, not as "other" (the v5.1 sampler review's
+   R7) */
+extern char _iram_start[], _iram_text_end[], _text_start[], _text_end[];
 
 static struct prof s_prof;              /* the counts' heads (.bss); the tables in PSRAM */
 static struct cpui386_prof_fields s_f;  /* where the guest's state is */
@@ -97,6 +103,7 @@ static char s_path[112];
 static char s_dir[96];                  /* the ini's folder, where the files go */
 static unsigned s_keys;                 /* PROFnn.TXT written so far */
 static unsigned s_kib;
+static uint32_t s_run;                  /* this boot's run, in every file */
 
 static inline uint32_t PROF_ISR_ATTR prof_rng(void)
 {
@@ -127,7 +134,11 @@ static bool PROF_ISR_ATTR prof_alarm(gptimer_handle_t timer,
 {
 	(void) ctx;
 	uint32_t c0 = (uint32_t) esp_cpu_get_cycle_count();
-	uint64_t now = e->alarm_value;  /* microseconds: the timer counts at 1 MHz */
+	/* microseconds (the timer counts at 1 MHz): the count now, not the
+	   alarm that fired, so that an interrupt held off for a while does not
+	   set alarms already past and take a burst of samples (the v5.1
+	   sampler review's R6) */
+	uint64_t now = e->count_value;
 	gptimer_alarm_config_t next = {
 		.alarm_count = now + PROFILE_PERIOD_US / 2 + prof_rng() % PROFILE_PERIOD_US,
 	};
@@ -200,8 +211,9 @@ bool profile_setup(int on, const char *ini_path, const char *ini_dir, int fast_c
 	}
 	prof_init(&s_prof, mem, sz);
 	s_buf = (char *) mem + prof_mem_bytes(sz);
-	prof_set_range(&s_prof, PROF_REGION_IRAM, (uint32_t) (uintptr_t) _iram_text_start,
+	prof_set_range(&s_prof, PROF_REGION_IRAM, (uint32_t) (uintptr_t) _iram_start,
 		       (uint32_t) (uintptr_t) _iram_text_end);
+	s_run = esp_random();
 	prof_set_range(&s_prof, PROF_REGION_FLASH, (uint32_t) (uintptr_t) _text_start,
 		       (uint32_t) (uintptr_t) _text_end);
 	prof_set_range(&s_prof, PROF_REGION_ROM, SOC_IROM_MASK_LOW, SOC_IROM_MASK_HIGH);
@@ -285,6 +297,23 @@ bool profile_on(void)
 	return s_on;
 }
 
+/* the ELF's SHA-256, all 64 hex digits, from the app's description, where
+   esptool put it: esp_app_get_elf_sha256() gives only
+   CONFIG_APP_RETRIEVE_LEN_ELF_SHA of them, 9 in this build (the v5.1
+   sampler review's R1).  Read through volatile, as ESP-IDF reads it: the
+   compiler knows those bytes only as the zeros esptool fills in later. */
+static void prof_elf_sha256(char out[65])
+{
+	static const char hex[] = "0123456789abcdef";
+	const volatile uint8_t *s = (const volatile uint8_t *) esp_app_get_description()->app_elf_sha256;
+	for (int i = 0; i < 32; i++) {
+		uint8_t c = s[i];
+		out[2 * i] = hex[c >> 4];
+		out[2 * i + 1] = hex[c & 15];
+	}
+	out[64] = 0;
+}
+
 void profile_write(const char *why)
 {
 	if (!s_on || !__atomic_load_n(&s_armed, __ATOMIC_ACQUIRE))
@@ -302,7 +331,7 @@ void profile_write(const char *why)
 	s_files++;
 
 	char elf[65];
-	esp_app_get_elf_sha256(elf, sizeof(elf));
+	prof_elf_sha256(elf);
 	uint64_t insns = 0, run_us = 0, halt_us = 0;
 	speed_totals(&insns, &run_us, &halt_us);
 	struct prof_meta m = {
@@ -318,6 +347,7 @@ void profile_write(const char *why)
 		.fast_cpu = s_fast_cpu,
 		.rate_hz = PROFILE_HZ,
 		.file_no = s_files,
+		.run = s_run,
 		.cpu_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
 		.uptime_us = (uint64_t) t0,
 		.sampling_us = (uint64_t) (t0 - s_t0_us),
@@ -327,21 +357,47 @@ void profile_write(const char *why)
 		.run_us = run_us,
 		.halt_us = halt_us,
 	};
-	/* Ctrl+Alt+F8: PROFnn.TXT beside PROFILE.TXT, the same text */
-	char path2[128] = "";
-	FILE *f2 = NULL;
+	/* PROFILE.TXT is written as PROFILE.NEW and put in its place only once
+	   it is whole, so that a full card or a power cut in the write leaves
+	   the last good one; Ctrl+Alt+F8's PROFnn.TXT (the same text) takes
+	   its number, and the file its file number, only when it was written
+	   whole, and a file that failed is taken away (the v5.1 sampler
+	   review's R2).  FatFs renames onto no name that is there, so the old
+	   PROFILE.TXT goes first. */
+	char tmp[112], path2[128] = "";
+	unsigned keyno = s_keys < 99 ? s_keys + 1 : 99;
+	snprintf(tmp, sizeof(tmp), "%s/PROFILE.NEW", s_dir);
+	FILE *f = fopen(tmp, "w"), *f2 = NULL;
 	if (key) {
-		if (s_keys < 99)
-			s_keys++;
-		snprintf(path2, sizeof(path2), "%s/PROF%02u.TXT", s_dir, s_keys);
-		f2 = fopen(path2, "w");
+		snprintf(path2, sizeof(path2), "%s/PROF%02u.TXT", s_dir, keyno);
+		if (f)
+			f2 = fopen(path2, "w");
 	}
-	FILE *f = fopen(s_path, "w");
-	long bytes = f && (f2 || !key) ? prof_write2(&s_prof, &m, f, f2, s_buf, PROFILE_BUF) : -1;
+	bool opened = f && (f2 || !key);
+	long bytes = opened ? prof_write2(&s_prof, &m, f, f2, s_buf, PROFILE_BUF) : -1;
 	if (f && fclose(f) != 0)
 		bytes = -1;
 	if (f2 && fclose(f2) != 0)
 		bytes = -1;
+	bool renamed = false;
+	if (bytes >= 0) {
+		remove(s_path);
+		renamed = rename(tmp, s_path) == 0;
+		if (key)
+			s_keys = keyno;
+	} else {
+		if (f)
+			remove(tmp);
+		if (f2)
+			remove(path2);
+		s_files--;
+	}
+	/* what the console lines say, read before the sampling goes on (the
+	   v5.1 sampler review's R4: the interrupt changes them again after) */
+	uint32_t samples = s_prof.samples, places = s_prof.host.used + s_prof.coarse.used;
+	uint32_t other = s_prof.region[PROF_REGION_OTHER];
+	uint32_t host_lost = s_prof.host.lost, coarse_lost = s_prof.coarse.lost;
+	uint32_t guest_lost = s_prof.guest.lost, ops_lost = s_prof.ops.lost;
 	int64_t t1 = esp_timer_get_time();
 	s_last_write_us = (uint32_t) (t1 - t0);
 	s_paused_us += (uint64_t) (t1 - t0);
@@ -351,28 +407,33 @@ void profile_write(const char *why)
 
 	unsigned ms = (unsigned) ((t1 - t0 + 500) / 1000);
 	if (bytes < 0) {
-		console_printf(CON_ERROR, "Profile: %s%s%s could not be written (%s; %u ms).", s_path,
-			       key ? " and " : "", path2,
-			       f && (f2 || !key) ? "a write failed" : "it could not be opened", ms);
+		console_printf(CON_ERROR, "Profile: %s%s%s could not be written (%s; %u ms); the last "
+			       "PROFILE.TXT is kept.", s_path, key ? " and " : "", path2,
+			       opened ? "a write failed" : "it could not be opened", ms);
+		return;
+	}
+	if (!renamed) {
+		console_printf(CON_ERROR, "Profile: written to %s%s%s (%s, file %u), but it could not be "
+			       "renamed %s (%u ms).", tmp, key ? " and " : "", path2, why,
+			       (unsigned) s_files, s_path, ms);
 		return;
 	}
 	console_printf(CON_INFO, "Profile: %s%s%s written (%s, file %u): %" PRIu32 " samples, %ld "
 		       "bytes, in %u ms, the guest waiting.", s_path, key ? " and " : "", path2, why,
-		       (unsigned) s_files, s_prof.samples, bytes, ms);
+		       (unsigned) s_files, samples, bytes, ms);
 	/* the PC record moving, and pointing at code: else the host half of
 	   the file says nothing (the guest half still holds) */
-	if (s_prof.samples >= 1000 && s_prof.host.used + s_prof.coarse.used < 8)
+	if (samples >= 1000 && places < 8)
 		console_printf(CON_WARN, "Profile: core 1's PC record gave only %u places in %" PRIu32
-			       " samples: it does not seem to follow core 1.",
-			       (unsigned) (s_prof.host.used + s_prof.coarse.used), s_prof.samples);
-	else if (s_prof.samples >= 1000 && (uint64_t) s_prof.region[PROF_REGION_OTHER] * 10 > s_prof.samples)
+			       " samples: it does not seem to follow core 1.", (unsigned) places, samples);
+	else if (samples >= 1000 && (uint64_t) other * 10 > samples)
 		console_printf(CON_WARN, "Profile: %" PRIu32 " of %" PRIu32 " samples of core 1's PC "
-			       "are outside its code.", s_prof.region[PROF_REGION_OTHER], s_prof.samples);
-	if (s_prof.host.lost + s_prof.guest.lost + s_prof.ops.lost)
+			       "are outside its code.", other, samples);
+	if (host_lost + guest_lost + ops_lost)
 		console_printf(CON_INFO, "Profile: tables full: %" PRIu32 " samples' host PCs counted "
 			       "by 64-byte line (%" PRIu32 " of them in the totals only); %" PRIu32
 			       " guest and %" PRIu32 " instruction samples in the totals only.",
-			       s_prof.host.lost, s_prof.coarse.lost, s_prof.guest.lost, s_prof.ops.lost);
+			       host_lost, coarse_lost, guest_lost, ops_lost);
 }
 
 #else /* !PROFILE_SUPPORTED */
