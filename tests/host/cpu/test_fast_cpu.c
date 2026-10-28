@@ -111,6 +111,23 @@
  * tables, selectors, paging, page tables and TLB contents: the same result,
  * fault, CR2, TLB, page tables and MMIO accesses each time.
  *
+ * v5.1, mode n (the lean TLB refill: fast_miss() with tlb_refill()'s walk
+ * inline): first fast_miss() itself on machine 0 against tiny386's
+ * translate_lpgno() on machine 1, access by access at levels 0 to 3, with
+ * the page tables changed between accesses without INVLPG (accessed and
+ * dirty bits cleared, entries made not present, read-only or supervisor,
+ * directory entries pointed at other tables, beyond RAM, at A0000h or at
+ * the directory itself), CR0.WP changed, the TLB emptied and CR3 pointed
+ * beyond RAM and at A0000h: after each, the result, CR2, the exception and
+ * its error code, all memory, tiny386's whole TLB and the fast TLB's
+ * invariants.  Then hand-written code through both interpreters: the
+ * directory used as its own page table with accessed bits cleared without
+ * INVLPG, a directory entry and a table entry not present, a table beyond
+ * RAM and at A0000h (refused with the board's header), rights faults at
+ * level 3 on user and supervisor pages and at level 0 with CR0.WP clear and
+ * set, reads and writes; a page fault handler logs CR2 and the error code
+ * and makes the planned fix, and the log must be the planned one.
+ *
  *   test_fast_cpu [SEEDS [FIRST_SEED [MODES]]]
  *
  * MODES: the scenarios for each seed, one character each (run() names
@@ -2562,6 +2579,354 @@ static void fz_clear(void)
 	}
 }
 
+/* == mode n (v5.1): the lean TLB refill (fast_miss() with tlb_refill()'s
+   walk inline, i386.c's fast_translate()) */
+#define TB 0x00540000u          /* thirteen test pages (PT2), from physical TB_PHYS */
+#define TB_PHYS 0x120000u
+#define NTB 13
+#define SM 0xfc000000u          /* PD[3F0h] is the directory: SM + d * 1000h is PD[d]'s table */
+#define PT3_PHYS 0x1f4000u      /* PD[2]'s table once it is present */
+#define PT5_PHYS 0x1f5000u
+#define PT6_PHYS 0x1f6000u
+#define PT7_PHYS 0x1f7000u
+#define FIXN (CNT_PHYS + 0x10)  /* the page faults so far */
+#define CONT (CNT_PHYS + 0x14)  /* where INT 31h's handler goes on at level 0 */
+#define FLOG (CNT_PHYS + 0x100) /* each fault's CR2 and error code */
+#define FIXQ (CNT_PHYS + 0x400) /* each fault's fix: an address and the dword stored there */
+/* the test pages' rights: user (4), writable (2), present (1); 11 is a page
+   of the VGA window, 12 one beyond RAM */
+static const u32 tb_pte[NTB] = { 7, 5, 3, 1, 6, 7, 5, 1, 5, 1, 3, 0xa1000 | 7, 0x300000 | 7 };
+static uword tbk(int k) { return TB + k * 0x1000; }
+static uword alias_off(void) { return (uword) tlb_size << 12; }   /* the next linear page at the same TLB index */
+static uword sm_pte(uword lin) { return SM + (lin >> 22) * 0x1000 + ((lin >> 12) & 1023) * 4; }
+static uword sm_pde(uword lin) { return SM + 0x3f0 * 0x1000 + (lin >> 22) * 4; }
+
+/* protected mode at level 0 with paging, and: the test pages and one at
+   the same TLB index as the first; PD[2] not present (its table PT3), PD[3]
+   a table beyond RAM, PD[4] a table at A0000h (entries present there),
+   PD[5] supervisor over user entries, PD[6] read-only over writable
+   entries, PD[7] a table whose entries are not present, PD[3F0h] the
+   directory itself; a page fault handler that logs CR2 and the error code
+   and makes the next fix of FIXQ; INT 31h (from level 3) going on at level
+   0 at CONT */
+static void setup_refill(u8 *mem, CPUI386 *cpu)
+{
+	setup_prot(mem, cpu, 0);
+	for (int k = 0; k < NTB; k++)
+		put32(mem, PT2_PHYS + (((TB >> 12) + k) & 1023) * 4, tb_pte[k] > 7 ? tb_pte[k] : (TB_PHYS + k * 0x1000) | tb_pte[k]);
+	put32(mem, PT2_PHYS + (((TB + alias_off()) >> 12) & 1023) * 4, 0x130000 | 7);
+	for (int j = 0; j < 16; j++) {
+		put32(mem, PT3_PHYS + j * 4, (0x140000 + j * 0x1000) | 7);
+		put32(mem, 0xa0000 + j * 4, (0x150000 + j * 0x1000) | 7);
+		put32(mem, PT5_PHYS + j * 4, (0x160000 + j * 0x1000) | 7);
+		put32(mem, PT6_PHYS + j * 4, (0x170000 + j * 0x1000) | 7);
+	}
+	put32(mem, PD_PHYS + 3 * 4, 0x300000 | 7);
+	put32(mem, PD_PHYS + 4 * 4, 0xa0000 | 7);
+	put32(mem, PD_PHYS + 5 * 4, PT5_PHYS | 3);
+	put32(mem, PD_PHYS + 6 * 4, PT6_PHYS | 5);
+	put32(mem, PD_PHYS + 7 * 4, PT7_PHYS | 7);
+	put32(mem, PD_PHYS + 0x3f0 * 4, PD_PHYS | 7);
+	/* page faults: PUSH EAX; PUSH EBX; MOV EAX,CR2; MOV EBX,[FIXN];
+	   MOV [FLOG+EBX*8],EAX; MOV EAX,[ESP+8] (the error code);
+	   MOV [FLOG+4+EBX*8],EAX; MOV EAX,[FIXQ+EBX*8]; MOV EBX,[FIXQ+4+EBX*8];
+	   TEST EAX,EAX; JZ +2; MOV [EAX],EBX; INC DWORD [FIXN]; POP EBX;
+	   POP EAX; ADD ESP,4; IRET */
+	u8 *h = mem + HND_PHYS + 0x300;
+	const u8 pf[] = { 0x50, 0x53, 0x0f, 0x20, 0xd0, 0x8b, 0x1d, 0, 0, 0, 0,
+			  0x89, 0x04, 0xdd, 0, 0, 0, 0, 0x8b, 0x44, 0x24, 0x08,
+			  0x89, 0x04, 0xdd, 0, 0, 0, 0, 0x8b, 0x04, 0xdd, 0, 0, 0, 0,
+			  0x8b, 0x1c, 0xdd, 0, 0, 0, 0, 0x85, 0xc0, 0x74, 0x02, 0x89, 0x18,
+			  0xff, 0x05, 0, 0, 0, 0, 0x5b, 0x58, 0x83, 0xc4, 0x04, 0xcf };
+	memcpy(h, pf, sizeof(pf));
+	put32(mem, HND_PHYS + 0x300 + 7, FIXN);
+	put32(mem, HND_PHYS + 0x300 + 14, FLOG);
+	put32(mem, HND_PHYS + 0x300 + 25, FLOG + 4);
+	put32(mem, HND_PHYS + 0x300 + 32, FIXQ);
+	put32(mem, HND_PHYS + 0x300 + 39, FIXQ + 4);
+	put32(mem, HND_PHYS + 0x300 + 51, FIXN);
+	gate(mem, 14, 0x08, HND_PHYS + 0x300, 0x8e);
+	/* INT 31h: ADD ESP,20 (the frame from level 3); JMP [CONT] */
+	const u8 back[] = { 0x83, 0xc4, 0x14, 0xff, 0x25, 0, 0, 0, 0 };
+	memcpy(mem + HND_PHYS + 0x380, back, sizeof(back));
+	put32(mem, HND_PHYS + 0x380 + 5, CONT);
+	gate(mem, 0x31, 0x08, HND_PHYS + 0x380, 0xee);
+}
+
+/* the code's instructions (32-bit, DS flat) */
+static void i_ld(uword a) { e8(0xa1); e32(a); }                                 /* MOV EAX,[a] */
+static void i_ld8(uword a) { e8(0x8a); e8(0x05); e32(a); }                      /* MOV AL,[a] */
+static void i_st(uword a) { e8(0xa3); e32(a); }                                 /* MOV [a],EAX */
+static void i_add(uword a) { e8(0x01); e8(0x05); e32(a); }                      /* ADD [a],EAX */
+static void i_and(uword a, u32 v) { e8(0x81); e8(0x25); e32(a); e32(v); }       /* AND DWORD [a],v */
+static void i_cr3(void) { e8(0x0f); e8(0x20); e8(0xd8); e8(0x0f); e8(0x22); e8(0xd8); }   /* MOV EAX,CR3; MOV CR3,EAX */
+static void i_wp(int on)        /* MOV EAX,CR0; OR or AND EAX; MOV CR0,EAX */
+{
+	e8(0x0f); e8(0x20); e8(0xc0);
+	if (on) { e8(0x0d); e32(CR0_WP); } else { e8(0x25); e32(~(u32) CR0_WP); }
+	e8(0x0f); e8(0x22); e8(0xc0);
+}
+
+/* the page faults the code is to take, in order, and each one's fix */
+static uword nf_cr2[32], nf_err[32];
+static int nf;
+static void fault_next(uword cr2, uword err, uword fix, u32 val)
+{
+	nf_cr2[nf] = cr2;
+	nf_err[nf] = err;
+	put32(gm, FIXQ + nf * 8, fix);
+	put32(gm, FIXQ + nf * 8 + 4, val);
+	nf++;
+}
+
+static void gen_refill(void)
+{
+	nf = 0;
+	/* refills and the accessed and dirty bits at level 0, CR0.WP clear */
+	i_ld(tbk(0));                   /* a read refill: PD[1] and the PTE accessed */
+	i_st(tbk(0) + 4);               /* tiny386's entry there: its dirty bit */
+	i_and(sm_pte(tbk(0)), ~0x60u);  /* A and D cleared without INVLPG, through the directory as a table */
+	i_st(tbk(0) + 8);               /* the fast interpreter's entry: D again, A stays clear */
+	i_cr3();
+	i_st(tbk(0) + 12);              /* a write refill: A and D */
+	i_and(sm_pde(tbk(0)), ~0x20u);  /* PD[1]'s A */
+	i_and(sm_pte(tbk(0)), ~0x60u);
+	i_cr3();
+	i_ld8(tbk(0) + 16);             /* a byte read refill */
+	i_add(tbk(0) + 20);             /* read, modify, write */
+	i_ld(tbk(0) + alias_off());     /* the page at the same index: both TLBs' entries there go */
+	i_ld(tbk(0));
+	/* the directory as its own page table: PD[3F0h] seen through itself */
+	uword s = sm_pde(SM);
+	i_ld(s);
+	i_and(s, ~0x60u);               /* written through itself: D set, then A and D cleared by the AND */
+	i_ld(s);                        /* a hit: A stays clear */
+	i_cr3();
+	i_ld(s);                        /* a refill: the entry accessed as directory entry and as table entry */
+	i_and(s, ~0x20u);
+	i_cr3();
+	i_ld(sm_pte(tbk(5)));           /* PT2's entry for a test page, through the directory */
+	/* a directory entry not present (PD[2]), a table entry not present (PD[7]'s) */
+	i_ld(0x00805010); fault_next(0x00805010, 0, sm_pde(0x00800000), PT3_PHYS | 7);
+	i_st(0x01c03000); fault_next(0x01c03000, 2, sm_pte(0x01c03000), 0x16f000 | 7);
+	/* a table beyond RAM (PD[3]); one at A0000h (PD[4]), which the board's
+	   header refuses */
+	i_ld(0x00c02000); fault_next(0x00c02000, 0, sm_pde(0x00c00000), PT3_PHYS | 7);
+	i_ld(0x01001000);
+#ifdef BUILD_ESP32
+	fault_next(0x01001000, 0, sm_pde(0x01000000), PT3_PHYS | 7);
+#endif
+	/* rights at level 0: with CR0.WP clear stores into read-only pages go,
+	   with it set they fault */
+	i_st(tbk(1));
+	i_st(tbk(3));
+	i_st(0x01801000);               /* PD[6] read-only */
+	i_wp(1);
+	i_st(tbk(6)); fault_next(tbk(6), 3, sm_pte(tbk(6)), (TB_PHYS + 6 * 0x1000) | 7);
+	i_st(tbk(7)); fault_next(tbk(7), 3, sm_pte(tbk(7)), (TB_PHYS + 7 * 0x1000) | 3);
+	i_st(0x01802000); fault_next(0x01802000, 3, sm_pde(0x01800000), PT6_PHYS | 7);
+	i_ld(tbk(3));
+	i_add(tbk(1)); fault_next(tbk(1), 3, sm_pte(tbk(1)), (TB_PHYS + 1 * 0x1000) | 7);
+	i_wp(0);
+	/* level 3: MOV AX,23h; MOV DS,AX; MOV ES,AX; MOV DWORD [CONT],back;
+	   PUSH 23h; PUSH P_USTACK-100h; PUSH 2; PUSH 1Bh; PUSH user; IRET */
+	e8(0x66); e8(0xb8); e16(0x23); e8(0x8e); e8(0xd8); e8(0x8e); e8(0xc0);
+	e8(0xc7); e8(0x05); e32(CONT);
+	uword cont_at = gp;
+	e32(0);
+	e8(0x6a); e8(0x23); e8(0x68); e32(P_USTACK - 0x100); e8(0x6a); e8(0x02); e8(0x6a); e8(0x1b);
+	e8(0x68); e32(glin() + 5); e8(0xcf);
+	i_ld(tbk(0));
+	i_ld(tbk(2)); fault_next(tbk(2), 5, sm_pte(tbk(2)), (TB_PHYS + 2 * 0x1000) | 7);    /* a supervisor page read */
+	i_st(tbk(5));
+	i_st(tbk(8)); fault_next(tbk(8), 7, sm_pte(tbk(8)), (TB_PHYS + 8 * 0x1000) | 7);    /* a read-only user page written */
+	i_ld(0x01401000); fault_next(0x01401000, 5, sm_pde(0x01400000), PT5_PHYS | 7);    /* PD[5] supervisor */
+	i_st(tbk(9)); fault_next(tbk(9), 7, sm_pte(tbk(9)), (TB_PHYS + 9 * 0x1000) | 7);    /* a read-only supervisor page written */
+	i_ld(tbk(4)); fault_next(tbk(4), 4, sm_pte(tbk(4)), (TB_PHYS + 4 * 0x1000) | 7);    /* not present */
+	i_st(tbk(10)); fault_next(tbk(10), 7, sm_pte(tbk(10)), (TB_PHYS + 10 * 0x1000) | 7); /* a supervisor page written */
+	e8(0xcd); e8(0x31);             /* INT 31h: back to level 0 */
+	put32(gm, cont_at, glin());
+	i_ld(tbk(2));
+	i_st(tbk(9) + 4);
+	i_cr3();
+	i_ld(sm_pte(tbk(9)));
+}
+
+/* mode n's code done: it reached its end, and its page faults were the
+   planned ones (machine 0's log; machine 1's memory is compared with it) */
+static int refill_log_check(int seed, const char *why)
+{
+	u32 n, c, e;
+	memcpy(&n, M[0].mem + FIXN, 4);
+	int ok = !strcmp(why, "the end of the code") && n == (u32) nf;
+	for (int i = 0; ok && i < nf; i++) {
+		memcpy(&c, M[0].mem + FLOG + i * 8, 4);
+		memcpy(&e, M[0].mem + FLOG + i * 8 + 4, 4);
+		if (c != nf_cr2[i] || e != nf_err[i]) {
+			printf("  FAIL lean TLB refill (mode n) seed %d: page fault %d at %08x error %x, planned %08x error %x\n",
+			       seed, i, c, e, (unsigned) nf_cr2[i], (unsigned) nf_err[i]);
+			ok = 0;
+		}
+	}
+	if (!ok) {
+		printf("  FAIL lean TLB refill (mode n) seed %d: %s, %u page faults (planned %d)\n", seed, why, n, nf);
+		fails++;
+	}
+	return !ok;
+}
+
+/* mode n, first part: fast_miss() on machine 0 (the fast interpreter's
+   TLB) against translate_lpgno() on machine 1 (tiny386's own), access by
+   access, the code not run.  An access that fast_miss() gives a host
+   address must be one tiny386 translates to that RAM; one it gives MMIO's
+   physical address, one tiny386 translates there; NULL with -1, a page
+   crossed (tiny386 not asked), a fault, or a page beyond RAM.  Then the
+   two machines compared as after a step, the exception and its error code
+   too, and the fast TLB's invariants. */
+static long np_access, np_fault, np_refill;
+static int verbose_runs;        /* (set below) */
+static const char *probe(uword lin, int size, int wr)
+{
+	CPUI386 *c0 = M[0].cpu, *c1 = M[1].cpu;
+	struct fast_tlb_entry *tab = fast_tlb_check(c0);
+	uword mm = 0, pa = 0;
+	u8 *h = fast_miss(c0, tab, lin, size, wr, &mm);
+	int cross = (lin & 0xfff) > (uword) (0x1000 - size);
+	int miss = c1->tlb.tab[(lin >> 12) % tlb_size].lpgno != lin >> 12;
+	bool ok = !cross && translate_lpgno(c1, wr ? 2 : 1, lin >> 12, lin, c1->cpl, &pa);
+	np_access++;
+	np_refill += !cross && miss;
+	np_fault += !cross && !ok;
+	if (cross || !ok)
+		return h || mm != (uword) -1 ? "a host address or MMIO for a page crossed or a fault" : NULL;
+	if (in_iomem(pa & ~0xfffu))
+		return h || mm != pa ? "MMIO" : NULL;
+	if ((pa & ~0xfffu) > MEM - 0x1000)
+		return h || mm != (uword) -1 ? "a page beyond RAM" : NULL;
+	return h != M[0].mem + pa ? "the host address" : NULL;
+}
+
+static int refill_probes(int seed)
+{
+	static const char *const what = "the lean TLB refill, fast_miss() probed (mode n)";
+	int keep_glfb = glfb;
+	glfb = 0;
+	for (int i = 0; i < 2; i++) {
+		mach_new(&M[i], i == 0);
+		setup_refill(M[i].mem, M[i].cpu);
+		M[i].cpu->excno = 0;
+		M[i].cpu->excerr = 0;
+	}
+	CPUI386 *c0 = M[0].cpu, *c1 = M[1].cpu;
+	rs = 0x2545f4914f6cdd1dull ^ ((uint64_t) seed * 0x100000001b3ull);
+	for (int k = 0; k < 4; k++) rnd(0);
+	/* the entries changed between accesses (physical addresses), and what
+	   a directory entry may be pointed at */
+	uword ents[48];
+	int ne = 0;
+	for (int k = 0; k < NTB; k++)
+		ents[ne++] = PT2_PHYS + (((TB >> 12) + k) & 1023) * 4;
+	ents[ne++] = PT2_PHYS + (((TB + alias_off()) >> 12) & 1023) * 4;
+	for (int d = 1; d < 8; d++)
+		ents[ne++] = PD_PHYS + d * 4;
+	ents[ne++] = PD_PHYS + 0x3f0 * 4;
+	for (int j = 0; j < 4; j++) {
+		ents[ne++] = PT3_PHYS + j * 4;
+		ents[ne++] = 0xa0000 + j * 4;
+		ents[ne++] = PT5_PHYS + j * 4;
+		ents[ne++] = PT6_PHYS + j * 4;
+		ents[ne++] = PT7_PHYS + j * 4;
+	}
+	static const uword tables[] = { PT2_PHYS, PT3_PHYS, PT5_PHYS, PT6_PHYS, PT7_PHYS, PD_PHYS, 0x300000, MEM, 0xa0000 };
+	static const uword dd[] = { 0, 1, 2, 3, 4, 5, 6, 7, 0x3f0 };
+	crash_name = what;
+	crash_seed = seed;
+	int bad = 0;
+	long n, acc0 = np_access, ref0 = np_refill, flt0 = np_fault;
+	for (n = 0; n < 900 && !bad; n++) {
+		crash_step = n;
+		const char *w = NULL;
+		int act = rnd(20), reps = 1;
+		uword cr3 = 0;
+		if (act == 19) {
+			/* the directory beyond RAM or at A0000h, for a few accesses */
+			cr3 = chance(2) ? 0x300000 : 0xa0000;
+			tlb_clear(c0); tlb_clear(c1);
+			c0->cr3 = c1->cr3 = cr3;
+			reps = 1 + rnd(3);
+			act = 0;
+		}
+		if (act < 12) {
+			for (int r = 0; r < reps && !w; r++) {
+				int k = rnd(4), size = 1 << rnd(3);
+				uword lin = k == 0 ? tbk(rnd(NTB)) : k == 1 ? tbk(0) + alias_off() :
+					k == 2 ? ((1 + rnd(7)) << 22) + rnd(4) * 0x1000 : SM + dd[rnd(9)] * 0x1000;
+				lin += size > 1 && chance(12) ? 0x1000 - size + 1 + rnd(size - 1) : rnd(0x1000 - size + 1);
+				w = probe(lin, size, rnd(2));
+			}
+			if (cr3) {
+				tlb_clear(c0); tlb_clear(c1);
+				c0->cr3 = c1->cr3 = PD_PHYS;
+			}
+		} else if (act < 14) {
+			/* accessed and dirty bits cleared without INVLPG */
+			uword e = ents[rnd(ne)];
+			for (int i = 0; i < 2; i++)
+				M[i].mem[e] &= ~0x60;
+		} else if (act < 16) {
+			/* an entry made present or not, writable or not, user or
+			   not, or a directory entry pointed elsewhere, without INVLPG */
+			uword e = ents[rnd(ne)];
+			u32 v;
+			memcpy(&v, M[0].mem + e, 4);
+			if (e >= PD_PHYS && e < PD_PHYS + 0x1000 && chance(3))
+				v = tables[rnd(9)] | (v & 0xfff);
+			else
+				v ^= 1u << rnd(3);
+			for (int i = 0; i < 2; i++)
+				put32(M[i].mem, e, v);
+		} else if (act == 16) {
+			tlb_clear(c0); tlb_clear(c1);   /* MOV CR3, INVLPG */
+		} else if (act == 17) {
+			/* MOV CR0 changing WP: tiny386 empties its TLB first */
+			tlb_clear(c0); tlb_clear(c1);
+			c0->cr0 ^= CR0_WP;
+			c1->cr0 ^= CR0_WP;
+		} else {
+			c0->cpl = c1->cpl = rnd(4);
+		}
+		if (w) {
+			printf("  FAIL %s seed %d probe %ld: fast_miss() and translate_lpgno() differ: %s\n", what, seed, n, w);
+			fails++;
+			bad = 1;
+			break;
+		}
+		if (c0->excno != c1->excno || c0->excerr != c1->excerr) {
+			printf("  FAIL %s seed %d probe %ld: the exception (%d / %d) or its error code (%x / %x) differs\n",
+			       what, seed, n, c0->excno, c1->excno, (unsigned) c0->excerr, (unsigned) c1->excerr);
+			fails++;
+			bad = 1;
+			break;
+		}
+		const char *iw = check_fast_tlb();
+		if (iw) {
+			printf("  FAIL %s seed %d probe %ld: fast TLB invariant: %s\n", what, seed, n, iw);
+			fails++;
+			bad = 1;
+			break;
+		}
+		if (compare(what, seed, n))
+			bad = 1;
+	}
+	if (verbose_runs)
+		printf("  seed %d, %s: %s after %ld probes, %ld accesses (%ld refills, %ld page faults)\n", seed, what,
+		       bad ? "a difference" : "no difference", n, np_access - acc0, np_refill - ref0, np_fault - flt0);
+	for (int i = 0; i < 2; i++)
+		mach_free(&M[i]);
+	glfb = keep_glfb;
+	return bad;
+}
+
 /* one scenario: mode 0 real, 1 protected at level 0, 2 at level 3;
    since the v5.0 reviews: 3 virtual-8086, 4 16-bit protected with paging, 5
    level 1, 6 16-bit protected without paging, 7 level 1 reading a
@@ -2640,6 +3005,7 @@ static void setup_mode(int mode, u8 *mem, CPUI386 *cpu)
 		break;
 	case 33: fz_setup(mem, cpu); break;   /* v5.1 (WI-2's check): two memory operands at random */
 	case 24: setup_o(mem, cpu); break;   /* v5.1 (o): descriptor tables (hand) */
+	case 23: setup_refill(mem, cpu); break;   /* v5.1 (n): the lean TLB refill */
 	default: setup_pm16(mem, cpu, 0); break;
 	}
 	if (mode == 7 || mode == 13 || mode == 17)     /* interrupts on, so that the IRQ's handler (level 0) runs first */
@@ -2664,8 +3030,12 @@ static int run(int mode, int seed)
 					      "jumps, calls and returns across code pages (k)",
 					      "a page read, then written (hand, l)",
 					      [22] = "the two-operand rule (hand)",
+					      [23] = "the lean TLB refill (hand)",
 					      [24] = "descriptor tables across pages, in MMIO, at RAM's end; null selectors (hand)",
-					      [33] = "two memory operands at random" };
+					      [33] = "two memory operands at random",
+	};
+	if (mode == 23 && refill_probes(seed))   /* v5.1 (n): fast_miss() itself first */
+		return 1;
 	glfb = seed & 1;
 	ksub = seed % 5;   /* (mode k) */
 	lsub = (seed >> 1) & 3;   /* (mode l) */
@@ -2702,6 +3072,7 @@ static int run(int mode, int seed)
 		gcpl1 = gnopriv = lsub == 3;
 		gcs_far = lsub == 0 ? 0x1b : lsub == 3 ? 0x31 : 0x08;
 	}
+	if (mode == 23) { g32 = 1; gcs_far = 0x08; }   /* v5.1 (n) */
 	if (mode == 24) gcs_far = 0x08;
 	if (mode == 33)
 		gcs_far = fz_level == 0 ? 0x08 : fz_level == 1 ? 0x31 : 0x1b;
@@ -2783,6 +3154,8 @@ static int run(int mode, int seed)
 		gen_l();
 	} else if (mode == 24) {
 		o_code();   /* v5.1 (o) */
+	} else if (mode == 23) {
+		gen_refill();   /* v5.1 (n) */
 	} else {
 		uword limit = gcode_phys + 0xf000;
 		while (gp < limit)
@@ -2807,12 +3180,13 @@ static int run(int mode, int seed)
 	int bad = 0;
 	char why[96] = "the step limit";
 	/* the hand-written cases (7, 8, 9, d, h, j) take a few instructions a
-	   step and end by 200 steps (l by 4,000, o by 5,000); the random code
-	   and k end by 50,000 */
+	   step and end by 200 steps (l and n by 4,000, o by 5,000); the random
+	   code and k end by 50,000 */
 	int hand = (mode >= 7 && mode <= 9) || mode == 13 || mode == 17 || mode == 19 || mode == 21 || mode == 22;
 	if (mode == 24) hand = 1;
 	/* (v5.1: case j's REPs and its level 3 part, about 900 instructions) */
 	long steps_max = mode == 21 ? 4000 : mode == 19 ? 800 : hand ? 200 : 50000;
+	if (mode == 23) { hand = 1; steps_max = 4000; }   /* v5.1 (n): about 450 instructions, 14 page faults */
 	if (mode == 24) steps_max = 5000;   /* (o: about 330 instructions with its handlers) */
 	crash_name = names[mode];
 	crash_seed = seed;
@@ -2899,6 +3273,8 @@ static int run(int mode, int seed)
 	if (step >= steps_max)
 		snprintf(why, sizeof(why), "the step limit (at %04x:%08x, CR2 %08x)", (unsigned) a->seg[SEG_CS].sel,
 			 (unsigned) a->next_ip, (unsigned) a->cr2);
+	if (mode == 23 && !bad)   /* v5.1 (n) */
+		bad = refill_log_check(seed, why);
 	if (verbose_runs) {
 		u32 c0, c1, c2, c3, p21, p2b;
 		memcpy(&c0, M[0].mem + CNT_PHYS, 4); memcpy(&c1, M[0].mem + CNT_PHYS + 4, 4);
@@ -2946,12 +3322,14 @@ int main(int argc, char **argv)
 {
 	int seeds = argc > 1 ? atoi(argv[1]) : 40;
 	int first = argc > 2 ? atoi(argv[2]) : 1;
-	/* argv[3]: the modes, a character each (0 to 9, a to o, x) */
+	/* argv[3]: the modes, a character each (0 to 9, a to z); by default
+	   all, a line for each release's or work item's */
 	const char *modes = argc > 3 ? argv[3] :
 		"0123456789abcdefghij"
 		"k"     /* v5.1 (WI-1): jumps, calls and returns across code pages */
 		"l"     /* v5.1 (WI-1): a page read, then written */
 		"m"     /* v5.1: the two-operand rule */
+		"n"     /* v5.1, WI-4: the lean TLB refill */
 		"o"     /* v5.1, WI-3: descriptor tables */
 		"x"     /* v5.1 (WI-2's check): two memory operands at random */
 		;
