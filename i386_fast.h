@@ -865,9 +865,15 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	} while (0)
 	/* v5.1: the two-operand rule where the first operand is MMIO, which has
 	   no fast entry (MOVS from the VGA window): with paging, the
-	   destination is taken only where its fast entry hits, so that its
-	   lookup leaves tiny386's TLB as it is; a miss goes to tiny386 */
-#define FAST_DEST_HIT(lin) (!(cpu->cr0 & CR0_PG) || ftlb[((lin) >> 12) % tlb_size].wtag == ((lin) >> 12))
+	   destination is looked up only where tiny386's TLB holds its page, so
+	   that the lookup leaves tiny386's TLB as it is (an entry that refuses
+	   the store fast_miss() leaves to tiny386); anything else goes to
+	   tiny386.  (Since WI-2's check, tiny386's entry and not the fast
+	   entry's write tag: a copy within a page of the VGA window, or into
+	   one tiny386 holds, stays here as in v5.0; 22 bytes of internal RAM,
+	   where also refilling an index that does not hold the source's page
+	   cost 88.) */
+#define FAST_DEST_HELD(lin) (!(cpu->cr0 & CR0_PG) || cpu->tlb.tab[((lin) >> 12) % tlb_size].lpgno == ((lin) >> 12))
 #define STACK_PTR2(p, d, size, wr, H1) do { \
 		uword _sp = (REGi(4) + (d)) & sp_mask; \
 		FPTR2(p, SEG_SS, _sp, size, wr, H1); \
@@ -1887,7 +1893,7 @@ movs_io:   /* the source MMIO (v5.1: a destination that is MMIO goes to
 	      known (an MMIO read has side effects) */
 		ks = fast_where(cpu, ftlb, nullsegs, ss, SI_, n, 0, &s, &ps);
 		if (!ks) goto slow;
-		if (!FAST_DEST_HIT(cpu->seg[SEG_ES].base + DI_)) goto slow;
+		if (!FAST_DEST_HELD(cpu->seg[SEG_ES].base + DI_)) goto slow;
 		kd = fast_where(cpu, ftlb, nullsegs, SEG_ES, DI_, n, 1, &d, &pd);
 		if (!kd) goto slow;
 movs_one:
@@ -1949,7 +1955,7 @@ movs_rep_io: {   /* MMIO at one end or both (v5.0; since v5.1 the source
 			/* (the destination's address from di again: ld kept alive
 			   to here cost the whole REP loop registers, 4 host
 			   instructions a REP MOVS, mb) */
-			if (!FAST_DEST_HIT(cpu->seg[SEG_ES].base + di)) goto slow;
+			if (!FAST_DEST_HELD(cpu->seg[SEG_ES].base + di)) goto slow;
 			int kd = fast_where(cpu, ftlb, nullsegs, SEG_ES, di, n, 1, &d, &pd);
 			if (!kd) goto slow;
 			/* (a read entry may be the frame buffer's; a write
