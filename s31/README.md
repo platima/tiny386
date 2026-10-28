@@ -60,6 +60,8 @@ s31/
   BUILD-NOTES.md          how each release was built and checked
   STATUS-LED.md           the status LED's colours and blinks
   FAST-CPU.md             v5.0: the fast interpreter from tab5-pc, how it stays tiny386, its tests and counts
+  PROFILE.md              v5.1: the profiler ([esp] profile = 1), PROFILE.TXT, and the report on the PC
+  profile/                profile_report.py: PROFILE.TXT and tiny386.elf into a report
   THIRD_PARTY.md          code from other projects (tab5-pc's fast interpreter), with its MIT notice
   LINE-OUT.md             the DOS board's line out and speakers
   REVIEW-*.md             the independent reviews, as their authors left them

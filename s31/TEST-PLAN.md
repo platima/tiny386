@@ -1656,6 +1656,71 @@ desktop, dragging a window, typing in Notepad. The figures decide what comes nex
 instructions a second against the PC's counts calibrate every estimate in `BUILD-NOTES.md` 33.6.
 
 
+## 19. v5.1: a profile run (`[esp] profile = 1`)
+
+v5.0 is faster, and you want more [reported: 2026-10-28]. Before v5.1 changes the CPU again, one run
+with the profiler shows where core 1's time goes on the board itself: in which of the firmware's
+functions and lines, how much of it waiting on flash and PSRAM, and what Windows was running
+(`PROFILE.md`). It is off unless the ini turns it on, and with it off the app is v5.0 for the
+guest, instruction for instruction [verified on the PC: `PROFILE.md` 7 and 8]. Nothing of it has
+run on a board [unknown]: the first run also tells whether the S31's PC record works as ESP-IDF's
+headers say.
+
+### 19a. The app and the ini
+
+1. The app with the profiler, as the release that carries it says (`FLASH.txt` 3), the same way as
+   v5.0's. Note which image set you write (`korvo1-dualboot`, or `korvo1-standalone`): the report
+   needs that set's `tiny386.elf`.
+2. In the ini you start (`win95-sd.ini`), under `[esp]`, the line `profile = 1`. Keep everything
+   else as on v5.0 (`fast_cpu`, `double_buffer`, `pace_quiet`, `vbe_blocks`), so that the profile
+   is of the setup you run.
+3. The card stays in, and `/sdcard/tiny386` (the ini's folder) must have room for a few files of
+   up to about 200 KB each.
+
+### 19b. The boot console
+
+After the ini's settings, a yellow line:
+
+    Profile: on ([esp] profile = 1). Core 0 samples core 1 about 2000 times a second while the PC runs, and writes /sdcard/tiny386/PROFILE.TXT every 60 s, on Ctrl+Alt+F8 (and PROF01.TXT, PROF02.TXT, ... then) and when the PC is switched off; the guest waits while it is written. Tables: 178 KiB of PSRAM.
+
+and after `PC built.`, `Profile: sampling from now.` **Photo 1**: the console, with both, the two
+`Internal RAM free` lines and `PSRAM free`. A yellow `profile = 1 is ignored: ...` line says why
+not (no room in PSRAM, the ini not on the card, the timer): a photo of it, please.
+
+### 19c. What to run
+
+1. Start Windows as usual and wait for the desktop. About a minute after the PC started, the first
+   `PROFILE.TXT` is written; the guest waits a moment for it.
+2. Start T386MON. Just before **F5**, press **Ctrl+Alt+F8** (`PROF01.TXT`). Leave the mouse alone
+   until "Tests done", then press **Ctrl+Alt+F8** again (`PROF02.TXT`). The two files mark the
+   tests: the report can show that stretch alone.
+3. A minute of ordinary use: open a folder or two, drag a window, type in Notepad. Then
+   **Ctrl+Alt+F8** once more (`PROF03.TXT`).
+4. Ctrl+Alt+F12 shows the log: the `Profile: ... written` lines have each file's size and how long
+   the guest waited for it. **Photo 2**: those lines, and any yellow `Profile:` line.
+5. Shut Windows down. If the PC switches itself off, `PROFILE.TXT` is written once more (`end`);
+   if not, the last minute's is on the card. Close T386MON first, as always, so its log is on the
+   disk.
+
+### 19d. If it goes another way
+
+* **`core 1's PC record gave only N places`** (yellow, after the first file): the register does
+  not follow core 1 on this chip as ESP-IDF's headers say. The guest's half of the files still
+  holds; send them anyway, with the photo.
+* **`... samples of core 1's PC are outside its code`**: the same, another way.
+* **A write taking long** (more than about 300 ms in its line) or a hiccup in the picture or the
+  sound once a minute: note it; it is the guest waiting for the card.
+* **Anything that looks different from v5.0** with `profile = 1`: take `profile = 1` out and try
+  again; if it goes away, that is the profiler's, and worth a photo.
+
+### 19e. What to send back
+
+`PROFILE.TXT`, `PROF01.TXT` to `PROF03.TXT` from `/sdcard/tiny386` (read on the PC after the run),
+Photos 1 and 2, which image set was flashed, and `C:\T386MON.LOG`. Then take `profile = 1` out of
+the ini (or set it to 0). The report is made on the PC with `s31/profile/profile_report.py` and
+that image set's `tiny386.elf` (`PROFILE.md` 6).
+
+
 ## Other ways to run it
 
 * tiny386 alone, replacing Linux: `flash-standalone.bat COM10` (FLASH.txt 5), Linux powered off

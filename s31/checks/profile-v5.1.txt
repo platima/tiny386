@@ -1,0 +1,223 @@
+v5.1's profiler ([esp] profile = 1, s31/PROFILE.md): the checks behind PROFILE.md 7 and 8,
+made 2026-10-28 in WSL on the branch v51-sampler (from s31-v5.0, 0d37002). Scripts in
+~/org2/v51/sampler/scripts; nothing was flashed, no serial port opened, nothing pushed.
+
+== 1. Builds: in the tree (scripts/bt.sh, build.sh's folder names), v5.0 (0d37002) and this branch
+-- v5.0
+== korvo1 (72 s)
+tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+│ DIRAM               │       262300 │    52.07 │         241444 │        503744 │
+Total image size: 1062004 bytes (.bin may be padded larger)
+== dosboard (77 s)
+│ DIRAM               │       264542 │    52.52 │         239202 │        503744 │
+Total image size: 1082688 bytes (.bin may be padded larger)
+-- this branch (wt3)
+(git archive of bab8da3)
+== korvo1 (118 s)
+tiny386/esp/main/i2s.c:86:13: warning: 'i2s_task' defined but not used [-Wunused-function]
+│ DIRAM               │       265316 │    52.67 │         238428 │        503744 │
+Total image size: 1078052 bytes (.bin may be padded larger)
+== dosboard (95 s)
+│ DIRAM               │       267548 │    53.11 │         236196 │        503744 │
+Total image size: 1098728 bytes (.bin may be padded larger)
+
+== 2. The code core 1 runs with profile = 0: every function of each object, v5.0's build against
+this branch's, compared with relocations by name and local labels renumbered (scripts/sameobj.sh)
+=== korvo1
+DIFFERENT: cpui386_new (4 lines)
+only in B: cpui386_prof_fields
+i386.c: 96 functions the same of 97
+pc.c: 26 functions the same of 26
+vga.c: 29 functions the same of 29
+only in B: speed_ask_save
+only in B: speed_totals
+speed.c: 26 functions the same of 26
+display.c: 5 functions the same of 5
+DIFFERENT: kbd_input_set_hotkey (143 lines)
+DIFFERENT: key_event (378 lines)
+kbd_input.c: 21 functions the same of 23
+DIFFERENT: app_main (3244 lines)
+DIFFERENT: i386_task (833 lines)
+DIFFERENT: parse_ini (1006 lines)
+DIFFERENT: save_settings (162 lines)
+esp_main.c: 23 functions the same of 27
+=== dosboard
+DIFFERENT: cpui386_new (4 lines)
+only in B: cpui386_prof_fields
+i386.c: 96 functions the same of 97
+pc.c: 26 functions the same of 26
+vga.c: 29 functions the same of 29
+only in B: speed_ask_save
+only in B: speed_totals
+speed.c: 25 functions the same of 25
+display.c: 5 functions the same of 5
+DIFFERENT: kbd_input_set_hotkey (143 lines)
+DIFFERENT: key_event (378 lines)
+kbd_input.c: 21 functions the same of 23
+DIFFERENT: app_main (3189 lines)
+DIFFERENT: i386_task (833 lines)
+DIFFERENT: parse_ini (1006 lines)
+DIFFERENT: save_settings (162 lines)
+esp_main.c: 23 functions the same of 27
+-- run_pc()'s loop (inlined into i386_task()), from the call of speed_run_init() to the first
+   disk_errors(): instructions and registers, branch targets as labels
+korvo1: the loop, the same 65 instructions
+korvo1: calls in i386_task() only in B: > profile_start > profile_write 
+korvo1: calls in i386_task() only in A: 
+dosboard: the loop, the same 65 instructions
+dosboard: calls in i386_task() only in B: > profile_start > profile_write 
+dosboard: calls in i386_task() only in A: 
+
+== 3. v4.6's three Windows 95 runs (scripts/regress51.sh): the harness built from this tree as
+the board builds the core; on, off (-DI386_FAST_DEFAULT=0), and the stand-in profiler
+(tests/host/profile/standin.sh) sampling about 2,000 times a second and writing a file every
+4,000 samples. Disk checks: each run's diskcheck.txt is v5.0's run's byte for byte.
+on-b1                  END t=331.032 s insns=588301033 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 9 s
+on-restart             END t=1411.032 s insns=1304341904 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 39 s
+on-msdos               END t=1411.032 s insns=1337723352 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 35 s
+off-b1                 END t=331.032 s insns=588301033 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 9 s
+off-restart            END t=1411.032 s insns=1304341904 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 39 s
+off-msdos              END t=1411.032 s insns=1337723352 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 39 s
+standin-b1             END t=331.032 s insns=588301033 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 8 s
+standin-restart        END t=1411.032 s insns=1304341904 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 33 s
+standin-msdos          END t=1411.032 s insns=1337723352 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 34 s
+standin-b1: 4 files written; last: [standin] /home/owner/org2/v51/sampler/runs/standin-b1.PROFILE.TXT written (end): 13067 samples, 79233 bytes, 303 us
+standin-restart: 14 files written; last: [standin] /home/owner/org2/v51/sampler/runs/standin-restart.PROFILE.TXT written (end): 54604 samples, 124586 bytes, 611 us
+standin-msdos: 14 files written; last: [standin] /home/owner/org2/v51/sampler/runs/standin-msdos.PROFILE.TXT written (end): 54111 samples, 125689 bytes, 591 us
+reference (v4.6 and v5.0): b1 END insns=588301033, restart 1304341904, msdos 1337723352
+done
+(final code) standin-b1             END t=331.032 s insns=588301033 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 7 s
+(final code) standin-restart        END t=1411.032 s insns=1304341904 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 35 s
+(final code) standin-msdos          END t=1411.032 s insns=1337723352 | taskbar first seen at t=211.032 | outcome: desktop (desktop seen at t=211 s) | 39 s
+(final code) standin-b1: 4 files written; last: [standin] /home/owner/org2/v51/sampler/runs/standin-b1.PROFILE.TXT written (end): 13279 samples, 80540 bytes, 488 us
+(final code) standin-restart: 15 files written; last: [standin] /home/owner/org2/v51/sampler/runs/standin-restart.PROFILE.TXT written (end): 56100 samples, 118066 bytes, 530 us
+(final code) standin-msdos: 15 files written; last: [standin] /home/owner/org2/v51/sampler/runs/standin-msdos.PROFILE.TXT written (end): 59319 samples, 122573 bytes, 634 us
+(final code) standin-b1             diskcheck: sectors changed: 6620 in 143 ranges   first ranges: 64, 128-134, 136, 149, 157, 174, 264, 328-334, 336, 349, 357, 374, 464-465, 512, 528-529, 1270, 265520-265551, 265568-265578, 265584-265586, 265632, 265680, 265696-265699, 265712-265800, 265808-266062 ... 
+(final code) standin-restart        diskcheck: sectors changed: 56175 in 363 ranges   first ranges: 64, 128-129, 132-133, 136-137, 149, 157, 171, 174, 180, 188-195, 264, 328-329, 332-333, 336-337, 349, 357, 371, 374, 380, 388-395, 464-465, 496-512, 528-529, 545 ... 
+(final code) standin-msdos          diskcheck: sectors changed: 56592 in 337 ranges   first ranges: 64, 128-130, 132-133, 136-137, 149, 157, 171, 174, 180, 188-194, 264, 328-330, 332-333, 336-337, 349, 357, 371, 374, 380, 388-394, 464-465, 512, 528-529, 545 ... 
+
+== 4. The lockstep tester (tests/lockstep, scripts/gate51.sh): v4.6's build
+(~/org2/v50/lock/builds/ref) against this tree, one workload at a time
+built /home/owner/org2/v51/sampler/gate/b-fast/headless
+built /home/owner/org2/v51/sampler/gate/b-off/headless
+fast  b1       RESULT: no difference in b1 | ref 11.1 s, cand 8.2 s; exit status ref 0, cand 0
+fast  restart  RESULT: no difference in restart | ref 42.8 s, cand 36.2 s; exit status ref 0, cand 0
+fast  msdos    RESULT: no difference in msdos | ref 52.0 s, cand 44.9 s; exit status ref 0, cand 0
+fast  bench    RESULT: no difference in bench | ref 0.5 s, cand 0.3 s; exit status ref 0, cand 0
+fast  vbe      RESULT: no difference in vbe | ref 0.8 s, cand 0.6 s; exit status ref 0, cand 0
+fast  t386mon  RESULT: no difference in t386mon | ref 18.5 s, cand 15.2 s; exit status ref 0, cand 0
+off   b1       RESULT: no difference in b1 | ref 14.5 s, cand 14.3 s; exit status ref 0, cand 0
+off   restart  RESULT: no difference in restart | ref 52.2 s, cand 52.6 s; exit status ref 0, cand 0
+off   msdos    RESULT: no difference in msdos | ref 43.9 s, cand 44.3 s; exit status ref 0, cand 0
+off   bench    RESULT: no difference in bench | ref 0.4 s, cand 0.4 s; exit status ref 0, cand 0
+off   vbe      RESULT: no difference in vbe | ref 0.8 s, cand 0.7 s; exit status ref 0, cand 0
+off   t386mon  RESULT: no difference in t386mon | ref 22.8 s, cand 22.5 s; exit status ref 0, cand 0
+gate wall 339 s
+  fast b1:   disk image after the run: the same (sha256 248cdd0473f55199)
+  fast restart:   disk image after the run: the same (sha256 0991749feee656d8)
+  fast msdos:   disk image after the run: the same (sha256 36979e52115af450)
+  fast t386mon:   disk image after the run: the same (sha256 35c2db9b72859c03)
+
+== 5. Host tests (tests/host/run.sh)
+PASS ps2 queue lock, i8042.c of this tree
+PASS ps2 queue lock test catches the bug in pristine i8042.c
+PASS boot console: text, colours, scrolling, ring, hand-over, crash screen, repeated lines, UART queue
+PASS vga.c: retrace against the clock, rows redrawn, clears from the other core, placement
+PASS vga.c on the DOS board: text, 16 and 256 colours, VBE whole, scaled and 8-bit, at 800x600
+PASS vga.c, korvo1: VBE pictures from the blocks written are as the old loop and v4.0-base draws them, pixel for pixel; the bank window
+PASS vga.c, dosboard: VBE pictures from the blocks written are as the old loop and v4.0-base draws them, pixel for pixel; the bank window
+PASS vga.c, korvo1: a clear is made by the picture after it, the same pictures as a memset(), no page stored into for nothing
+PASS vga.c, korvo1: the clear test catches v4.1's memset() (pictures right, pages stored into for nothing)
+PASS vga.c, dosboard: a clear is made by the picture after it, the same pictures as a memset(), no page stored into for nothing
+PASS vga.c, dosboard: the clear test catches v4.1's memset() (pictures right, pages stored into for nothing)
+PASS vga.c, korvo1: a text picture after a new font or character map is a whole redraw's, and no more is drawn when nothing changed
+PASS vga.c, korvo1: the font test catches v4.3's text drawing (old glyphs left after a new font)
+PASS vga.c, dosboard: a text picture after a new font or character map is a whole redraw's, and no more is drawn when nothing changed
+PASS vga.c, dosboard: the font test catches v4.3's text drawing (old glyphs left after a new font)
+PASS vga.c, korvo1: quiet moments counted from the last store, every store through the window noted
+PASS vga.c, dosboard: quiet moments counted from the last store, every store through the window noted
+PASS dbuf_boot.c, lcd_korvo1.c and display.c: two frame buffers at power-on after one restart at most (two when the panel starts with neither, none after a crash), the note, the fallback, and a frame buffer there for every picture
+PASS the display test sees v4.5's fault: no panel frame buffer, then a load at 0xfa50
+PASS the display test with Ctrl+Alt+F9 and VBE at 16 and 8 bits: with a panel the same buffers and pictures as v4.5, with none the PC's own
+PASS kbd_input.c: scancodes, sequences, typematic, keyboards, lights, hotkey, mouse
+PASS PS/2 mouse: backlog, clicks, sample rate, remote mode, reset, mouse off
+PASS PS/2 mouse: a reporting thread and the emulator's thread
+PASS PS/2 mouse: two threads, the emulator held up: every click through the ring's overflow
+PASS PS/2 mouse test catches the backlog fault in v3's i8042.c
+PASS hid_parse.c: boot keyboard, wheel mouse, receiver with report IDs, NKRO, vendor, tablet
+PASS usb_input.c: interfaces given up, unplugged, queued behind others; lights after an unplug; unplugged while being set up
+PASS usb_input.c test catches requests to a freed device in v3.1's usb_input.c
+PASS setup.c: ini search, the menu's list and default, lastboot.txt, paths of the Linux route's inis
+PASS ini_edit.c, setup.c: vbe_blocks saved in the ini (present, absent, commented, CR LF and LF, and more), written safely with no rename, a cut at each step, leftovers put right
+PASS bootmenu.c: countdown, keys, wrap, digits
+PASS speed.c: instructions a second, BENCH marks, lines as the Linux route prints them
+PASS perfport: found, snapshots, in and out of every width, the front end's values, the drawing's figures, two threads
+PASS vga_get_info(), korvo1: text, 16 and 256 colours, VBE, blank; VBE pictures, blocks and rows counted
+PASS vga_get_info(), dosboard: text, 16 and 256 colours, VBE, blank; VBE pictures, blocks and rows counted
+PASS perfport and Ctrl+Alt+F11, korvo1: vbe_blocks read as it is, the whole pictures after a change counted
+PASS perfport and Ctrl+Alt+F11, dosboard: vbe_blocks read as it is, the whole pictures after a change counted
+PASS perfport.h in C89 with nothing else, as a guest program includes it
+PASS ms7210.c: sequence, wire format, PLL retry, hot plug, EDID, DVI, InfoFrames
+PASS ms7210.c: the bus log against encoder.md 8.4, every row in order
+PASS ch9350.c: frames into kbd_input.c, as a DOS program reads them from ports 60h and 64h
+PASS AUDIO_RATE 44100: PC speaker, AdLib and SB16 pitch
+PASS AUDIO_RATE 48000: PC speaker, AdLib and SB16 pitch
+PASS storage.c: the card's partitions with ESP-IDF's FatFs, on images laid out as Plat's card
+PASS ide.c: disk images through ESP-IDF's FatFs, nothing read or written past their end
+PASS sd_part.c: a card partition as the guest's whole disk, nothing outside it written
+PASS misc.c: floppy drives 0 and 1 only, nothing past the image's end, refused writes counted
+PASS status LED: RMT and bit-banged timing for both LEDs, patterns, state machine, replay, beat watch, record, brightness, disk light
+PASS audio_mix.c: 32-bit mix, held at full scale and never wrapped, default level 2, the devices at their loudest
+PASS board_dosboard.h against the DOS board's netlist: every pin on its net, the header's GPIOs left free
+PASS dosboard.c board check: pins touched and when, Korvo-1s and DOS boards, J202 devices, GPIO46
+PASS board check test catches v3.5's GPIO49 pulse on a bare Korvo-1 and its stop on a J202 device
+PASS i8254.c and the CMOS: missed timer ticks dropped after a hold, one raised, on the counter's phase
+PASS the PIT test sees the burst in pristine i8254.c
+PASS the PIT test sees v3.9's i8254.c stop at mode 0
+PASS i386.c: double faults delivered through the task gate, the ring 3 stack put back, shutdown and a bad CR3 stop cleanly, LLDT checked
+PASS i386.c as the Korvo-1 builds it: accesses that cross a page go a byte at a time, none into the window's phys_mem or past RAM
+PASS i386.c without the board header: the same
+PASS the page-crossing test sees v4.5's bytes in the window's phys_mem and past RAM
+PASS i8257.c: DMA writes into the 0xA0000 window dropped, the rest of a transfer to RAM as before
+PASS the DMA test sees v4.5's bytes in the window's phys_mem
+PASS lfb: this tree: video memory changed only where each case stores, the marks exactly its blocks, vga_wrote
+PASS lfb: v4.6's tree: the same checks (the cases' expectations hold for the old path)
+PASS lfb: every byte of video memory and RAM, every mark, vga_wrote and the registers as v4.6 leaves them
+PASS lfb: RV32 host instructions counted for the bench pieces, v4.6 and this tree (the table above)
+PASS the fast interpreter as the Korvo-1 builds it: the same as tiny386's own at every step of random guest code
+PASS the fast interpreter without the board header: the same
+PASS the lockstep test catches a fault in the fast interpreter (fold)
+PASS the lockstep test catches a fault in the fast interpreter (sync)
+PASS the lockstep test catches a fault in the fast interpreter (cpl)
+PASS the lockstep test catches a fault in the fast interpreter (lfbmark)
+PASS the lockstep test catches a fault in the fast interpreter (lfbwtag)
+PASS prof_hist.c and prof_cpu.h: the tables, the guest's and the instruction's keys, PROFILE.TXT, the reader
+PASS prof_hist.c and prof_cpu.h, 32-bit with unsigned char (as on RV32): the same
+PASS profile_report.py: the functions, the instruction and the guest's page with their shares; another ELF refused
+PASS profile_report.py --since: the stretch between two files alone; the files the wrong way round refused
+host tests: 76 passed, 0 failed
+costs on this PC (the board's own are in PROFILE.TXT: sampler_cost, last_write_us):
+    prof_sample(): 21 ns a sample (4000000 samples; tables: host 6144 used, coarse 1536, guest 3001, ops 251)
+    prof_write() of those full tables: 186587 bytes in 0.40 ms (to /dev/null)
+test_prof_hist: 103 checks, 0 failed
+
+== 6. The sample and the file on RV32: qemu-riscv32 with jtrace, the board's -march, -O2
+(~/org2/v51/sampler/rvbench/bench.c: stretch 1 fills the board-size tables with 300,000
+samples; 2, 100,000 more with new keys; 3, 100,000 whose keys are in the tables; 4, one
+prof_write() of the full tables; each sample with prof_read_guest(), and the bench's own loop)
+stretch 1 total 74666051 loads 13879183 stores 7940088 outside 0 outloads 0 outstores 0
+stretch 2 total 24965381 loads 4645413 stores 2637396 outside 0 outloads 0 outstores 0
+stretch 3 total 24660823 loads 4609829 stores 2637469 outside 0 outloads 0 outstores 0
+stretch 4 total 4496822 loads 735863 stores 514033 outside 0 outloads 0 outstores 0
+stretch 5 total 4259 loads 795 stores 444 outside 0 outloads 0 outstores 0
+tables: host 6144 coarse 1536 guest 3072 ops 1; file 175573 bytes
+-- stretch 3 by function (riscv32 addr2line of each counted address), RV32 instructions:
+   8297840 prof_sample
+   5783980 add
+   4321329 prof_read_guest
+   4200012 main
+   1976112 hash
+   75582 prof_op_key
+   5967 modrm1
+   1 perf_mark
+   the profiler's part (all but main, the bench's own loop): 204.6 a sample

@@ -729,7 +729,7 @@ def report(prof, elf, elf_path, rom, a2l, top, out, src):
            mhz * g["run_us"] / g["insns"] if mhz else 0))
     o()
 
-    # -- where core 1 was
+    # == where core 1 was
     o("1. Core 1 by what the guest's CPU was doing")
     o("--------------------------------------------")
     o()
@@ -766,7 +766,7 @@ def report(prof, elf, elf_path, rom, a2l, top, out, src):
             o("  %s: %08x to %08x" % (r, lo, hi))
     o()
 
-    # -- the cache counters
+    # == the cache counters
     if prof.cache:
         o("3. The cache counters (ESP-IDF's esp_cache_cnt: core 0's and core 1's buses into the")
         o("   flash and PSRAM cache)")
@@ -791,7 +791,7 @@ def report(prof, elf, elf_path, rom, a2l, top, out, src):
         o.table(["unit", "core", "kind", "hits/s", "fills/s", "fills/hits", "stall events/s",
                  "writebacks/s", "fills per 1000 guest insns"], rows)
 
-    # -- host functions
+    # == host functions
     o("4. Host functions (core 1's PC, all samples, stalls included)")
     o("-------------------------------------------------------------")
     o()
@@ -823,7 +823,7 @@ def report(prof, elf, elf_path, rom, a2l, top, out, src):
           "6; %d in the totals only.)" % (coarse_n, lost))
         o()
 
-    # -- fast_exec() by handler and by line, from the source; the coarse
+    # == fast_exec() by handler and by line, from the source; the coarse
     # table's samples at their line's middle (a full host table puts the
     # PCs first seen late there)
     every = list(prof.host) + [(line + 32, a, n) for line, a, n in prof.coarse]
@@ -868,7 +868,7 @@ def report(prof, elf, elf_path, rom, a2l, top, out, src):
             rows = [(h, share(n, infast), share(n, total), n) for h, n in byh.most_common(top)]
             o.table(["handler", "of fast_exec", "of all", "samples"], rows)
 
-    # -- source lines
+    # == source lines
     if lines:
         o("6. Source lines (addr2line: the innermost line, inlined code at its own line)")
         o("-----------------------------------------------------------------------------")
@@ -889,7 +889,7 @@ def report(prof, elf, elf_path, rom, a2l, top, out, src):
         o("6. Source lines: no addr2line for this ELF's machine (--addr2line).")
         o()
 
-    # -- the guest
+    # == the guest
     o("7. The guest")
     o("------------")
     o()
@@ -928,7 +928,7 @@ def report(prof, elf, elf_path, rom, a2l, top, out, src):
           % prof.meta["page_guess"])
         o()
 
-    # -- handed-over instructions
+    # == handed-over instructions
     if prof.ops:
         tot_ops = sum(n for k, n in prof.ops)
         o("8. The instructions tiny386's cpu_exec1() was doing (time-weighted)")
@@ -945,7 +945,7 @@ def report(prof, elf, elf_path, rom, a2l, top, out, src):
               "the page tiny386's fetch cache held.)" % prof.meta["op_unread"])
             o()
 
-    # -- the tables
+    # == the tables
     o("9. The tables")
     o("-------------")
     o()

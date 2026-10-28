@@ -423,3 +423,30 @@ and a register's bit offset is unsigned; REP is never interrupted part way; a 66
 masked by the code size; an instruction longer than 16 bytes reads on into the next physical page;
 code fetched from the cached code page is not checked again after a change of privilege level.
 Programs that depend on any of these behave as under v4.6 [inferred].
+
+
+## 12. v5.1: the profiler, and what it shows of the fast interpreter
+
+The counts of section 7 are host instructions under qemu: they cannot see core 1 wait on PSRAM or
+on flash. The profiler (`PROFILE.md`; `[esp] profile = 1`, off by default) samples core 1's PC from
+core 0 on the board, about 2,000 times a second, with the guest's state at the same moment, and
+writes the counts to the card. For the fast interpreter its report gives [verified: on the PC's
+stand-in, `PROFILE.md` 8]:
+
+* `fast_exec()`'s share of core 1, and each handler's (`op_8b`, `ALU6(op_38, ...) CMP`, `slow`,
+  ...) by the source line each sample's PC is at, so a handler's waits on PSRAM count where they
+  are;
+* how much of core 1 is in flash (`cpu_exec1()` since v5.0, section 5) and in internal RAM, with
+  the cache counters' lines fetched from flash and PSRAM each second and per 1,000 guest
+  instructions;
+* the instructions handed to `cpu_exec1()`, by their bytes and mode, weighted by the time they took
+  rather than by how often they ran: what to take into the fast interpreter next;
+* the guest's code by mode and region, and by area (the fast interpreter, handed over, halted).
+
+It changes nothing here: `i386.c` gains `cpui386_prof_fields()`, which hands out the addresses of
+the fields the profiler reads and is called once; every other function of `i386.c`, `fast_exec()`
+with them, compiles to the same instructions as in v5.0 (`cpui386_new()`'s `assert()` line number
+apart), and the guest runs as before, by the lockstep tester and the three Windows runs
+[verified: `PROFILE.md` 7 and 8]. The guest's EIP the profiler reads while the fast interpreter
+runs is where its step began (it keeps EIP to itself until the step ends); the code page it reads
+is the one being run, from tiny386's fetch cache, which the fast interpreter keeps up to date.
