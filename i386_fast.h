@@ -111,6 +111,12 @@
    only FPTR_ST() takes it, and stores and marks there.  Linear page numbers
    have 20 bits, and no tag (-1) never equals a page with this bit. */
 #define FAST_TAG_LFB 0x80000000u
+/* v5.1: fast_exec()'s hit test (FAST_PL()) puts a null segment's bit 20
+   beside a 20-bit linear page, and an access across a page must find
+   another index's tag there */
+_Static_assert(sizeof(uword) == 4 && tlb_size >= 2, "FAST_PL(): 20-bit linear pages, a crossing access at the next index");
+_Static_assert(!((1u << 20) & FAST_TAG_LFB), "FAST_PL()'s null segment bit is not FAST_TAG_LFB");
+_Static_assert((0xfffffu | (1u << 20)) != (uword) -1, "no FAST_PL() value is the empty tag (-1)");
 
 static noinline void IRAM_ATTR_FAST_EXEC fast_tlb_flush(CPUI386 *cpu)
 {
@@ -509,7 +515,10 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 		[0x60] = &&op_pusha, [0x61] = &&op_popa, [0x63] = &&op_arpl,
 		[0x64] = &&pfx_fs, [0x65] = &&pfx_gs, [0x66] = &&pfx_opsz, [0x67] = &&pfx_adsz,
 		[0x68] = &&op_push_iv, [0x69] = &&op_imul_iv, [0x6a] = &&op_push_ib, [0x6b] = &&op_imul_ib,
-		[0x70 ... 0x7f] = &&op_jcc_b,
+		[0x70] = &&op_jcc_b_0, [0x71] = &&op_jcc_b_1, [0x72] = &&op_jcc_b_2, [0x73] = &&op_jcc_b_3,
+		[0x74] = &&op_jcc_b_4, [0x75] = &&op_jcc_b_5, [0x76] = &&op_jcc_b_6, [0x77] = &&op_jcc_b_7,
+		[0x78] = &&op_jcc_b_8, [0x79] = &&op_jcc_b_9, [0x7a] = &&op_jcc_b_10, [0x7b] = &&op_jcc_b_11,
+		[0x7c] = &&op_jcc_b_12, [0x7d] = &&op_jcc_b_13, [0x7e] = &&op_jcc_b_14, [0x7f] = &&op_jcc_b_15,
 		[0x80] = &&op_grp1_b, [0x81] = &&op_grp1_v, [0x82] = &&op_grp1_b, [0x83] = &&op_grp1_vb,
 		[0x84] = &&op_84, [0x85] = &&op_85, [0x86] = &&op_86, [0x87] = &&op_87,
 		[0x88] = &&op_88, [0x89] = &&op_89, [0x8a] = &&op_8a, [0x8b] = &&op_8b,
@@ -638,35 +647,44 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 		} \
 	} while (0)
 	/* a memory operand's host address, or the instruction goes to tiny386;
-	   a store sets the page's dirty bit as translate_lpgno() does */
+	   a store sets the page's dirty bit as translate_lpgno() does.  v5.1:
+	   the hit is one compare, of the tag with FAST_PL(), the linear page of
+	   the access's last byte with bit 20 set if its segment is null.  An
+	   access that crosses a page never hits (a tag is always the page of
+	   its own index, modulo tlb_size, and the last byte's page is the next
+	   index), nor one through a null segment (no tag has bit 20: linear
+	   pages have 20 bits, FAST_TAG_LFB is bit 31, and no tag is -1).  The
+	   null segment's test is then the miss's first, before fast_miss() and
+	   before FPTR_ST()'s frame buffer test; a null segment always misses. */
+#define FAST_PL(sg, lin, size) ((((lin) + (size) - 1) >> 12) | (((nullsegs >> (sg)) & 1u) << 20))
 #define FPTR(p, sg, off, size, wr) do { \
-		if (unlikely(nullsegs) && (nullsegs & (1 << (sg)))) goto slow; \
 		uword _lin = cpu->seg[sg].base + (off); \
-		uword _pg = _lin >> 12; \
-		struct fast_tlb_entry *_e = &ftlb[_pg % tlb_size]; \
-		if (likely(((wr) ? _e->wtag : _e->rtag) == _pg && \
-			   ((size) == 1 || (_lin & 0xfff) <= 0x1000 - (size)))) { \
+		struct fast_tlb_entry *_e = &ftlb[(_lin >> 12) % tlb_size]; \
+		if (likely(((wr) ? _e->wtag : _e->rtag) == FAST_PL(sg, _lin, size))) { \
 			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
 			if ((wr) && unlikely(!(*_e->ppte & 0x40))) \
 				*_e->ppte |= 0x40; \
-		} else if (!(p = fast_miss(cpu, ftlb, _lin, (size), (wr), &mpaddr))) \
-			goto slow; \
+		} else { \
+			if (nullsegs & (1u << (sg))) goto slow; \
+			if (!(p = fast_miss(cpu, ftlb, _lin, (size), (wr), &mpaddr))) \
+				goto slow; \
+		} \
 	} while (0)
 	/* as FPTR, but an access to MMIO goes to the label (mpaddr set) */
 #define FPTR_IO(p, sg, off, size, wr, LABEL) do { \
-		if (unlikely(nullsegs) && (nullsegs & (1 << (sg)))) goto slow; \
 		uword _lin = cpu->seg[sg].base + (off); \
-		uword _pg = _lin >> 12; \
-		struct fast_tlb_entry *_e = &ftlb[_pg % tlb_size]; \
-		if (likely(((wr) ? _e->wtag : _e->rtag) == _pg && \
-			   ((size) == 1 || (_lin & 0xfff) <= 0x1000 - (size)))) { \
+		struct fast_tlb_entry *_e = &ftlb[(_lin >> 12) % tlb_size]; \
+		if (likely(((wr) ? _e->wtag : _e->rtag) == FAST_PL(sg, _lin, size))) { \
 			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
 			if ((wr) && unlikely(!(*_e->ppte & 0x40))) \
 				*_e->ppte |= 0x40; \
-		} else if (!(p = fast_miss(cpu, ftlb, _lin, (size), (wr), &mpaddr))) { \
-			if (mpaddr == (uword) -1) goto slow; \
-			msize = (size); \
-			goto LABEL; \
+		} else { \
+			if (nullsegs & (1u << (sg))) goto slow; \
+			if (!(p = fast_miss(cpu, ftlb, _lin, (size), (wr), &mpaddr))) { \
+				if (mpaddr == (uword) -1) goto slow; \
+				msize = (size); \
+				goto LABEL; \
+			} \
 		} \
 	} while (0)
 	/* as FPTR_IO for a store (msize set on a miss), and a store into a
@@ -674,20 +692,20 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   FAST_TAG_LFB) goes to LFBLABEL with mhost its host address and the
 	   page's dirty bit set as for RAM; the label stores the bytes and then
 	   sets the marks, as store8() to store32() do (v5.0, after the
-	   reviews) */
+	   reviews).  (v5.1: the frame buffer's test, in the miss, is one
+	   compare too: the last byte's page with FAST_TAG_LFB, which a
+	   crossing store never matches.) */
 #define FPTR_ST(p, sg, off, size, LABEL, LFBLABEL) do { \
-		if (unlikely(nullsegs) && (nullsegs & (1 << (sg)))) goto slow; \
 		uword _lin = cpu->seg[sg].base + (off); \
-		uword _pg = _lin >> 12; \
-		struct fast_tlb_entry *_e = &ftlb[_pg % tlb_size]; \
-		bool _in = (size) == 1 || (_lin & 0xfff) <= 0x1000 - (size); \
-		if (likely(_e->wtag == _pg && _in)) { \
+		struct fast_tlb_entry *_e = &ftlb[(_lin >> 12) % tlb_size]; \
+		if (likely(_e->wtag == FAST_PL(sg, _lin, size))) { \
 			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
 			if (unlikely(!(*_e->ppte & 0x40))) \
 				*_e->ppte |= 0x40; \
 		} else { \
+			if (nullsegs & (1u << (sg))) goto slow; \
 			msize = (size); \
-			if (_e->wtag == (_pg | FAST_TAG_LFB) && _in) { \
+			if (_e->wtag == ((((_lin) + (size) - 1) >> 12) | FAST_TAG_LFB)) { \
 				mhost = (u8 *) (uintptr_t) (_lin + _e->delta); \
 				if (unlikely(!(*_e->ppte & 0x40))) \
 					*_e->ppte |= 0x40; \
@@ -1227,10 +1245,11 @@ op_xlat: {
 	fw8(0, fm8(p));
 	NEXT; }
 
-	/* jumps, calls, returns, loops */
-op_jcc_b: { s8 d = *pc++;
-	if (fast_cond(cpu, pc[-2] & 15)) JUMP_REL(d);
-	NEXT; }
+	/* jumps, calls, returns, loops; Jcc short with a handler for each
+	   condition (v5.1), so that fast_cond() folds to it */
+#define JCC_B(c) op_jcc_b_##c: { s8 d = *pc++; if (fast_cond(cpu, c)) JUMP_REL(d); NEXT; }
+	JCC_B(0) JCC_B(1) JCC_B(2) JCC_B(3) JCC_B(4) JCC_B(5) JCC_B(6) JCC_B(7)
+	JCC_B(8) JCC_B(9) JCC_B(10) JCC_B(11) JCC_B(12) JCC_B(13) JCC_B(14) JCC_B(15)
 op_jcc_v: {   /* rel16/32 by the operand size (tiny386's Jv) */
 	int c = pc[-1] & 15;
 	sword d;
