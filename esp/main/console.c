@@ -1033,7 +1033,9 @@ void console_init(uint16_t *fb, int width, int height, console_flush_fn *flush)
 	/* what the last run left in the ring, before this run writes there */
 	if (ring_valid()) {
 		s_prev_crashed = s_ring.crashed == RING_CRASHED;
-		s_prev = malloc(PREV_SIZE);
+		/* v5.1: from PSRAM, as the text grids: read once, at the
+		   start, and 2,600 bytes of internal RAM kept free */
+		s_prev = con_alloc(PREV_SIZE);
 		if (s_prev)
 			s_prev_lines = console_ring_tail(s_prev, PREV_SIZE, PREV_LINES);
 	}

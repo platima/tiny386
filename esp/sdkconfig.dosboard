@@ -53,3 +53,36 @@ CONFIG_ESP_MM_CACHE_MSYNC_C2M_CHUNKED_OPS=y
 CONFIG_ESP_MM_CACHE_MSYNC_C2M_CHUNKED_OPS_MAX_LEN=0x8000
 # No time, date or build path in the images (see main/CMakeLists.txt).
 CONFIG_APP_REPRODUCIBLE_BUILD=y
+
+# v5.1: ESP-IDF code that need not be in internal RAM on this board goes to
+# flash, which gives 13,507 bytes of internal RAM back for tiny386's
+# cpu_exec1() (board_dosboard.h).  None of it is called with the cache off:
+# the only handlers that run then are ESP-IDF's own (its timer, the
+# watchdogs, the cross-core call), and they call none of it.
+# Light sleep is never used (and Wi-Fi is not built), so its code goes.
+# CONFIG_ESP_WIFI_SLP_IRAM_OPT is not set
+# CONFIG_PM_SLEEP_FUNC_IN_IRAM is not set
+# CONFIG_PM_SLP_IRAM_OPT is not set
+# No heap function or C library lock is called from such a handler.
+CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH=y
+# CONFIG_LIBC_LOCKS_PLACE_IN_IRAM is not set
+# The ring buffer's interrupt side: only the UART driver uses it, and its
+# handler is not in internal RAM (CONFIG_UART_ISR_IN_IRAM is off).
+CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH=y
+# The status LED's RMT, the panel's GDMA and the I2C master: their
+# handlers run from flash, a cache miss later at most.
+# CONFIG_RMT_ENCODER_FUNC_IN_IRAM is not set
+# CONFIG_RMT_TX_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_RMT_RX_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_GDMA_CTRL_FUNC_IN_IRAM is not set
+# CONFIG_GDMA_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_I2C_MASTER_ISR_HANDLER_IN_IRAM is not set
+# Drivers this firmware does not use (their defaults would keep GDMA's
+# functions in internal RAM).
+# CONFIG_SPI_MASTER_ISR_IN_IRAM is not set
+# CONFIG_SPI_SLAVE_ISR_IN_IRAM is not set
+# CONFIG_PARLIO_TX_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_PARLIO_RX_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_ANA_CMPR_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_GPTIMER_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_MCPWM_ISR_HANDLER_IN_IRAM is not set

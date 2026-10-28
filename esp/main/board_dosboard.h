@@ -33,15 +33,24 @@
 #define I386_FAST
 // Where the two run from.  The fast interpreter's loop (fast_exec(), about
 // 120 KB) and its helpers are in internal RAM (HP SRAM, no cache in the
-// way).  tiny386's cpu_exec1() (about 130 KB), to which the fast
-// interpreter hands about one instruction in 500 on Windows 95's boot and
-// one in 40 in T386MON's drawing tests at 16 colours, runs from flash
-// through the instruction cache: internal RAM is then left about as v4.6
-// left it, and fast_cpu = 0 is slower than v4.6.  With
-// I386_FAST_EXEC1_IRAM, cpu_exec1() stays in internal RAM too (fast_cpu = 0
-// then as fast as v4.6), which leaves about 110 KiB of internal RAM for
-// ESP-IDF's allocations at run time, against 236 KiB without it and v4.6's
-// 246 KiB (the Korvo-1's build; s31/FAST-CPU.md).
+// way).  v5.1: tiny386's cpu_exec1(), to which the fast interpreter hands
+// what it does not do (about one instruction in 500 on Windows 95's boot,
+// one in 40 in T386MON's drawing tests at 16 colours), is in internal RAM
+// again (I386_FAST_EXEC1_IRAM), as in v4.6: the hand-overs no longer go
+// through the 16 KB instruction cache, and fast_cpu = 0 runs from internal
+// RAM as v4.6 did.  It takes 123,778 bytes more of internal RAM than in
+// v5.0, where it ran from flash; the ESP-IDF code that sdkconfig.dosboard
+// moves to flash gives 13,507 back, and the build leaves 128,931 bytes
+// for ESP-IDF's allocations at run time (v5.0 239,202).  Without
+// I386_FAST_EXEC1_IRAM it runs from flash, as in v5.0.
+#define I386_FAST_EXEC1_IRAM
+// I386_EXEC1_SMALL, for when internal RAM is short: cpu_exec1() compiled
+// for size (GCC's -Os on it alone: 86,252 bytes rather than 123,782),
+// which leaves 32,000 bytes more for ESP-IDF.  fast_cpu = 0 then takes
+// about 6 per cent more host instructions than v4.6 (BENCH, counted under
+// qemu); the fast interpreter's hand-overs are as quick within a tenth of
+// a per cent.
+//#define I386_EXEC1_SMALL
 #if !defined(I386_FAST) || defined(I386_FAST_EXEC1_IRAM)
 #define IRAM_ATTR_CPU_EXEC1 IRAM_ATTR
 #else

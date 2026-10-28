@@ -35,6 +35,19 @@
 #else
 #define IRAM_ATTR_FAST_HELPER
 #endif
+/* v5.1: I386_EXEC1_SMALL (in a board header) compiles cpu_exec1() alone
+   for size, for a board that keeps it in internal RAM and is short of it.
+   GCC then inlines none of this -O3 file's small static helpers into it,
+   so the ones it calls instead (the address translations, tlb_clear(),
+   ENTER's helper) go where it is: IRAM_ATTR_EXEC1_HELPER.  Built without
+   it, they are inlined as before and the attribute changes nothing. */
+#ifdef I386_EXEC1_SMALL
+#define EXEC1_OPT __attribute__((optimize("Os")))
+#define IRAM_ATTR_EXEC1_HELPER IRAM_ATTR_CPU_EXEC1
+#else
+#define EXEC1_OPT
+#define IRAM_ATTR_EXEC1_HELPER
+#endif
 
 #ifdef I386_ENABLE_FPU
 #include "fpu.h"
@@ -654,7 +667,7 @@ static noinline void IRAM_ATTR fast_tlb_slot(CPUI386 *cpu, struct tlb_entry *ent
 #define FAST_TLB_CLEARED(cpu) do {} while (0)
 #endif
 
-static void tlb_clear(CPUI386 *cpu)
+static void IRAM_ATTR_EXEC1_HELPER tlb_clear(CPUI386 *cpu)
 {
 	FAST_TLB_CLEARED(cpu);
 	for (int i = 0; i < tlb_size; i++) {
@@ -888,22 +901,22 @@ static bool IRAM_ATTR translate8r(CPUI386 *cpu, OptAddr *res, int seg, uword add
 	return true;
 }
 
-static inline bool translate8(CPUI386 *cpu, OptAddr *res, int rwm, int seg, uword addr)
+static inline bool IRAM_ATTR_EXEC1_HELPER translate8(CPUI386 *cpu, OptAddr *res, int rwm, int seg, uword addr)
 {
 	return translate(cpu, res, rwm, seg, addr, 1, cpu->cpl);
 }
 
-static inline bool translate16(CPUI386 *cpu, OptAddr *res, int rwm, int seg, uword addr)
+static inline bool IRAM_ATTR_EXEC1_HELPER translate16(CPUI386 *cpu, OptAddr *res, int rwm, int seg, uword addr)
 {
 	return translate(cpu, res, rwm, seg, addr, 2, cpu->cpl);
 }
 
-static inline bool translate32(CPUI386 *cpu, OptAddr *res, int rwm, int seg, uword addr)
+static inline bool IRAM_ATTR_EXEC1_HELPER translate32(CPUI386 *cpu, OptAddr *res, int rwm, int seg, uword addr)
 {
 	return translate(cpu, res, rwm, seg, addr, 4, cpu->cpl);
 }
 
-static inline bool in_iomem(uword addr)
+static inline bool IRAM_ATTR_EXEC1_HELPER in_iomem(uword addr)
 {
 	return (addr >= 0xa0000 && addr < 0xc0000) || addr >= 0xe0000000;
 }
@@ -3588,7 +3601,7 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 
 #define RET() RETw(0, limm, 0)
 
-static bool enter_helper(CPUI386 *cpu, bool opsz16, uword sp_mask,
+static bool IRAM_ATTR_EXEC1_HELPER enter_helper(CPUI386 *cpu, bool opsz16, uword sp_mask,
 			 int level, int allocsz)
 {
 	assert(level != 0);
@@ -4396,7 +4409,7 @@ static bool verbose;
 #define C_16(_1, ...) CX(_1) C_15(__VA_ARGS__)
 #define C(...) PASTE(C_, ARGCOUNT(__VA_ARGS__))(__VA_ARGS__)
 
-static bool IRAM_ATTR_CPU_EXEC1 cpu_exec1(CPUI386 *cpu, int stepcount)
+static bool EXEC1_OPT IRAM_ATTR_CPU_EXEC1 cpu_exec1(CPUI386 *cpu, int stepcount)
 {
 #ifndef I386_OPT2
 #define eswitch(b) switch(b)
