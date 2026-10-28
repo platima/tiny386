@@ -59,10 +59,24 @@
  * through a stale host address) is reported as a failure of the scenario
  * it was in.
  *
+ * v5.1 (WI-1: the loop's state in registers, the code window's one
+ * bound, new code pages through the fast TLB, its one-compare hit test):
+ * mode k, jumps, calls and returns across code pages, landing in the last
+ * 16 bytes of the page before (or the one before that) and below them,
+ * and forward into the last 16 bytes of the next, in 16 and 32-bit code
+ * at levels 0 and 3, with the code's pages mapped out of order; mode l, a
+ * page read and then written, where the write must fault (a user
+ * read-only page at level 3 or 1, a read-only page at level 0 with
+ * CR0.WP set) and where it must not (CR0.WP clear), stores through each
+ * kind of store path, accesses through a segment register loaded with a
+ * null selector, and code run from the frame buffer.  The frame buffer's
+ * host memory is 4 GiB above guest RAM (on a 64-bit host), so that a host
+ * address of it taken as a 32-bit physical address lands in RAM.
+ *
  *   test_fast_cpu [SEEDS [FIRST_SEED [MODES]]]
  *
  * MODES: the scenarios for each seed, one character each (run() names
- * them; the default is all twenty, 0123456789abcdefghij).
+ * them; the default is all twenty-two, 0123456789abcdefghijkl).
  *
  * Built with i386.c included (I386_FAST), so that tiny386's internals can
  * be compared.  Exit status 0 when the two agree at every step.
@@ -73,6 +87,8 @@
 #include <stdarg.h>
 #include <signal.h>
 #include <unistd.h>
+#include <stdint.h>
+#include <sys/mman.h>
 
 /* the scenario and step under way, for on_crash() (v5.1) */
 static const char *volatile crash_name = "(none)";
@@ -84,12 +100,18 @@ static volatile long crash_step;
 #define LFB_BASE 0xe0000000u
 #define LFB_SIZE 0x10000
 #define LFB_MARK_SHIFT 9        /* a mark for each 512 bytes, as VGA_DIRTY_SHIFT */
+/* v5.1: where the frame buffer's host memory is, from guest RAM's: 4 GiB
+   and this above it (a part of guest RAM that no scenario uses) */
+#define LFB_ALIAS 0x1d0000u
 
 struct mach {
 	CPUI386 *cpu;
 	u8 *mem;
+	u8 *blk;                /* v5.1: guest RAM and the frame buffer in one reservation (or NULL) */
+	size_t blklen;
+	u8 *lfbp;               /* the frame buffer's host memory: in blk, or lfb[] */
 	u8 vga[0x20000];        /* behind the window at A0000h */
-	u8 lfb[LFB_SIZE];       /* behind E0000000h */
+	u8 lfb[LFB_SIZE];       /* behind E0000000h, when blk could not be had */
 	uint64_t log;           /* a hash of every port and video memory access */
 	unsigned nlog;
 	int vec;                /* the interrupt the PIC gives */
@@ -140,9 +162,9 @@ static void io_w8(void *o, int port, u8 v)
 		if ((v & 3) == 0)
 			cpu_cb_set_lfb(cb, 0, 0, NULL);
 		else if ((v & 3) == 2)
-			cpu_cb_set_lfb(cb, LFB_BASE + 0x8000, LFB_SIZE - 0x8000, m->lfb + 0x8000);
+			cpu_cb_set_lfb(cb, LFB_BASE + 0x8000, LFB_SIZE - 0x8000, m->lfbp + 0x8000);
 		else
-			cpu_cb_set_lfb(cb, LFB_BASE, LFB_SIZE, m->lfb);
+			cpu_cb_set_lfb(cb, LFB_BASE, LFB_SIZE, m->lfbp);
 	}
 }
 static void io_w16(void *o, int port, u16 v) { io_w8(o, port, v); io_w8(o, port + 1, v >> 8); }
@@ -151,7 +173,7 @@ static void io_w32(void *o, int port, u32 v) { io_w16(o, port, v); io_w16(o, por
 static u8 *mmio(struct mach *m, uword a)
 {
 	if (a >= LFB_BASE && a - LFB_BASE < LFB_SIZE)
-		return &m->lfb[a - LFB_BASE];
+		return &m->lfbp[a - LFB_BASE];
 	if (a >= 0xa0000 && a < 0xc0000)
 		return &m->vga[a - 0xa0000];
 	return NULL;
@@ -786,10 +808,43 @@ static void gate(u8 *mem, int vec, u32 sel, u32 off, u32 type)
 	put32(mem, IDT_PHYS + vec * 8 + 4, (off & 0xffff0000) | (type << 8));
 }
 
+/* v5.1: guest RAM, and the frame buffer's host memory 4 GiB plus
+   LFB_ALIAS above it, in one reservation of address space (only the two
+   parts made usable): a host address in the frame buffer that some code
+   took as a physical address (32 bits, guest RAM's host address taken
+   from it) would then be in RAM, below its end less 4 KiB, which the
+   checks after it would pass; so mode l's code in the frame buffer would
+   show it.  Where there is no such room (a 32-bit host), the frame buffer
+   is the machine's lfb[] as before. */
+static int layout_note;
+static void mach_mem(struct mach *m)
+{
+#if UINTPTR_MAX > 0xffffffffu
+	size_t len = ((size_t) 1 << 32) + LFB_ALIAS + LFB_SIZE;
+	void *b = mmap(NULL, len, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+	if (b != MAP_FAILED) {
+		u8 *lfb = (u8 *) b + ((size_t) 1 << 32) + LFB_ALIAS;
+		if (mprotect(b, MEM, PROT_READ | PROT_WRITE) == 0 &&
+		    mprotect(lfb, LFB_SIZE, PROT_READ | PROT_WRITE) == 0) {
+			m->blk = b;
+			m->blklen = len;
+			m->mem = b;
+			m->lfbp = lfb;
+			return;
+		}
+		munmap(b, len);
+	}
+#endif
+	if (!layout_note++)
+		printf("  (the frame buffer is not 4 GiB above guest RAM here: mode l's code in it shows less)\n");
+	m->mem = calloc(1, MEM);
+	m->lfbp = m->lfb;
+}
+
 static void mach_new(struct mach *m, int fast)
 {
 	memset(m, 0, sizeof(*m));
-	m->mem = calloc(1, MEM);
+	mach_mem(m);
 	CPU_CB *cb;
 	m->cpu = cpui386_new(3, (char *) m->mem, MEM, &cb);
 	/* cpui386_new() leaves the lazy flags' operation and operands as
@@ -812,14 +867,17 @@ static void mach_new(struct mach *m, int fast)
 	cb->iomem_write_string = mm_ws;
 	if (glfb) {
 		cpu_cb_set_lfb_marks(cb, m->marks, LFB_MARK_SHIFT, &marks_on, &m->wrote);
-		cpu_cb_set_lfb(cb, LFB_BASE, LFB_SIZE, m->lfb);
+		cpu_cb_set_lfb(cb, LFB_BASE, LFB_SIZE, m->lfbp);
 	}
 }
 
 static void mach_free(struct mach *m)
 {
 	cpui386_delete(m->cpu);
-	free(m->mem);
+	if (m->blk)
+		munmap(m->blk, m->blklen);
+	else
+		free(m->mem);
 }
 
 /* real mode: CS:IP 1000h:0, data at DS 2000h, the stack at SS 4000h; the
@@ -1051,6 +1109,469 @@ static void setup_cpl1(u8 *mem, CPUI386 *cpu)
 	REGi(4) = P_USTACK - 0x100;
 }
 
+/* == v5.1 (WI-1), mode k: jumps, calls and returns across code pages.
+   The code window (i386_fast.h) has one bound: straight-line code only
+   moves up, and every jump below the window's start goes through
+   JUMP_REL() or JUMP_ABS(), which make the next instruction refill it.
+   Here every kind of backward move lands in the page before (or the one
+   before that): in its last 16 bytes, which tiny386 runs, or below them,
+   from a page the fast interpreter caches anew; a fault there runs the
+   wrong bytes, since the pages are mapped out of order (linear page i at
+   physical page 5 i + 3 mod 16).  Sixteen pages, each:
+     0     JMP (E)SI, the "dispatcher" a tail runs into (page 0: JMP to 20h)
+     2     INC (E)DX; RET
+     4     INC (E)DX; RET 2 or 4
+     20h   the main flow: tests, then a near JMP to the next page's 20h
+     FC0h  the tail, run into the next page's 0: one-byte instructions,
+           CMP (E)AX,(E)AX; JZ $+2 pairs (fused where tiny386 would fuse
+           them, never as the first instruction of a page newly cached),
+           and at times a CALL (after a PUSH) of the next page's RET (RET
+           n), returning into the last 16 bytes
+   The tests: MOV (E)SI to where the dispatcher must go, then JMP short or
+   near, Jcc short or near (taken; a JZ or JNZ after CMP fused), LOOP or
+   JCXZ, CALL near, JMP or CALL through (E)AX, PUSH and RET, or PUSH, PUSH
+   and RET n, into a tail below; a CALL of the next page's RET or RET n
+   (which lands back here, below that page's window); a JMP or CALL into
+   the next page's last 16 bytes.  By the seed: 32-bit code at level 0 and
+   at level 3, 16-bit protected mode at level 0 and at level 3, and
+   virtual-8086 mode; paging on; IF set, for the random interrupts. */
+#define KPAGES 16
+#define KMAIN 0x20
+#define KTAIL 0xfc0
+#define KTLEN (0x1000 - KTAIL)
+static int ksub;                  /* mode k's setting: seed % 5 */
+static u8 kkind[KPAGES][KTLEN];   /* each tail byte: 0 a one-byte instruction, 1 a longer one's first, 2 inside one */
+static u8 kpair[KPAGES][KTLEN];   /* 1 where a pair's CMP is */
+static int kperm(int i) { return (i * 5 + 3) & (KPAGES - 1); }
+static uword koff(void) { return gp - gcode_phys; }        /* the offset in CS */
+static uword kip(uword off) { return g32 ? P_CODE + off : off; }
+static void kat(uword off) { gp = gcode_phys + off; }
+static int kisz(void) { return g32 ? 4 : 2; }
+static void kimm(uword v) { ev(v, !g32); }
+static void krel(uword target) { kimm(target - (koff() + kisz())); }   /* rel16 or rel32 */
+static int kfits8(uword target, uword at, int len)   /* a rel8 in an instruction of len bytes at at */
+{
+	sword d = (sword) (target - (at + len));
+	return d >= -128 && d < 128;
+}
+static void kpatch(uword at, uword v) { uword s = gp; gp = at; kimm(v); gp = s; }
+
+/* a Jcc's condition after CMP (E)AX,b with (E)AX = a, as the CPU has it */
+static int kcond(int cc, u32 a, u32 b)
+{
+	u32 m = g32 ? 0xffffffffu : 0xffff, sb = g32 ? 0x80000000u : 0x8000;
+	a &= m;
+	b &= m;
+	u32 r = (a - b) & m;
+	int cf = a < b, zf = r == 0, sf = !!(r & sb), of = !!((a ^ b) & (a ^ r) & sb);
+	int pf = !(__builtin_popcount(r & 0xff) & 1), c;
+	switch (cc >> 1) {
+	case 0: c = of; break;
+	case 1: c = cf; break;
+	case 2: c = zf; break;
+	case 3: c = cf || zf; break;
+	case 4: c = sf; break;
+	case 5: c = pf; break;
+	case 6: c = sf != of; break;
+	default: c = zf || sf != of; break;
+	}
+	return c ^ (cc & 1);
+}
+static u32 kval(void)
+{
+	static const u32 v[] = { 0, 1, 2, 0x7f, 0x80, 0xff, 0x7fff, 0x8000, 0xffff, 0x7fffffff, 0x80000000u, 0xffffffffu };
+	u32 x = chance(2) ? v[rnd(12)] : (u32) rs;
+	return g32 ? x : x & 0xffff;
+}
+
+static void ktail(int p)
+{
+	static const u8 one[] = { 0x90, 0x42, 0x4a, 0x92, 0xf5, 0xfc };   /* NOP, INC/DEC (E)DX, XCHG (E)AX,(E)DX, CMC, CLD */
+	u8 *kd = kkind[p], *pr = kpair[p];
+	memset(kd, 0, KTLEN);
+	memset(pr, 0, KTLEN);
+	kat(p * 0x1000 + KTAIL);
+	for (int i = 0; i < KTLEN; i++)
+		e8(one[rnd(6)]);
+	if (p + 1 < KPAGES && rnd(3)) {
+		/* CALL the next page's RET, or PUSH (E)AX and CALL its RET n:
+		   the return address in the last 16 bytes; a landing may be at
+		   the first byte, not inside */
+		int retn = chance(2), clen = 1 + kisz();
+		int r = KTLEN - 16 + rnd(16), c = r - clen, s = retn ? c - 1 : c;
+		kd[s] = 1;
+		for (int i = s + 1; i < r; i++)
+			kd[i] = 2;
+		kat(p * 0x1000 + KTAIL + s);
+		if (retn)
+			e8(0x50);
+		e8(0xe8); krel((p + 1) * 0x1000 + (retn ? 4 : 2));
+	}
+	for (int k = rnd(5); k > 0; k--) {   /* CMP (E)AX,(E)AX; JZ $+2 */
+		int i = rnd(KTLEN - 3);
+		if (kd[i] || kd[i + 1] || kd[i + 2] || kd[i + 3])
+			continue;
+		kd[i] = kd[i + 2] = 1;
+		kd[i + 1] = kd[i + 3] = 2;
+		pr[i] = 1;
+		kat(p * 0x1000 + KTAIL + i);
+		e8(0x39); e8(0xc0); e8(0x74); e8(0x00);
+	}
+}
+
+/* a landing in page q's tail: in its last 16 bytes, or below them (at
+   times at a pair's CMP, which is then the first instruction run in a
+   page the fast interpreter caches anew) */
+static uword kland(int q, int last)
+{
+	u8 *kd = kkind[q], *pr = kpair[q];
+	int i;
+	if (!last && chance(3))
+		for (int t = 0; t < 20; t++) {
+			i = rnd(KTLEN - 16);
+			if (pr[i])
+				return q * 0x1000 + KTAIL + i;
+		}
+	do
+		i = last ? KTLEN - 16 + rnd(16) : rnd(KTLEN - 16);
+	while (kd[i] == 2);
+	return q * 0x1000 + KTAIL + i;
+}
+
+static void ktest(int p)
+{
+	int isz = kisz(), k;
+	uword at = koff(), t = 0, cpos = 0;
+	if (p == 0)
+		k = 11 + rnd(3);
+	else if ((at & 0xfff) < 0x60 && chance(2))
+		k = rnd(4);   /* the short forms, which reach the page before only from here */
+	else
+		k = rnd(14);
+	if ((k == 11 || k == 12) && p + 1 >= KPAGES)
+		k = 4;
+	if (k == 13 && p + 2 >= KPAGES)
+		k = 4;
+	int q = p >= 2 && chance(4) ? p - 2 : p - 1;
+	if (k <= 10)
+		t = kland(q, chance(2));
+	if (k == 0 && !kfits8(t, at + 1 + isz, 2))
+		k = 4;
+	if ((k == 1 || k == 3) && !kfits8(t, at + 3 * (1 + isz), 2))
+		k = 5;
+	if (k == 2 && !kfits8(t, at + 2 * (1 + isz), 2))
+		k = 4;
+	switch (k) {
+	case 0:   /* JMP short back */
+		e8(0xbe); cpos = gp; kimm(0);
+		e8(0xeb); e8((u8) (t - (koff() + 1)));
+		break;
+	case 1: case 3: {   /* Jcc short back, taken (3: JZ or JNZ, fused with the CMP) */
+		u32 a = kval(), b = k == 3 ? (chance(2) ? a : kval()) : chance(3) ? a : chance(2) ? a + 1 - 2 * rnd(2) : kval();
+		int cc = k == 3 ? 4 : rnd(16);
+		if (!kcond(cc, a, b))
+			cc ^= 1;
+		e8(0xbe); cpos = gp; kimm(0);
+		e8(0xb8); kimm(a);
+		e8(0x3d); kimm(b);
+		e8(0x70 + cc); e8((u8) (t - (koff() + 1)));
+		break;
+	}
+	case 2: {   /* LOOP (CX 2) or JCXZ (CX 0) back */
+		int z = chance(3);
+		e8(0xbe); cpos = gp; kimm(0);
+		e8(0xb9); kimm(z ? 0 : 2);
+		e8(z ? 0xe3 : 0xe2); e8((u8) (t - (koff() + 1)));
+		break;
+	}
+	case 4:   /* JMP near back */
+		e8(0xbe); cpos = gp; kimm(0);
+		e8(0xe9); krel(t);
+		break;
+	case 5: {   /* Jcc near back, taken */
+		u32 a = kval(), b = chance(3) ? a : kval();
+		int cc = rnd(16);
+		if (!kcond(cc, a, b))
+			cc ^= 1;
+		e8(0xbe); cpos = gp; kimm(0);
+		e8(0xb8); kimm(a);
+		e8(0x3d); kimm(b);
+		e8(0x0f); e8(0x80 + cc); krel(t);
+		break;
+	}
+	case 6:   /* CALL near back: the dispatcher goes to this page's RET */
+		e8(0xbe); kimm(kip(p * 0x1000 + 2));
+		e8(0xe8); krel(t);
+		break;
+	case 7:   /* JMP (E)AX back */
+		e8(0xbe); cpos = gp; kimm(0);
+		e8(0xb8); kimm(kip(t));
+		e8(0xff); e8(0xe0);
+		break;
+	case 8:   /* CALL (E)AX back */
+		e8(0xbe); kimm(kip(p * 0x1000 + 2));
+		e8(0xb8); kimm(kip(t));
+		e8(0xff); e8(0xd0);
+		break;
+	case 9:   /* PUSH t; RET */
+		e8(0xbe); cpos = gp; kimm(0);
+		e8(0x68); kimm(kip(t));
+		e8(0xc3);
+		break;
+	case 10:  /* PUSH x; PUSH t; RET 2 or 4 */
+		e8(0xbe); cpos = gp; kimm(0);
+		e8(0x68); kimm((u32) rs);
+		e8(0x68); kimm(kip(t));
+		e8(0xc2); e16(isz);
+		break;
+	case 11:  /* CALL the next page's RET: it lands here, below that page's window */
+		e8(0xe8); krel((p + 1) * 0x1000 + 2);
+		break;
+	case 12:  /* PUSH (E)AX; CALL the next page's RET 2 or 4 */
+		e8(0x50);
+		e8(0xe8); krel((p + 1) * 0x1000 + 4);
+		break;
+	default:  /* 13: JMP, or CALL, forward into the next page's last 16 bytes */
+		t = kland(p + 1, 1);
+		if (chance(2)) {
+			e8(0xbe); cpos = gp; kimm(0);
+			e8(0xe9); krel(t);
+		} else {
+			e8(0xbe); kimm(kip(p * 0x1000 + 2));
+			e8(0xe8); krel(t);
+		}
+		break;
+	}
+	if (cpos)
+		kpatch(cpos, kip(koff()));
+}
+
+static void gen_k(void)
+{
+	memset(gm + gcode_phys, 0xf4, KPAGES * 0x1000);   /* HLT where nothing should run */
+	for (int p = 0; p < KPAGES; p++) {
+		kat(p * 0x1000);
+		if (p == 0) {
+			e8(0xeb); e8(KMAIN - 2);                /* the start: JMP to the main flow */
+		} else {
+			e8(0xff); e8(0xe6);                     /* JMP (E)SI */
+		}
+		e8(0x42); e8(0xc3);                             /* 2: INC (E)DX; RET */
+		e8(0x42); e8(0xc2); e16(kisz());                /* 4: INC (E)DX; RET 2 or 4 */
+		ktail(p);
+	}
+	for (int p = 0; p < KPAGES; p++) {
+		kat(p * 0x1000 + KMAIN);
+		e8(0x39); e8(0xc0); e8(0x74); e8(0x00);         /* CMP (E)AX,(E)AX; JZ $+2 first */
+		for (int n = 4 + rnd(12); n > 0 && (koff() & 0xfff) < KTAIL - 0x40; n--)
+			ktest(p);
+		if (p + 1 < KPAGES) {
+			e8(0xe9); krel((p + 1) * 0x1000 + KMAIN);
+		}
+	}
+	/* (run() puts the JMP $ here, in page 15, then kscatter()) */
+}
+
+/* the code's linear pages to their physical pages (setup_mode() maps them so) */
+static void kscatter(void)
+{
+	static u8 buf[KPAGES * 0x1000];
+	memcpy(buf, gm + gcode_phys, sizeof(buf));
+	for (int i = 0; i < KPAGES; i++)
+		memcpy(gm + gcode_phys + kperm(i) * 0x1000, buf + i * 0x1000, 0x1000);
+}
+
+static void setup_k(u8 *mem, CPUI386 *cpu)
+{
+	if (ksub < 2)
+		setup_prot(mem, cpu, ksub);
+	else if (ksub == 3)
+		setup_v86(mem, cpu);
+	else
+		setup_pm16(mem, cpu, 1);
+	if (ksub == 4) {   /* 16-bit protected mode at level 3 */
+		desc(mem, GDT16_PHYS + R_CS, R_CS << 4, 0xffff, 0x0fa);
+		desc(mem, GDT16_PHYS + R_DS, R_DS << 4, 0xffff, 0x0f2);
+		desc(mem, GDT16_PHYS + R_SS, R_SS << 4, 0xffff, 0x0f2);
+		desc(mem, GDT16_PHYS + 0xa000, 0xa0000, 0xffff, 0x0f2);
+		for (int i = 0; i < 1024; i++)
+			put32(mem, PT_PHYS + i * 4, (i << 12) | 0x007);
+		static const u16 sel[6] = { R_DS, R_CS, R_SS, R_DS, 0xa000, R_DS };
+		for (int s = 0; s < 6; s++) {
+			cpu->seg[s].sel = sel[s] | 3;
+			cpu->seg[s].flags = s == SEG_CS ? 0xfa : 0xf2;
+		}
+		cpu->cpl = 3;
+	}
+	for (int i = 0; i < KPAGES; i++) {   /* the code's pages out of order */
+		if (ksub < 2)
+			put32(mem, PT2_PHYS + (((P_CODE >> 12) + i) & 1023) * 4, (0x100000 + kperm(i) * 0x1000) | 0x007);
+		else
+			put32(mem, PT_PHYS + ((R_CS >> 8) + i) * 4, ((R_CS << 4) + kperm(i) * 0x1000) | (ksub == 2 ? 0x003 : 0x007));
+	}
+	tlb_clear(cpu);
+	cpu->flags |= IF;
+}
+
+/* == v5.1 (WI-1), mode l: a page read, then written.  The read makes the
+   page's entries (tiny386's TLB and the fast interpreter's read entry);
+   the store must still be checked for writing: a user read-only page at
+   level 3 or 1 faults, and so does a read-only page at level 0 with
+   CR0.WP set; with CR0.WP clear level 0 writes it.  The stores take each
+   path (MOV of a register, an immediate, by its offset, 8 to 32 bits, and
+   one STOS: FPTR_ST(); ADD, INC, XCHG, SHL, MOVS: FPTR(); REP STOS:
+   FPTR_IO()), at times across into the next page, and at level 0 with
+   the page's PTE changed in between without INVLPG (its accessed and
+   dirty bits cleared, or the page made writable: tiny386's entry still
+   refuses the store, which faults once and is then let through by the
+   handler's INVLPG), or CR0.WP changed.  The page fault's handler makes the page writable (INVLPG,
+   counted); at times a segment register is loaded with a null selector
+   and the page read or written through it (#GP, whose handler loads it
+   again); with the frame buffer, code run from it (each instruction by
+   tiny386).  By the seed: level 3, level 0 with CR0.WP set and clear,
+   level 1.  The rights of the 16 pages from the seed too. */
+#define LPAGES 16
+#define L_LIN 0x00540000u       /* the 16 pages (linear), from physical 190000h */
+#define L_PHYS 0x190000u
+static int lsub;                /* mode l's setting: (seed / 2) % 4, so that each has odd seeds (the frame buffer) and even */
+static u32 lright[LPAGES];      /* each page's PTE rights */
+static void lrights(int seed)
+{
+	uint64_t h = 0x243f6a8885a308d3ull ^ ((uint64_t) seed * 0x100000001b3ull);
+	for (int i = 0; i < LPAGES; i++) {
+		h ^= h << 13; h ^= h >> 7; h ^= h << 17;
+		unsigned v = (h >> 20) & 7;
+		if (lsub == 0 || lsub == 3)   /* levels 1 to 3: user pages, most read-only */
+			lright[i] = v < 6 ? 0x005 : 0x007;
+		else
+			lright[i] = v < 3 ? 0x001 : v < 6 ? 0x005 : v == 6 ? 0x003 : 0x007;
+	}
+}
+
+static void setup_l(u8 *mem, CPUI386 *cpu)
+{
+	if (lsub == 3)
+		setup_cpl1(mem, cpu);
+	else
+		setup_prot(mem, cpu, lsub == 0);
+	if (lsub == 1)
+		cpu->cr0 |= CR0_WP;
+	for (int i = 0; i < LPAGES; i++)
+		put32(mem, PT2_PHYS + (((L_LIN >> 12) + i) & 1023) * 4, (L_PHYS + i * 0x1000) | lright[i]);
+	if (lsub == 0 || lsub == 3) {   /* the frame buffer's pages user */
+		put32(mem, PD_PHYS + ((LFB_BASE >> 22) * 4), PTL_PHYS | 0x007);
+		for (int i = 0; i < LFB_SIZE / 4096 + 2; i++)
+			put32(mem, PTL_PHYS + i * 4, (LFB_BASE + i * 0x1000) | 0x007);
+	}
+	/* page faults: PUSH EAX; MOV EAX,CR2; SHR EAX,12; AND EAX,3FFh;
+	   OR DWORD [P_PT+1000h+EAX*4],2 (writable); MOV EAX,CR2; INVLPG [EAX];
+	   INC DWORD [CNT+8]; POP EAX; ADD ESP,4; IRET */
+	static const u8 pf[] = { 0x50, 0x0f, 0x20, 0xd0, 0xc1, 0xe8, 0x0c, 0x25, 0xff, 0x03, 0, 0,
+				 0x81, 0x0c, 0x85, 0, 0, 0, 0, 2, 0, 0, 0, 0x0f, 0x20, 0xd0, 0x0f, 0x01, 0x38,
+				 0xff, 0x05, 0, 0, 0, 0, 0x58, 0x83, 0xc4, 0x04, 0xcf };
+	memcpy(mem + HND_PHYS + 0x280, pf, sizeof(pf));
+	put32(mem, HND_PHYS + 0x280 + 15, P_PT + 0x1000);
+	put32(mem, HND_PHYS + 0x280 + 31, CNT_PHYS + 8);
+	/* #GP: PUSH EAX; MOV AX,data; MOV ES,AX; MOV FS,AX; MOV GS,AX;
+	   INC DWORD [CNT+12]; POP EAX; ADD ESP,4; IRET */
+	u8 gph[] = { 0x50, 0x66, 0xb8, lsub == 0 ? 0x23 : lsub == 3 ? 0x39 : 0x10, 0, 0x8e, 0xc0, 0x8e, 0xe0,
+		     0x8e, 0xe8, 0xff, 0x05, 0, 0, 0, 0, 0x58, 0x83, 0xc4, 0x04, 0xcf };
+	memcpy(mem + HND_PHYS + 0x2c0, gph, sizeof(gph));
+	put32(mem, HND_PHYS + 0x2c0 + 13, CNT_PHYS + 12);
+	gate(mem, 14, 0x08, HND_PHYS + 0x280, 0x8e);
+	gate(mem, 13, 0x08, HND_PHYS + 0x2c0, 0x8e);
+	tlb_clear(cpu);
+}
+
+static void lstore(uword a)
+{
+	switch (rnd(12)) {
+	case 0: e8(0x89); e8(0x05); e32(a); break;                  /* MOV [a],EAX: FPTR_ST() */
+	case 1: e8(0xc7); e8(0x05); e32(a); e32((u32) rs); break;   /* MOV DWORD [a],imm */
+	case 2: e8(0xa3); e32(a); break;                            /* MOV [a],EAX by its offset */
+	case 3: e8(0x66); e8(0x89); e8(0x05); e32(a); break;        /* MOV [a],AX */
+	case 4: e8(0x88); e8(0x05); e32(a); break;                  /* MOV [a],AL */
+	case 5: e8(0xbf); e32(a); e8(0xab); break;                  /* STOSD */
+	case 6: e8(0x01); e8(0x05); e32(a); break;                  /* ADD [a],EAX: FPTR() */
+	case 7: e8(0xff); e8(0x05); e32(a); break;                  /* INC DWORD [a] */
+	case 8: e8(0x87); e8(0x05); e32(a); break;                  /* XCHG [a],EAX */
+	case 9: e8(0xc1); e8(0x25); e32(a); e8(1 + rnd(31)); break; /* SHL DWORD [a],n */
+	case 10:                                                    /* REP STOSD: FPTR_IO() */
+		e8(0xbf); e32(a & ~3u); e8(0xb9); e32(1 + rnd(8)); e8(0xf3); e8(0xab);
+		break;
+	default:                                                    /* MOVSD from the data */
+		e8(0xbe); e32(P_DATA + rnd(0x800)); e8(0xbf); e32(a); e8(0xa5);
+		break;
+	}
+}
+
+static void gen_l(void)
+{
+	int cpl0 = lsub == 1 || lsub == 2;
+	for (int i = 0; i < LPAGES; i++) {
+		uword p = L_LIN + i * 0x1000, o1 = rnd(0x1000 - 4), o2 = rnd(0x1000 - 0x40);
+		if (i + 1 < LPAGES && chance(8))
+			o2 = 0x1000 - 1 - rnd(3);   /* across into the next page */
+		switch (rnd(5)) {   /* the read */
+		case 0: e8(0x8b); e8(0x05); e32(p + o1); break;               /* MOV EAX,[p] */
+		case 1: e8(0xa0); e32(p + o1); break;                         /* MOV AL,[p] */
+		case 2: e8(0x03); e8(0x05); e32(p + o1); break;               /* ADD EAX,[p] */
+		case 3: e8(0x0f); e8(0xb6); e8(0x05); e32(p + o1); break;     /* MOVZX EAX,BYTE [p] */
+		default: e8(0x80); e8(0x3d); e32(p + o1); e8(rnd(256)); break; /* CMP BYTE [p],imm */
+		}
+		if (cpl0) {   /* at level 0 the PTE changed, no INVLPG: */
+			uword pte = P_PT + 0x1000 + ((p >> 12) & 1023) * 4;
+			switch (rnd(4)) {
+			case 0:   /* its accessed and dirty bits cleared */
+				e8(0x81); e8(0x25); e32(pte); e32(0xffffff9f);
+				break;
+			case 1:   /* made writable (tiny386's entry still has it read-only) */
+				e8(0x81); e8(0x0d); e32(pte); e32(2);
+				break;
+			default:
+				break;
+			}
+		}
+		lstore(p + o2);
+		e8(0x8b); e8(0x15); e32(p + o2);                              /* MOV EDX,[it] */
+		if (chance(2))
+			lstore(p + rnd(0x1000 - 0x40));                       /* again (the write entry) */
+		if (chance(3)) {   /* a null selector in ES, FS or GS, and the page through it */
+			static const u8 sr[3] = { 0xc1, 0xe1, 0xe9 }, pfx[3] = { 0x26, 0x64, 0x65 };
+			int s = rnd(3);
+			uword a = L_LIN + rnd(LPAGES) * 0x1000 + rnd(0x1000 - 4);
+			e8(0x8b); e8(0x05); e32(a);                           /* MOV EAX,[a]: its read entry */
+			e8(0x31); e8(0xc9);                                   /* XOR ECX,ECX */
+			if (chance(2)) { e8(0xb1); e8(rnd(4)); }              /* MOV CL,RPL */
+			e8(0x8e); e8(sr[s]);                                  /* MOV ES/FS/GS,CX */
+			switch (rnd(4)) {
+			case 0: e8(pfx[s]); e8(0x8b); e8(0x05); e32(a); break;   /* MOV EAX,seg:[a] */
+			case 1: e8(pfx[s]); e8(0x89); e8(0x05); e32(a); break;   /* MOV seg:[a],EAX */
+			case 2: e8(pfx[s]); e8(0x03); e8(0x05); e32(a); break;   /* ADD EAX,seg:[a] */
+			default:
+				if (s == 0) { e8(0xbf); e32(a); e8(0xab); }       /* STOSD */
+				else { e8(pfx[s]); e8(0x01); e8(0x05); e32(a); }  /* ADD seg:[a],EAX */
+				break;
+			}
+		}
+		if (cpl0 && chance(4)) {   /* CR0.WP changed */
+			e8(0x0f); e8(0x20); e8(0xc0); e8(0x35); e32(CR0_WP); e8(0x0f); e8(0x22); e8(0xc0);
+		}
+	}
+	if (glfb) {   /* code in the frame buffer: INC EDX three times and JMP back, after a read of its page or not */
+		int k = rnd(LFB_SIZE / 4096);
+		uword at = LFB_BASE + k * 0x1000 + rnd(0xfc0);
+		if (chance(2)) { e8(0x8b); e8(0x05); e32(LFB_BASE + k * 0x1000 + rnd(0xffc)); }
+		e8(0xe9); e32(at - (glin() + 4));
+		uword back = glin(), rel = back - (at + 8);
+		u8 *s = M[0].lfbp + (at - LFB_BASE);
+		s[0] = s[1] = s[2] = 0x42;
+		s[3] = 0xe9;
+		memcpy(s + 4, &rel, 4);
+	}
+	e8(0xbf); e32(P_DATA);
+}
+
 /* == the fast interpreter's TLB (v5.1, from v5.0's recheck): its
    invariants, on machine 0 after each step.  First fast_tlb_check(), which
    the fast interpreter itself calls at the start of every step: it empties
@@ -1136,7 +1657,7 @@ static int compare(const char *what, int seed, long step)
 		while (M[0].mem[i] == M[1].mem[i]) i++;
 		snprintf(why, sizeof(why), "memory at %06lx (%02x / %02x)", i, M[0].mem[i], M[1].mem[i]);
 	}
-	if (!why[0] && (memcmp(M[0].vga, M[1].vga, sizeof(M[0].vga)) || memcmp(M[0].lfb, M[1].lfb, sizeof(M[0].lfb))))
+	if (!why[0] && (memcmp(M[0].vga, M[1].vga, sizeof(M[0].vga)) || memcmp(M[0].lfbp, M[1].lfbp, LFB_SIZE)))
 		snprintf(why, sizeof(why), "video memory");
 	if (!why[0] && (memcmp(M[0].marks, M[1].marks, sizeof(M[0].marks)) || M[0].wrote != M[1].wrote))
 		snprintf(why, sizeof(why), "the frame buffer's marks or flag");
@@ -1158,7 +1679,8 @@ static int compare(const char *what, int seed, long step)
    level 1, 6 16-bit protected without paging, 7 level 1 reading a
    supervisor page that level 0 used (hand-written), 8 self-modifying real
    mode code (hand-written), 9 CR0.WP set after a supervisor store into a
-   read-only page (hand-written) */
+   read-only page (hand-written); v5.1 (WI-1): 20 (k) jumps, calls and
+   returns across code pages, 21 (l) a page read, then written */
 static long total_insns, total_steps;
 static int verbose_runs = 1;
 static void setup_mode(int mode, u8 *mem, CPUI386 *cpu)
@@ -1214,6 +1736,10 @@ static void setup_mode(int mode, u8 *mem, CPUI386 *cpu)
 		} break;
 	case 18: setup_real(mem, cpu); cpu->seg[SEG_FS].base = LFB_BASE; break;
 	case 19: setup_prot(mem, cpu, 0); break;
+	/* v5.1 (WI-1): k, jumps, calls and returns across code pages */
+	case 20: setup_k(mem, cpu); break;
+	/* v5.1 (WI-1): l, a page read, then written */
+	case 21: setup_l(mem, cpu); break;
 	default: setup_pm16(mem, cpu, 0); break;
 	}
 	if (mode == 7 || mode == 13 || mode == 17)     /* interrupts on, so that the IRQ's handler (level 0) runs first */
@@ -1234,8 +1760,13 @@ static int run(int mode, int seed)
 					      "level 2 after level 0 (hand)",
 					      "16-bit PM no paging, A000h/FS the frame buffer", "16-bit PM paging, A000h/FS the frame buffer",
 					      "level 3 IOPL 3 with the frame buffer", "level 1 stores into a frame buffer page level 0 stored into (hand)",
-					      "real mode, FS's base the frame buffer (unreal)", "the frame buffer's dirty bits (hand)" };
+					      "real mode, FS's base the frame buffer (unreal)", "the frame buffer's dirty bits (hand)",
+					      "jumps, calls and returns across code pages (k)",
+					      "a page read, then written (hand, l)" };
 	glfb = seed & 1;
+	ksub = seed % 5;   /* (mode k) */
+	lsub = (seed >> 1) & 3;   /* (mode l) */
+	lrights(seed);
 	for (int i = 0; i < 2; i++)
 		mach_new(&M[i], i == 0);
 	rs = 0x9e3779b97f4a7c15ull ^ ((uint64_t) seed * 0x100000001b3ull) ^ mode;
@@ -1249,6 +1780,19 @@ static int run(int mode, int seed)
 	gcpl1 = mode == 5 || mode == 7 || mode == 13 || mode == 17;
 	gnopriv = gcpl1;
 	gcs_far = mode == 1 || mode == 9 || mode == 12 || mode == 19 ? 0x08 : mode == 2 || mode == 16 ? 0x1b : mode == 13 ? 0x42 : gcpl1 ? 0x31 : R_CS;
+	if (mode == 20) {   /* k: 32-bit at level 0 or 3, 16-bit protected mode at 0, V86 mode, 16-bit protected mode at 3 */
+		g32 = ksub < 2;
+		guser = ksub == 1 || ksub >= 3;
+		gv86 = ksub == 3;
+		gpm16 = ksub == 2 || ksub == 4;
+		gcs_far = ksub == 0 ? 0x08 : ksub == 1 ? 0x1b : ksub == 4 ? (R_CS | 3) : R_CS;
+	}
+	if (mode == 21) {   /* l: level 3, level 0 with CR0.WP set and clear, level 1 */
+		g32 = 1;
+		guser = lsub == 0;
+		gcpl1 = gnopriv = lsub == 3;
+		gcs_far = lsub == 0 ? 0x1b : lsub == 3 ? 0x31 : 0x08;
+	}
 	setup_mode(mode, M[0].mem, M[0].cpu);
 	if (!g32) {
 		gcode_phys = R_CS << 4;
@@ -1312,6 +1856,10 @@ static int run(int mode, int seed)
 		e8(0x0d); e32(0x10000);
 		e8(0x0f); e8(0x22); e8(0xc0);
 		e8(0xc7); e8(0x05); e32(P_DATA + 4); e32(0x22222222);
+	} else if (mode == 20) {
+		gen_k();
+	} else if (mode == 21) {
+		gen_l();
 	} else {
 		uword limit = gcode_phys + 0xf000;
 		while (gp < limit)
@@ -1319,8 +1867,11 @@ static int run(int mode, int seed)
 	}
 	uword end = gp;
 	e8(0xeb); e8(0xfe);
-	/* machine 1 the same (CPU and memory) */
+	if (mode == 20)
+		kscatter();
+	/* machine 1 the same (CPU, memory and the frame buffer) */
 	memcpy(M[1].mem, M[0].mem, MEM);
+	memcpy(M[1].lfbp, M[0].lfbp, LFB_SIZE);
 	CPUI386 *a = M[0].cpu, *b = M[1].cpu;
 	setup_mode(mode, M[1].mem, b);
 	for (int i = 0; i < 2; i++) {
@@ -1333,9 +1884,10 @@ static int run(int mode, int seed)
 	int bad = 0;
 	char why[96] = "the step limit";
 	/* the hand-written cases (7, 8, 9, d, h, j) take a few instructions a
-	   step and end by 200 steps; the random code ends by 50,000 */
-	int hand = (mode >= 7 && mode <= 9) || mode == 13 || mode == 17 || mode == 19;
-	long steps_max = hand ? 200 : 50000;
+	   step and end by 200 steps (l by 4,000); the random code and k end
+	   by 50,000 */
+	int hand = (mode >= 7 && mode <= 9) || mode == 13 || mode == 17 || mode == 19 || mode == 21;
+	long steps_max = mode == 21 ? 4000 : hand ? 200 : 50000;
 	crash_name = names[mode];
 	crash_seed = seed;
 	while (step < steps_max) {
@@ -1343,7 +1895,8 @@ static int run(int mode, int seed)
 		int n = chance(4) ? 1 + rnd(8) : 1 + rnd(700);
 		if (hand)
 			n = 1 + rnd(3);
-		if (((mode == 7 || mode == 13 || mode == 17) && step == 0) || ((mode < 7 || (mode >= 10 && mode != 13 && mode != 17 && mode != 19)) && chance(5))) {
+		if (((mode == 7 || mode == 13 || mode == 17) && step == 0) ||
+		    ((mode < 7 || (mode >= 10 && mode != 13 && mode != 17 && mode != 19 && mode != 21)) && chance(5))) {
 			cpui386_raise_irq(a);
 			cpui386_raise_irq(b);
 		}
@@ -1399,13 +1952,19 @@ static int run(int mode, int seed)
 		snprintf(why, sizeof(why), "the step limit (at %04x:%08x, CR2 %08x)", (unsigned) a->seg[SEG_CS].sel,
 			 (unsigned) a->next_ip, (unsigned) a->cr2);
 	if (verbose_runs) {
-		u32 c0, c1, p21, p2b;
+		u32 c0, c1, c2, c3, p21, p2b;
 		memcpy(&c0, M[0].mem + CNT_PHYS, 4); memcpy(&c1, M[0].mem + CNT_PHYS + 4, 4);
+		memcpy(&c2, M[0].mem + CNT_PHYS + 8, 4); memcpy(&c3, M[0].mem + CNT_PHYS + 12, 4);
 		memcpy(&p21, M[0].mem + PT_PHYS + 0x21 * 4, 4); memcpy(&p2b, M[0].mem + PT_PHYS + 0x2b * 4, 4);
+		char more[64] = "";
+		if (mode == 20)
+			snprintf(more, sizeof(more), "; setting %d", ksub);
+		if (mode == 21)   /* (the page fault's and #GP's handlers count) */
+			snprintf(more, sizeof(more), "; setting %d, #PF %u, #GP %u", lsub, c2, c3);
 		printf("  seed %d, %s: %s after %ld steps, %ld instructions, %u port and video memory accesses"
-		       " [VM %d cpl %d code16 %d; IRQs %u, INT 30h %u; PTE 21 %03x 2b %03x]\n",
+		       " [VM %d cpl %d code16 %d; IRQs %u, INT 30h %u; PTE 21 %03x 2b %03x%s]\n",
 		       seed, names[mode], why, step, a->cycle, M[0].nlog, !!(a->flags & VM), a->cpl, a->code16,
-		       c0, c1, p21 & 0xfff, p2b & 0xfff);
+		       c0, c1, p21 & 0xfff, p2b & 0xfff, more);
 	}
 	total_insns += a->cycle;
 	total_steps += step;
@@ -1432,8 +1991,11 @@ int main(int argc, char **argv)
 {
 	int seeds = argc > 1 ? atoi(argv[1]) : 40;
 	int first = argc > 2 ? atoi(argv[2]) : 1;
-	/* argv[3]: the modes, a character each (0 to 9, a to j) */
-	const char *modes = argc > 3 ? argv[3] : "0123456789abcdefghij";
+	/* argv[3]: the modes, a character each (0 to 9, a to l) */
+	const char *modes = argc > 3 ? argv[3] :
+		"0123456789abcdefghij"
+		"k"     /* v5.1 (WI-1): jumps, calls and returns across code pages */
+		"l";    /* v5.1 (WI-1): a page read, then written */
 	int bad = 0, nsc = 0;
 	setvbuf(stdout, NULL, _IOLBF, 0);
 	signal(SIGSEGV, on_crash);
