@@ -613,14 +613,29 @@ interpreter, the removal of a difference from v4.6 that v5.0 had, and their test
   it already found (`movs_rep_dio`); MOVS stores through `fast_io_store()` (`movs_dio`).
 * **The two-operand rule** (`fast_miss2()`, on the miss path only). An instruction with two
   memory operands looks its first up, then its second. If the second misses, `fast_miss()` asks
-  tiny386's TLB, which refills the entry at that index, or drops it on a rights fault. When the
-  instruction then went to tiny386 (MMIO there, the fault, past the end of RAM, a piece
-  `lfb_movs()` refuses), tiny386 translated the first operand again: a second refill, which set
-  the page tables' accessed bits again. Now, with paging, the instruction goes to tiny386 before
-  `fast_miss()` if tiny386's entry at that index holds the first operand's page, or holds this
-  page and the access would fault there. tiny386 then translates each operand once, in its order,
-  as it does alone. Where the first operand is MMIO (MOVS from the VGA window, which has no fast
-  entry), the destination is taken only where its fast entry hits (`FAST_DEST_HIT()`).
+  tiny386's TLB, which refills the entry at that index. When the instruction then went to tiny386
+  (MMIO there, a fault, past the end of RAM, a piece `lfb_movs()` refuses), tiny386 translated
+  the first operand again: a second refill, which set the page tables' accessed bits again. Now,
+  with paging, the instruction goes to tiny386 before `fast_miss()` if tiny386's entry at that
+  index holds the first operand's page. tiny386 then translates the first operand (a hit) and
+  this one, in its order, as it does alone. Where the first operand is MMIO (MOVS from the VGA
+  window, which has no fast entry), the destination is looked up only where tiny386's TLB holds
+  its page (`FAST_DEST_HELD()`), so that the lookup changes nothing there.
+* **`fast_lpgno()` leaves two kinds of entry alone** (`i386.c`, after WI-2's check). Every
+  lookup the fast interpreter makes in tiny386's TLB with paging goes through it (`fast_miss()`
+  for operands, `fast_window()` for a new code page). It now returns false with nothing changed,
+  and the instruction goes to tiny386, when tiny386's entry for the page refuses the access
+  (tiny386 alone faults with the entry it has), and when the refill would drop tiny386's entry
+  for the page the code runs from (`cpu->ifetch`). The first was the rule's "first half" in
+  `fast_miss2()`; in `fast_lpgno()` it covers single loads and stores, and code pages, too, and
+  is WI-1's 0c08c97 line for line. The second keeps the code page's entry for the one instruction
+  tiny386 fetches again through its TLB: the first in a page newly cached, which `slow:` hands
+  over with tiny386's old fetch cache so that tiny386 fetches it the slow way (no fusion of CMP
+  and JZ). Before, if that instruction's lookups had dropped the code page's entry, tiny386
+  walked the code page a second time: its accessed bits set again, and, after pieces of a REP
+  done here, the code page left in the TLB where tiny386 alone keeps the operand's page. (For
+  `fast_window()`'s own lookup the code page is still the old one: a new code page at its TLB
+  index goes to tiny386 for its first instruction, which is right and only slower.)
 * **REP STOSW and STOSD fill by aligned word stores** (`fill_aligned()`, beside `lfb_stos()`):
   plain aligned 32-bit stores, eight a loop turn, with a 16-bit store first and last for STOSW
   where the piece starts or ends half way into a word, from the piece's lowest element whatever
@@ -646,32 +661,35 @@ up two memory operands, and whether it can hand over after the second lookup:
 |-|-|-|-|
 | MOVS, one | source, destination | the destination faults (rights) | `FPTR_IO_W()`, `fast_miss2()` |
 | REP MOVS | source, destination | the VGA window there, a fault, a piece `lfb_movs()` refuses | the same |
-| MOVS and REP MOVS from MMIO (`movs_io`, `movs_rep_io`) | source (no fast entry), destination | a fault there, past the end of RAM; every REP piece from the VGA window | `FAST_DEST_HIT()` |
+| MOVS and REP MOVS from MMIO (`movs_io`, `movs_rep_io`) | source (no fast entry), destination | a fault there, past the end of RAM; every REP piece from the VGA window | `FAST_DEST_HELD()` |
 | CMPS, REP CMPS | source, destination | MMIO there, a fault (level 3, a supervisor page) | `FPTR2()`, `fast_miss2()` |
 | POP into memory | stack slot, destination | MMIO there (the frame buffer too), a fault | the same |
 | PUSH from memory | operand, stack slot | the stack MMIO or past the end of RAM, a fault | `STACK_PTR2()` |
 | CALL near through memory | operand, stack slot | the same | `STACK_PTR2()` |
 | CALL FAR through memory (real and virtual-8086 mode) | operand, stack slots | the same | `STACK_PTR_N2()` |
-| REP STOS | (one operand) | a fault on an entry tiny386 holds | `FPTR_IO_W()`, the rule's first half |
+| REP STOS | (one operand) | a fault on an entry tiny386 holds | `fast_lpgno()` leaves the entry alone |
 | LES, LDS, MOV and POP of a segment register, far transfers in protected mode | operand, descriptor (`set_seg()`, `pmcall()`, `pmret()`) | never: a fault there is raised from the fast interpreter, not handed over | none needed |
 | PUSHA, POPA, ENTER, LEAVE, IRET and RETF in real mode, INT | one block | (one lookup) | none needed |
 
 In `op_grp5` this changed the lookup lines of PUSH, CALL and CALL FAR (six lines, the dispatch
 left alone): CALL near and far have PUSH's shape.
 
-Two cases of the same kind outside this item's handlers, found here and left as they are (their
-places, the `FPTR` macros and `fast_miss()`, are other items'):
+Two cases of the same kind outside the handlers above, found while building this item and fixed
+after WI-2's check, both in `fast_lpgno()` (above):
 
-* **A single store that faults on an entry tiny386 holds** (`MOV [m],r` through `FPTR_ST()`,
-  `ADD [m],r` through `FPTR()`). The fault drops tiny386's entry; tiny386 then refills it and sets
-  the accessed bit again, or reads a page table entry the guest changed without INVLPG and may then
-  not fault at all [verified: a scratch copy of case m with `MOV [O],EAX` and `ADD [O],EAX` into a
-  read-only page: v5.0 and this branch both differ from tiny386 alone, at the page's PTE, 21h
-  against 01h]. The cure is the rule's first half (`fast_miss2()` with no first operand) where
-  `FPTR()` and `FPTR_ST()` miss.
+* **One access that faults on an entry tiny386 holds** (a store through `FPTR_ST()` or `FPTR()`,
+  a load through `FPTR()`, `FPTR_IO()` or `fast_where()`; v5.0's). The fault dropped tiny386's
+  entry; tiny386 then refilled it and set the accessed bits again, or read a page table entry the
+  guest changed without INVLPG and then perhaps did not fault at all, and CR2 was left as the
+  fast interpreter's own lookup set it where tiny386 then did not fault [verified: a scratch copy
+  of case m with `MOV [O],EAX` and `ADD [O],EAX` into a read-only page, v5.0 and the branch before
+  the fix both differ, PTE 21h against 01h; the check's random test, below; CR2 inferred from the
+  code]. WI-1's 0c08c97 is the same test.
 * **The first instruction of a newly cached code page**, handed over after its operand's refill
-  dropped the code page's entry: tiny386 then fetches the instruction through its TLB again
-  (`slow:` gives back its fetch cache) [inferred: read in `fast_window()` and `slow:`, not run].
+  dropped the code page's entry: tiny386 fetched it through its TLB again and walked the code page
+  a second time [verified: case m's case 10 and mode x, below; v5.0 had it for its own hand-overs
+  too, a REP STOSB whose second piece is past the end of RAM]. The two-operand rule had made it
+  reachable in REP MOVS and REP CMPS, where v5.0 finished the instruction itself.
 
 **Tests** [verified: `tests/host/run.sh`, and the runs below]:
 
@@ -688,18 +706,68 @@ places, the `FPTR` macros and `fast_miss()`, are other items'):
   instructions, and level 3 storing by REP into a supervisor page of it, which must fault (v5.0
   differs there: the accessed bit set again). Case m, new: the rule by hand, one instruction a
   step, the first operand's accessed bit cleared in both machines before every step; v5.0 differs
-  in all eleven of its cases with the Korvo-1 header (ten without it: a 512-entry TLB gives the
-  virtual-8086 case no shared index).
+  in all eleven of its first cases with the Korvo-1 header (ten without it: a 512-entry TLB gives
+  the virtual-8086 case no shared index).
+* `test_fast_cpu`, from WI-2's check: case m's case 10, by hand: a JMP to page 401h, whose first
+  instruction is a REP MOVSB, REPNE CMPSB or REP STOSB with its first piece's operand in page 1h
+  (the code page's TLB index) and its next piece handed to tiny386 (the rule, or a page the guest
+  pointed past the end of RAM); then page 1h's PTE pointed elsewhere without INVLPG and a dword
+  loaded through it; then, as the first instruction in page 403h, a CMP whose operand is the VGA
+  window (tiny386 gets it) and a JZ after it that is taken, which tiny386 must not fuse. Mode x,
+  at random: MOVS, CMPS, STOS, LODS and SCAS with and without REP, PUSH,
+  POP and CALL through memory, single loads and stores, on pages that share TLB indices with each
+  other and with the code (a pool at 800000h and A00000h, some aliasing one frame, the VGA window,
+  the frame buffer, past the end of RAM), their page table entries changed without INVLPG (A, D,
+  R/W, U/S, P, the frame), INVLPG, MOV CR3, CR0.WP, the frame buffer moved, levels 0, 1 and 3, and
+  every accessed and dirty bit cleared in both machines before every step. v5.0's code against
+  them: case 10 differs in its REP STOSB (a hand-over v5.0 makes itself), not in REP MOVSB and
+  REPNE CMPSB, which v5.0 finishes itself; mode x differs in 59 of seeds 1 to 60 in each build.
+  The branch before this fix differs in all four case 10 runs of seeds 1 to 48 [verified].
 * Planted faults, each caught: no dirty bit where `FPTR_IO_W()` finds the frame buffer's tag
-  (case j), the rule's second half taken out of `FPTR_IO_W()` (the probe `abit_win`, case m), the
-  rule taken out of CMPS (the probe `abit_cmps`, case m), the fill's last 16-bit store dropped (the
-  REP STOS cases), the frame buffer's address a page off on the tag (the cases).
+  (case j), the rule taken out of `FPTR_IO_W()` (the probe `abit_win`, case m), the rule taken
+  out of CMPS (the probe `abit_cmps`, case m), the fill's last 16-bit store dropped (the REP STOS
+  cases), the frame buffer's address a page off on the tag (the cases); after the check, in
+  `fast_lpgno()` the code page's test taken out (`codepage`: case m's case 10, mode x) and the
+  refusal test (`lpgno`, as WI-1 plants it: cases j and m, mode x), `slow:` not giving tiny386
+  back its old fetch cache (`restore`: case 10's CMP and JZ), and MOVS from MMIO looking up a
+  destination tiny386's TLB does not hold (`destheld`: case m, mode x).
 
-**Results** [verified, 2026-10-28, WSL, the branch's head; the machine loaded by other work]:
+**After WI-2's check** (S\CHECK-v51-lfbrep.md, six findings) [verified: each change run as below]:
 
-* Host tests: `run.sh` 84 passed, 0 failed (76 at the base, the probes, four planted faults in
-  `run_lfb.sh` 5, three in `run.sh` 24). `test_fast_cpu` on seeds 41 to 340: 6,300 scenarios in
-  each build (the Korvo-1 header, and plain), 1,071,662 steps, 0 failed.
+* F1 (major), the first instruction of a newly cached code page: fixed in `fast_lpgno()`
+  (above), with `slow:` and `fast_window()` as they were. The check's own cure, not giving
+  tiny386 back its old fetch cache when the code page's entry is gone, lets tiny386 fuse a CMP
+  with the JZ after it where tiny386 alone does not (the check saw it in case c, seed 214); with
+  the entry kept, the slow way is a TLB hit and changes nothing. Two other places were tried
+  and left [verified: each built and counted]. The same tests at the top of `fast_miss()` cost
+  about 4 host instructions on every miss of tiny386's TLB (BENCH's A9 150.2 to 154.2), BENCH
+  without A4 and the boot +0.202 against v5.0, over this item's 0.2. Telling tiny386 not to fuse
+  (a flag read in `try_jcc8()`) instead of giving it back its old fetch cache costs nothing a
+  miss, but moved `fast_exec()`'s register allocation: the micro-benchmark's REP STOSD of 4 went
+  to +5.0 and MOV r,[esp+d] to +3.0 against v5.0, over the item's 2. In `fast_lpgno()` the tests
+  share the entry and its compare with `translate_lpgno_body()`: A9 153.8, and `fast_exec()`
+  is untouched.
+* F2 (minor, v5.0's), one access that faults on an entry tiny386 holds: fixed in `fast_lpgno()`.
+* F3 (minor, speed), MOVS from the VGA window with paging: `FAST_DEST_HELD()`, 22 bytes. The
+  check's form (also refilling an index that does not hold the source's page) cost 88.
+* F4 (note), no planted fault for the rule's first half: that half is now `fast_lpgno()`'s
+  refusal test, planted as `lpgno`.
+* F5 (note): this section.
+* F6 (note), two measures of the paging bench: the targets and the figures below are host
+  instructions counted with the board's ESP-IDF GCC 16.1 on `i386.c` (as the micro-benchmark
+  builds it); `run_lfb.sh` 3 builds every file with the Linux route's GCC 15.3, and its paging
+  rows run 0.16 to 0.32 higher (fill 4.4 against 4.17, RAM to the screen 6.9 against 6.59).
+  `run_lfb.sh` says so now.
+
+**Results** [verified, 2026-10-28, WSL, the branch after WI-2's check (4cf12a6); the counts for
+the boards' RV32 code on 488493b, whose code for the boards is the same (the board's compiler
+gives the same instructions, only line numbers in assert calls differ); the machine loaded by
+other work]:
+
+* Host tests: `run.sh` 88 passed, 0 failed (76 at the base; the probes and four
+  planted faults in `run_lfb.sh` 5; seven planted faults of WI-2's in `run.sh` 24). `test_fast_cpu`
+  on seeds 41 to 340: 6,600 scenarios in each build (the Korvo-1 header, and plain; modes 0 to j,
+  m and x), 1,586,557 and 1,585,335 steps, 0 failed.
 * The lockstep tester against v4.6, seven workloads with the fast interpreter on and off: no
   difference in any of the 14, each on v4.6's count and disk (b1 588,301,033, restart
   1,304,341,904, msdos 1,337,723,352, bench 31,345,925, vbe 55,090,157, t386mon 674,307,567,
@@ -708,20 +776,22 @@ places, the `FPTR` macros and `fast_miss()`, are other items'):
 * The three Windows 95 runs of the PC repro end on 588,301,033, 1,304,341,904 and 1,337,723,352
   instructions with the fast interpreter on and off.
 * Host instructions, the board's compiler on `i386.c` (`tests/host/lfb`'s paging bench, a dword;
-  v5.0 to this branch, the item's target): fill of 400x300 in rows 8.03 to 4.16 (4.3); RAM to the
-  screen 8.47 to 6.56 (6.6); scroll up 8.15 to 6.07 (6.1); scroll down 8.02 to 5.84 (5.9); the
+  v5.0 to this branch, the item's target): fill of 400x300 in rows 8.03 to 4.17 (4.3); RAM to the
+  screen 8.47 to 6.59 (6.6); scroll up 8.15 to 6.07 (6.1); scroll down 8.02 to 5.84 (5.9); the
   screen to RAM 5.48 to 5.49 (unchanged). The micro-benchmark (165 forms, every build on the same
   guest state): REP STOSD of 256 1,645.5 to 475.5, REP STOSW of 256 1,653.5 to 309.5 (520), REP
-  STOSD of 4 +2.0 (2), MOVSB -1 (5), REP MOVS -3; REP STOSW of 4 +8, the one form more than 2 worse
-  (the fill's test on every piece and the element loop's layout; 16 elements already gain 69).
-  BENCH without A4 and the boot, core 1, 71.04 to 71.03 (A4, the REP MOVSW and STOSW piece, 2,827
-  to 854). Windows' boot, the first 300 M instructions, core 1, 76.50 to 76.51 (+0.014; no frame
-  buffer in the boot).
-* Internal RAM (ESP-IDF builds, DIRAM used): +946 bytes on the Korvo-1 (dual boot and standalone,
-  263,246) and the DOS board (265,488) against v5.0, 240,498 and 238,256 left; with `v51-ram`
-  merged, +946 against it, 125,817 and 127,985 left. `fast_exec()` 120,956 bytes (+758),
-  `fast_miss2()` 96, `fill_aligned()` 108, `lfb_stos()` 316 (-16); `cpu_exec1()` unchanged; no new
-  function in flash; no new warning.
+  STOSD of 4 +2.0 (2), MOVSB -1 (5), REP MOVS -3, CALL and RET near -5; REP STOSW of 4 +8, the one
+  form more than 2 worse (the fill's test on every piece and the element loop's layout; 16
+  elements already gain 69). BENCH without A4 and the boot, core 1, 71.035 to 71.216 (+0.181:
+  A9, a TLB miss every time, 150.2 to 153.8, the code page's test; A4, the REP MOVSW and STOSW
+  piece, 2,827.7 to 854.4). Windows' boot, the first 300 M instructions, core 1, 76.498 to
+  76.355 (-0.143; the branch before the check 76.512).
+* Internal RAM (ESP-IDF builds, DIRAM used): +754 bytes on the Korvo-1 (dual boot and standalone,
+  263,054) and the DOS board (265,296) against v5.0, 240,690 and 238,448 left; with `v51-ram`
+  merged, +754 against it, 126,009 and 128,177 left. `fast_exec()` 120,960 bytes (+762),
+  `fast_lpgno()` 290 (-162, as GCC lays it out with the two tests), `fast_miss2()` 68,
+  `fill_aligned()` 108, `lfb_stos()` 316 (-16); `cpu_exec1()` unchanged; no new function in
+  flash; no new warning.
 
 **On the board** [inferred: the per-dword savings above, as the hot-spots design worked them out;
 [unknown] until Plat runs T386MON]: scroll about 8 to 15 per cent faster, full copy 6 to 9, fill 2

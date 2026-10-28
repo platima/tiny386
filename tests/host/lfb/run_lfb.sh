@@ -10,10 +10,14 @@
 #     1's line for line (each 256-byte block of video memory and each page of
 #     RAM that changed, by a hash of its bytes; every mark; the flag; the
 #     registers);
-#  3. with the board's compiler and qemu-riscv32-static, when both are there:
+#  3. with an RV32 compiler and qemu-riscv32-static, when both are there:
 #     both builds again for RV32, and the host instructions of each piece of
 #     guest_lfb.S's bench_ cases counted (tbcount.c), old against new (v5.1:
-#     pfill and pcopy too, the frame buffer through the page tables);
+#     pfill and pcopy too, the frame buffer through the page tables).  Every
+#     file is built with RV32_CC, the Linux route's GCC 15.3, not the board's
+#     ESP-IDF GCC 16.1: v5.1's targets for the paging rows were counted with
+#     the board's compiler on i386.c (s31/FAST-CPU.md 13.2), where the rows
+#     run about 0.2 to 0.3 lower than here (0.16 to 0.32 on branch v51-lfbrep);
 #  4. (v5.1) the accessed-bit probes (guest_lfb.S's probe_ cases): this tree
 #     with the fast interpreter on and off, and v4.6's tree, must leave the
 #     same words (the first operand's page table entry above all);
@@ -117,7 +121,7 @@ QEMU=$(command -v qemu-riscv32-static || command -v qemu-riscv32 || true)
 if [ ! -x "$RV32_CC" ] || [ -z "$QEMU" ] || [ -z "$OLD" ]; then
     echo "SKIP lfb counting: needs RV32_CC ($RV32_CC), qemu-riscv32 and v4.6"
 else
-    echo "== host instructions, RV32 (the board's compiler, Zba, Zbb, Zbs), counted under qemu"
+    echo "== host instructions, RV32 (RV32_CC, Zba, Zbb, Zbs; not the board's ESP-IDF GCC), counted under qemu"
     gcc -O2 -o "$OUT/tbcount" "$HERE/tbcount.c" || exit 1
     NM=${RV32_CC%gcc}nm
     ARCH="-march=rv32imac_zicsr_zifencei_zba_zbb_zbs -mabi=ilp32"

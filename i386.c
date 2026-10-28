@@ -812,12 +812,12 @@ static bool IRAM_ATTR translate_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uword 
    - a refill over tiny386's entry for the page the code runs from (the
      page of cpu->ifetch, from its 32-bit address: on a 64-bit host the
      -1 of a cache never filled would otherwise equal an empty entry's
-     page).  The first instruction in a page the fast
-     interpreter newly cached is handed over with tiny386's old fetch
-     cache (i386_fast.h, slow:), so that tiny386 fetches it the slow way
-     through its TLB, as alone; with the entry gone it walked the code page
-     a second time, and after REP pieces done in the fast interpreter kept
-     it where tiny386 alone keeps the operand's page.  (For the lookup of a
+     page).  The first instruction in a page the fast interpreter newly
+     cached is handed over with tiny386's old fetch cache (i386_fast.h,
+     slow:), so that tiny386 fetches it the slow way through its TLB, as
+     alone; with the entry gone tiny386 walked the code page a second
+     time, and after REP pieces done in the fast interpreter kept it
+     where tiny386 alone keeps the operand's page.  (For the lookup of a
      new code page this is the old one: then tiny386 does the instruction,
      which is right and only slower.)
    Every other case is translate_lpgno()'s, which tiny386 doing it again

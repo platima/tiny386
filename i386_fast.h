@@ -260,23 +260,23 @@ static noinline int IRAM_ATTR_FAST_EXEC fast_where(CPUI386 *cpu, struct fast_tlb
    through memory (REP STOS's destination too, with no first: then it is
    fast_miss()).  fast_miss() asks tiny386's TLB, which refills the entry
    at the page's index.  If the instruction then goes to tiny386 (MMIO
-   there, a fault,
-   past the end of RAM, a piece lfb_movs() will not take), tiny386
-   translates every operand afresh and finds an entry missing that it would
-   have found alone: a second refill, which sets the page tables' accessed
-   bits again (the guest may have cleared them without INVLPG) and reads an
-   entry the guest may have changed.  So, with paging, NULL with *mmio -1
-   (the caller goes to tiny386 at once) if tiny386's entry at this page's
-   index holds another page, the first operand's, which the refill would
-   drop.  The fast entry at this index maps h1 exactly when it is the first
-   operand's (that entry is there only while tiny386's holds the same
-   page).  tiny386 then translates the first operand (a hit) and this one,
-   once each, in its order.  tlb_refill() changes an entry only when it
-   succeeds, so a page that is not present drops nothing; and an entry of
-   this page's own that refuses the access fast_lpgno() (i386.c) leaves to
-   tiny386 untouched, so tiny386 faults with it as it does alone.  Out of
-   line, as fast_miss() is: in line at each lookup it cost about 1.1 KB of
-   internal RAM. */
+   there, a fault, past the end of RAM, a piece lfb_movs() will not take),
+   tiny386 translates every operand afresh and finds an entry missing that
+   it would have found alone: a second refill, which sets the page tables'
+   accessed bits again (the guest may have cleared them without INVLPG)
+   and reads an entry the guest may have changed.
+   So, with paging, NULL with *mmio -1 (the caller goes to tiny386 at
+   once) if tiny386's entry at this page's index holds another page, the
+   first operand's, which the refill would drop.  The fast entry at this
+   index maps h1 exactly when it is the first operand's (that entry is
+   there only while tiny386's holds the same page).  tiny386 then
+   translates the first operand (a hit) and this one, once each, in its
+   order.  tlb_refill() changes an entry only when it succeeds, so a page
+   that is not present drops nothing; and an entry of this page's own that
+   refuses the access fast_lpgno() (i386.c) leaves to tiny386 untouched,
+   so tiny386 faults with it as it does alone.  Out of line, as
+   fast_miss() is: in line at each lookup it cost about 1.1 KB of internal
+   RAM. */
 static noinline u8 *IRAM_ATTR_FAST_EXEC fast_miss2(CPUI386 *cpu, struct fast_tlb_entry *tab, uword lin,
 						   int size, int write, uword *mmio, const u8 *h1)
 {
@@ -850,7 +850,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   no fast entry (MOVS from the VGA window): with paging, the
 	   destination is looked up only where tiny386's TLB holds its page, so
 	   that the lookup leaves tiny386's TLB as it is (an entry that refuses
-	   the store fast_miss() leaves to tiny386); anything else goes to
+	   the store fast_lpgno() leaves alone); anything else goes to
 	   tiny386.  (Since WI-2's check, tiny386's entry and not the fast
 	   entry's write tag: a copy within a page of the VGA window, or into
 	   one tiny386 holds, stays here as in v5.0; 22 bytes of internal RAM,
