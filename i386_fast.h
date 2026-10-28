@@ -785,7 +785,8 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   TLB holds the page with the rights checked for a store at this
 	   privilege level and the frame buffer has not moved, so tiny386's own
 	   lookup would hit and change nothing but the dirty bit.  H1: the source
-	   of MOVS (the two-operand rule), or NULL. */
+	   of MOVS (the two-operand rule), or NULL.  (msize is not set: its
+	   labels take the element's size from the handler.) */
 #define FPTR_IO_W(p, sg, off, size, LABEL, H1) do { \
 		if (unlikely(nullsegs) && (nullsegs & (1 << (sg)))) goto slow; \
 		uword _lin = cpu->seg[sg].base + (off); \
@@ -801,16 +802,31 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 				*_e->ppte |= 0x40; \
 			mpaddr = cpu->cb.lfb_base + (uword) ((uintptr_t) (_lin + _e->delta) - \
 							     (uintptr_t) cpu->cb.lfb_mem); \
-			msize = (size); \
 			goto LABEL; \
 		} else { \
 			FAST_TWO_OP((H1), 1); \
 			if (!(p = fast_miss(cpu, ftlb, _lin, (size), 1, &mpaddr))) { \
 				if (mpaddr == (uword) -1) goto slow; \
-				msize = (size); \
 				goto LABEL; \
 			} \
 		} \
+	} while (0)
+	/* v5.1: only the hit of a store's destination, tested as FPTR_IO()
+	   tests it; anything else goes to MISS, where FPTR_IO_W() looks again
+	   (MOVS: with the whole of FPTR_IO_W() in line, the board's compiler
+	   laid the hit out of line, five host instructions dearer, mb) */
+#define FPTR_W(p, sg, off, size, MISS) do { \
+		if (unlikely(nullsegs) && (nullsegs & (1 << (sg)))) goto slow; \
+		uword _lin = cpu->seg[sg].base + (off); \
+		uword _pg = _lin >> 12; \
+		struct fast_tlb_entry *_e = &ftlb[_pg % tlb_size]; \
+		if (likely(_e->wtag == _pg && \
+			   ((size) == 1 || (_lin & 0xfff) <= 0x1000 - (size)))) { \
+			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
+			if (unlikely(!(*_e->ppte & 0x40))) \
+				*_e->ppte |= 0x40; \
+		} else \
+			goto MISS; \
 	} while (0)
 	/* v5.1: as FPTR, for an instruction's second memory operand, its first
 	   at host address H1 (or NULL): the two-operand rule on a miss */
@@ -1824,11 +1840,15 @@ movs: { int n = strn;
 	if (!rep) {
 		u8 *s, *d;
 		FPTR_IO(s, ss, SI_, n, 0, movs_io);
-		FPTR_IO_W(d, SEG_ES, DI_, n, movs_dio, s);
+		FPTR_W(d, SEG_ES, DI_, n, movs_dmiss);
+movs_dgo:
 		if (n == 1) fs8(d, fm8(s)); else if (n == 2) fs16(d, fm16(s)); else fs32(d, fm32(s));
 		SET_SI(SI_ + dir);
 		SET_DI(DI_ + dir);
 		NEXT;
+movs_dmiss:   /* (v5.1) the frame buffer by its tag, or the rule and fast_miss() */
+		FPTR_IO_W(d, SEG_ES, DI_, n, movs_dio, s);
+		goto movs_dgo;
 movs_dio:   /* (v5.1) the source a host address (RAM, or the frame buffer's
 	       read entry), the destination MMIO at mpaddr (the frame buffer by
 	       its write tag, or what fast_miss() found): each end looked up
@@ -1890,7 +1910,7 @@ movs_rep_dio: {   /* (v5.1) the source a host address (RAM, or the frame
 			uintptr_t o = (uintptr_t) s - (uintptr_t) cpu->cb.lfb_mem;
 			uword ps = o < cpu->cb.lfb_lim1 ? cpu->cb.lfb_base + (uword) o :
 				(uword) (s - (u8 *) cpu->phys_mem);
-			if (!(in_high_iomem(ps) || in_high_iomem(mpaddr)) ||
+			if (!(in_high_iomem(mpaddr) || in_high_iomem(ps)) ||
 			    !lfb_movs(cpu, ps, mpaddr, n, dir, cnt))
 				goto slow;
 			goto movs_rep_next;
@@ -1908,7 +1928,10 @@ movs_rep_io: {   /* MMIO at one end or both (v5.0; since v5.1 the source
 			if (!ks) goto slow;
 			if (ks == 2 && !in_high_iomem(ps))
 				goto slow;   /* (v5.1) the VGA window: lfb_movs() takes no piece from it */
-			FAST_TWO_OP_PG(ld, ls >> 12, 1);
+			/* (the pages from si and di again: ls and ld kept alive to
+			   here cost the whole REP loop registers, 4 host
+			   instructions a REP MOVS, mb) */
+			FAST_TWO_OP_PG(cpu->seg[SEG_ES].base + di, (cpu->seg[ss].base + si) >> 12, 1);
 			int kd = fast_where(cpu, ftlb, nullsegs, SEG_ES, di, n, 1, &d, &pd);
 			if (!kd) goto slow;
 			/* (a read entry may be the frame buffer's; a write
