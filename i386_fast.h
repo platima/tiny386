@@ -599,6 +599,9 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 		[0xf5] = &&op_cmc, [0xf6] = &&op_grp3_b, [0xf7] = &&op_grp3_v,
 		[0xf8] = &&op_clc, [0xf9] = &&op_stc, [0xfa] = &&op_cli, [0xfb] = &&op_sti,
 		[0xfc] = &&op_cld, [0xfd] = &&op_std, [0xfe] = &&op_grp4, [0xff] = &&op_grp5,
+		/* v5.1 (F): the shifts by 1 and by CL have handlers of their own
+		   (C0h and C1h, by an immediate, keep op_grp2_b and op_grp2_v) */
+		[0xd0] = &&op_grp2_b1, [0xd1] = &&op_grp2_v1, [0xd2] = &&op_grp2_bcl, [0xd3] = &&op_grp2_vcl,
 	};
 	static const DRAM_ATTR void *const ops0f[256] = {
 		[0 ... 255] = &&slow,
@@ -610,6 +613,37 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 		[0xbe] = &&op_movsx_b, [0xbf] = &&op_movsx_w,
 	};
 #pragma GCC diagnostic pop
+	/* v5.1 (F): the group opcodes' operations by modrm's reg field, a
+	   table for each form of the operand: a byte register, byte memory,
+	   16 and 32-bit registers, 16 and 32-bit memory (group 1: 80h and 82h,
+	   81h, 83h; 2: C0h, C1h, D0h to D3h, where /6 is /4; 3: F6h, F7h,
+	   where /1 is /0).  In internal RAM, as ops[] is (DRAM_ATTR: not
+	   .rodata, which ESP-IDF puts in flash). */
+#define FAST_GRP1_TAB(P) { &&P##0, &&P##1, &&P##2, &&P##3, &&P##4, &&P##5, &&P##6, &&P##7 }
+#define FAST_GRP2_TAB(P) { &&P##0, &&P##1, &&P##2, &&P##3, &&P##4, &&P##5, &&P##4, &&P##7 }
+#define FAST_GRP3_TAB(P) { &&P##0, &&P##0, &&P##2, &&P##3, &&P##4, &&P##5, &&P##6, &&P##7 }
+	static const DRAM_ATTR void *const g80r[8] = FAST_GRP1_TAB(g80r_);
+	static const DRAM_ATTR void *const g80m[8] = FAST_GRP1_TAB(g80m_);
+	static const DRAM_ATTR void *const g81wr[8] = FAST_GRP1_TAB(g81wr_);
+	static const DRAM_ATTR void *const g81dr[8] = FAST_GRP1_TAB(g81dr_);
+	static const DRAM_ATTR void *const g81wm[8] = FAST_GRP1_TAB(g81wm_);
+	static const DRAM_ATTR void *const g81dm[8] = FAST_GRP1_TAB(g81dm_);
+	static const DRAM_ATTR void *const g83wr[8] = FAST_GRP1_TAB(g83wr_);
+	static const DRAM_ATTR void *const g83dr[8] = FAST_GRP1_TAB(g83dr_);
+	static const DRAM_ATTR void *const g83wm[8] = FAST_GRP1_TAB(g83wm_);
+	static const DRAM_ATTR void *const g83dm[8] = FAST_GRP1_TAB(g83dm_);
+	static const DRAM_ATTR void *const g2br[8] = FAST_GRP2_TAB(g2br_);
+	static const DRAM_ATTR void *const g2bm[8] = FAST_GRP2_TAB(g2bm_);
+	static const DRAM_ATTR void *const g2wr[8] = FAST_GRP2_TAB(g2wr_);
+	static const DRAM_ATTR void *const g2dr[8] = FAST_GRP2_TAB(g2dr_);
+	static const DRAM_ATTR void *const g2wm[8] = FAST_GRP2_TAB(g2wm_);
+	static const DRAM_ATTR void *const g2dm[8] = FAST_GRP2_TAB(g2dm_);
+	static const DRAM_ATTR void *const g3br[8] = FAST_GRP3_TAB(g3br_);
+	static const DRAM_ATTR void *const g3bm[8] = FAST_GRP3_TAB(g3bm_);
+	static const DRAM_ATTR void *const g3wr[8] = FAST_GRP3_TAB(g3wr_);
+	static const DRAM_ATTR void *const g3dr[8] = FAST_GRP3_TAB(g3dr_);
+	static const DRAM_ATTR void *const g3wm[8] = FAST_GRP3_TAB(g3wm_);
+	static const DRAM_ATTR void *const g3dm[8] = FAST_GRP3_TAB(g3dm_);
 
 	if (stepcount <= 0)
 		return true;
@@ -643,8 +677,12 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	struct fast_tlb_entry *ftlb;
 	/* the current instruction's prefixes: bit 0 16-bit operands, bit 1
 	   16-bit addresses, bits 2-3 REP (1) or REPNE (2), bits 4-6 the
-	   segment override + 1; pfx0 without prefixes */
-	unsigned pfx, pfx0;
+	   segment override + 1; pfx0 without prefixes.  (v5.1: a group
+	   opcode's handler hands its operand to the operation in pfx, a
+	   register's number or a host address, hence uintptr_t: the same 32
+	   bits on the boards) */
+	uintptr_t pfx;
+	unsigned pfx0;
 #define opsz16 (pfx & 1)
 #define adsz16 ((pfx >> 1) & 1)
 #define rep ((pfx >> 2) & 3)
@@ -656,6 +694,8 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	u8 *mhost;                /* the frame buffer: the store's host address (FPTR_ST) */
 	u32 mval;                 /* MMIO: the value to store */
 	int msize, mreg;          /* MMIO: the size, the register to load into */
+	u8 gm;                    /* group 2 (v5.1): modrm, for the memory forms' shared decoding */
+	uword gcnt = 0;           /* ... and the count for a memory operand (the operations') */
 
 #define EIP_OF(p) ((uword) ((uintptr_t) (p) - ipd))
 #define FAST_ITER() (steps0 - steps + sadj)
@@ -1621,163 +1661,124 @@ op_iret: {   /* in protected mode by tiny386's pmret(); in real mode, 16-bit */
 	}
 	RELOAD; }
 
-	/* groups */
-op_grp1_b: { u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;
-	if (m >= 0xc0) {
-		u8 i = *pc++;
-		switch (op) {
-		case 0: { ADDb(rm, i, fr8, fw8, limm, 0) } break;
-		case 1: { ORb(rm, i, fr8, fw8, limm, 0) } break;
-		case 2: { ADCb(rm, i, fr8, fw8, limm, 0) } break;
-		case 3: { SBBb(rm, i, fr8, fw8, limm, 0) } break;
-		case 4: { ANDb(rm, i, fr8, fw8, limm, 0) } break;
-		case 5: { SUBb(rm, i, fr8, fw8, limm, 0) } break;
-		case 6: { XORb(rm, i, fr8, fw8, limm, 0) } break;
-		default: { FCMPb(rm, i, fr8, fw8, limm, 0) } break;
-		}
-	} else {
-		u8 *p; EA_PTR(p, m, 1, op != 7);
-		u8 i = *pc++;
-		switch (op) {
-		case 0: { ADDb(p, i, fm8, fs8, limm, 0) } break;
-		case 1: { ORb(p, i, fm8, fs8, limm, 0) } break;
-		case 2: { ADCb(p, i, fm8, fs8, limm, 0) } break;
-		case 3: { SBBb(p, i, fm8, fs8, limm, 0) } break;
-		case 4: { ANDb(p, i, fm8, fs8, limm, 0) } break;
-		case 5: { SUBb(p, i, fm8, fs8, limm, 0) } break;
-		case 6: { XORb(p, i, fm8, fs8, limm, 0) } break;
-		default: { FCMPb(p, i, fm8, fs8, limm, 0) } break;
-		}
-	}
-	if (op == 7) FOLD_JCC();
-	NEXT; }
-#define GRP1_V(I16, I32) \
-	if (m >= 0xc0) { \
-		if (opsz16) { \
-			u16 i = I16; \
-			switch (op) { \
-			case 0: { ADDw(rm, i, lreg16, sreg16, limm, 0) } break; \
-			case 1: { ORw(rm, i, lreg16, sreg16, limm, 0) } break; \
-			case 2: { ADCw(rm, i, lreg16, sreg16, limm, 0) } break; \
-			case 3: { SBBw(rm, i, lreg16, sreg16, limm, 0) } break; \
-			case 4: { ANDw(rm, i, lreg16, sreg16, limm, 0) } break; \
-			case 5: { SUBw(rm, i, lreg16, sreg16, limm, 0) } break; \
-			case 6: { XORw(rm, i, lreg16, sreg16, limm, 0) } break; \
-			default: { FCMPw(rm, i, lreg16, sreg16, limm, 0) } break; \
-			} \
-		} else { \
-			u32 i = I32; \
-			switch (op) { \
-			case 0: { ADDd(rm, i, lreg32, sreg32, limm, 0) } break; \
-			case 1: { ORd(rm, i, lreg32, sreg32, limm, 0) } break; \
-			case 2: { ADCd(rm, i, lreg32, sreg32, limm, 0) } break; \
-			case 3: { SBBd(rm, i, lreg32, sreg32, limm, 0) } break; \
-			case 4: { ANDd(rm, i, lreg32, sreg32, limm, 0) } break; \
-			case 5: { SUBd(rm, i, lreg32, sreg32, limm, 0) } break; \
-			case 6: { XORd(rm, i, lreg32, sreg32, limm, 0) } break; \
-			default: { FCMPd(rm, i, lreg32, sreg32, limm, 0) } break; \
-			} \
-		} \
-	} else if (opsz16) { \
-		u8 *p; EA_PTR(p, m, 2, op != 7); \
-		u16 i = I16; \
-		switch (op) { \
-		case 0: { ADDw(p, i, fm16, fs16, limm, 0) } break; \
-		case 1: { ORw(p, i, fm16, fs16, limm, 0) } break; \
-		case 2: { ADCw(p, i, fm16, fs16, limm, 0) } break; \
-		case 3: { SBBw(p, i, fm16, fs16, limm, 0) } break; \
-		case 4: { ANDw(p, i, fm16, fs16, limm, 0) } break; \
-		case 5: { SUBw(p, i, fm16, fs16, limm, 0) } break; \
-		case 6: { XORw(p, i, fm16, fs16, limm, 0) } break; \
-		default: { FCMPw(p, i, fm16, fs16, limm, 0) } break; \
-		} \
-	} else { \
-		u8 *p; EA_PTR(p, m, 4, op != 7); \
-		u32 i = I32; \
-		switch (op) { \
-		case 0: { ADDd(p, i, fm32, fs32, limm, 0) } break; \
-		case 1: { ORd(p, i, fm32, fs32, limm, 0) } break; \
-		case 2: { ADCd(p, i, fm32, fs32, limm, 0) } break; \
-		case 3: { SBBd(p, i, fm32, fs32, limm, 0) } break; \
-		case 4: { ANDd(p, i, fm32, fs32, limm, 0) } break; \
-		case 5: { SUBd(p, i, fm32, fs32, limm, 0) } break; \
-		case 6: { XORd(p, i, fm32, fs32, limm, 0) } break; \
-		default: { FCMPd(p, i, fm32, fs32, limm, 0) } break; \
-		} \
-	}
-op_grp1_v: { u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;
-	GRP1_V((pc += 2, fm16(pc - 2)), (pc += 4, fm32(pc - 4)))
-	if (op == 7) FOLD_JCC();
-	NEXT; }
-op_grp1_vb: { u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;
-	GRP1_V((u16) (s8) *pc++, (u32) (s8) *pc++)
-	if (op == 7) FOLD_JCC();
-	NEXT; }
+	/* groups (v5.1, F).  The handler decodes the operand and goes to the
+	   operation through a table of 8 labels by modrm's reg field, a table
+	   for each form of the operand (above); the operations run tiny386's
+	   macros as before.  It was a switch, which ESP-IDF's -fno-jump-tables
+	   made a chain of compares (CMP, case 7, the dearest).  The operand is
+	   handed over in pfx, which the next DISPATCH resets: a register's
+	   number (with a shift's count above it), or a memory operand's host
+	   address (a shift's count then in gcnt).  A variable of its own would
+	   be live at every dispatch, since GCC takes any computed goto to reach
+	   any label whose address is taken, and GCC keeps such a variable in
+	   memory.  An immediate is read by the operation itself, after the
+	   operand's bytes as before; so 80h/82h, 81h and 83h have operations of
+	   their own, as they had cases of their own.  The shifts have a
+	   handler for each place their count comes from. */
+#define GRP_OPND_R(T) do { const void *const *_t = (T); pfx = m & 7; goto *_t[op]; } while (0)
+#define GRP_OPND_M(T, SIZE, WR) do { const void *const *_t = (T); u8 *_p; EA_PTR(_p, m, SIZE, WR); \
+		pfx = (uintptr_t) _p; goto *_t[op]; } while (0)
+#define GRP_R pfx                  /* the operation's register operand */
+#define GRP_M ((u8 *) pfx)         /* ... its memory operand */
+op_grp1_b: { u8 m = *pc++; int op = (m >> 3) & 7;   /* 80h, 82h */
+	if (m >= 0xc0) GRP_OPND_R(g80r);
+	GRP_OPND_M(g80m, 1, op != 7); }
+op_grp1_v: { u8 m = *pc++; int op = (m >> 3) & 7;   /* 81h */
+	if (m >= 0xc0) GRP_OPND_R(opsz16 ? g81wr : g81dr);
+	if (opsz16) GRP_OPND_M(g81wm, 2, op != 7);
+	GRP_OPND_M(g81dm, 4, op != 7); }
+op_grp1_vb: { u8 m = *pc++; int op = (m >> 3) & 7;  /* 83h */
+	if (m >= 0xc0) GRP_OPND_R(opsz16 ? g83wr : g83dr);
+	if (opsz16) GRP_OPND_M(g83wm, 2, op != 7);
+	GRP_OPND_M(g83dm, 4, op != 7); }
+#define GRP1_OPS(P, SFX, X, LA, SA, IMM) \
+P##0: { IMM; ADD##SFX(X, i, LA, SA, limm, 0) goto grp_next; } \
+P##1: { IMM; OR##SFX(X, i, LA, SA, limm, 0) goto grp_next; } \
+P##2: { IMM; ADC##SFX(X, i, LA, SA, limm, 0) goto grp_next; } \
+P##3: { IMM; SBB##SFX(X, i, LA, SA, limm, 0) goto grp_next; } \
+P##4: { IMM; AND##SFX(X, i, LA, SA, limm, 0) goto grp_next; } \
+P##5: { IMM; SUB##SFX(X, i, LA, SA, limm, 0) goto grp_next; } \
+P##6: { IMM; XOR##SFX(X, i, LA, SA, limm, 0) goto grp_next; } \
+P##7: { IMM; FCMP##SFX(X, i, LA, SA, limm, 0) FOLD_JCC(); goto grp_next; }
+	GRP1_OPS(g80r_, b, GRP_R, fr8, fw8, u8 i = *pc++)
+	GRP1_OPS(g80m_, b, GRP_M, fm8, fs8, u8 i = *pc++)
+	GRP1_OPS(g81wr_, w, GRP_R, lreg16, sreg16, u16 i = fm16(pc); pc += 2)
+	GRP1_OPS(g81dr_, d, GRP_R, lreg32, sreg32, u32 i = fm32(pc); pc += 4)
+	GRP1_OPS(g81wm_, w, GRP_M, fm16, fs16, u16 i = fm16(pc); pc += 2)
+	GRP1_OPS(g81dm_, d, GRP_M, fm32, fs32, u32 i = fm32(pc); pc += 4)
+	GRP1_OPS(g83wr_, w, GRP_R, lreg16, sreg16, u16 i = (s8) *pc++)
+	GRP1_OPS(g83dr_, d, GRP_R, lreg32, sreg32, u32 i = (s8) *pc++)
+	GRP1_OPS(g83wm_, w, GRP_M, fm16, fs16, u16 i = (s8) *pc++)
+	GRP1_OPS(g83dm_, d, GRP_M, fm32, fs32, u32 i = (s8) *pc++)
 
-	/* shifts and rotates: C0 (Eb,Ib) C1 (Ev,Ib) D0 (Eb,1) D1 (Ev,1) D2 (Eb,CL) D3 (Ev,CL) */
-#define GRP2_CASES(SFX, X, N, LA, SA) \
-		switch (op) { \
-		case 0: { ROL##SFX(X, N, LA, SA, limm, 0) } break; \
-		case 1: { ROR##SFX(X, N, LA, SA, limm, 0) } break; \
-		case 2: { RCL##SFX(X, N, LA, SA, limm, 0) } break; \
-		case 3: { RCR##SFX(X, N, LA, SA, limm, 0) } break; \
-		case 4: case 6: { SHL##SFX(X, N, LA, SA, limm, 0) } break; \
-		case 5: { SHR##SFX(X, N, LA, SA, limm, 0) } break; \
-		default: { SAR##SFX(X, N, LA, SA, limm, 0) } break; \
-		}
-op_grp2_b: { u8 b = pc[-1]; u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;
-	if (m >= 0xc0) {
-		u8 n = b == 0xc0 ? *pc++ : b == 0xd0 ? 1 : fr8(1);
-		GRP2_CASES(b, rm, n, fr8, fw8)
-	} else {
-		u8 *p; EA_PTR(p, m, 1, 1);
-		u8 n = b == 0xc0 ? *pc++ : b == 0xd0 ? 1 : fr8(1);
-		GRP2_CASES(b, p, n, fm8, fs8)
-	}
-	NEXT; }
-op_grp2_v: { u8 b = pc[-1]; u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;
-	if (m >= 0xc0) {
-		u8 n = b == 0xc1 ? *pc++ : b == 0xd1 ? 1 : fr8(1);
-		if (opsz16) { GRP2_CASES(w, rm, n, lreg16, sreg16) }
-		else { GRP2_CASES(d, rm, n, lreg32, sreg32) }
-	} else if (opsz16) {
-		u8 *p; EA_PTR(p, m, 2, 1);
-		u8 n = b == 0xc1 ? *pc++ : b == 0xd1 ? 1 : fr8(1);
-		GRP2_CASES(w, p, n, fm16, fs16)
-	} else {
-		u8 *p; EA_PTR(p, m, 4, 1);
-		u8 n = b == 0xc1 ? *pc++ : b == 0xd1 ? 1 : fr8(1);
-		GRP2_CASES(d, p, n, fm32, fs32)
-	}
-	NEXT; }
+	/* shifts and rotates: by an immediate (C0h Eb, C1h Ev), by 1 (D0h,
+	   D1h), by CL (D2h, D3h).  A register's number goes with the count
+	   above it; with a memory operand the count is in gcnt, read after the
+	   operand's bytes for C0h and C1h, and the memory forms of D0h to D3h
+	   share their decoding (grp2_bm, grp2_vm) */
+#define GRP2_OPND_R(T, COUNT) do { const void *const *_t = (T); pfx = (m & 7) | (uword) (COUNT) << 3; goto *_t[op]; } while (0)
+op_grp2_b: { u8 m = *pc++; int op = (m >> 3) & 7;   /* C0h */
+	if (m >= 0xc0) GRP2_OPND_R(g2br, *pc++);
+	{ u8 *p; EA_PTR(p, m, 1, 1); gcnt = *pc++; pfx = (uintptr_t) p; goto *g2bm[op]; } }
+op_grp2_v: { u8 m = *pc++; int op = (m >> 3) & 7;   /* C1h */
+	if (m >= 0xc0) GRP2_OPND_R(opsz16 ? g2wr : g2dr, *pc++);
+	if (opsz16) { u8 *p; EA_PTR(p, m, 2, 1); gcnt = *pc++; pfx = (uintptr_t) p; goto *g2wm[op]; }
+	{ u8 *p; EA_PTR(p, m, 4, 1); gcnt = *pc++; pfx = (uintptr_t) p; goto *g2dm[op]; } }
+op_grp2_b1: { u8 m = *pc++; int op = (m >> 3) & 7;  /* D0h */
+	if (m >= 0xc0) GRP2_OPND_R(g2br, 1);
+	gcnt = 1; gm = m; goto grp2_bm; }
+op_grp2_v1: { u8 m = *pc++; int op = (m >> 3) & 7;  /* D1h */
+	if (m >= 0xc0) GRP2_OPND_R(opsz16 ? g2wr : g2dr, 1);
+	gcnt = 1; gm = m; goto grp2_vm; }
+op_grp2_bcl: { u8 m = *pc++; int op = (m >> 3) & 7; /* D2h */
+	if (m >= 0xc0) GRP2_OPND_R(g2br, fr8(1));
+	gcnt = fr8(1); gm = m; goto grp2_bm; }
+op_grp2_vcl: { u8 m = *pc++; int op = (m >> 3) & 7; /* D3h */
+	if (m >= 0xc0) GRP2_OPND_R(opsz16 ? g2wr : g2dr, fr8(1));
+	gcnt = fr8(1); gm = m; goto grp2_vm; }
+grp2_bm: { u8 m = gm; int op = (m >> 3) & 7; GRP_OPND_M(g2bm, 1, 1); }
+grp2_vm: { u8 m = gm; int op = (m >> 3) & 7;
+	if (opsz16) GRP_OPND_M(g2wm, 2, 1);
+	GRP_OPND_M(g2dm, 4, 1); }
+#define GRP2_OPS(P, SFX, X, N, LA, SA) \
+P##0: { ROL##SFX(X, N, LA, SA, limm, 0) goto grp_next; } \
+P##1: { ROR##SFX(X, N, LA, SA, limm, 0) goto grp_next; } \
+P##2: { RCL##SFX(X, N, LA, SA, limm, 0) goto grp_next; } \
+P##3: { RCR##SFX(X, N, LA, SA, limm, 0) goto grp_next; } \
+P##4: { SHL##SFX(X, N, LA, SA, limm, 0) goto grp_next; } \
+P##5: { SHR##SFX(X, N, LA, SA, limm, 0) goto grp_next; } \
+P##7: { SAR##SFX(X, N, LA, SA, limm, 0) goto grp_next; }
+	GRP2_OPS(g2br_, b, (pfx & 7), (pfx >> 3), fr8, fw8)
+	GRP2_OPS(g2bm_, b, GRP_M, gcnt, fm8, fs8)
+	GRP2_OPS(g2wr_, w, (pfx & 7), (pfx >> 3), lreg16, sreg16)
+	GRP2_OPS(g2dr_, d, (pfx & 7), (pfx >> 3), lreg32, sreg32)
+	GRP2_OPS(g2wm_, w, GRP_M, gcnt, fm16, fs16)
+	GRP2_OPS(g2dm_, d, GRP_M, gcnt, fm32, fs32)
 
-	/* F6/F7: TEST NOT NEG MUL IMUL DIV IDIV (TEST with tiny386's fusion) */
-#define GRP3(SFX, SZ, X, LA, SA, IMM) \
-		switch (op) { \
-		case 0: case 1: { u##SZ i = IMM; FTEST##SFX(X, i, LA, SA, limm, 0) FOLD_JCC(); } break; \
-		case 2: { NOT##SFX(X, LA, SA) } break; \
-		case 3: { NEG##SFX(X, LA, SA) } break; \
-		case 4: { MUL##SFX(X, LA, SA) } break; \
-		case 5: { IMUL##SFX(X, LA, SA) } break; \
-		case 6: { cpu->ip = EIP_OF(ins); DIV##SFX(X, LA, SA) } break;   /* may raise #DE */ \
-		default: { cpu->ip = EIP_OF(ins); IDIV##SFX(X, LA, SA) } break; \
-		}
-op_grp3_b: { u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;
-	if (m >= 0xc0) { GRP3(b, 8, rm, fr8, fw8, *pc++) }
-	else { u8 *p; EA_PTR(p, m, 1, op == 2 || op == 3); GRP3(b, 8, p, fm8, fs8, *pc++) }
-	NEXT; }
-op_grp3_v: { u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;
-	if (m >= 0xc0) {
-		if (opsz16) { GRP3(w, 16, rm, lreg16, sreg16, (pc += 2, fm16(pc - 2))) }
-		else { GRP3(d, 32, rm, lreg32, sreg32, (pc += 4, fm32(pc - 4))) }
-	} else if (opsz16) {
-		u8 *p; EA_PTR(p, m, 2, op == 2 || op == 3);
-		GRP3(w, 16, p, fm16, fs16, (pc += 2, fm16(pc - 2)))
-	} else {
-		u8 *p; EA_PTR(p, m, 4, op == 2 || op == 3);
-		GRP3(d, 32, p, fm32, fs32, (pc += 4, fm32(pc - 4)))
-	}
-	NEXT; }
+	/* F6/F7: TEST NOT NEG MUL IMUL DIV IDIV (TEST with tiny386's fusion;
+	   its immediate after the operand's bytes) */
+op_grp3_b: { u8 m = *pc++; int op = (m >> 3) & 7;
+	if (m >= 0xc0) GRP_OPND_R(g3br);
+	GRP_OPND_M(g3bm, 1, op == 2 || op == 3); }
+op_grp3_v: { u8 m = *pc++; int op = (m >> 3) & 7;
+	if (m >= 0xc0) GRP_OPND_R(opsz16 ? g3wr : g3dr);
+	if (opsz16) GRP_OPND_M(g3wm, 2, op == 2 || op == 3);
+	GRP_OPND_M(g3dm, 4, op == 2 || op == 3); }
+#define GRP3_OPS(P, SFX, SZ, X, LA, SA, IMM) \
+P##0: { u##SZ i = IMM; FTEST##SFX(X, i, LA, SA, limm, 0) FOLD_JCC(); goto grp_next; } \
+P##2: { NOT##SFX(X, LA, SA) goto grp_next; } \
+P##3: { NEG##SFX(X, LA, SA) goto grp_next; } \
+P##4: { MUL##SFX(X, LA, SA) goto grp_next; } \
+P##5: { IMUL##SFX(X, LA, SA) goto grp_next; } \
+P##6: { cpu->ip = EIP_OF(ins); DIV##SFX(X, LA, SA) goto grp_next; }   /* may raise #DE */ \
+P##7: { cpu->ip = EIP_OF(ins); IDIV##SFX(X, LA, SA) goto grp_next; }
+	GRP3_OPS(g3br_, b, 8, GRP_R, fr8, fw8, *pc++)
+	GRP3_OPS(g3bm_, b, 8, GRP_M, fm8, fs8, *pc++)
+	GRP3_OPS(g3wr_, w, 16, GRP_R, lreg16, sreg16, (pc += 2, fm16(pc - 2)))
+	GRP3_OPS(g3dr_, d, 32, GRP_R, lreg32, sreg32, (pc += 4, fm32(pc - 4)))
+	GRP3_OPS(g3wm_, w, 16, GRP_M, fm16, fs16, (pc += 2, fm16(pc - 2)))
+	GRP3_OPS(g3dm_, d, 32, GRP_M, fm32, fs32, (pc += 4, fm32(pc - 4)))
+grp_next: NEXT;
 
 	/* FE: INC/DEC Eb;  FF: INC/DEC Ev, CALL/JMP near Ev, CALL/JMP far Ep, PUSH Ev */
 op_grp4: { u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;

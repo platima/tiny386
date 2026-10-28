@@ -948,7 +948,8 @@ done
 # which the test has to catch: read_desc()'s one lookup without its test
 # that the entry is in one page (rdpage), with MMIO taken for RAM
 # (rdmmio), with RAM's end not tested (rdend); FS's null bit not kept when
-# FS is loaded (nullfs)
+# FS is loaded (nullfs); ROL and ROR swapped in the group 2 tables
+# (grp2swap); ADC's entry on ADD in the group 1 tables (grp1op)
 fcfault() {     # name file sed-expression
     local mname=$1 file=$2 d="$OUT/mutant-$1" st nf
     mkdir -p "$d"
@@ -971,6 +972,8 @@ fcfault rdpage i386.c 's/if (w1 \&\& (la \& 0xfff) <= 0x1000 - 8) {/if (w1) {/'
 fcfault rdmmio i386.c 's/if (!in_iomem(pa) \&\& pa <= /if (pa <= /'
 fcfault rdend i386.c 's/ \&\& pa <= (uword) cpu->phys_mem_size - 8) {/) {/'
 fcfault nullfs i386_fast.h 's/nullsegs = (nullsegs \& ~(1u << (sg)))/if ((sg) != SEG_FS) &/'
+fcfault grp2swap i386_fast.h 's/^#define FAST_GRP2_TAB(P) { \&\&P##0, \&\&P##1,/#define FAST_GRP2_TAB(P) { \&\&P##1, \&\&P##0,/'
+fcfault grp1op i386_fast.h 's/^\(#define FAST_GRP1_TAB(P) { \&\&P##0, \&\&P##1, \)\&\&P##2,/\1\&\&P##0,/'
 
 # ==== 25. the profiler's counts and PROFILE.TXT (v5.1, s31/PROFILE.md) ====
 # esp/main/prof_hist.c (the tables, the instruction key, the file) and
