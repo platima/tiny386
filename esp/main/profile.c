@@ -273,6 +273,9 @@ void profile_start(void *cpu)
 	if (s_ncache)
 		esp_cache_cnt_clear();
 	s_t0_us = esp_timer_get_time();
+	/* a Ctrl+Alt+F8 from the boot console's time is forgotten, as
+	   speed_forget_requests() forgets its request */
+	__atomic_store_n(&s_key, 0, __ATOMIC_RELEASE);
 	__atomic_store_n(&s_armed, 1, __ATOMIC_RELEASE);
 	console_printf(CON_INFO, "Profile: sampling from now.");
 }
