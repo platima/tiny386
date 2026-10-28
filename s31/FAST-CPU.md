@@ -450,3 +450,146 @@ apart), and the guest runs as before, by the lockstep tester and the three Windo
 [verified: `PROFILE.md` 7 and 8]. The guest's EIP the profiler reads while the fast interpreter
 runs is where its step began (it keeps EIP to itself until the step ends); the code page it reads
 is the one being run, from tiny386's fetch cache, which the fast interpreter keeps up to date.
+
+
+## 13. v5.1: core 1 faster, the same guest
+
+v5.1 makes the fast interpreter cheaper while the guest sees exactly what v4.6 shows it. Each part
+is a work item on its own branch, proved by the host tests, the lockstep tester against v4.6 (seven
+workloads, the fast interpreter on and off), the three Windows runs and the counts under qemu.
+
+### 13.1 The loop's state in registers, and the code window (WI-1)
+
+Written 2026-10-28 on the branch `v51-loop` (from `v51-lock800`, d5aa9c9). It takes the v5.1
+ideas work's prototypes A to D and the structure design's ST4, tidied, with new tests written
+first. The figures are host instructions a guest instruction, the board's compiler (GCC 16.1,
+`-O3`, `-mtune=esp32s31`), counted under qemu.
+
+What changed in `i386_fast.h` [verified: read in the diff]:
+
+* **A, `pc` in a register.** `fast_window()` gives the code window back in a `struct fast_win`
+  (the instruction's host address, its page's start, `ipd`). `fast_exec()` no longer takes the
+  address of `pc`, `win_lo` or `ipd`, so GCC keeps `pc` in a register. v5.0 had it on the stack:
+  1.8 to 2.3 loads and 2.5 to 3.1 stores a guest instruction (the v5.1 profile).
+* **B, the window's one bound.** `NEXT` tests `pc >= win_hi` (the window's end). Between two
+  refills `pc` only moves up, except in `JUMP_REL()` and `JUMP_ABS()`, which set `win_hi` to 0
+  when the target is below the window, so that the next `NEXT` refills it. They are the only
+  backward moves of `pc`; the comment at `NEXT` says any new one must go through them.
+* **C, a new code page through the fast TLB.** With paging, `fast_window()` takes a new code page
+  from the fast TLB's read entry for it, or from `fast_miss()` as a 1-byte read. An entry exists
+  only while tiny386's TLB holds the page with its rights checked for this privilege class, so
+  `peek8()` would find the same page there, with nothing changed. A host address outside guest RAM
+  is the frame buffer's read entry: code there stays tiny386's. Then `peek8()`'s checks as before.
+* **D, a TLB hit in one compare.** `FPTR()`, `FPTR_IO()` and `FPTR_ST()` compare the tag with
+  `FAST_PL()`: the page of the access's last byte, with bit 20 set when the segment is null. An
+  access across a page never hits (a tag is always the page of its own index), nor one through a
+  null segment (no tag has bit 20). The null segment's test moved into the miss, before
+  `fast_miss()` and before `FPTR_ST()`'s frame buffer test, which is one compare too. Compile-time
+  checks: bit 20 is not `FAST_TAG_LFB`, and no `FAST_PL()` value is the empty tag. Jcc short has a
+  handler for each condition (`JCC_B(c)`), so `fast_cond()` folds to it.
+* **ST4, the window refilled inline.** At `refill:` an instruction in a page's last 16 bytes goes
+  straight to tiny386. A page change with paging on, CS not null, and a fast TLB read entry that is
+  RAM where `peek8()` would cache it, is done inline, with the fusion rule's saves, so the page's
+  first instruction is never fused. Anything else calls `fast_window()`. The prototype also had
+  the cached page inline; that case never reaches `refill:` (the window is always the cached page,
+  and `refill:` comes only past its end or after a jump below its start) [inferred: the code;
+  verified: a build that aborts on it ran `test_fast_cpu`'s 6,600 scenarios of seeds 1 to 300 and
+  the `b1`, `msdos` and `t386mon800` workloads to their ends]. `fast_window()` still handles it.
+* **Two saved values kept in memory.** `nofold_laddr` and `nofold_xaddr` (the fetch cache before
+  a page was newly cached) are `volatile`: they are written at a page change and read only when an
+  instruction goes to tiny386. GCC then allocates `fast_exec()`'s registers better: every memory
+  operand form 4 to 5 host instructions cheaper, BENCH 64.6 to 63.5 [verified: mb and BENCH, the
+  same code with and without].
+
+A v5.0 difference from v4.6, found by the new mode l and fixed in `i386.c` [verified]: when
+tiny386's TLB held a page with rights that refuse an access (at level 0 a store into a read-only
+page with CR0.WP set, say), `fast_lpgno()` ran `translate_lpgno()`'s body, which drops the entry on
+the fault. tiny386, doing the instruction again, then walked the page tables anew: it set the
+accessed bits the guest had cleared without INVLPG, and took rights the guest had widened without
+INVLPG, so a store went through where v4.6 faults once on the entry it holds. Now `fast_lpgno()`
+leaves such an access to tiny386 untouched. On v5.0's code mode l fails 18 of 80 scenarios (modes
+k and l, 40 seeds); with the fix none. None of the lockstep workloads showed it [inferred: Windows
+does not change those bits and then store into the page without INVLPG there].
+
+Tests, written before the code [verified: the commit order; `tests/host/cpu/test_fast_cpu.c`]:
+
+* **Mode k**: jumps, calls and returns across code pages. Every backward move lands in the page
+  before (or the one before that), in its last 16 bytes (tiny386 runs those) or below them (a page
+  the fast interpreter caches anew): JMP short and near, Jcc short and near (a JZ or JNZ fused with
+  its CMP), LOOP and JCXZ, CALL near, JMP and CALL through a register, PUSH and RET, PUSH, PUSH and
+  RET n, RET and RET n from the next page; and JMP or CALL forward into the next page's last 16
+  bytes. The tails hold CMP, JZ pairs that must not be fused as a page's first instruction. By the
+  seed: 32-bit code at levels 0 and 3, 16-bit protected mode at levels 0 and 3, virtual-8086 mode;
+  paging on; the linear pages mapped to physical pages out of order, so that code run from the
+  wrong page runs other bytes.
+* **Mode l**: a page read, then written. A user read-only page at level 3 or 1 and a read-only
+  page at level 0 with CR0.WP set (the store faults; the handler makes the page writable), and
+  CR0.WP clear (no fault); every store path; at level 0 the PTE changed without INVLPG (accessed
+  and dirty bits cleared, or the page made writable) and CR0.WP changed; a segment register loaded
+  with a null selector and the page read or written through it (#GP; the handler loads it again);
+  with the frame buffer, code run from it.
+* The frame buffer's host memory is now 4 GiB above guest RAM (on a 64-bit host), so that a host
+  address in it taken as a 32-bit physical address lands in RAM, where the checks after it pass.
+* Five faults planted in `run.sh` 24, each caught (40 seeds, 880 scenarios, the Korvo-1 header):
+  `jumplo` (the jumps without the lower bound: every mode k scenario fails at its first step, then
+  a crash ends the run), `codelfb` (a code page from the frame buffer's read entry taken as RAM:
+  20), `plnull` (`FAST_PL()` without the null segment's bit: 38), `st4fold` (the inline refill
+  without the fusion rule's saves: 40), `lpgno` (the fix above undone: 18). Modes 0 to j alone
+  catch only `jumplo`, in 2 of 800.
+
+The proof, on the branch's last commit [verified, WSL, 2026-10-28, with other v5.1 work loading
+the machine]:
+
+* `tests/host/run.sh`: 81 passed, 0 failed (v5.1's 76 and the five faults). `test_fast_cpu` on
+  seeds 41 to 340: 6,600 scenarios in each build (the Korvo-1 header, and plain), 82.9 M guest
+  instructions, 880,314 step ends compared, 0 failed.
+* The lockstep tester against v4.6, all seven workloads, the fast interpreter on and off: 14
+  comparisons, each "no difference", on the reference's figures (b1 588,301,033, restart
+  1,304,341,904, msdos 1,337,723,352, bench 31,345,925, vbe 55,090,157, t386mon 674,307,567,
+  t386mon800 792,272,554, each with its disk hash; T386MON's summary in `t386mon800` the same on
+  both sides). The self-test passes with `FAST=1` and `FAST=0`.
+* The three Windows runs of `regress50.sh`, the fast interpreter on and off: 588,301,033,
+  1,304,341,904 and 1,337,723,352 instructions, the desktop each time.
+
+Counts [verified: mb and the counting harness, the board's compiler]:
+
+| | v5.0 | WI-1 |
+|-|-|-|
+| NOP | 17.4 | 12.4 |
+| MOV r,[m], 32-bit code | 86.3 | 73.4 |
+| MOV r,ES:[m], 16-bit code | 96.7 | 82.0 |
+| ADD [m],r, 32-bit code | 102.9 | 88.0 |
+| JB taken after CMP, 32-bit code | 54.8 | 34.8 |
+| CALL and RET to another page, 32-bit code | 191.3 | 122.3 |
+| all 165 forms of mb, on average | | 11.6 fewer (164 cheaper, 1 dearer) |
+| BENCH without A4 and the boot, core 1 | 71.0 | 63.5 (1.12 times fewer) |
+| Windows' boot, first 300 M, core 1 | 76.5 | 65.9 (1.16 times fewer) |
+
+Every mb build ends on the same guest state (5,214,225 instructions), and the BENCH and Windows
+runs log the same guest as v5.0's (300,000,198 instructions for the boot). The v5.0 figures are
+the ideas work's runs of the same harness and compiler; the prototype A to D gave 64.4 and 68.1.
+The one dearer form is a far CALL and RETF in 16-bit code, 793.7 to 796.2: after a far transfer
+`reload:` copies the window out of `struct fast_win` (4.5 more in `fast_exec()`, 2 fewer in
+`fast_window()`).
+
+Sizes [verified: `i386.c` compiled with the Korvo-1 build's command line, and the ESP-IDF builds]:
+`fast_exec()` 121,674 bytes (v5.0 121,434: +240), `cpu_exec1()` 132,338 (the same), `i386.o`'s
+internal RAM code 148,010 (147,618). ESP-IDF's size report: internal RAM (DIRAM) used 262,660
+bytes on the Korvo-1 (v5.0 262,300: +360) and 264,902 on the DOS board (264,542: +360). With
+`v51-ram` merged in a scratch clone, 377,341 and 375,173 (`v51-ram` alone 376,981 and 374,813),
+which leaves 126,403 and 128,571 bytes for ESP-IDF (v5.1's rule: at least 110,000). The Korvo-1
+dual boot and standalone builds and the DOS board build exit 0, with v5.0's one old warning
+(`i2s_task` unused, Korvo-1). The same `i386.c` functions are in flash as in v5.0 (and as in
+`v51-ram` when merged), and `fast_exec()`'s only call into flash is still `cpu_exec1()` (none
+with `v51-ram`, where `cpu_exec1()` is in internal RAM).
+
+For the board [inferred: the counts, at v5.0's calibration of about 1.07 cycles a host
+instruction]: Windows' CPU-bound work about 1.15 times v5.0's rate, BENCH about 1.12; T386MON's
+text, sprite and full-picture tests about 1.1 times; fill, scroll and full copy a few per cent
+(PSRAM bounds them). The board's T386MON log will say [unknown].
+
+For the items after this one: the FPTR macros' miss branch now starts with the null segment's test
+(`if (nullsegs & (1u << (sg))) goto slow;`), then `fast_miss()`; in `FPTR_ST()` it sets `msize`,
+then tests the frame buffer's tag against the last byte's page with `FAST_TAG_LFB`, then calls
+`fast_miss()`. A lean refill in `fast_miss()` (WI-4) must keep `fast_lpgno()`'s new rule: an access
+that tiny386's entry refuses goes to tiny386 untouched.
