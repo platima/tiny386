@@ -1788,12 +1788,15 @@ static void two_op_wp_on(void)
    goes to tiny386 part way: REP MOVSB and REPNE CMPSB by the two-operand
    rule (the source page 2h and the destination page 402h share index 2),
    and REP STOSB into page 2h, which the guest has pointed past the end of
-   RAM (a hand-over v5.0 had already).  tiny386 must find its fetch cache
-   as the fast interpreter filled it, or it walks the code page again and
-   keeps it where tiny386 alone keeps page 1h.  Then page 1h's PTE is
+   RAM (a hand-over v5.0 had already).  tiny386, which fetches the
+   instruction again through its TLB, must find the code page's entry
+   there, or it walks the code page again and keeps it where tiny386 alone
+   keeps page 1h.  Then page 1h's PTE is
    pointed at another frame without INVLPG and a dword is loaded through
    it: tiny386 alone still has the old frame.  The seed picks which of the
-   three. */
+   three.  Each then runs, as the first instruction in page 403h, a CMP
+   with an MMIO operand (tiny386 gets it) and a JZ after it that is taken:
+   tiny386 alone fetched the CMP the slow way and does not fuse the two. */
 static void two_op_newpage(int seed)
 {
 	int v = (seed / TWO_OP_N) % 3;
@@ -1816,6 +1819,17 @@ static void two_op_newpage(int seed)
 	e8(0xc7); e8(0x05); e32(PT_PHYS + 1 * 4); e32(0x3000 | 0x003);      /* page 1h to 3000h, no INVLPG */
 	e8(0xa1); e32(0x1000);                                              /* MOV EAX,[1000h] */
 	e8(0xa3); e32(P_DATA + 0x10);                                       /* MOV [P_DATA+10h],EAX */
+	/* then a CMP whose operand is MMIO, so that tiny386 gets it, as the
+	   first instruction in another page newly cached, with a JZ after it
+	   that is taken: tiny386 alone fetched the CMP the slow way and does
+	   not fuse the two */
+	e8(0x31); e8(0xc0);                                                 /* XOR EAX,EAX */
+	at = glin();
+	e8(0xe9); e32(P_CODE + 0x3000 - (at + 5));                          /* JMP 403000h */
+	gp = gcode_phys + 0x3000;
+	e8(0x39); e8(0x05); e32(0xa0000);                                   /* CMP [A0000h],EAX (the VGA window) */
+	e8(0x74); e8(0x02);                                                 /* JZ +2 */
+	e8(0x43); e8(0x43);                                                 /* INC EBX, twice: jumped over */
 }
 static void two_op_case(int seed)
 {
