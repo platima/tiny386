@@ -440,6 +440,12 @@ static void hotkey2(void)
 	hotkeys2++;
 }
 
+static int hotkeys3;
+static void hotkey3(void)
+{
+	hotkeys3++;
+}
+
 static int sunk;
 static uint8_t sunk_last, sunk_mods;
 static void sink(uint8_t u, uint8_t mods)
@@ -565,6 +571,29 @@ static void test_keyboards(void)
 	up(a);
 	CHECK(hotkeys2 == 2, "F11's hotkey set again: called %d times", hotkeys2);
 	EXPECT("only Ctrl and Alt reach the PC", 0x1D, 0x38, 0x9D, 0xB8);
+
+	/* v5.1: the Korvo-1 has F9 to F12 and the profiler's F8: five at once */
+	printf("Ctrl+Alt+F8 beside F9 to F12 (the profiler, v5.1):\n");
+	kbd_input_set_hotkey(HID_KEY_F10, hotkey2);
+	kbd_input_set_hotkey(HID_KEY_F9, hotkey2);
+	kbd_input_set_hotkey(HID_KEY_F8, hotkey3);
+	press(a, KBD_MOD_LCTRL | KBD_MOD_LALT, HID_KEY_F8);
+	up(a);
+	CHECK(hotkeys3 == 1, "F8's hotkey called %d times", hotkeys3);
+	EXPECT("only Ctrl and Alt reach the PC", 0x1D, 0x38, 0x9D, 0xB8);
+	press(a, KBD_MOD_LCTRL | KBD_MOD_LALT, HID_KEY_F12);
+	up(a);
+	CHECK(hotkeys == 3 && hotkeys3 == 1, "F12 still its own with five keys: %d, F8 %d",
+	      hotkeys, hotkeys3);
+	EXPECT("only Ctrl and Alt reach the PC", 0x1D, 0x38, 0x9D, 0xB8);
+	kbd_input_set_hotkey(HID_KEY_F10, NULL);
+	kbd_input_set_hotkey(HID_KEY_F9, NULL);
+	kbd_input_set_hotkey(HID_KEY_F8, NULL);
+	press(a, KBD_MOD_LCTRL | KBD_MOD_LALT, HID_KEY_F8);
+	EXPECT("F8's hotkey taken away: Ctrl+Alt+F8 goes to the PC", 0x1D, 0x38, 0x42);
+	up(a);
+	EXPECT("and its release", 0xC2, 0x9D, 0xB8);
+	CHECK(hotkeys3 == 1, "F8's hotkey called %d times", hotkeys3);
 
 	printf("the boot menu's sink, and no PC yet:\n");
 	kbd_input_set_sink(sink);

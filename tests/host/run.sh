@@ -900,6 +900,52 @@ for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN
     result $? "the lockstep test catches a fault in the fast interpreter ($mname)"
 done
 
+# ==== 25. the profiler's counts and PROFILE.TXT (v5.1, s31/PROFILE.md) ====
+# esp/main/prof_hist.c (the tables, the instruction key, the file) and
+# prof_cpu.h (the guest's state read from a CPU's fields) as the board
+# builds them, on the PC: 64-bit, and 32-bit with plain char unsigned as on
+# RV32.  Then s31/profile/profile_report.py on a PROFILE.TXT whose host PCs
+# are in the test program's own functions: the report must name them with
+# their shares, and refuse an ELF that is not the one the file names
+# (python3 needed; addr2line too for the source lines).
+echo
+$CC $CFLAGS -DPROF_HOST -I"$TREE/esp/main" -no-pie -o "$OUT/test_prof_hist" \
+    "$HERE/profile/test_prof_hist.c" "$TREE/esp/main/prof_hist.c" || exit 1
+"$OUT/test_prof_hist" --time
+result $? "prof_hist.c and prof_cpu.h: the tables, the guest's and the instruction's keys, PROFILE.TXT, the reader"
+if $CC -m32 -funsigned-char $CFLAGS -DPROF_HOST -I"$TREE/esp/main" -no-pie \
+    -o "$OUT/test_prof_hist32" "$HERE/profile/test_prof_hist.c" "$TREE/esp/main/prof_hist.c" \
+    2> "$OUT/test_prof_hist32.log"; then
+    "$OUT/test_prof_hist32" | tail -1
+    result $? "prof_hist.c and prof_cpu.h, 32-bit with unsigned char (as on RV32): the same"
+else
+    echo "    | (no 32-bit gcc here: the 32-bit build is skipped)"
+fi
+if command -v python3 > /dev/null; then
+    sha=$(sha256sum "$OUT/test_prof_hist" | cut -d' ' -f1)
+    "$OUT/test_prof_hist" --demo "$OUT/DEMO-PROFILE.TXT" "$sha" &&
+    python3 "$TREE/s31/profile/profile_report.py" "$OUT/DEMO-PROFILE.TXT" "$OUT/test_prof_hist" \
+        -o "$OUT/demo-report.txt" &&
+    grep -Eq '^demo_hot +75\.0% \+-2\.7 +750 ' "$OUT/demo-report.txt" &&
+    grep -Eq '^demo_warm +25\.0% \+-2\.7 +250 ' "$OUT/demo-report.txt" &&
+    grep -Eq '^EE +OUT DX,AL +v86 +exec1 +100\.0%' "$OUT/demo-report.txt" &&
+    grep -Eq '^v86 +3 +1234 +00012000 +25\.0%' "$OUT/demo-report.txt" &&
+    ! python3 "$TREE/s31/profile/profile_report.py" "$OUT/DEMO-PROFILE.TXT" "$OUT/test_bootmenu" \
+        > /dev/null 2>&1
+    result $? "profile_report.py: the functions, the instruction and the guest's page with their shares; another ELF refused"
+    # the stretch between two files (Ctrl+Alt+F8's PROFnn.TXT): 250 hot, 250 warm
+    python3 "$TREE/s31/profile/profile_report.py" "$OUT/DEMO-PROFILE.TXT" "$OUT/test_prof_hist" \
+        --since "$OUT/DEMO-PROFILE.TXT.early" -o "$OUT/demo-since.txt" &&
+    grep -q 'A stretch of the run (--since): from file 2 (key) to file 3 (end)' "$OUT/demo-since.txt" &&
+    grep -Eq '^demo_hot +50\.0% \+-4\.4 +250 ' "$OUT/demo-since.txt" &&
+    grep -Eq '^demo_warm +50\.0% \+-4\.4 +250 ' "$OUT/demo-since.txt" &&
+    ! python3 "$TREE/s31/profile/profile_report.py" "$OUT/DEMO-PROFILE.TXT.early" "$OUT/test_prof_hist" \
+        --since "$OUT/DEMO-PROFILE.TXT" > /dev/null 2>&1
+    result $? "profile_report.py --since: the stretch between two files alone; the files the wrong way round refused"
+else
+    echo "    | (no python3 here: profile_report.py is not tried)"
+fi
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]
