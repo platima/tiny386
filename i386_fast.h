@@ -892,9 +892,13 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 #define V86_IOPL3 (!(cpu->flags & VM) || get_IOPL(cpu) == 3)   /* not trapped in virtual-8086 mode */
 	/* a protected-mode load of a segment register by tiny386's set_seg():
 	   on a fault the instruction ends in it, as in tiny386 (set_seg()
-	   changes nothing before its checks have passed) */
+	   changes nothing before its checks have passed).  The count first
+	   (v5.1): a descriptor table in MMIO is read with the count tiny386
+	   would have there (test_fast_cpu's mode o found v5.0 one short of
+	   it, by the instructions done in the step so far) */
 #define FAST_LOAD_SEG(sg, sel) do { \
 		cpu->ip = EIP_OF(ins); \
+		SYNC_IN(); \
 		if (!set_seg(cpu, (sg), (sel))) goto fault; \
 		nullsegs = fast_nullsegs(cpu); \
 	} while (0)
