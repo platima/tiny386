@@ -800,8 +800,20 @@ static bool IRAM_ATTR translate_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uword 
 }
 
 #ifdef I386_FAST
+/* v5.1: an access that tiny386's entry for the page (there, made before)
+   refuses goes to tiny386 untouched: false, and nothing changed.  Through
+   translate_lpgno_body() it would drop the entry, and tiny386, doing the
+   instruction again, would walk the page tables anew: setting accessed
+   bits the guest had cleared without INVLPG, and taking rights the guest
+   had widened without INVLPG, where tiny386 alone faults on the entry it
+   has (v5.0's fast interpreter did so; test_fast_cpu's mode l found it).
+   Every other case is translate_lpgno()'s, which tiny386 doing it again
+   (after a refused refill, or a fault) leaves as it would leave it once. */
 static noinline bool IRAM_ATTR fast_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uword laddr, int cpl, uword *paddr)
 {
+	struct tlb_entry *ent = &(cpu->tlb.tab[lpgno % tlb_size]);
+	if (ent->lpgno == lpgno && ent->pte_lookup[cpl > 0][rwm > 1])
+		return false;
 	return translate_lpgno_body(cpu, rwm, lpgno, laddr, cpl, paddr);
 }
 #endif
