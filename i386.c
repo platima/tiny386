@@ -1522,7 +1522,10 @@ static bool IRAM_ATTR modsib(CPUI386 *cpu, int adsz16, int mod, int rm, uword *a
 	else return modsib32(cpu, mod, rm, addr, seg);
 }
 
-static bool IRAM_ATTR_FAST_HELPER read_desc(CPUI386 *cpu, int sel, uword *w1, uword *w2)
+/* a descriptor's words as v5.0 read them: the limit checked, then two
+   lookups and two loads (v5.1: for what read_desc() below does not read
+   with one lookup) */
+static bool noinline IRAM_ATTR_FAST_HELPER read_desc_slow(CPUI386 *cpu, int sel, uword *w1, uword *w2)
 {
 	OptAddr meml;
 	sel = sel & 0xffff;
@@ -1550,26 +1553,6 @@ static bool IRAM_ATTR_FAST_HELPER read_desc(CPUI386 *cpu, int sel, uword *w1, uw
 		n++;
 		THROW(EX_GP, sel & ~0x3);
 	}
-	/* v5.1: both words, in one page of RAM (always in one page with an
-	   8-aligned table): one lookup, then two loads.  It is what the two
-	   translate_laddr() calls below do there: the second finds the entry
-	   the first made or found; a read at level 0 never faults on a present
-	   page (pte_lookup[..][..][0][0] is 0 in every row) and sets no dirty
-	   bit; so the TLB, the page tables and a fault (CR2 base + off, error
-	   code 0) are the same, and load32() of RAM is pload32().  Across a
-	   page, in MMIO and at the end of RAM, as before; and the second word
-	   alone (w1 NULL) as before, whose fault has CR2 base + off + 4. */
-	uword la = base + off;
-	if (w1 && (la & 0xfff) <= 0x1000 - 8) {
-		uword pa = la;
-		if (cpu->cr0 & CR0_PG)
-			TRY(translate_lpgno(cpu, 1, la >> 12, la, 0, &pa));
-		if (!in_iomem(pa) && pa <= (uword) cpu->phys_mem_size - 8) {
-			*w1 = pload32(cpu, pa);
-			*w2 = pload32(cpu, pa + 4);
-			return true;
-		}
-	}
 	if (w1) {
 		TRY(translate_laddr(cpu, &meml, 1, base + off, 4, 0));
 		*w1 = load32(cpu, &meml);
@@ -1577,6 +1560,43 @@ static bool IRAM_ATTR_FAST_HELPER read_desc(CPUI386 *cpu, int sel, uword *w1, uw
 	TRY(translate_laddr(cpu, &meml, 1, base + off + 4, 4, 0));
 	*w2 = load32(cpu, &meml);
 	return true;
+}
+
+/* v5.1: both words of an entry inside the limit, in one page of RAM
+   (always in one page with an 8-aligned table) whose entry tiny386's TLB
+   holds: that entry, then two loads.  It is what read_desc_slow()'s two
+   translate_laddr() calls do there: both find that entry; a read at level 0
+   of a present page never faults (pte_lookup[..][..][0][0] is 0 in every
+   row, and is looked at as translate_lpgno() looks) and sets no dirty bit;
+   so the TLB and the page tables are as they would be, and load32() of RAM
+   is pload32().  Everything else goes to read_desc_slow(), as before: a
+   limit fault, the page not in the TLB (it refills it), an entry across a
+   page, in MMIO or at the end of RAM, and the second word alone (w1 NULL),
+   whose fault has CR2 base + off + 4.  No call here otherwise, so no frame
+   (a lookup through translate_lpgno() here cost one). */
+static bool IRAM_ATTR_FAST_HELPER read_desc(CPUI386 *cpu, int sel, uword *w1, uword *w2)
+{
+	uword off = sel & 0xfff8;
+	uword base = (sel & 0x4) ? cpu->seg[SEG_LDT].base : cpu->gdt.base;
+	uword limit = (sel & 0x4) ? cpu->seg[SEG_LDT].limit : cpu->gdt.limit;
+	uword la = base + off;
+	if (off + 7 <= limit) {
+		if (w1 && (la & 0xfff) <= 0x1000 - 8) {
+			uword pa = la;
+			if (cpu->cr0 & CR0_PG) {
+				struct tlb_entry *ent = &(cpu->tlb.tab[(la >> 12) % tlb_size]);
+				if (ent->lpgno != la >> 12 || ent->pte_lookup[0][0])
+					return read_desc_slow(cpu, sel, w1, w2);
+				pa = ent->xaddr ^ la;
+			}
+			if (!in_iomem(pa) && pa <= (uword) cpu->phys_mem_size - 8) {
+				*w1 = pload32(cpu, pa);
+				*w2 = pload32(cpu, pa + 4);
+				return true;
+			}
+		}
+	}
+	return read_desc_slow(cpu, sel, w1, w2);
 }
 
 static bool IRAM_ATTR_FAST_HELPER set_seg(CPUI386 *cpu, int seg, int sel)

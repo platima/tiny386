@@ -899,13 +899,17 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   null-segment mask for this segment alone (v5.1): set_seg() changes
 	   no other, the macro is used only in protected mode (PROTECTED, so
 	   fast_nullsegs()'s CR0.PE term holds) and never for CS (op_8e sends
-	   it to tiny386; POP and LES/LDS name ES, SS, DS, FS and GS) */
+	   it to tiny386; POP and LES/LDS name ES, SS, DS, FS and GS).  A
+	   selector with bits above its RPL is never null (sel is 16 bits). */
 #define FAST_LOAD_SEG(sg, sel) do { \
 		cpu->ip = EIP_OF(ins); \
 		SYNC_IN(); \
 		if (!set_seg(cpu, (sg), (sel))) goto fault; \
-		nullsegs = (nullsegs & ~(1u << (sg))) | \
-			((unsigned) (cpu->seg[sg].limit == 0 && (cpu->seg[sg].sel & ~0x3) == 0) << (sg)); \
+		if (likely((sel) & 0xfffc)) \
+			nullsegs &= ~(1u << (sg)); \
+		else \
+			nullsegs = (nullsegs & ~(1u << (sg))) | \
+				((unsigned) (cpu->seg[sg].limit == 0 && (cpu->seg[sg].sel & ~0x3) == 0) << (sg)); \
 	} while (0)
 	/* after an instruction that changed CS (eip: the next one; cpu->ip
 	   left as tiny386 leaves it) */
