@@ -851,6 +851,18 @@ fi
 # old write tag kept when fast_miss() gives an entry a frame buffer page.
 # (The lockstep tester's t386mon800 finds none of these four: Windows never
 # moves the frame buffer while it draws, nor clears its dirty bits.)
+# v5.1 (WI-1: the loop's pc in a register, the code window's one bound,
+# new code pages through the fast TLB, the one-compare hit, the window
+# refilled inline): modes k (jumps, calls and returns across code pages,
+# into the last 16 bytes of the page before and below them) and l (a page
+# read, then written where the write must fault and where it must not;
+# null segments; code in the frame buffer), and five more faults: the
+# jumps without the window's lower bound (jumplo), a new code page taken
+# from the frame buffer's read entry (codelfb), FAST_PL() without the null
+# segment's bit (plnull), the inline refill without the fusion rule's
+# saves (st4fold), and, in i386.c, fast_lpgno() without its test of an
+# entry that refuses the access (lpgno, the v5.0 difference mode l found).
+# Of these five the 800 scenarios of modes 0 to j catch only jumplo, in 2.
 echo
 FCSEEDS=${FCSEEDS:-40}
 fcbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_fast_cpu-name
@@ -876,12 +888,19 @@ for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN
          outflush:'s/if (unlikely(cpu->cb.lfb_gen != cpu->fast->lfb_gen_seen))/if (0)/' \
          checkgen:'s/cpu->cb.lfb_gen != fs->lfb_gen_seen))/0))/' \
          lfbdirty:'/mhost = (u8 \*) (uintptr_t) (_lin + _e->delta);/,/goto LFBLABEL;/s/\*_e->ppte |= 0x40;/(void) 0;/' \
-         lfbkeepw:'s/^\t\tif (e->rtag != pg || e->delta != delta)$/\t\tif (0)/'; do
+         lfbkeepw:'s/^\t\tif (e->rtag != pg || e->delta != delta)$/\t\tif (0)/' \
+         jumplo:'s/if (unlikely((uintptr_t) pc < (uintptr_t) win_lo)) win_hi = 0;/(void) 0;/' \
+         codelfb:'/^\t\t\tif ((uintptr_t) (h - (const u8 \*) cpu->phys_mem) >= (uintptr_t) cpu->phys_mem_size)$/{N;d}' \
+         plnull:'s/^#define FAST_PL(sg, lin, size) ((((lin) + (size) - 1) >> 12) | (((nullsegs >> (sg)) & 1u) << 20))$/#define FAST_PL(sg, lin, size) (((lin) + (size) - 1) >> 12)/' \
+         st4fold:'s/^\t*nofold_it = FAST_ITER(); nofold_laddr = cpu->ifetch.laddr; nofold_xaddr = cpu->ifetch.xaddr;.*$/\t\t\t\t(void) 0;/' \
+         lpgno:'s/^\tif (ent->lpgno == lpgno && ent->pte_lookup\[cpl > 0\]\[rwm > 1\])$/\tif (0)/'; do
     mname=${m%%:*}
+    mfile=i386_fast.h       # (v5.1: lpgno's fault is in i386.c)
+    [ "$mname" = lpgno ] && mfile=i386.c
     mkdir -p "$OUT/mutant-$mname"
-    cp "$TREE/i386.c" "$TREE/i386.h" "$OUT/mutant-$mname/"
-    sed "${m#*:}" "$TREE/i386_fast.h" > "$OUT/mutant-$mname/i386_fast.h"
-    if cmp -s "$TREE/i386_fast.h" "$OUT/mutant-$mname/i386_fast.h"; then
+    cp "$TREE/i386.c" "$TREE/i386.h" "$TREE/i386_fast.h" "$OUT/mutant-$mname/"
+    sed "${m#*:}" "$TREE/$mfile" > "$OUT/mutant-$mname/$mfile"
+    if cmp -s "$TREE/$mfile" "$OUT/mutant-$mname/$mfile"; then
         echo "    | (the $mname fault was not put in: the sed found nothing)"
         result 1 "the lockstep test catches a fault in the fast interpreter ($mname)"
         continue
