@@ -100,7 +100,16 @@ void speed_set_pace_on(uint32_t quiet);
 #define SPEED_SAVE_BLOCKS 1     /* [esp] vbe_blocks, Ctrl+Alt+F11 */
 #define SPEED_SAVE_PACE   2     /* [esp] pace_quiet, Ctrl+Alt+F10 */
 #define SPEED_SAVE_DOUBLE 4     /* [esp] double_buffer, Ctrl+Alt+F9 */
+/* v5.1: not a setting: the profiler's PROFILE.TXT (profile.c), every 60 s
+   and on Ctrl+Alt+F8, written by the emulator's core at the same place */
+#define SPEED_SAVE_PROFILE 8
 unsigned speed_take_saves(void);
+/* v5.1: what to do at the next step's end (SPEED_SAVE_*), from any task or
+   from core 0's interrupt */
+void speed_ask_save(unsigned what);
+/* v5.1: the counts since the PC started, on the emulator's core: guest
+   instructions, time running and time halted */
+void speed_totals(uint64_t *insns, uint64_t *run_us, uint64_t *halt_us);
 /* v4.4: Ctrl+Alt+F9, from the USB task: double buffering on or off at once
    where both frame buffers were made at the start, else the setting for
    the next start; a line on the console, and saved in the ini */

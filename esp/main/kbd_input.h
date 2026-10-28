@@ -55,6 +55,7 @@ typedef struct PS2MouseState PS2MouseState;
 /* a few HID usages (keyboard page) */
 #define HID_KEY_ENTER   0x28
 #define HID_KEY_ESC     0x29
+#define HID_KEY_F8      0x41
 #define HID_KEY_F9      0x42
 #define HID_KEY_F10     0x43
 #define HID_KEY_F11     0x44
@@ -84,8 +85,9 @@ void kbd_input_set_sink(kbd_input_key_fn *fn);
 
 /* Ctrl+Alt+usage calls fn; that key's press and release never reach the
    PC (Ctrl and Alt do).  Up to KBD_INPUT_HOTKEYS keys at once: setting a
-   key again changes its fn, and fn NULL frees its place. */
-#define KBD_INPUT_HOTKEYS 4
+   key again changes its fn, and fn NULL frees its place.  (v5.1: 6, for
+   the profiler's F8 beside F9 to F12.) */
+#define KBD_INPUT_HOTKEYS 6
 void kbd_input_set_hotkey(uint8_t usage, void (*fn)(void));
 
 /* The lights the guest asked for, in the USB order: fn is called when they

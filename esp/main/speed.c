@@ -306,6 +306,18 @@ void speed_forget_requests(void)
 	__atomic_store_n(&s_db_req, 0, __ATOMIC_RELEASE);
 }
 
+void speed_ask_save(unsigned what)
+{
+	__atomic_or_fetch(&s_save_req, what, __ATOMIC_RELEASE);
+}
+
+void speed_totals(uint64_t *insns, uint64_t *run_us, uint64_t *halt_us)
+{
+	*insns = s_speed.insns;
+	*run_us = s_speed.run_us;
+	*halt_us = s_speed.halt_us;
+}
+
 unsigned speed_take_saves(void)
 {
 	/* a plain load first: a step pays one load when nothing is asked */

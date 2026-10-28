@@ -42,6 +42,7 @@
 #include "sd_part.h"
 #include "bootmenu.h"
 #include "speed.h"
+#include "profile.h"
 #include "status_led.h"
 #ifdef LCD_ZERO_COPY
 #include "display.h"
@@ -322,6 +323,7 @@ struct esp_ini_config {
 	int pace_wait_ms;       /* v4.4: the most a picture waits for a quiet moment */
 	int double_buffer;      /* v4.4: a second frame buffer, swapped at the panel's frame */
 	int fast_cpu;           /* v5.0: the fast interpreter (i386_fast.h); 0 tiny386's own */
+	int profile;            /* v5.1: the profiler (profile.c, s31/PROFILE.md); 0 off */
 };
 
 #ifdef TINY386_CRASH_TEST
@@ -380,6 +382,7 @@ static struct esp_ini_config config = {
 	.pace_wait_ms = 15,     /* DISPLAY_PACE_WAIT_MS */
 	.double_buffer = 0,     /* v4.4: one frame buffer, as before (BUILD-NOTES 29) */
 	.fast_cpu = 1,          /* v5.0: the fast interpreter, where the board header has it */
+	.profile = 0,           /* v5.1: no profiler: nothing of it set up */
 };
 static PCConfig conf;
 
@@ -505,6 +508,10 @@ static void save_settings(unsigned what)
 		save_setting("pace_quiet", vga_pace_quiet);
 	if (what & SPEED_SAVE_DOUBLE)
 		save_setting("double_buffer", speed_double_value());
+	/* v5.1: not a setting: the profiler's file, every 60 s and on
+	   Ctrl+Alt+F8 (profile.c) */
+	if (what & SPEED_SAVE_PROFILE)
+		profile_write(NULL);
 }
 
 /* Runs the PC, and puts what the guest wrote to its disks on the card
@@ -561,7 +568,9 @@ static void run_pc(PC *pc)
 		disk_flush(pc);
 	unsigned saves = speed_take_saves();
 	if (saves)
-		save_settings(saves);
+		save_settings(saves & ~SPEED_SAVE_PROFILE);
+	/* v5.1: the profiler's last file, whether or not one was asked for */
+	profile_write("end");
 	disk_errors(get_uticks());
 }
 
@@ -660,6 +669,8 @@ static void i386_task(void *arg)
 	kbd_input_set_target(pc->kbd, pc->mouse);
 
 	pc->boot_start_time = get_uticks();
+	/* v5.1: [esp] profile = 1: the samples count from here (profile.c) */
+	profile_start(pc->cpu);
 #ifdef TINY386_CRASH_TEST
 	if (config.crash_test == 4) {
 		while (get_uticks() - pc->boot_start_time < 3000000)
@@ -683,7 +694,7 @@ static const char *const known_keys[] = {
 	"esp:lcd_invalidate", "esp:led_brightness",
 	"esp:uart_log", "esp:fast_seek", "esp:timer_catchup", "esp:memtest",
 	"esp:verbose_log", "esp:vbe_blocks", "esp:pace_quiet", "esp:pace_wait_ms",
-	"esp:double_buffer", "esp:fast_cpu",
+	"esp:double_buffer", "esp:fast_cpu", "esp:profile",
 #ifdef TINY386_CRASH_TEST
 	"esp:crash_test",
 #endif
@@ -802,6 +813,8 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		ini_whole(name, value, 0, 1, &conf->double_buffer);
 	} else if (NAME("fast_cpu")) {
 		ini_whole(name, value, 0, 1, &conf->fast_cpu);
+	} else if (NAME("profile")) {
+		ini_whole(name, value, 0, 1, &conf->profile);
 	} else if (NAME("crash_test")) {
 		conf->crash_test = atoi(value);
 	}
@@ -1605,6 +1618,11 @@ void app_main(void)
 		wifi_main(config.ssid, config.pass);
 #endif
 	}
+
+	/* v5.1: [esp] profile = 1: the profiler's tables, its timer (whose
+	   interrupt is then on this core, core 0) and Ctrl+Alt+F8; with 0,
+	   nothing (profile.c) */
+	profile_setup(config.profile, s_ini_path, s_ini_dir, config.fast_cpu);
 
 	/* i386_main: 6 KiB since v5.0 (4 KiB before), as an instruction the fast
 	   interpreter hands to tiny386 (a REP INSW reading the card through
