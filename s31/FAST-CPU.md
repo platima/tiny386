@@ -531,8 +531,8 @@ Tests, written before the code [verified: the commit order; `tests/host/cpu/test
 * The frame buffer's host memory is now 4 GiB above guest RAM (on a 64-bit host), so that a host
   address in it taken as a 32-bit physical address lands in RAM, where the checks after it pass.
 * Five faults planted in `run.sh` 24, each caught (40 seeds, 880 scenarios, the Korvo-1 header):
-  `jumplo` (the jumps without the lower bound: every mode k scenario fails at its first step, then
-  a crash ends the run), `codelfb` (a code page from the frame buffer's read entry taken as RAM:
+  `jumplo` (the jumps without the lower bound: mode k fails at its first step in seeds 1, 2 and 3,
+  then the test crashes in mode l and the run ends), `codelfb` (a code page from the frame buffer's read entry taken as RAM:
   20), `plnull` (`FAST_PL()` without the null segment's bit: 38), `st4fold` (the inline refill
   without the fusion rule's saves: 40), `lpgno` (the fix above undone: 18). Modes 0 to j alone
   catch only `jumplo`, in 2 of 800.
