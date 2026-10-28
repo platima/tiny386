@@ -881,6 +881,17 @@ fi
 # v5.1 (WI-3): mode o, descriptor tables across pages with the second page
 # not present, in MMIO, at RAM's end and past it, null selectors, and
 # read_desc() against v5.0's own; faults put into i386.c too (fcfault).
+# v5.1, after the three reviews of the merged tree (the CPU review's M1 to
+# M3): modes p to s (WI-3's check: the group opcodes with every prefix,
+# DIV and IDIV with #DE, segment loads), mode t (WI-1's check: code
+# fetches, level 3 into a page tiny386 holds as supervisor among them),
+# and in mode l stores through a null ES, FS or GS into a frame buffer page
+# that has a write tag; and six more faults: the null segment's test after
+# the frame buffer's write tag in FPTR_IO_W() (lfbwnull) and in FPTR_ST()
+# (stnull), fast_window() and the inline refill given level 0's table
+# (fwcpl, st4cpl), DIV without its return address for #DE (divip), and the
+# inline refill caching RAM's last page (st4end).  A guest shutdown now
+# ends its scenario, not the run.
 echo
 FCSEEDS=${FCSEEDS:-40}
 fcbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_fast_cpu-name
@@ -917,7 +928,13 @@ for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN
          cmpsrule:'s/^\t\tFPTR2(d, SEG_ES, DI_, n, 0, s);$/\t\tFPTR(d, SEG_ES, DI_, n, 0);/' \
          restore:'s/^\tif (FAST_ITER() == nofold_it) {$/\tif (0) {/' \
          destheld:'s/|| cpu->tlb.tab\[((lin) >> 12) % tlb_size\].lpgno == ((lin) >> 12))$/|| 1)/' \
-         codepage:'s/^#define FAST_CODE_PAGE(cpu, ent) .*$/#define FAST_CODE_PAGE(cpu, ent) 0/'; do
+         codepage:'s/^#define FAST_CODE_PAGE(cpu, ent) .*$/#define FAST_CODE_PAGE(cpu, ent) 0/' \
+         lfbwnull:'/^#define FPTR_IO_W(/,/} while (0)/{/^\t\t\tif (nullsegs & (1u << (sg))) goto slow; \\$/d;s/^\t\t\tif (!(p = fast_miss2(cpu, ftlb, _lin, (size), 1, &mpaddr, (H1)))) { \\$/\t\t\tif (nullsegs \& (1u << (sg))) goto slow; \\\n&/}' \
+         stnull:'/^#define FPTR_ST(/,/} while (0)/{/^\t\t\tif (nullsegs & (1u << (sg))) goto slow; \\$/d;s/^\t\t\tif (!(p = fast_miss(cpu, ftlb, _lin, (size), 1, &mpaddr))) { \\$/\t\t\tif (nullsegs \& (1u << (sg))) goto slow; \\\n&/}' \
+         fwcpl:'s/int _r = fast_window(cpu, ftlb, eip, &_w);/int _r = fast_window(cpu, cpu->fast->tab[0], eip, \&_w);/' \
+         st4cpl:'/^refill:/,/^\tWINDOW();$/s/^\t\tstruct fast_tlb_entry \*e = &ftlb\[(lin >> 12) % tlb_size\];$/\t\tstruct fast_tlb_entry *e = \&cpu->fast->tab[0][(lin >> 12) % tlb_size];/' \
+         divip:'s/^P##6: { cpu->ip = EIP_OF(ins); DIV/P##6: { DIV/' \
+         st4end:'s/if (po < (uintptr_t) cpu->phys_mem_size - 4096 && !in_iomem((uword) po)/if (po < (uintptr_t) cpu->phys_mem_size \&\& !in_iomem((uword) po)/'; do
     mname=${m%%:*}
     mfile=i386_fast.h       # (v5.1: lpgno's fault is in i386.c)
     [ "$mname" = lpgno ] && mfile=i386.c
@@ -1004,6 +1021,51 @@ for m in pdeacc:'s/^\tmem\[base_addr + i \* 4\] |= 1 << 5; \/\* accessed \*\/ \\
     [ $st != 0 ]
     result $? "the lockstep test catches a fault in the fast interpreter's own TLB refill ($mname)"
 done
+
+# ==== 24b. the same, as the board's own compiler makes it (v5.1, optional) ====
+# test_fast_cpu.c (and with it i386.c and i386_fast.h) compiled by the
+# board's compiler as the Korvo-1 builds i386.c (ESP-IDF's GCC, -O3
+# -mtune=esp32s31, -fno-jump-tables, the board header), linked with a
+# riscv32 Linux C library, and run as RV32 code under qemu-riscv32: the
+# only run that compares the fast interpreter as the board's compiler
+# makes it with tiny386 at every step (the v5.1 CPU review's T3 and T5).
+# Only when ESP_GCC (riscv32-esp-elf-gcc) and RV32_GCC (a riscv32 Linux
+# gcc, whose C library headers and libraries are used) are set and
+# qemu-riscv32-static is on PATH; FCSEEDS_RV seeds (default FCSEEDS), split
+# over up to 8 processes.
+echo
+if [ -n "${ESP_GCC:-}" ] && [ -n "${RV32_GCC:-}" ] && command -v qemu-riscv32-static > /dev/null; then
+    RVMARCH="-march=rv32imac_zba_zbb_zbs -mabi=ilp32"
+    RVSYS=$("$RV32_GCC" -print-sysroot)
+    RVSEEDS=${FCSEEDS_RV:-$FCSEEDS}
+    if "$ESP_GCC" $RVMARCH -mtune=esp32s31 -nostdinc -isystem "$RVSYS/usr/include" \
+            -isystem "$("$ESP_GCC" -print-file-name=include)" -O3 -w -g -ffunction-sections \
+            -fdata-sections -fno-jump-tables -fno-tree-switch-conversion -fstrict-volatile-bitfields \
+            -std=gnu2x -D_GNU_SOURCE $PCBOARD -I"$TREE" -c "$HERE/cpu/test_fast_cpu.c" \
+            -o "$OUT/test_fast_cpu-rv.o" &&
+        "$RV32_GCC" $RVMARCH -O2 -w $PCBOARD -I"$TREE" -c "$TREE/fpu.c" -o "$OUT/fpu-rv.o" &&
+        "$RV32_GCC" $RVMARCH -static -o "$OUT/test_fast_cpu-rv" "$OUT/test_fast_cpu-rv.o" \
+            "$OUT/fpu-rv.o" -lm -latomic; then
+        echo "    | (built by $("$ESP_GCC" --version | head -1))"
+        per=$(( (RVSEEDS + 7) / 8 ))
+        st=0
+        for i in 0 1 2 3 4 5 6 7; do
+            f=$((1 + i * per)); n=$per
+            [ $((f + n)) -gt $((1 + RVSEEDS)) ] && n=$((1 + RVSEEDS - f))
+            [ $n -le 0 ] && continue
+            qemu-riscv32-static -cpu rv32,zba=true,zbb=true,zbs=true "$OUT/test_fast_cpu-rv" $n $f \
+                > "$OUT/fast-cpu-rv-$i.log" 2>&1 &
+        done
+        for j in $(jobs -p); do wait $j || st=1; done
+        grep -h "FAIL" "$OUT"/fast-cpu-rv-*.log | head -20
+        cat "$OUT"/fast-cpu-rv-*.log | awk '/^test_fast_cpu:/ { s += $2; f += $(NF - 1) } END { printf "    | (%d scenarios, %d failed, under qemu-riscv32)\n", s, f }'
+        result $st "the fast interpreter as the board's compiler makes it (RV32 under qemu): the same as tiny386's own at every step"
+    else
+        result 1 "the fast interpreter as the board's compiler makes it: the build"
+    fi
+else
+    echo "    | (no ESP_GCC and RV32_GCC, or no qemu-riscv32-static: the board compiler's run is skipped)"
+fi
 
 # ==== 25. the profiler's counts and PROFILE.TXT (v5.1, s31/PROFILE.md) ====
 # esp/main/prof_hist.c (the tables, the instruction key, the file) and

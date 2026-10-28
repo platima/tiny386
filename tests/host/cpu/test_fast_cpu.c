@@ -128,6 +128,20 @@
  * set, reads and writes; a page fault handler logs CR2 and the error code
  * and makes the planned fix, and the log must be the planned one.
  *
+ * v5.1, after the three reviews of the merged tree (the CPU review's M1 to
+ * M3, N1 and N3): modes p to s, from WI-3's check, random code of the group
+ * opcodes with every prefix, DIV and IDIV with #DE, and segment loads, at
+ * levels 0, 1 and 3 and in 16-bit protected mode; mode t, from WI-1's
+ * check, code fetches: level 3 jumping into a page that tiny386's TLB holds
+ * as supervisor after its PTE was made user without INVLPG, code pages
+ * whose PTEs change without INVLPG, code in RAM's last page twice in a row
+ * and in the VGA window, EIP wrapping at 4 GiB inside a page and IP at 64
+ * KiB in virtual-8086 mode, and accesses across 4 GiB; in mode l, stores
+ * through a null ES, FS or GS into a page of the frame buffer that has a
+ * write tag.  A guest that shuts the processor down ends its scenario,
+ * which passes if both machines stopped in the same step and agree, not
+ * the whole run; and the fetch cache's xaddr starts at 0 in both machines.
+ *
  *   test_fast_cpu [SEEDS [FIRST_SEED [MODES]]]
  *
  * MODES: the scenarios for each seed, one character each (run() names
@@ -140,6 +154,7 @@
 #include "i386.c"
 
 #include <stdarg.h>
+#include <setjmp.h>
 #include <signal.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -910,6 +925,11 @@ static void mach_new(struct mach *m, int fast)
 	   garbage there, which compare() would report (the CPU review of v5.0) */
 	m->cpu->cc.op = 0;
 	m->cpu->cc.dst = m->cpu->cc.src1 = m->cpu->cc.src2 = m->cpu->cc.dst2 = 0;
+	/* the same for the fetch cache's host mapping: tlb_clear() sets its
+	   laddr (empty) and paddr, not xaddr, which compare() looks at from
+	   the first step on (the v5.1 CPU review's N1: 41 false differences in
+	   mode n at step 0, built for RV32 with musl) */
+	m->cpu->ifetch.xaddr = 0;
 	cpui386_set_fast(m->cpu, fast);
 	cb->pic = m;
 	cb->pic_read_irq = pic_irq;
@@ -1613,6 +1633,36 @@ static void gen_l(void)
 		}
 		if (cpl0 && chance(4)) {   /* CR0.WP changed */
 			e8(0x0f); e8(0x20); e8(0xc0); e8(0x35); e32(CR0_WP); e8(0x0f); e8(0x22); e8(0xc0);
+		}
+	}
+	if (glfb) {
+		/* v5.1 (the CPU review's M1): a page of the frame buffer stored
+		   into twice through DS (so that the fast TLB has its write tag),
+		   then a null selector in ES, FS or GS and the same page stored
+		   into through it, by MOV (FPTR_ST()), MOV with an immediate, REP
+		   STOSD (FPTR_IO_W()) and MOVSD: tiny386 raises #GP(0) for each
+		   (segcheck()), whose handler loads the data selector into ES, FS
+		   and GS, and the store is done again */
+		static const u8 nsr[3] = { 0xc1, 0xe1, 0xe9 }, npfx[3] = { 0x26, 0x64, 0x65 };
+		for (int t = 0; t < 6; t++) {
+			int k = rnd(LFB_SIZE / 4096), s = rnd(3);
+			uword a = LFB_BASE + k * 0x1000 + (rnd(0x1000 - 0x40) & ~3u);
+			e8(0x89); e8(0x05); e32(a);                           /* MOV [a],EAX: the write tag made */
+			e8(0x89); e8(0x05); e32(a + 4);                       /* MOV [a+4],EAX: through it */
+			e8(0x31); e8(0xc9);                                   /* XOR ECX,ECX */
+			e8(0x8e); e8(nsr[s]);                                 /* MOV ES/FS/GS,CX: null */
+			switch (rnd(4)) {
+			case 0: e8(npfx[s]); e8(0x89); e8(0x05); e32(a + 8); break;                    /* MOV seg:[a+8],EAX */
+			case 1: e8(npfx[s]); e8(0xc7); e8(0x05); e32(a + 8); e32(0x11223344); break;   /* MOV DWORD seg:[a+8],imm */
+			case 2:
+				if (s == 0) { e8(0xbf); e32(a + 8); e8(0xb9); e32(2 + rnd(4)); e8(0xf3); e8(0xab); }   /* REP STOSD */
+				else { e8(npfx[s]); e8(0x89); e8(0x05); e32(a + 8); }
+				break;
+			default:
+				if (s == 0) { e8(0xbe); e32(P_DATA + rnd(0x800)); e8(0xbf); e32(a + 8); e8(0xa5); }  /* MOVSD */
+				else { e8(npfx[s]); e8(0x89); e8(0x05); e32(a + 8); }
+				break;
+			}
 		}
 	}
 	if (glfb) {   /* code in the frame buffer: INC EDX three times and JMP back, after a read of its page or not */
@@ -2948,13 +2998,516 @@ static int refill_probes(int seed)
 	return bad;
 }
 
+/* == v5.1 (WI-3's check, taken into the tree after the v5.1 CPU review's
+   M3): modes p, q, r and s (25 to 28), random code of the group opcodes
+   (80h to 83h, C0h, C1h, D0h to D3h, F6h, F7h) with every prefix (segment,
+   66h, 67h, LOCK, REP), DIV and IDIV in every form with #DE (a zero divisor
+   and an overflow: #DE's return address is the DIV itself), memory
+   operands across pages, in the frame buffer and in the VGA window, and
+   segment loads (MOV, POP, LES) with valid, null and faulting selectors.
+   p: 32-bit, level 0; q: 16-bit protected mode with paging; r: level 1;
+   s: level 3.  The #DE handler sets a divisor of 3 and returns to the DIV,
+   which then runs; the #GP handler loads the data selector into DS, ES, FS
+   and GS. */
+#define GD_DE_CNT (CNT_PHYS + 0x20)
+#define GD_GP_CNT (CNT_PHYS + 0x24)
+static int gd_mode;
+static uword gd_divm_lin, gd_divm_off;
+static unsigned gd_reload;
+static u32 gd_r32(void) { rnd(0); return (u32) (rs >> 17); }
+static void gd_handlers(u8 *mem)
+{
+	/* #DE: INC DWORD CS:[DECNT]; MOV ECX,3; XOR EDX,EDX; MOVZX EAX,AL; MOV DWORD CS:[DIVM],3; IRETD */
+	const u8 de[] = { 0x2e, 0xff, 0x05, 0, 0, 0, 0, 0xb9, 3, 0, 0, 0, 0x31, 0xd2, 0x0f, 0xb6, 0xc0,
+			  0x2e, 0xc7, 0x05, 0, 0, 0, 0, 3, 0, 0, 0, 0xcf };
+	memcpy(mem + HND_PHYS + 0x400, de, sizeof(de));
+	put32(mem, HND_PHYS + 0x400 + 3, GD_DE_CNT);
+	put32(mem, HND_PHYS + 0x400 + 20, gd_divm_lin);
+	gate(mem, 0, 0x08, HND_PHYS + 0x400, 0x8e);
+	/* #GP: PUSH EAX; MOV AX,sel; MOV DS,AX; MOV ES,AX; MOV FS,AX; MOV GS,AX;
+	   INC DWORD CS:[GPCNT]; POP EAX; MOV EAX,sel; ADD ESP,4; IRETD */
+	const u8 gpc[] = { 0x50, 0x66, 0xb8, 0, 0, 0x8e, 0xd8, 0x8e, 0xc0, 0x8e, 0xe0, 0x8e, 0xe8,
+			   0x2e, 0xff, 0x05, 0, 0, 0, 0, 0x58, 0xb8, 0, 0, 0, 0, 0x83, 0xc4, 0x04, 0xcf };
+	memcpy(mem + HND_PHYS + 0x440, gpc, sizeof(gpc));
+	mem[HND_PHYS + 0x440 + 3] = gd_reload; mem[HND_PHYS + 0x440 + 4] = gd_reload >> 8;
+	put32(mem, HND_PHYS + 0x440 + 16, GD_GP_CNT);
+	put32(mem, HND_PHYS + 0x440 + 22, gd_reload);
+	gate(mem, 13, 0x08, HND_PHYS + 0x440, 0x8e);
+}
+static void gd_mov32(int r, u32 v) { if (!g32) e8(0x66); e8(0xb8 + r); e32(v); }
+static void gd_mov16(int r, u32 v) { if (g32) e8(0x66); e8(0xb8 + r); e16(v); }
+static void gd_sreg(int s, unsigned sel) { gd_mov16(0, sel); e8(0x8e); e8(0xc0 | s << 3); }
+struct gd_ea { int a32, form; uword t; int d8; u32 si; };
+static void gd_ea_pre(struct gd_ea *e)
+{
+	if (e->a32) {
+		if (e->form == 1) gd_mov32(3, e->t - (u32) (s8) e->d8);
+		else if (e->form == 2) { gd_mov32(6, e->si); gd_mov32(3, e->t - e->si - (u32) (s8) e->d8); }
+		else if (e->form == 3) gd_mov32(3, e->t - 0x12345);
+	} else {
+		if (e->form == 1) gd_mov16(3, (e->t - (u32) (s8) e->d8) & 0xffff);
+		else if (e->form == 2) { gd_mov16(6, e->si & 0xffff); gd_mov16(3, (e->t - e->si - (u32) (s8) e->d8) & 0xffff); }
+	}
+}
+static void gd_ea_modrm(struct gd_ea *e, int reg)
+{
+	if (e->a32) {
+		switch (e->form) {
+		case 0: e8(0x05 | reg << 3); e32(e->t); break;
+		case 1: e8(0x43 | reg << 3); e8(e->d8); break;
+		case 2: e8(0x44 | reg << 3); e8(0x33); e8(e->d8); break;
+		default: e8(0x83 | reg << 3); e32(0x12345); break;
+		}
+	} else {
+		switch (e->form) {
+		case 0: e8(0x06 | reg << 3); e16(e->t); break;
+		case 1: e8(0x47 | reg << 3); e8(e->d8); break;
+		default: e8(0x40 | reg << 3); e8(e->d8); break;
+		}
+	}
+}
+static void gd_ea_new(struct gd_ea *e, int a32, uword t)
+{
+	e->a32 = a32; e->t = t; e->d8 = rnd(256); e->si = rnd(0x100);
+	e->form = rnd(a32 ? 4 : 3);
+}
+static uword gd_target(int a32, int size)
+{
+	if (gd_mode == 26) {
+		switch (rnd(5)) {
+		case 0: return 0x0ff8 + rnd(8);
+		case 1: return 0xaff8 + rnd(8);
+		default: return 0x100 + rnd(0xfe00);
+		}
+	}
+	if (!a32)
+		return 0x8100 + rnd(0x7e00);
+	switch (rnd(7)) {
+	case 0: return P_DATA + 0xff8 + rnd(8);
+	case 1: return P_DATA + 0x2ff8 + rnd(8);
+	case 2: if (gd_mode == 25) return LFB_BASE + rnd(LFB_SIZE + 0x1ff8); /* fall through */
+	case 3: if (gd_mode == 25) return 0xa0000 + rnd(0x20000); /* fall through */
+	default: return P_DATA + 0x200 + rnd(0x3c00);
+	}
+}
+static void gd_segload(void)
+{
+	static const u16 ok_p[] = { 0x10, 0x13, 0x23 }, ok_q[] = { R_DS, 0xa000, 0x10 }, ok_r[] = { 0x39, 0x10, 0x23 }, ok_s[] = { 0x23, 0x10 };
+	static const u16 bad_p[] = { 0x04, 0x30, 0x28, 0x2c }, bad_q[] = { 0x04, 0x3000, 0x28 }, bad_r[] = { 0x04, 0x40, 0x28 };
+	static const int sg[] = { SEG_ES, SEG_DS, SEG_FS, SEG_GS };
+	int s = sg[rnd(4)];
+	int kind = rnd(4);   /* 0, 1 valid; 2 null; 3 faulting */
+	u16 sel;
+	if (kind == 2) sel = rnd(4);
+	else if (kind == 3) sel = gd_mode == 26 ? bad_q[rnd(3)] : gd_mode == 27 ? bad_r[rnd(3)] : bad_p[rnd(4)];
+	else sel = gd_mode == 25 ? ok_p[rnd(3)] : gd_mode == 26 ? ok_q[rnd(3)] : gd_mode == 27 ? ok_r[rnd(3)] : ok_s[rnd(2)];
+	int how = kind == 3 ? 0 : rnd(3);
+	if (how == 0) { gd_sreg(s, sel); return; }
+	if (how == 1) {   /* PUSH imm; POP Sreg */
+		e8(0x68); if (g32) e32(sel); else e16(sel);
+		if (s == SEG_FS) { e8(0x0f); e8(0xa1); } else if (s == SEG_GS) { e8(0x0f); e8(0xa9); } else e8(s == SEG_ES ? 0x07 : 0x1f);
+		return;
+	}
+	/* LES/LDS r,[ptr] from a pointer stored first (ES or DS only) */
+	int les = rnd(2);
+	uword t = gd_mode == 26 ? 0x8010 : gd_mode == 25 ? 0x8010 : P_DATA + 0x110;
+	gd_sreg(SEG_DS, gd_reload);
+	int p66 = chance(3), o16 = g32 ? p66 : !p66;
+	u32 w0 = o16 ? ((gd_r32() & 0xffff) | (u32) sel << 16) : gd_r32();
+	if (g32) { e8(0xc7); e8(0x05); e32(t); e32(w0); e8(0x66); e8(0xc7); e8(0x05); e32(t + 4); e16(sel); }
+	else { e8(0x66); e8(0xc7); e8(0x06); e16(t); e32(w0); e8(0xc7); e8(0x06); e16(t + 4); e16(sel); }
+	if (p66) e8(0x66);
+	e8(les ? 0xc4 : 0xc5);
+	if (g32) { e8(0x05 | rnd(3) << 3); e32(t); } else { e8(0x06 | rnd(3) << 3); e16(t); }
+}
+static void gd_one(void)
+{
+	if (chance(10)) { gd_segload(); return; }
+	if (gd_mode == 25 && glfb && chance(60)) { e8(0xb0); e8(rnd(4)); e8(0xe6); e8(0xe4); return; }   /* the frame buffer moves */
+	static const u8 opcs[] = { 0x80, 0x81, 0x82, 0x83, 0xc0, 0xc1, 0xd0, 0xd1, 0xd2, 0xd3, 0xf6, 0xf7 };
+	u8 opc = opcs[rnd(12)];
+	int reg = rnd(8), byte = !(opc & 1);
+	int isdiv = (opc == 0xf6 || opc == 0xf7) && reg >= 6;
+	int a16ok = gd_mode == 25 || gd_mode == 26;
+	int p66 = chance(4), p67 = a16ok && chance(3);
+	int o16 = g32 ? p66 : !p66;
+	int a32 = g32 ? !p67 : p67;
+	int mem = chance(2);
+	int size = byte ? 1 : o16 ? 2 : 4;
+	struct gd_ea e;
+	/* the registers */
+	gd_mov32(0, gd_r32());
+	gd_mov32(2, chance(2) ? 0 : gd_r32());
+	if (opc == 0xd2 || opc == 0xd3) { e8(0xb1); e8(rnd(3) ? rnd(40) : rnd(256)); }
+	if (isdiv) gd_mov32(1, chance(4) ? 0 : chance(8) ? 0x100 : 1 + rnd(300));
+	int segpfx = -1;
+	if (mem) {
+		if (isdiv) {
+			gd_sreg(SEG_DS, gd_reload);
+			u32 v = chance(4) ? 0 : 1 + rnd(300);
+			if (g32) { e8(0xc7); e8(0x05); e32(gd_divm_off); e32(v); }
+			else { e8(0x66); e8(0xc7); e8(0x06); e16(gd_divm_off); e32(v); }
+			gd_ea_new(&e, a32, gd_divm_off);
+			if (chance(4)) segpfx = 0x3e;
+		} else {
+			gd_ea_new(&e, a32, gd_target(a32, size));
+			if (chance(3)) {
+				static const u8 sp6[] = { 0x26, 0x2e, 0x36, 0x3e, 0x64, 0x65 }, sp5[] = { 0x26, 0x36, 0x3e, 0x64, 0x65 };
+				segpfx = gd_mode == 26 ? sp5[rnd(5)] : sp6[rnd(6)];
+			}
+		}
+		gd_ea_pre(&e);
+	}
+	/* the prefixes, in a random order */
+	u8 pf[5]; int np = 0;
+	if (segpfx >= 0) pf[np++] = segpfx;
+	if (p66) pf[np++] = 0x66;
+	if (p67) pf[np++] = 0x67;
+	if (mem && chance(6)) pf[np++] = 0xf0;
+	if (chance(10)) pf[np++] = chance(2) ? 0xf3 : 0xf2;
+	for (int i = np - 1; i > 0; i--) { int j = rnd(i + 1); u8 x = pf[i]; pf[i] = pf[j]; pf[j] = x; }
+	for (int i = 0; i < np; i++) e8(pf[i]);
+	e8(opc);
+	if (mem) gd_ea_modrm(&e, reg);
+	else {
+		int r = isdiv ? 1 : rnd(8);
+		if (!byte && r == 4) r = 0;
+		e8(0xc0 | reg << 3 | r);
+	}
+	switch (opc) {
+	case 0x80: case 0x82: case 0x83: case 0xc0: case 0xc1: e8(opc >= 0xc0 ? (rnd(3) ? rnd(40) : rnd(256)) : rnd(256)); break;
+	case 0x81: ev(gd_r32(), o16); break;
+	case 0xf6: if (reg < 2) e8(rnd(256)); break;
+	case 0xf7: if (reg < 2) ev(gd_r32(), o16); break;
+	}
+	if (((opc & 0xfc) == 0x80 && reg == 7) || ((opc & 0xfe) == 0xf6 && reg < 2)) {
+		if (!chance(3)) { e8(0x74 + rnd(2)); if (chance(2)) { e8(1); e8(0x90); } else e8(0); }
+	}
+}
+
+
+/* == v5.1 (WI-1's check, its mode m in its second version, taken into the
+   tree after the v5.1 CPU review's M2 and M3): mode t (29), code fetches
+   where the code window, the inline refill (ST4) and the lean refill meet
+   the rules tiny386 keeps.  By the seed (seed % 5):
+   0  level 3 jumps into a page that tiny386's TLB holds as supervisor
+      (INT 30h's handler at level 0 does INVLPG, makes the PTE supervisor
+      and reads the page), after the PTE was made user without INVLPG:
+      v4.6 faults once on the entry it holds (a code fetch through
+      fast_window(), C).  Then the PTE narrowed again without INVLPG and
+      the page run again (tiny386's user entry still lets level 3 in).
+   1  level 0: code pages run, then their PTEs changed without INVLPG
+      (A and D cleared, remapped), INVLPG, MOV CR3, CR0.WP toggled, and run
+      again; code in the last page of RAM (never cached: run twice in a
+      row, with nothing between at its TLB index, so that the inline
+      refill meets it) and in the VGA window (fetched through the
+      callbacks).
+   2  32-bit code with CS base 402800h: EIP wraps at 4 GiB inside the
+      page 402000h (JMP EAX, RET into it), a chain of stations that land
+      at times in a page's last 16 bytes and at times on a CMP, JZ pair.
+   3  V86 mode with CS 1080h (base 10800h, not page aligned): IP wraps at
+      64 KiB, forward and back, through every kind of transfer.
+   4  level 0: loads, stores, PUSH, POP, PUSHA and POPA across 4 GiB
+      (page FFFFFh to page 0), both pages' entries made first. */
+#define CP_LIN 0x00560000u
+#define CP_PHYS 0x140000u
+#define CP_PAGES 8
+static int cp_sub;
+static int cp_perm(int i) { return (i * 3 + 5) & 7; }
+static uword cp_pte(int i) { return P_PT + 0x1000 + (((CP_LIN >> 12) + i) & 1023) * 4; }
+static const u16 cp_stub_off[] = { 0x010, 0x400, 0x800, 0xc00, 0xfe0, 0xff2 };
+static void cp_stub(u8 *at, int tag)
+{
+	/* MOV CL,tag; INC EDX; CMP EAX,EAX; JZ $+2; RET */
+	const u8 s[] = { 0xb1, (u8) tag, 0x42, 0x39, 0xc0, 0x74, 0x00, 0xc3 };
+	memcpy(at, s, sizeof(s));
+}
+
+static void setup_cp(u8 *mem, CPUI386 *cpu)
+{
+	if (cp_sub == 3) {
+		setup_v86(mem, cpu);
+		cpu->seg[SEG_CS].sel = 0x1080;
+		cpu->seg[SEG_CS].base = 0x10800;
+		cpu->flags |= IF;
+		return;
+	}
+	setup_prot(mem, cpu, cp_sub == 0);
+	cpu->flags |= IF;
+	if (cp_sub == 4) {
+		/* linear FFC00000h up through PT2 too; FFFFF000h to physical 150000h */
+		put32(mem, PD_PHYS + 1023 * 4, PT2_PHYS | 0x007);
+		put32(mem, PT2_PHYS + 1023 * 4, 0x150000 | 0x003);
+		tlb_clear(cpu);
+		return;
+	}
+	if (cp_sub == 2) {
+		desc(mem, GDT_PHYS + 0x40, 0x00402800, 0xfffff, 0xc9a);
+		cpu->gdt.limit = 0x47;
+		cpu->seg[SEG_CS].sel = 0x40;
+		cpu->seg[SEG_CS].base = 0x00402800;
+		cpu->next_ip = P_CODE - 0x00402800u;
+		return;
+	}
+	for (int i = 0; i < CP_PAGES; i++)
+		put32(mem, PT2_PHYS + (((CP_LIN >> 12) + i) & 1023) * 4, (CP_PHYS + cp_perm(i) * 0x1000) | 0x003);
+	mem[HND_PHYS + 0x20 + 19] = 7;   /* the page fault's handler: present, writable and user */
+	if (cp_sub == 0) {
+		/* the page table's page (P_PT + 1000h) writable at level 3 */
+		put32(mem, PT2_PHYS + (((P_PT >> 12) + 1) & 1023) * 4, PT2_PHYS | 0x007);
+		/* INT 30h (level 0): for each page INVLPG, its PTE supervisor
+		   again, a read (tiny386's entry, supervisor); INC [CNT+4]; IRET */
+		u8 *p = mem + HND_PHYS + 0x300;
+		*p++ = 0x50;
+		for (int i = 0; i < CP_PAGES; i++) {
+			u32 lin = CP_LIN + i * 0x1000, pte = cp_pte(i), msk = 0xfffffffbu, rd = lin + 0x20;
+			*p++ = 0x0f; *p++ = 0x01; *p++ = 0x3d; memcpy(p, &lin, 4); p += 4;
+			*p++ = 0x81; *p++ = 0x25; memcpy(p, &pte, 4); p += 4; memcpy(p, &msk, 4); p += 4;
+			*p++ = 0xa1; memcpy(p, &rd, 4); p += 4;
+		}
+		*p++ = 0x58;
+		u32 cnt = CNT_PHYS + 4;
+		*p++ = 0xff; *p++ = 0x05; memcpy(p, &cnt, 4); p += 4;
+		*p++ = 0xcf;
+		gate(mem, 0x30, 0x08, HND_PHYS + 0x300, 0xee);
+	}
+	tlb_clear(cpu);
+}
+
+/* a transfer (32-bit code) to the stub at t, which returns here */
+static void cp_call(uword t)
+{
+	switch (rnd(6)) {
+	case 0: e8(0xe8); e32(t - (glin() + 4)); break;                       /* CALL rel32 */
+	case 1: e8(0xb8); e32(t); e8(0xff); e8(0xd0); break;                  /* MOV EAX,t; CALL EAX */
+	case 2: { u32 r = glin() + 10; e8(0x68); e32(r); e8(0xe9); e32(t - (glin() + 4)); break; }   /* PUSH r; JMP t */
+	case 3: { u32 r = glin() + 13; e8(0x68); e32(r); e8(0x39); e8(0xc0); e8(0x0f); e8(0x84); e32(t - (glin() + 4)); break; }   /* PUSH r; CMP; JZ t (fused) */
+	case 4: { u32 r = glin() + 11; e8(0x68); e32(r); e8(0x68); e32(t); e8(0xc3); break; }       /* PUSH r; PUSH t; RET */
+	default: { u32 r = glin() + 12; e8(0x68); e32(r); e8(0xb8); e32(t); e8(0xff); e8(0xe0); break; }   /* PUSH r; MOV EAX,t; JMP EAX */
+	}
+}
+
+/* stations (cp_sub 2 and 3) */
+static uword cp_cur_eip(void) { return cp_sub == 2 ? gp - 0x100000 + P_CODE - 0x00402800u : gp - 0x10800u; }
+static uword cp_phys_of_lin(uword lin) { return cp_sub == 2 ? lin - P_CODE + 0x100000 : lin; }
+static uword cp_eip_of_lin(uword lin) { return cp_sub == 2 ? lin - 0x00402800u : (lin - 0x10800u) & 0xffff; }
+static int cp_o16(void) { return cp_sub == 3; }
+static int cp_isz(void) { return cp_sub == 3 ? 2 : 4; }
+/* a transfer to the station at lin t; returns 1 if it pushed a return address (the station pops it) */
+static int cp_jump(uword t, int kind)
+{
+	uword te = cp_eip_of_lin(t);
+	switch (kind) {
+	case 0: e8(0xe9); ev(te - (cp_cur_eip() + cp_isz()), cp_o16()); return 0;                          /* JMP near */
+	case 1: e8(0x39); e8(0xc0); e8(0x0f); e8(0x84); ev(te - (cp_cur_eip() + cp_isz()), cp_o16()); return 0;   /* CMP; JZ near */
+	case 2: e8(0x68); ev(te, cp_o16()); e8(0xc3); return 0;                                         /* PUSH t; RET */
+	case 3: e8(0xb8); ev(te, cp_o16()); e8(0xff); e8(0xe0); return 0;                               /* MOV (E)AX,t; JMP (E)AX */
+	case 4: e8(0xe8); ev(te - (cp_cur_eip() + cp_isz()), cp_o16()); return 1;                          /* CALL near */
+	default: e8(0xb8); ev(te, cp_o16()); e8(0xff); e8(0xd0); return 1;                              /* MOV (E)AX,t; CALL (E)AX */
+	}
+}
+static int cp_station(uword s, int pop, uword next, int kind)
+{
+	gp = cp_phys_of_lin(s);
+	if (pop) e8(0x5b);                                   /* POP (E)BX: the return address */
+	if (chance(3)) { e8(0x39); e8(0xc0); e8(0x74); e8(0x00); }   /* CMP; JZ $+2 */
+	e8(0x42);                                            /* INC (E)DX */
+	return cp_jump(next, kind);
+}
+
+static void gen_cp(void)
+{
+	if (cp_sub <= 1) {
+		for (int j = 0; j < CP_PAGES; j++) {
+			memset(gm + CP_PHYS + j * 0x1000, 0xf4, 0x1000);
+			for (int k = 0; k < 6; k++)
+				cp_stub(gm + CP_PHYS + j * 0x1000 + cp_stub_off[k], j);
+		}
+	}
+	if (cp_sub == 0) {
+		for (int r = 0; r < 40; r++) {
+			e8(0xcd); e8(0x30);
+			int i = rnd(CP_PAGES), act = rnd(4);
+			if (act == 1) { e8(0x81); e8(0x25); e32(cp_pte(i)); e32(0xffffff9f); }   /* A, D cleared */
+			if (act != 3) { e8(0x81); e8(0x0d); e32(cp_pte(i)); e32(4); }            /* user, no INVLPG */
+			cp_call(CP_LIN + i * 0x1000 + cp_stub_off[rnd(6)]);
+			e8(0x8b); e8(0x1d); e32(cp_pte(i));                                       /* MOV EBX,[PTE] */
+			if (chance(2)) {
+				e8(0x81); e8(0x25); e32(cp_pte(i)); e32(0xfffffffb);              /* supervisor, no INVLPG */
+				cp_call(CP_LIN + i * 0x1000 + cp_stub_off[rnd(6)]);
+			}
+			if (chance(2))
+				cp_call(CP_LIN + rnd(CP_PAGES) * 0x1000 + cp_stub_off[rnd(6)]);
+		}
+		e8(0xbf); e32(P_DATA);
+		return;
+	}
+	if (cp_sub == 4) {
+		/* accesses across 4 GiB (page FFFFFh to page 0), after both pages' entries were made */
+		for (int a = 0; a < 16; a++) {
+			gm[0x150ff0 + a] = rnd(256);
+			gm[0x0 + a] = rnd(256);
+		}
+		for (int r = 0; r < 30; r++) {
+			int k = rnd(3);
+			e8(0xa1); e32(0xfffffff0);                          /* MOV EAX,[FFFFFFF0h] */
+			e8(0x8b); e8(0x1d); e32(4);                         /* MOV EBX,[4] */
+			e8(0x8b); e8(0x0d); e32(0xfffffffe - k);            /* MOV ECX,[FFFFFFFEh - k]: across */
+			e8(0x01); e8(0x05); e32(0xfffffffd + k);            /* ADD [FFFFFFFDh + k],EAX: across */
+			e8(0x66); e8(0xa3); e32(0xffffffff);                /* MOV [FFFFFFFFh],AX: across */
+			e8(0x88); e8(0x25); e32(0xffffffff);                /* MOV [FFFFFFFFh],AH: not across */
+			e8(0x89); e8(0xe6);                                 /* MOV ESI,ESP */
+			e8(0xbc); e32(2 + k);                               /* MOV ESP,2+k */
+			e8(0x50);                                           /* PUSH EAX: across */
+			e8(0x5a);                                           /* POP EDX */
+			e8(0x68); e32((u32) rs);                            /* PUSH imm32 */
+			e8(0x8f); e8(0x05); e32(0xfffffffe);                /* POP DWORD [FFFFFFFEh]: across */
+			e8(0xbc); e32(0x10 + k);                            /* MOV ESP,10h+k */
+			e8(0x60);                                           /* PUSHA: 32 bytes across */
+			e8(0x61);                                           /* POPA */
+			e8(0x89); e8(0xf4);                                 /* MOV ESP,ESI */
+			e8(0x0f); e8(0xb7); e8(0x05); e32(0xffffffff);      /* MOVZX EAX,WORD [FFFFFFFFh]: across */
+		}
+		e8(0xbf); e32(P_DATA);
+		return;
+	}
+	if (cp_sub == 1) {
+		for (int k = 0; k < 6; k++)
+			cp_stub(gm + 0x1ff000 + cp_stub_off[k], 0xff);
+		for (int m = 0; m < 2; m++) {
+			cp_stub(M[m].vga + 0x10, 0xa0);
+			cp_stub(M[m].vga + 0x800, 0xa1);
+		}
+		for (int r = 0; r < 60; r++) {
+			int i = rnd(CP_PAGES);
+			uword pg = CP_LIN + i * 0x1000;
+			cp_call(pg + cp_stub_off[rnd(6)]);
+			switch (rnd(7)) {
+			case 0: e8(0x81); e8(0x25); e32(cp_pte(i)); e32(0xffffff9f); break;
+			case 1: e8(0xc7); e8(0x05); e32(cp_pte(i)); e32((CP_PHYS + rnd(CP_PAGES) * 0x1000) | 3); break;
+			case 2: e8(0xc7); e8(0x05); e32(cp_pte(i)); e32((CP_PHYS + rnd(CP_PAGES) * 0x1000) | 3);
+				e8(0x0f); e8(0x01); e8(0x3d); e32(pg); break;
+			case 3: e8(0x0f); e8(0x20); e8(0xd8); e8(0x0f); e8(0x22); e8(0xd8); break;
+			case 4: e8(0x0f); e8(0x20); e8(0xc0); e8(0x35); e32(CR0_WP); e8(0x0f); e8(0x22); e8(0xc0); break;
+			case 5: e8(0x81); e8(0x25); e32(cp_pte(i)); e32(0xffffff9f); e8(0x0f); e8(0x01); e8(0x3d); e32(pg); break;
+			default: break;
+			}
+			cp_call(pg + cp_stub_off[rnd(6)]);
+			e8(0x8b); e8(0x1d); e32(cp_pte(i));
+			if (chance(3)) {
+				/* the last page of RAM, twice, with the stack in page 5FDh (5FFh has
+				   the same TLB index as 1FFh and would push its entries out) */
+				e8(0x89); e8(0xe6);                       /* MOV ESI,ESP */
+				e8(0xbc); e32(0x005fdf00);                /* MOV ESP,5FDF00h */
+				cp_call(0x1ff000 + cp_stub_off[rnd(6)]);
+				cp_call(0x1ff000 + cp_stub_off[rnd(6)]);
+				e8(0x89); e8(0xf4);                       /* MOV ESP,ESI */
+			}
+			if (chance(4)) cp_call(0xa0000 + (chance(2) ? 0x10 : 0x800));
+		}
+		e8(0xbf); e32(P_DATA);
+		return;
+	}
+	/* cp_sub 2, 3: the stations */
+	static uword st[600];
+	int n = 0;
+	uword special[3];
+	if (cp_sub == 2) {
+		memset(gm + 0x100000, 0xf4, 0x5000);
+		for (uword l = 0x401000; l < 0x404000; l += 0x20)
+			if (!(l >= 0x402780 && l < 0x402820))
+				st[n++] = l;
+		special[0] = 0x4027e8; special[1] = 0x402806; special[2] = 0x402790;
+	} else {
+		gcode_phys = 0x10800;
+		memset(gm + 0x10800, 0xf4, 0x10000);
+		special[0] = 0x10800 + 0xffe8; special[1] = 0x10800 + 0x0006; special[2] = 0x10800 + 0xff90;
+	}
+	/* shuffled */
+	if (cp_sub == 2) {
+		for (int i = n - 1; i > 0; i--) { int j = rnd(i + 1); uword t = st[i]; st[i] = st[j]; st[j] = t; }
+		n = 160;
+	} else {
+		/* alternating low (IP 20h..CFFh) and high (IP F200h..FF7Fh) */
+		static uword lo[200], hi[200];
+		int nl = 0, nh = 0;
+		for (uword ip = 0x20; ip < 0xd00; ip += 0x20) lo[nl++] = 0x10800 + ip;
+		for (uword ip = 0xf200; ip < 0xff80; ip += 0x20) hi[nh++] = 0x10800 + ip;
+		for (int i = nl - 1; i > 0; i--) { int j = rnd(i + 1); uword t = lo[i]; lo[i] = lo[j]; lo[j] = t; }
+		for (int i = nh - 1; i > 0; i--) { int j = rnd(i + 1); uword t = hi[i]; hi[i] = hi[j]; hi[j] = t; }
+		n = 0;
+		for (int i = 0; i < 100; i++) { st[n++] = lo[i]; st[n++] = hi[i]; }
+	}
+	/* some start 10h to 13h into their slot (a page's last 16 bytes when the slot is its last) */
+	for (int i = 0; i < n; i++)
+		st[i] += chance(4) ? 0x10 + rnd(2) : rnd(2);
+	uword end_lin = cp_sub == 2 ? 0x404100 : 0x10800 + 0xd20;
+	int sp = n / 2;   /* the special stations go in after this one */
+	/* the start: JMP near to the first station */
+	gp = cp_sub == 2 ? 0x100000 : 0x10800;
+	cp_jump(st[0], 0);
+	int pop = 0;
+	for (int i = 0; i < n; i++) {
+		uword next = i + 1 < n ? st[i + 1] : end_lin;
+		if (i == sp) {
+			/* station sp, then the special ones: wrap inside a page (32-bit) or at 64 KiB by short jumps (V86) */
+			pop = cp_station(st[i], pop, special[0], 0);
+			if (cp_sub == 2) {
+				gp = cp_phys_of_lin(special[0]);
+				if (pop) e8(0x5b);
+				e8(0x42); e8(0xb8); e32(cp_eip_of_lin(special[1])); e8(0xff); e8(0xe0);   /* INC EDX; MOV EAX,6; JMP EAX */
+				gp = cp_phys_of_lin(special[1]);
+				e8(0x42); e8(0x68); e32(cp_eip_of_lin(special[2])); e8(0xc3);            /* INC EDX; PUSH FFFFFF90h; RET */
+			} else {
+				gp = cp_phys_of_lin(special[0]);
+				if (pop) e8(0x5b);
+				e8(0x42); e8(0xeb); e8((u8) (cp_eip_of_lin(special[1]) - (cp_cur_eip() + 1)));   /* INC DX; JMP short (wraps forward) */
+				gp = cp_phys_of_lin(special[1]);
+				e8(0x42); e8(0xb9); e16(2); e8(0xe2); e8((u8) (cp_eip_of_lin(special[2]) - (cp_cur_eip() + 1)));   /* INC DX; MOV CX,2; LOOP (wraps back) */
+			}
+			pop = cp_station(special[2], 0, next, rnd(6));
+			continue;
+		}
+		pop = cp_station(st[i], pop, next, rnd(6));
+	}
+	gp = cp_phys_of_lin(end_lin);
+	if (pop) e8(0x5b);
+}
+
+/* v5.1 (the CPU review's N3): a guest that shuts the processor down (a
+   fault while the double fault is delivered) makes tiny386 stop the
+   emulator: cpu_abort(), which ends the process, and with it the seeds
+   still to run.  cpu_abort_note, which tiny386 calls first thing then, is
+   pointed here for each step, so that the step ends and the scenario is
+   judged: both machines must stop in the same step, the same in every
+   field compare() looks at.  1 if the machine stopped. */
+static jmp_buf stop_jb;
+static long shutdowns;          /* scenarios ended so, the same in both machines */
+static void stop_note(void)
+{
+	longjmp(stop_jb, 1);
+}
+static int step_or_stop(CPUI386 *c, int n)
+{
+	if (setjmp(stop_jb)) {
+		cpu_abort_note = NULL;
+		return 1;
+	}
+	cpu_abort_note = stop_note;
+	cpui386_step(c, n);
+	cpu_abort_note = NULL;
+	return 0;
+}
+
 /* one scenario: mode 0 real, 1 protected at level 0, 2 at level 3;
    since the v5.0 reviews: 3 virtual-8086, 4 16-bit protected with paging, 5
    level 1, 6 16-bit protected without paging, 7 level 1 reading a
    supervisor page that level 0 used (hand-written), 8 self-modifying real
    mode code (hand-written), 9 CR0.WP set after a supervisor store into a
    read-only page (hand-written); v5.1 (WI-1): 20 (k) jumps, calls and
-   returns across code pages, 21 (l) a page read, then written */
+   returns across code pages, 21 (l) a page read, then written; v5.1, from
+   the work items' checks: 25 to 28 (p to s) the group opcodes, DIV's #DE
+   and segment loads, 29 (t) code fetches */
 static long total_insns, total_steps;
 static int verbose_runs = 1;
 static void setup_mode(int mode, u8 *mem, CPUI386 *cpu)
@@ -3027,6 +3580,12 @@ static void setup_mode(int mode, u8 *mem, CPUI386 *cpu)
 	case 33: fz_setup(mem, cpu); break;   /* v5.1 (WI-2's check): two memory operands at random */
 	case 24: setup_o(mem, cpu); break;   /* v5.1 (o): descriptor tables (hand) */
 	case 23: setup_refill(mem, cpu); break;   /* v5.1 (n): the lean TLB refill */
+	/* v5.1 (p to s, WI-3's check): the group opcodes, DIV's #DE, segment loads */
+	case 25: setup_prot(mem, cpu, 0); gd_handlers(mem); break;
+	case 26: setup_pm16(mem, cpu, 1); gd_handlers(mem); break;
+	case 27: setup_cpl1(mem, cpu); gd_handlers(mem); break;
+	case 28: setup_prot(mem, cpu, 1); gd_handlers(mem); break;
+	case 29: setup_cp(mem, cpu); break;   /* v5.1 (t, WI-1's check): code fetches */
 	default: setup_pm16(mem, cpu, 0); break;
 	}
 	if (mode == 7 || mode == 13 || mode == 17)     /* interrupts on, so that the IRQ's handler (level 0) runs first */
@@ -3053,6 +3612,11 @@ static int run(int mode, int seed)
 					      [22] = "the two-operand rule (hand)",
 					      [23] = "the lean TLB refill (hand)",
 					      [24] = "descriptor tables across pages, in MMIO, at RAM's end; null selectors (hand)",
+					      [25] = "groups, DIV's #DE, segment loads, level 0 (p)",
+					      [26] = "groups, DIV's #DE, segment loads, 16-bit PM (q)",
+					      [27] = "groups, DIV's #DE, segment loads, level 1 (r)",
+					      [28] = "groups, DIV's #DE, segment loads, level 3 (s)",
+					      [29] = "code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t)",
 					      [33] = "two memory operands at random",
 	};
 	if (mode == 23 && refill_probes(seed))   /* v5.1 (n): fast_miss() itself first */
@@ -3061,6 +3625,7 @@ static int run(int mode, int seed)
 	ksub = seed % 5;   /* (mode k) */
 	lsub = (seed >> 1) & 3;   /* (mode l) */
 	lrights(seed);
+	cp_sub = seed % 5;   /* (mode t) */
 	fz_level = (const int[]) { 0, 1, 3 }[seed % 3];
 	for (int i = 0; i < 2; i++)
 		mach_new(&M[i], i == 0);
@@ -3097,6 +3662,25 @@ static int run(int mode, int seed)
 	if (mode == 24) gcs_far = 0x08;
 	if (mode == 33)
 		gcs_far = fz_level == 0 ? 0x08 : fz_level == 1 ? 0x31 : 0x1b;
+	gd_mode = mode;
+	if (mode >= 25 && mode <= 28) {   /* p to s: 32-bit at level 0, 16-bit PM, level 1, level 3 */
+		g32 = mode != 26;
+		guser = mode == 28;
+		gpm16 = mode == 26;
+		gcpl1 = mode == 27;
+		gcs_far = mode == 25 ? 0x08 : mode == 26 ? R_CS : mode == 27 ? 0x31 : 0x1b;
+		gd_reload = mode == 25 ? 0x10 : mode == 26 ? R_DS : mode == 27 ? 0x39 : 0x23;
+		gd_divm_off = mode >= 27 ? P_DATA + 0x100 : 0x8000;
+		gd_divm_lin = mode == 26 ? (R_DS << 4) + 0x8000 : gd_divm_off;
+	}
+	if (mode == 29) {   /* t: by its setting (cp_sub) */
+		g32 = cp_sub != 3;
+		guser = cp_sub == 0 || cp_sub == 3;
+		gv86 = cp_sub == 3;
+		gpm16 = 0;
+		gcpl1 = gnopriv = 0;
+		gcs_far = cp_sub == 0 ? 0x1b : cp_sub == 1 || cp_sub == 4 ? 0x08 : cp_sub == 2 ? 0x40 : 0x1080;
+	}
 	setup_mode(mode, M[0].mem, M[0].cpu);
 	if (!g32) {
 		gcode_phys = R_CS << 4;
@@ -3177,6 +3761,12 @@ static int run(int mode, int seed)
 		o_code();   /* v5.1 (o) */
 	} else if (mode == 23) {
 		gen_refill();   /* v5.1 (n) */
+	} else if (mode >= 25 && mode <= 28) {
+		uword limit = gcode_phys + 0xf000;   /* v5.1 (p to s) */
+		while (gp < limit)
+			gd_one();
+	} else if (mode == 29) {
+		gen_cp();   /* v5.1 (t) */
 	} else {
 		uword limit = gcode_phys + 0xf000;
 		while (gp < limit)
@@ -3196,17 +3786,19 @@ static int run(int mode, int seed)
 		M[i].cpu->cycle = 0;
 	}
 	uword end_ip = g32 ? end - gcode_phys + P_CODE : end - gcode_phys;
+	if (mode == 29 && cp_sub == 2)   /* (t: CS's base is 402800h there) */
+		end_ip -= 0x00402800u;
 	u16 end_cs = gcs_far;
 	long step = 0;
 	int bad = 0;
 	char why[96] = "the step limit";
 	/* the hand-written cases (7, 8, 9, d, h, j) take a few instructions a
-	   step and end by 200 steps (l and n by 4,000, o by 5,000); the random
-	   code and k end by 50,000 */
-	int hand = (mode >= 7 && mode <= 9) || mode == 13 || mode == 17 || mode == 19 || mode == 21 || mode == 22;
+	   step and end by 200 steps (l and n by 4,000, o by 5,000, t by
+	   8,000); the random code and k end by 50,000 */
+	int hand = (mode >= 7 && mode <= 9) || mode == 13 || mode == 17 || mode == 19 || mode == 21 || mode == 22 || mode == 29;
 	if (mode == 24) hand = 1;
 	/* (v5.1: case j's REPs and its level 3 part, about 900 instructions) */
-	long steps_max = mode == 21 ? 4000 : mode == 19 ? 800 : hand ? 200 : 50000;
+	long steps_max = mode == 29 ? 8000 : mode == 21 ? 4000 : mode == 19 ? 800 : hand ? 200 : 50000;
 	if (mode == 23) { hand = 1; steps_max = 4000; }   /* v5.1 (n): about 450 instructions, 14 page faults */
 	if (mode == 24) steps_max = 5000;   /* (o: about 330 instructions with its handlers) */
 	crash_name = names[mode];
@@ -3233,9 +3825,23 @@ static int run(int mode, int seed)
 			two_op_clear();
 		if (mode == 33)
 			fz_clear();
-		cpui386_step(a, n);
-		cpui386_step(b, n);
+		int stop_a = step_or_stop(a, n), stop_b = step_or_stop(b, n);
 		step++;
+		if (stop_a || stop_b) {   /* v5.1: a guest shutdown, in both machines in this step or a difference */
+			if (stop_a != stop_b) {
+				printf("  FAIL %s seed %d step %ld: a guest shutdown in %s alone\n", names[mode], seed, step,
+				       stop_a ? "the fast interpreter's machine" : "tiny386's machine");
+				fails++;
+				bad = 1;
+			} else if (compare(names[mode], seed, step)) {
+				bad = 1;
+			}
+			snprintf(why, sizeof(why), "a guest shutdown%s at %04x:%08x, CR2 %08x", bad ? "" : " in both machines",
+				 (unsigned) b->seg[SEG_CS].sel, (unsigned) b->ip, (unsigned) b->cr2);
+			if (!bad)
+				shutdowns++;
+			break;
+		}
 		{
 			const char *w = check_fast_tlb();
 			if (w) { printf("  FAIL %s seed %d step %ld: fast TLB invariant: %s\n", names[mode], seed, step, w); fails++; bad = 1; break; }
@@ -3306,6 +3912,13 @@ static int run(int mode, int seed)
 			snprintf(more, sizeof(more), "; setting %d", ksub);
 		if (mode == 21)   /* (the page fault's and #GP's handlers count) */
 			snprintf(more, sizeof(more), "; setting %d, #PF %u, #GP %u", lsub, c2, c3);
+		if (mode >= 25 && mode <= 28) {   /* (#DE's and #GP's handlers count) */
+			u32 de, gpf;
+			memcpy(&de, M[0].mem + GD_DE_CNT, 4); memcpy(&gpf, M[0].mem + GD_GP_CNT, 4);
+			snprintf(more, sizeof(more), "; #DE %u, #GP %u", de, gpf);
+		}
+		if (mode == 29)
+			snprintf(more, sizeof(more), "; setting %d, EDX %u, CR2 %08x", cp_sub, (unsigned) a->gprx[2].r32, (unsigned) a->cr2);
 		printf("  seed %d, %s: %s after %ld steps, %ld instructions, %u port and video memory accesses"
 		       " [VM %d cpl %d code16 %d; IRQs %u, INT 30h %u; PTE 21 %03x 2b %03x%s]\n",
 		       seed, names[mode], why, step, a->cycle, M[0].nlog, !!(a->flags & VM), a->cpl, a->code16,
@@ -3353,6 +3966,8 @@ int main(int argc, char **argv)
 		"n"     /* v5.1, WI-4: the lean TLB refill */
 		"o"     /* v5.1, WI-3: descriptor tables */
 		"x"     /* v5.1 (WI-2's check): two memory operands at random */
+		"pqrs"  /* v5.1 (WI-3's check): the group opcodes, DIV's #DE, segment loads */
+		"t"     /* v5.1 (WI-1's check): code fetches */
 		;
 	int bad = 0, nsc = 0;
 	setvbuf(stdout, NULL, _IOLBF, 0);
@@ -3367,5 +3982,7 @@ int main(int argc, char **argv)
 	if (rd_trials)
 		printf("descriptor reads against v5.0's (mode o): %ld, %ld in RAM in one page (one lookup since v5.1), %ld faults, %ld in MMIO, %ld at RAM's end or past it\n",
 		       rd_trials, rd_one, rd_faults, rd_mmio, rd_end);
+	if (shutdowns)
+		printf("guest shutdowns, the same in both machines: %ld scenarios\n", shutdowns);
 	return bad ? 1 : 0;
 }
