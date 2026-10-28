@@ -1,9 +1,10 @@
 v5.1: where i386.c's functions sit on the boards (BUILD-NOTES.md 34.8), in-tree ESP-IDF builds of
-38b0fcb (the code of the release; git archive, make prepare, s31/dependencies.lock), against v5.0's
-released ELFs (the package's images\korvo1-dualboot and images\dosboard tiny386.elf, read only).
-i386.c's functions are the defined functions of its object (suffixes such as .isra cut); a
-function is in flash if its address in tiny386.elf is in 0x40000000 to 0x47FFFFFF. fast_exec()'s
-calls: every jal or jalr in its disassembly to a function in flash. 2026-10-29.
+0c05825 (the code of the release, after its reviews; git archive, make prepare,
+s31/dependencies.lock; ~/org2/v51/resolve/bt), against v5.0's released ELFs (the package's
+images\korvo1-dualboot and images\dosboard tiny386.elf, read only). i386.c's functions are the
+defined functions of its object (suffixes such as .isra cut); a function is in flash if its
+address in tiny386.elf is in 0x40000000 to 0x47FFFFFF. fast_exec()'s calls: every jal or jalr in
+its disassembly to a function in flash. 2026-10-29.
 
 == korvo1
 i386.c's functions in flash, this ELF: 33; v5.0's: 33
@@ -28,6 +29,7 @@ in flash in v5.0 and in internal RAM here:
   tlb_refill       iram 234 bytes
 fast_exec()'s calls into flash:
 (end)
+
 == dosboard
 i386.c's functions in flash, this ELF: 33; v5.0's: 33
 in flash here and in internal RAM in v5.0 (should be none):
@@ -51,3 +53,4 @@ in flash in v5.0 and in internal RAM here:
   tlb_refill       iram 234 bytes
 fast_exec()'s calls into flash:
 (end)
+

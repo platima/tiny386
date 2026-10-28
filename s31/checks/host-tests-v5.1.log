@@ -1,7 +1,9 @@
-v5.1's host tests (BUILD-NOTES.md 34.5): bash tests/host/run.sh OUT in the integration's clone
-(WSL ~/org2/v51/int/repo, a git clone, so that tests/host/lfb finds v4.6's tree for its
-comparison, its probes and its planted faults), at 038c759, whose code is the release's
-(the later commits change s31/ and tests/lockstep/README.md only). 2026-10-29, WSL, 1,070 s.
+v5.1's host tests (BUILD-NOTES.md 34.5), made again after the reviews of v5.1 (34.15): bash
+tests/host/run.sh OUT in my clone of the branch (WSL ~/org2/v51/resolve/repo, a git clone, so
+that tests/host/lfb finds v4.6's tree for its comparison, its probes and its planted faults), at
+0c05825, whose code is the release's, with ESP_GCC (ESP-IDF's riscv32-esp-elf-gcc 16.1) and
+RV32_GCC (the Linux route's riscv32 gcc, for its C library) given, so that section 24b runs.
+2026-10-29, WSL, 1671 s.
 
 keyboard queue: 256 bytes, then 44 more into the full queue
 mouse queue: 256 bytes, then 44 more into the full queue
@@ -550,7 +552,7 @@ two threads: a reporting task and the emulator:
 test_ps2_mouse (two threads): 6 checks, 0 failed
 PASS PS/2 mouse: a reporting thread and the emulator's thread
 two threads: a reporting task and the emulator:
-  4000 reports in, 155 packets out; 3727 right, 5990 down (sent 4000, 8000); 10 presses seen
+  4000 reports in, 155 packets out; 3740 right, 5950 down (sent 4000, 8000); 10 presses seen
   6 stalls of 120 ms
 test_ps2_mouse (two threads): 7 checks, 0 failed
 PASS PS/2 mouse: two threads, the emulator held up: every click through the ring's overflow
@@ -1819,61 +1821,73 @@ PASS lfb: the lfb test catches a planted fault (cmpsrule: the two-operand rule t
 PASS lfb: the lfb test catches a planted fault (filltail: a word fill's last 16-bit store dropped)
 PASS lfb: the lfb test catches a planted fault (mpaddr: the frame buffer's address a page off on a REP piece's write tag)
 
-test_fast_cpu: 1040 scenarios, 205900 steps, 11667310 instructions, 241900 checks, 0 failed
+test_fast_cpu: 1240 scenarios, 335409 steps, 14244970 instructions, 371409 checks, 0 failed
 PASS the fast interpreter as the Korvo-1 builds it: the same as tiny386's own at every step of random guest code
-test_fast_cpu: 1040 scenarios, 205487 steps, 11665718 instructions, 241487 checks, 0 failed
+test_fast_cpu: 1240 scenarios, 334996 steps, 14243378 instructions, 370996 checks, 0 failed
 PASS the fast interpreter without the board header: the same
-    | (fold: 559 of 1040 scenarios differ; exit status 1)
+    | (fold: 697 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (fold)
-    | (sync: 626 of 1040 scenarios differ; exit status 1)
+    | (sync: 786 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (sync)
-    | (cpl: 80 of 1040 scenarios differ; exit status 1)
+    | (cpl: 80 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (cpl)
-    | (lfbmark: 132 of 1040 scenarios differ; exit status 1)
+    | (lfbmark: 152 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (lfbmark)
-    | (lfbwtag: 200 of 1040 scenarios differ; exit status 1)
+    | (lfbwtag: 240 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (lfbwtag)
     | (outflush: 1 FAIL lines, the last a crash, which ends the run; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (outflush)
     | (checkgen: 5 FAIL lines, the last a crash, which ends the run; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (checkgen)
-    | (lfbdirty: 38 of 1040 scenarios differ; exit status 1)
+    | (lfbdirty: 38 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (lfbdirty)
     | (lfbkeepw: 2 FAIL lines, the last a crash, which ends the run; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (lfbkeepw)
-    | (jumplo: 4 FAIL lines, the last a crash, which ends the run; exit status 1)
+    | (jumplo: 2 FAIL lines, the last a crash, which ends the run; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (jumplo)
-    | (codelfb: 18 of 1040 scenarios differ; exit status 1)
+    | (codelfb: 20 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (codelfb)
-    | (plnull: 38 of 1040 scenarios differ; exit status 1)
+    | (plnull: 198 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (plnull)
-    | (st4fold: 40 of 1040 scenarios differ; exit status 1)
+    | (st4fold: 56 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (st4fold)
-    | (lpgno: 123 of 1040 scenarios differ; exit status 1)
+    | (lpgno: 131 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (lpgno)
-    | (repdirty: 40 of 1040 scenarios differ; exit status 1)
+    | (repdirty: 40 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (repdirty)
-    | (n2: 33 of 1040 scenarios differ; exit status 1)
+    | (n2: 33 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (n2)
-    | (cmpsrule: 17 of 1040 scenarios differ; exit status 1)
+    | (cmpsrule: 17 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (cmpsrule)
-    | (restore: 69 of 1040 scenarios differ; exit status 1)
+    | (restore: 89 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (restore)
-    | (destheld: 23 of 1040 scenarios differ; exit status 1)
+    | (destheld: 23 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (destheld)
-    | (codepage: 15 of 1040 scenarios differ; exit status 1)
+    | (codepage: 15 of 1240 scenarios differ; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter (codepage)
+    | (lfbwnull: 3 of 1240 scenarios differ; exit status 1)
+PASS the lockstep test catches a fault in the fast interpreter (lfbwnull)
+    | (stnull: 20 of 1240 scenarios differ; exit status 1)
+PASS the lockstep test catches a fault in the fast interpreter (stnull)
+    | (fwcpl: 8 of 1240 scenarios differ; exit status 1)
+PASS the lockstep test catches a fault in the fast interpreter (fwcpl)
+    | (st4cpl: 7 of 1240 scenarios differ; exit status 1)
+PASS the lockstep test catches a fault in the fast interpreter (st4cpl)
+    | (divip: 160 of 1240 scenarios differ; exit status 1)
+PASS the lockstep test catches a fault in the fast interpreter (divip)
+    | (st4end: 8 of 1240 scenarios differ; exit status 1)
+PASS the lockstep test catches a fault in the fast interpreter (st4end)
     | (rdpage: 72 FAIL lines; exit status 1)
 PASS the lockstep test catches a fault in i386.c (rdpage)
     | (rdmmio: 120 FAIL lines; exit status 1)
 PASS the lockstep test catches a fault in i386.c (rdmmio)
     | (rdend: 1 FAIL lines; exit status 1)
 PASS the lockstep test catches a fault in i386.c (rdend)
-    | (nullfs: 60 FAIL lines; exit status 1)
+    | (nullfs: 210 FAIL lines; exit status 1)
 PASS the lockstep test catches a fault in i386_fast.h (nullfs)
-    | (grp2swap: 523 FAIL lines; exit status 1)
+    | (grp2swap: 683 FAIL lines; exit status 1)
 PASS the lockstep test catches a fault in i386_fast.h (grp2swap)
-    | (grp1op: 520 FAIL lines; exit status 1)
+    | (grp1op: 680 FAIL lines; exit status 1)
 PASS the lockstep test catches a fault in i386_fast.h (grp1op)
     | (pdeacc: 37 FAIL lines in 40 seeds of mode n; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter's own TLB refill (pdeacc)
@@ -1884,33 +1898,44 @@ PASS the lockstep test catches a fault in the fast interpreter's own TLB refill 
     | (nodrop: 40 FAIL lines in 40 seeds of mode n; exit status 1)
 PASS the lockstep test catches a fault in the fast interpreter's own TLB refill (nodrop)
 
+    | (built by riscv32-esp-elf-gcc (crosstool-NG esp-16.1.0_20260609) 16.1.0)
+    | (1240 scenarios, 0 failed, under qemu-riscv32)
+PASS the fast interpreter as the board's compiler makes it (RV32 under qemu): the same as tiny386's own at every step
+
 tables:
 the guest's key:
 the instruction's key:
 the cache counters and PROFILE.TXT:
 the reader of the guest's state:
 costs on this PC (the board's own are in PROFILE.TXT: sampler_cost, last_write_us):
-    prof_sample(): 18 ns a sample (4000000 samples; tables: host 6144 used, coarse 1536, guest 3001, ops 251)
-    prof_write() of those full tables: 186587 bytes in 0.32 ms (to /dev/null)
+    prof_sample(): 17 ns a sample (4000000 samples; tables: host 6144 used, coarse 1536, guest 3001, ops 251)
+    prof_write() of those full tables: 186600 bytes in 0.34 ms (to /dev/null)
 test_prof_hist: 103 checks, 0 failed
 PASS prof_hist.c and prof_cpu.h: the tables, the guest's and the instruction's keys, PROFILE.TXT, the reader
 test_prof_hist: 103 checks, 0 failed
 PASS prof_hist.c and prof_cpu.h, 32-bit with unsigned char (as on RV32): the same
 PASS profile_report.py: the functions, the instruction and the guest's page with their shares; another ELF refused
 PASS profile_report.py --since: the stretch between two files alone; the files the wrong way round refused
+PASS profile_report.py: the ELF's first 9 hex digits, as the board's ESP-IDF call gives them, taken; another ELF's and 7 digits refused
+    | (159 cuts, 28 of them in the tables read with the warning; no traceback)
+PASS profile_report.py: a file cut short is read as far as it goes, with a warning
+PASS profile_report.py --since: a file of another boot (another run word) refused
 
-host tests: 106 passed, 0 failed
+host tests: 116 passed, 0 failed
 
-== test_fast_cpu on seeds 41 to 340, every default mode (0 to j, k, l, m, n, o, x: 26 a seed),
-== built as run.sh builds it from the same code (the Korvo-1 header; plain with I386_ALIGNED_ONLY
-== and the FPU), 92 s
+== test_fast_cpu on seeds 41 to 340, every default mode (0 to j, k, l, m, n, o, x, p, q, r, s, t:
+== 31 a seed), built as run.sh builds it from the same code (the Korvo-1 header; plain with
+== I386_ALIGNED_ONLY and the FPU), each build's seeds in 6 processes of 50
+wall 44 s
+korvo1: 9300 scenarios, 2756684 steps, 108200341 instructions, 3026684 checks, 0 failed; fast TLB 3026682 checks, 28253888 entries, 1104364 of the frame buffer; guest shutdowns the same in both machines 2; processes not exit 0: 0
+plain: 9300 scenarios, 2752613 steps, 108193040 instructions, 3022613 checks, 0 failed; fast TLB 3022611 checks, 31982141 entries, 1243624 of the frame buffer; guest shutdowns the same in both machines 2; processes not exit 0: 0
 -- korvo1: 0 FAIL lines
-test_fast_cpu: 7800 scenarios, 1749270 steps, 88829200 instructions, 2019270 checks, 0 failed
-fast TLB invariants: 2019270 checks, 16993655 entries, 1048969 of the frame buffer, 940370 of them with a write tag
-descriptor reads against v5.0's (mode o): 90000, 26868 in RAM in one page (one lookup since v5.1), 26655 faults, 19471 in MMIO, 6092 at RAM's end or past it
+   descriptor reads against v5.0's (mode o): 90000, 26868 in RAM in one page, 26655 faults, 19471 in MMIO, 6092 at RAM's end or past it
+   mode n probes, korvo1: 300 seeds, 270000 probes, 188970 accesses, 170108 refills, 134639 faults, 641 left to tiny386
+     seed 104, code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t): a guest shutdown in both machines at 0008:001e3020, CR2 00000000 after 
+     seed 249, code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t): a guest shutdown in both machines at 0008:0040018d, CR2 00000000 after 
 -- plain: 0 FAIL lines
-test_fast_cpu: 7800 scenarios, 1745199 steps, 88821899 instructions, 2015199 checks, 0 failed
-fast TLB invariants: 2015199 checks, 19902236 entries, 1180173 of the frame buffer, 1053953 of them with a write tag
-descriptor reads against v5.0's (mode o): 90000, 26868 in RAM in one page (one lookup since v5.1), 26655 faults, 19471 in MMIO, 6092 at RAM's end or past it
--- mode n probes, korvo1: 300 seeds, 270000 probes, 188970 accesses, 170108 refills, 134639 faults, 641 left to tiny386
--- mode n probes, plain: 300 seeds, 270000 probes, 188970 accesses, 170025 refills, 131919 faults, 651 left to tiny386
+   descriptor reads against v5.0's (mode o): 90000, 26868 in RAM in one page, 26655 faults, 19471 in MMIO, 6092 at RAM's end or past it
+   mode n probes, plain: 300 seeds, 270000 probes, 188970 accesses, 170025 refills, 131919 faults, 651 left to tiny386
+     seed 104, code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t): a guest shutdown in both machines at 0008:001e3020, CR2 00000000 after 
+     seed 249, code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t): a guest shutdown in both machines at 0008:0040018d, CR2 00000000 after 

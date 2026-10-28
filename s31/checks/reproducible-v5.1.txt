@@ -1,67 +1,69 @@
 v5.1's release build (BUILD-NOTES.md 34.9): the stage, build.sh run from nothing twice (side by
 side, each in its own folder; build.sh runs idf.py in a clean environment), the image trees
 compared, every bootloader, table and flash_args against v5.0's package, the apps against their
-partitions, and build.sh's images against an in-tree build of the same code (WSL ~/org2/v51/int:
+partitions, and build.sh's images against an in-tree build of the same code (WSL ~/org2/v51/resolve:
 rel/ (stage, build-a, build-b), bt/), 2026-10-29.
 
-the code at 00329d0 (tests/lockstep/README.md: section 11, v5.1 against v4.6)
+the code at 0c05825 (DOS board: bounce buffers held to 8000 pixels; PROFILE_IN_FLASH's switch; sdkconfig notes)
 v5.1
 == v5.0's patches made the same way from s31-v5.0 (0d37002), against the package's:
   tiny386-idf-v4.patch: the same bytes
   tiny386-idf-v3.patch: the same bytes
   tiny386-idf-v4.diffstat.txt (git diff --stat=200): the same bytes
   tiny386-idf-v3.diffstat.txt: the same bytes
-== v5.1's patches (the stage), from 00329d0:
-  eb6a21623b5ca31959cb520b05787a0ef2686d6f18dfac8d33044cbc3a9129f9  tiny386-idf-v4.patch (2150215 bytes)
-  8df44ba945a9f6fd7b4cb44a3ea67acc0cf95395a45c2454dfbe4e7a7c653d55  tiny386-idf-v3.patch (2178322 bytes)
-  b834844bed1f6cf1f0ab4e8be9fdb16c77ff4780c9ee0846c56bf80c7f640b76  tiny386-idf-v4.diffstat.txt (15609 bytes)
-  82ff490f0b73ee6b9c2aad115b3d7c3eb6fcc2a1b811fd5ed1ecee4bb889afcf  tiny386-idf-v3.diffstat.txt (16047 bytes)
+== v5.1's patches (the stage), from 0c05825:
+  d82c35ede35aa8f22a9f5deb098253fc3ed9b1312959fe21f9d03067d53baaa4  tiny386-idf-v4.patch (2192195 bytes)
+  94d21a42ff24a91cada613ad63822e9e80ec91799db24d7a39748c21c985d96e  tiny386-idf-v3.patch (2220302 bytes)
+  c409598af769cfcee7cd06d7bd67fc88607903370f8e65409f37ee8a0988f439  tiny386-idf-v4.diffstat.txt (15294 bytes)
+  b818b41f127fff2aec77ae413a5201db48ea12f78c3aa038f90572f2b8ae2daf  tiny386-idf-v3.diffstat.txt (15727 bytes)
   dd421765fda75d00cb7cce782755f67c587c06e7cdfcfa6518b7009ba3a9b8ef  build.sh (12470 bytes)
-  v4:  227 files changed, 53019 insertions(+), 916 deletions(-)
-  v3:  234 files changed, 53649 insertions(+), 931 deletions(-)
+  v4:  227 files changed, 53843 insertions(+), 916 deletions(-)
+  v3:  234 files changed, 54473 insertions(+), 931 deletions(-)
   binary files in either patch: 0
-  tiny386-idf-v4.patch: git diff 4ce2e06 00329d0, s31/ left out
-  tiny386-idf-v3.patch: git diff 9ed786b 00329d0, s31/ left out
-== the files v5.1's patch changes against v5.0's (git diff --stat s31-v5.0 00329d0, s31/ left out)
+  tiny386-idf-v4.patch: git diff 4ce2e06 0c05825, s31/ left out
+  tiny386-idf-v3.patch: git diff 9ed786b 0c05825, s31/ left out
+== the files v5.1's patch changes against v5.0's (git diff --stat s31-v5.0 0c05825, s31/ left out)
  esp/main/CMakeLists.txt                  |    2 +
- esp/main/board_dosboard.h                |   27 +-
- esp/main/board_korvo1.h                  |   27 +-
+ esp/main/board_dosboard.h                |   35 +-
+ esp/main/board_korvo1.h                  |   31 +-
  esp/main/console.c                       |    4 +-
  esp/main/display.c                       |   13 +-
+ esp/main/dosboard.c                      |    7 +-
+ esp/main/dosboard.h                      |   14 +-
  esp/main/esp_main.c                      |   39 +-
  esp/main/kbd_input.h                     |    6 +-
  esp/main/prof_cpu.h                      |   71 ++
- esp/main/prof_hist.c                     |  518 ++++++++++++
- esp/main/prof_hist.h                     |  175 ++++
- esp/main/profile.c                       |  406 ++++++++++
+ esp/main/prof_hist.c                     |  520 ++++++++++
+ esp/main/prof_hist.h                     |  176 ++++
+ esp/main/profile.c                       |  467 +++++++++
  esp/main/profile.h                       |   28 +
  esp/main/speed.c                         |   12 +
  esp/main/speed.h                         |    9 +
- esp/sdkconfig.dosboard                   |   33 +
- esp/sdkconfig.korvo1                     |   33 +
+ esp/sdkconfig.dosboard                   |   43 +
+ esp/sdkconfig.korvo1                     |   39 +
  esp/version.txt                          |    2 +-
- i386.c                                   |  416 ++++++++--
+ i386.c                                   |  416 ++++++--
  i386.h                                   |   21 +
- i386_fast.h                              |  801 +++++++++++++------
- tests/host/cpu/test_fast_cpu.c           | 2179 +++++++++++++++++++++++++++++++++++++++++++++++++-
+ i386_fast.h                              |  817 ++++++++++-----
+ tests/host/cpu/test_fast_cpu.c           | 2800 +++++++++++++++++++++++++++++++++++++++++++++++++-
  tests/host/display/stubs/esp_heap_caps.h |    1 +
  tests/host/display/test_double_start.c   |    7 +
- tests/host/lfb/guest_lfb.S               |  312 +++++++-
- tests/host/lfb/run_lfb.sh                |   98 ++-
+ tests/host/lfb/guest_lfb.S               |  312 +++++-
+ tests/host/lfb/run_lfb.sh                |   98 +-
  tests/host/lfb/test_lfb.c                |   58 +-
- tests/host/profile/standin.c             |  226 ++++++
+ tests/host/profile/standin.c             |  228 ++++
  tests/host/profile/standin.sh            |   42 +
- tests/host/profile/test_prof_hist.c      |  536 +++++++++++++
- tests/host/run.sh                        |  181 ++++-
+ tests/host/profile/test_prof_hist.c      |  536 ++++++++++
+ tests/host/run.sh                        |  285 ++++-
  tests/host/test_kbd_input.c              |   29 +
- tests/lockstep/README.md                 |  165 +++-
+ tests/lockstep/README.md                 |  165 ++-
  tests/lockstep/bugs/lost-mark-fast.sed   |    5 +
  tests/lockstep/lockstep.sh               |   11 +-
- tests/lockstep/qemumini-pointer.py       |  179 +++++
+ tests/lockstep/qemumini-pointer.py       |  179 ++++
  tests/lockstep/run.sh                    |   10 +-
  tests/lockstep/selftest.sh               |    9 +-
- tests/lockstep/workloads.sh              |   90 ++-
- 38 files changed, 6351 insertions(+), 430 deletions(-)
+ tests/lockstep/workloads.sh              |   90 +-
+ 40 files changed, 7191 insertions(+), 446 deletions(-)
 dependencies.lock: the package's, unchanged
 esp/dependencies.lock in the patched tree: the same bytes
 build.sh parses
@@ -88,8 +90,8 @@ dualboot/bootloader.bin: the package's (build.sh checks its SHA-256)
 dualboot/partition-table.bin: the package's (build.sh checks its SHA-256)
 dualboot/partition-table-tiny386-default.bin: the package's (build.sh checks its SHA-256)
 == the two runs of build.sh from nothing
-  build-a exit 0 in 300 s
-  build-b exit 0 in 301 s
+  build-a exit 0 in 356 s
+  build-b exit 0 in 356 s
   images of build-a and build-b: the same (23 files)
   size-korvo1.txt: the same in a and b but for the folder's name
   size-korvo1-standalone.txt: the same in a and b but for the folder's name
@@ -121,9 +123,9 @@ dualboot/partition-table-tiny386-default.bin: the package's (build.sh checks its
   dosboard/partition-table.bin: v5.0's, byte for byte
   dosboard: bootloader.bin flash_args partition-table.bin SHA256SUMS tiny386.bin tiny386.elf 
 == the apps in their partitions
-  korvo1-dualboot/tiny386.bin: 1065760 of 1966080 bytes (the test partition at 0xE20000)
-  korvo1-standalone/tiny386.bin: 1065760 of 1835008 bytes (factory, 0x10000)
-  dosboard/tiny386.bin: 1086896 of 1835008 bytes
+  korvo1-dualboot/tiny386.bin: 1066496 of 1966080 bytes (the test partition at 0xE20000)
+  korvo1-standalone/tiny386.bin: 1066496 of 1835008 bytes (factory, 0x10000)
+  dosboard/tiny386.bin: 1087632 of 1835008 bytes
   korvo1-dualboot-tiny386-default/tiny386.bin: korvo1-dualboot's
 == esptool image-info (build-a)
   image-info-dosboard-bootloader.bin.txt: 2 valid, 0 invalid; 
@@ -132,7 +134,7 @@ dualboot/partition-table-tiny386-default.bin: the package's (build.sh checks its
   image-info-korvo1-dualboot-tiny386.bin.txt: 2 valid, 0 invalid; Project name: tiny386 App version: v5.1 
   image-info-korvo1-standalone-bootloader.bin.txt: 2 valid, 0 invalid; 
   image-info-korvo1-standalone-tiny386.bin.txt: 2 valid, 0 invalid; Project name: tiny386 App version: v5.1 
-== in-tree builds (bt/, git archive of 38b0fcb, the same code; build.sh's folder names) against build-a's images
+== in-tree builds (bt/, git archive of 0c05825, the same code; build.sh's folder names) against build-a's images
   build-korvo1/tiny386.bin: build.sh's korvo1-dualboot/tiny386.bin byte for byte
   build-korvo1/tiny386.elf: build.sh's korvo1-dualboot/tiny386.elf byte for byte
   build-korvo1-standalone/tiny386.bin: build.sh's korvo1-standalone/tiny386.bin byte for byte
@@ -148,25 +150,23 @@ dualboot/partition-table-tiny386-default.bin: the package's (build.sh checks its
   ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  ./dosboard/bootloader.bin
   48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  ./dosboard/flash_args
   afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  ./dosboard/partition-table.bin
-  bb4958cdb22662da9b6a02e19c37c96da7a8a2e8e2d654c29d9a1373d0d4e83d  ./dosboard/SHA256SUMS
-  99e9f28b78123af3dff5438a79f9f0e739ec50e1f4d0be71c989bd6b7b8f811f  ./dosboard/tiny386.bin
-  01779d5e636a2c3eda6f98b9a2597c58cf627de9bfc8dbb2517e249160e4c397  ./dosboard/tiny386.elf
+  26588252241de97fba05769f19c9907b8d122822c9b7bd8117ca7846ba07957a  ./dosboard/SHA256SUMS
+  078f402bcf694adfa0f00be2ee754c65262728200b83d145d1582053fd75db20  ./dosboard/tiny386.bin
+  0c693f0a4a283c8dc7e12411ebb07322465639032d6f044dd913d5b0c9516e27  ./dosboard/tiny386.elf
   b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  ./korvo1-dualboot/bootloader.bin
   6fc0ab4111fd630343b9fce8d41df17e6af26eeda1cfc2993742b8c2fde56518  ./korvo1-dualboot/flash_args
   d41cba3cf33bedee257c8709389c99d16101992439d7a6ed353967cd0fdd4346  ./korvo1-dualboot/partition-table.bin
-  49ef829ff9107ba58fc531e1fbb4c8e5ba53948bf7e6496c1dcff0c5b17f3f43  ./korvo1-dualboot/SHA256SUMS
-  d5c2eebdf7eaa604811f42ffd7141466cb78e2b2cd7cbe7de818a24aaafdc2a6  ./korvo1-dualboot/tiny386.bin
+  728e210af257c6086b35631ef8da0b64b23d8986e920b32a5a0af249f731a573  ./korvo1-dualboot/SHA256SUMS
+  ff8a7a5e7da4d93f7db83b1204942ee41c85c6b9c59ea37bb55ec0a9aeb09316  ./korvo1-dualboot/tiny386.bin
   b57469cd1542fe83a4f468f93a7e8e9bfa5af138f15a38e6867a0a54fccff29f  ./korvo1-dualboot-tiny386-default/bootloader.bin
   6fc0ab4111fd630343b9fce8d41df17e6af26eeda1cfc2993742b8c2fde56518  ./korvo1-dualboot-tiny386-default/flash_args
   5b90d4166afc39d72a1d6c7b16f3a2e4a5cc0193a3e0eb50990a4dbb9da58226  ./korvo1-dualboot-tiny386-default/partition-table.bin
-  6738040f2afda6cc1ec6d907095486718d09a7d0f2d2c4fdf1718987081552e1  ./korvo1-dualboot-tiny386-default/SHA256SUMS
-  d5c2eebdf7eaa604811f42ffd7141466cb78e2b2cd7cbe7de818a24aaafdc2a6  ./korvo1-dualboot-tiny386-default/tiny386.bin
-  1e128f97de0fb95ecb767c98c8fce764b9b6b2cb6b90f2949bd93b3f67c4ed19  ./korvo1-dualboot/tiny386.elf
+  69d9d62d867edb470212d9c2b8143e2c05f1800fda87c1279448dd9f781e345d  ./korvo1-dualboot-tiny386-default/SHA256SUMS
+  ff8a7a5e7da4d93f7db83b1204942ee41c85c6b9c59ea37bb55ec0a9aeb09316  ./korvo1-dualboot-tiny386-default/tiny386.bin
+  f1a629e5f6fa93a79b1eadce340ea900dcc87a6ab041e362a5b6483a7cc54952  ./korvo1-dualboot/tiny386.elf
   ec0a396b5bd9640696ca07a15f0001884d8ca2118225ef7ac50e38862a899a82  ./korvo1-standalone/bootloader.bin
   48e461784c407bbcb3587e1b2f454c3539849529cf96988afaf233ef2a472216  ./korvo1-standalone/flash_args
   afbe6410c2040c5ec6e447e94b90d91e172a3c0ed3203464b65bee8b1cbc1a26  ./korvo1-standalone/partition-table.bin
-  7498df4b04326795f6c8dc2ff76af95c18d4663d0f04f012f0b245065beda91c  ./korvo1-standalone/SHA256SUMS
-  f87049153eb9d151e7b9b60c0bde23cf82a6e227b90089a3da665f2de49ae7bf  ./korvo1-standalone/tiny386.bin
-  e8db3aece8b5c92f3eca0f2c45801b99cac674d48fcbaaf6835f671630fcd4e6  ./korvo1-standalone/tiny386.elf
-
-A preview of the same two runs from 38b0fcb (the same code; its patch without tests/lockstep/README.md 11) gave the same 23 files byte for byte (~/org2/v51/int/rel/preview-38b0fcb).
+  ecdbe214e448a09e475b7ebbd302196af0d6f3516bc07256f27743549269ccc2  ./korvo1-standalone/SHA256SUMS
+  298c434f46aedd5b4d3e2fee95f65616505afa051c6285a1288c49d0d53166ad  ./korvo1-standalone/tiny386.bin
+  24a73efe6b9fd722792e476a79fe6069f066090ce541f8c23e268b1621e00b76  ./korvo1-standalone/tiny386.elf

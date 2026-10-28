@@ -166,6 +166,7 @@ sampler core0-pc-record 2000           how, and samples a second asked for
 ini /sdcard/tiny386/win95-sd.ini
 fast_cpu 1
 file 3 timer                           this run's files so far; why: timer, key, end
+run 5eed0b07                           this run's own word, drawn at random when the board started
 cpu_mhz 320
 time_us uptime U sampling S paused P   microseconds: since power-on, since sampling began, of that paused for writes
 last_write_us W                        the write before this one, from pause to resume (the guest waiting)
@@ -195,6 +196,22 @@ slots; a key that finds no room is counted as lost, and the totals (`samples`, `
 `region` and the two matrices) still have every sample. `end` is the last line: a file without it
 was cut short.
 
+After the reviews of v5.1 (`BUILD-NOTES.md` 34.15) [verified: `tests/host/run.sh` 25]:
+
+* `elf_sha256` has all 64 digits, taken from the app's description where esptool put them. v5.1's
+  first images (never released) wrote 9, as ESP-IDF's `esp_app_get_elf_sha256()` gives them in
+  this build (`CONFIG_APP_RETRIEVE_LEN_ELF_SHA`); the report takes 8 to 64 digits as the start of
+  the ELF's SHA-256 and says how many it compared.
+* `run` is new: a random word drawn when the profiler is set up, the same in every file of one
+  boot, so that `--since` can refuse two files of two boots (their file numbers start again at 1).
+  The format stays 1; the report reads files without the line.
+* PROFILE.TXT is written as `PROFILE.NEW` and renamed over the old one only once it is whole, so
+  a full card or a file that cannot be opened leaves the last good PROFILE.TXT. A `PROFnn.TXT` takes
+  its number only when it was written whole; one that failed is removed. A power cut in the write
+  can still leave `PROFILE.NEW` cut short, beside the last whole PROFILE.TXT.
+* The report reads a file cut short (no `end`) as far as it goes: the line the cut fell in, and
+  anything after a line that does not parse, are left out, and it says where it stopped.
+
 
 ## 5. On the board
 
@@ -206,8 +223,11 @@ was cut short.
   `/sdcard` (the card's first FAT partition), never a partition the guest has whole: the file goes
   beside it. Anything missing: a yellow line, and the PC runs as with `profile = 0`.
 * **Sampling** (`prof_alarm()`, core 0's interrupt): the next alarm first, 250 to 750 µs on, so
-  that nothing periodic on core 1 lines up with the samples; then, once the PC runs and unless a
-  file is being written, the PC record, the guest, the tables, every 10 ms the cache counters, and
+  that nothing periodic on core 1 lines up with the samples, counted from the timer's count when
+  the interrupt ran (since the reviews of v5.1; counted from the alarm that fired, an interrupt
+  held off for long set alarms already past and took a burst of samples); then, once the PC runs
+  and unless a file is being written, the PC record, the guest, the tables, every 10 ms the cache
+  counters, and
   every 60 s the request for a file. The samples count from when the PC starts to run, after the
   boot console's hold (`profile_start()` just before `run_pc()`), so the console's seconds, when
   core 1 waits in `vTaskDelay()`, are not in them.
@@ -215,22 +235,35 @@ was cut short.
   keys' saves are (`speed_ask_save(SPEED_SAVE_PROFILE)`, the same word `run_pc()` already looks at
   after each step), and written where they are written: the guest's own disk writes first, as
   for a save, then the sampling paused (the interrupt is let finish a sample it is in), the file
-  written through FatFs, the sampling resumed. The console line says how long, and the next file has
-  it (`last_write_us`). The speed screen leaves the time out, as it does for a save.
+  written through FatFs (as `PROFILE.NEW`, then renamed: section 4), the sampling resumed. The
+  console line says how long, and the next file has it (`last_write_us`). The speed screen leaves
+  the time out, as it does for a save.
 * **Console lines**: `Profile: on ...` at setup (yellow, so that it is not missed in a photo),
   `Profile: sampling from now.` when the PC starts, `Profile: /sdcard/tiny386/PROFILE.TXT written
   (timer, file 3): N samples, B bytes, in T ms, the guest waiting.` for each file (with `and
   .../PROF01.TXT` for a key press), and yellow lines if the PC record looks stuck or outside the
-  code, or the tables are full.
-* **Memory** [verified: the size reports of the two boards' builds]: internal RAM used by code and
-  static data 3,016 bytes more than v5.0 on the Korvo-1 (238,428 bytes left for ESP-IDF, against
-  241,444) and 3,006 on the DOS board (236,196, against 239,202), whether or not it is on: the
-  sample's path in internal RAM (2,074 bytes: `prof_alarm()`, `prof_sample()`, `prof_op_key()`
-  and the GPTimer's own handler) and the counts' heads (about 0.9 KB). The image grows by 16,048
-  bytes of flash on the Korvo-1 and 16,040 on the DOS board (the GPTimer driver, the file
-  writer): the Korvo-1's app is 1,078,224 bytes (55 per cent of the dual-boot partition, 59 of the
-  standalone one), the DOS board's 1,098,912 (60). `PROFILE_IN_FLASH` (a build define) moves the
-  sample's path to flash, where core 0's own instruction cache serves it.
+  code, or the tables are full. A write that fails says so in red and that the last PROFILE.TXT is
+  kept. The figures in these lines are read before the sampling resumes.
+* **Memory, on the sampler's own branch** (`v51-sampler`, on v5.0, before `v51-ram`) [verified:
+  the size reports of the branch's two builds]: internal RAM used by code and static data 3,016
+  bytes more than v5.0 on the Korvo-1 (238,428 bytes left for ESP-IDF, against 241,444) and 3,006
+  on the DOS board (236,196, against 239,202), whether or not it is on: the sample's path in
+  internal RAM (2,074 bytes: `prof_alarm()`, `prof_sample()`, `prof_op_key()` and the GPTimer's
+  own handler) and the counts' heads (about 0.9 KB). The image grew by 16,048 bytes of flash on
+  the Korvo-1 and 16,040 on the DOS board (the GPTimer driver, the file writer): the branch's
+  Korvo-1 app was 1,078,224 bytes, its DOS board app 1,098,912.
+* **Memory in v5.1** [verified: the release's builds, `nm`; `BUILD-NOTES.md` 34.8 has the sizes]:
+  `v51-ram`'s sdkconfig lines put the GPTimer driver's code in flash
+  (`CONFIG_GPTIMER_ISR_HANDLER_IN_IRAM` off), so its interrupt entry (`gptimer_default_isr()`) and
+  the next alarm's call (`gptimer_set_alarm_action()`) run from flash on core 0, as do the other
+  calls `prof_alarm()` makes outside the profiler (`speed_ask_save()`, `esp_cache_cnt_get()` and
+  `esp_cache_cnt_clear()`). Only `prof_alarm()`, `prof_sample()`, `prof_op_key()` and their small
+  helpers are in internal RAM. This is safe: the interrupt is not marked for internal RAM
+  (`CONFIG_GPTIMER_ISR_CACHE_SAFE` is off), so ESP-IDF holds it off while the cache is off; the
+  cost is a cache miss now and then on core 0, with `profile = 1` only [inferred].
+  `PROFILE_IN_FLASH` (one commented line in each board header since the reviews of v5.1) moves the
+  sample's path to flash too, 1,878 bytes back on the Korvo-1 and 1,878 on the DOS board
+  [verified: built]; it is the first of the two RAM fallbacks (`BUILD-NOTES.md` 34.11).
 
 
 ## 6. On the PC: `s31/profile/profile_report.py`
@@ -240,8 +273,11 @@ python3 s31/profile/profile_report.py PROFILE.TXT images/korvo1-dualboot/tiny386
 python3 s31/profile/profile_report.py PROF02.TXT tiny386.elf --since PROF01.TXT
 ```
 
-Python 3, its standard library alone; it reads the ELF itself. It refuses an ELF whose SHA-256 is
-not the file's `elf_sha256` (`--force` goes on). Optional: `addr2line` for the ELF's machine (for a
+Python 3, its standard library alone; it reads the ELF itself. It refuses an ELF whose SHA-256
+does not start with the file's `elf_sha256` (8 to 64 hex digits; the report says how many it
+compared), and with `--since` two files of two runs (`run`), or the later one first (`--force`
+goes on past the ELF's check alone). A file cut short is read as far as it goes, with a warning
+(section 4). Optional: `addr2line` for the ELF's machine (for a
 board's ELF `riscv32-esp-elf-addr2line`, from ESP-IDF's tools, which it looks for itself) for the
 source lines; the chip's ROM ELF (`esp32s31_rev0_rom.elf`, from ESP-IDF's `esp-rom-elfs`, also
 looked for) to name code in ROM such as `memcpy()`; `--src` the tree, for the lines' text and the
@@ -316,7 +352,10 @@ renumbered (`~/org2/v51/sampler/scripts/sameobj.sh`)]:
   interrupt's entry and exit, the next alarm (`gptimer_set_alarm_action()`) and up to two or three
   PSRAM lines for the tables: a few microseconds, so about 0.5 to 1 per cent of core 0 at 2,000 a
   second. Each file says the board's own (`sampler_cost`: cycles from the alarm's start to the
-  sample's end, average and most) [unknown until then]. On this PC the sampling part takes 24 ns.
+  sample's end, average and most) [unknown until then]. In v5.1 the driver's entry and the next
+  alarm run from flash (section 5), and `sampler_cost`, counted from the start of `prof_alarm()`,
+  leaves the driver's entry before it out, so core 0's whole cost is somewhat above it
+  [inferred]. On this PC the sampling part takes 24 ns.
 * **Core 1**: no instruction of the profiler between files. The tables' lines pass through the
   data cache that both cores share: a sample touches two or three lines, so about 6,000 lines a
   second at most, against the guest's own traffic [inferred: the cache counters in each file show
@@ -364,6 +403,15 @@ renumbered (`~/org2/v51/sampler/scripts/sameobj.sh`)]:
   addresses in `fast_exec()`, `cpu_exec1()`, `lfb_stos()` and the ROM's `memcpy()`, invented
   counts): the RV32 side, its jump tables of 4-byte pointers, its regions, ESP-IDF's
   `riscv32-esp-elf-addr2line` with the build's `/TINY386/` paths, and the ROM ELF naming `memcpy`.
+
+**After the reviews of v5.1** [verified, 2026-10-29, WSL, `checks/host-tests-v5.1.log`]: `run.sh`
+25 also gives the report a file that names the ELF by its first 9 hex digits (taken, and its
+figures the same), 9 digits of another ELF and 7 digits (refused), the demo file cut at every 7th
+byte (each read as far as it goes, those cut in the tables with the warning, never a traceback),
+and `--since` with a file of another run (refused); `test_prof_hist.c` checks the `run` line. The
+three Windows runs with the stand-in were made again on the release's tree (`BUILD-NOTES.md`
+34.6). Not tried on the PC: `profile.c` itself (it needs ESP-IDF's GPTimer and FatFs); its
+changes were read, and built for both boards with no new warning.
 
 Not tried: the board (nothing here can run the S31's interrupt, its PC record, its cache counters or
 its card).

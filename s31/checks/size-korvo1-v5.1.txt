@@ -1,18 +1,18 @@
-[1/4] cd ~/org2/v51/int/rel/build-a/tiny386/esp/build-korvo1 && ~/.espressif-upstream/python_env/idf6.2_py3.11_env/bin/python ~/esp/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app ~/org2/v51/int/rel/build-a/tiny386/esp/build-korvo1/partition_table/partition-table.bin ~/org2/v51/int/rel/build-a/tiny386/esp/build-korvo1/tiny386.bin
-tiny386.bin binary size 0x104320 bytes. Smallest app partition is 0x1e0000 bytes. 0xdbce0 bytes (46%) free.
+[1/4] cd ~/org2/v51/resolve/rel/build-a/tiny386/esp/build-korvo1 && ~/.espressif-upstream/python_env/idf6.2_py3.11_env/bin/python ~/esp/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app ~/org2/v51/resolve/rel/build-a/tiny386/esp/build-korvo1/partition_table/partition-table.bin ~/org2/v51/resolve/rel/build-a/tiny386/esp/build-korvo1/tiny386.bin
+tiny386.bin binary size 0x104600 bytes. Smallest app partition is 0x1e0000 bytes. 0xdba00 bytes (46%) free.
 [2/4] Performing build step for 'bootloader'
-[1/1] cd ~/org2/v51/int/rel/build-a/tiny386/esp/build-korvo1/bootloader && ~/.espressif-upstream/python_env/idf6.2_py3.11_env/bin/python ~/esp/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x2000 ~/org2/v51/int/rel/build-a/tiny386/esp/build-korvo1/bootloader/bootloader.bin
+[1/1] cd ~/org2/v51/resolve/rel/build-a/tiny386/esp/build-korvo1/bootloader && ~/.espressif-upstream/python_env/idf6.2_py3.11_env/bin/python ~/esp/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x2000 ~/org2/v51/resolve/rel/build-a/tiny386/esp/build-korvo1/bootloader/bootloader.bin
 Bootloader binary size 0x5600 bytes. 0xa00 bytes (10%) free.
 [3/4] No install step for 'bootloader'
 [4/4] Completed 'bootloader'
-[0/1] cd ~/org2/v51/int/rel/build-a/tiny386/esp/build-korvo1 && /usr/bin/cmake -D "IDF_SIZE_TOOL=~/.espressif-upstream/python_env/idf6.2_py3.11_env/bin/python;-m;esp_idf_size" -D MAP_FILE=~/org2/v51/int/rel/build-a/tiny386/esp/build-korvo1/tiny386.map -D OUTPUT_JSON= -P ~/esp/esp-idf/tools/cmake/run_size_tool.cmake
+[0/1] cd ~/org2/v51/resolve/rel/build-a/tiny386/esp/build-korvo1 && /usr/bin/cmake -D "IDF_SIZE_TOOL=~/.espressif-upstream/python_env/idf6.2_py3.11_env/bin/python;-m;esp_idf_size" -D MAP_FILE=~/org2/v51/resolve/rel/build-a/tiny386/esp/build-korvo1/tiny386.map -D OUTPUT_JSON= -P ~/esp/esp-idf/tools/cmake/run_size_tool.cmake
 Memory Type Usage Summary
 ┏━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
 ┃ Memory Type/Section ┃ Used [bytes] ┃ Used [%] ┃ Remain [bytes] ┃ Total [bytes] ┃
 ┡━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
-│ Flash               │       716168 │          │                │               │
-│    .text            │       466396 │          │                │               │
-│    .rodata          │       249436 │          │                │               │
+│ Flash               │       716904 │          │                │               │
+│    .text            │       466972 │          │                │               │
+│    .rodata          │       249596 │          │                │               │
 │    .appdesc         │          256 │          │                │               │
 │    .init_array      │           64 │          │                │               │
 │    .tdata           │           16 │          │                │               │
@@ -24,10 +24,10 @@ Memory Type Usage Summary
 │    .rtc_noinit      │         8420 │     25.7 │                │               │
 │    .rtc_reserved    │           24 │     0.07 │                │               │
 └─────────────────────┴──────────────┴──────────┴────────────────┴───────────────┘
-Total image size: 1065593 bytes (.bin may be padded larger)
+Total image size: 1066329 bytes (.bin may be padded larger)
 Note: The reported total sizes may be smaller than those in the technical reference manual due to reserved memory and application configuration. The total flash size available for the application is not included by default, as it cannot be reliably determined due to the presence of other data like the bootloader, partition table, and application partition size.
 Executing action: size
-Running ninja in directory ~/org2/v51/int/rel/build-a/tiny386/esp/build-korvo1
+Running ninja in directory ~/org2/v51/resolve/rel/build-a/tiny386/esp/build-korvo1
 Executing "ninja all"...
-Running ninja in directory ~/org2/v51/int/rel/build-a/tiny386/esp/build-korvo1
+Running ninja in directory ~/org2/v51/resolve/rel/build-a/tiny386/esp/build-korvo1
 Executing "ninja size"...

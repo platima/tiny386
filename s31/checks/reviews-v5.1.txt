@@ -1,0 +1,187 @@
+v5.1: the runs made for the three reviews' resolution (BUILD-NOTES.md 34.15), 2026-10-29, WSL
+(~/org2/v51/resolve), on the code of 0c05825 (the test file and the faults as committed in
+895e521; the profiler as in 3aaa242).
+
+== 1. The six planted faults of the CPU review, put in with run.sh 24's own sed expressions (read
+== from run.sh's fault loop by bash), each built as run.sh builds it (the Korvo-1 header) and run
+== on 40 seeds of every default mode (1,240 scenarios): what each changes, and what it gives
+-- lfbwnull: exit 1; FAIL lines 3; test_fast_cpu: 1240 scenarios, 335297 steps, 14244765 instructions, 371297 checks, 3 failed
+         3   FAIL a page read, then written (hand, l)
+   858d857
+   < 			if (nullsegs & (1u << (sg))) goto slow; \
+   865a865
+   > 			if (nullsegs & (1u << (sg))) goto slow; \
+-- stnull: exit 1; FAIL lines 20; test_fast_cpu: 1240 scenarios, 334450 steps, 14243135 instructions, 370450 checks, 20 failed
+        20   FAIL a page read, then written (hand, l)
+   816d815
+   < 			if (nullsegs & (1u << (sg))) goto slow; \
+   823a823
+   > 			if (nullsegs & (1u << (sg))) goto slow; \
+-- fwcpl: exit 1; FAIL lines 8; test_fast_cpu: 1240 scenarios, 327349 steps, 14229459 instructions, 363349 checks, 8 failed
+         8   FAIL code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t)
+   995c995
+   < 		int _r = fast_window(cpu, ftlb, eip, &_w); \
+   ---
+   > 		int _r = fast_window(cpu, cpu->fast->tab[0], eip, &_w); \
+-- st4cpl: exit 1; FAIL lines 7; test_fast_cpu: 1240 scenarios, 328958 steps, 14232532 instructions, 364958 checks, 7 failed
+         7   FAIL code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t)
+   1032c1032
+   < 		struct fast_tlb_entry *e = &ftlb[(lin >> 12) % tlb_size];
+   ---
+   > 		struct fast_tlb_entry *e = &cpu->fast->tab[0][(lin >> 12) % tlb_size];
+-- divip: exit 1; FAIL lines 160; test_fast_cpu: 1240 scenarios, 287847 steps, 11885359 instructions, 323847 checks, 160 failed
+        40   FAIL groups, DIV's #DE, segment loads, 16-bit PM (q)
+        40   FAIL groups, DIV's #DE, segment loads, level 0 (p)
+        40   FAIL groups, DIV's #DE, segment loads, level 1 (r)
+        40   FAIL groups, DIV's #DE, segment loads, level 3 (s)
+   1786c1786
+   < P##6: { cpu->ip = EIP_OF(ins); DIV##SFX(X, LA, SA) goto grp_next; }   /* may raise #DE */ \
+   ---
+   > P##6: { DIV##SFX(X, LA, SA) goto grp_next; }   /* may raise #DE */ \
+-- st4end: exit 1; FAIL lines 8; test_fast_cpu: 1240 scenarios, 329080 steps, 14232385 instructions, 365080 checks, 8 failed
+         8   FAIL code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t)
+   1037c1037
+   < 			if (po < (uintptr_t) cpu->phys_mem_size - 4096 && !in_iomem((uword) po) && !in_iomem((uword) po + 16)) {
+   ---
+   > 			if (po < (uintptr_t) cpu->phys_mem_size && !in_iomem((uword) po) && !in_iomem((uword) po + 16)) {
+
+== 2. The new modes on more seeds (the test as committed; the Korvo-1 header, 'k', and plain, 'p')
+-- r-l-k: FAIL 0; test_fast_cpu: 200 scenarios, 32941 steps, 63507 instructions, 32941 checks, 0 failed; ; exit 0
+-- r-l-p: FAIL 0; test_fast_cpu: 200 scenarios, 32941 steps, 63507 instructions, 32941 checks, 0 failed; ; exit 0
+-- r-pqrs-k-0: FAIL 0; test_fast_cpu: 600 scenarios, 183568 steps, 9092626 instructions, 183568 checks, 0 failed; ; exit 0
+-- r-pqrs-k-1: FAIL 0; test_fast_cpu: 600 scenarios, 182643 steps, 9091107 instructions, 182643 checks, 0 failed; ; exit 0
+-- r-pqrs-p-0: FAIL 0; test_fast_cpu: 600 scenarios, 183568 steps, 9092626 instructions, 183568 checks, 0 failed; ; exit 0
+-- r-t-k-0: FAIL 0; test_fast_cpu: 200 scenarios, 420559 steps, 783692 instructions, 420559 checks, 0 failed; guest shutdowns, the same in both machines: 2 scenarios; exit 0
+-- r-t-k-1: FAIL 0; test_fast_cpu: 200 scenarios, 420436 steps, 782315 instructions, 420436 checks, 0 failed; guest shutdowns, the same in both machines: 1 scenarios; exit 0
+-- r-t-k-2: FAIL 0; test_fast_cpu: 200 scenarios, 404429 steps, 753095 instructions, 404429 checks, 0 failed; guest shutdowns, the same in both machines: 4 scenarios; exit 0
+-- r-t-k-3: FAIL 0; test_fast_cpu: 200 scenarios, 420477 steps, 784271 instructions, 420477 checks, 0 failed; guest shutdowns, the same in both machines: 1 scenarios; exit 0
+-- r-t-k-4: FAIL 0; test_fast_cpu: 200 scenarios, 404507 steps, 754730 instructions, 404507 checks, 0 failed; guest shutdowns, the same in both machines: 2 scenarios; exit 0
+-- r-t-p-0: FAIL 0; test_fast_cpu: 250 scenarios, 521420 steps, 971439 instructions, 521420 checks, 0 failed; guest shutdowns, the same in both machines: 3 scenarios; exit 0
+-- r-t-p-1: FAIL 0; test_fast_cpu: 250 scenarios, 521685 steps, 970759 instructions, 521685 checks, 0 failed; guest shutdowns, the same in both machines: 2 scenarios; exit 0
+   (t-k-0 to t-k-4: mode t, seeds 1 to 1,000; t-p-0, t-p-1: seeds 1 to 500; pqrs-k-0, pqrs-k-1: modes
+   p to s, seeds 1 to 300; pqrs-p-0: seeds 1 to 150; l-k, l-p: mode l, seeds 1 to 200)
+   guest shutdowns, each the same in both machines:
+     seed 19, code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t): a guest shutdown in both machines at 0008:001e3020, CR2 000000
+     seed 104, code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t): a guest shutdown in both machines at 0008:001e3020, CR2 00000
+     seed 249, code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t): a guest shutdown in both machines at 0008:0040018d, CR2 00000
+     seed 404, code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t): a guest shutdown in both machines at 0008:001e3020, CR2 00000
+     seed 494, code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t): a guest shutdown in both machines at 0008:001e3020, CR2 00000
+     seed 524, code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t): a guest shutdown in both machines at 0008:001e3020, CR2 00000
+     seed 534, code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t): a guest shutdown in both machines at 0008:001e3020, CR2 00000
+     seed 674, code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t): a guest shutdown in both machines at 0008:001e3020, CR2 00000
+     seed 979, code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t): a guest shutdown in both machines at 0008:00400148, CR2 00000
+     seed 989, code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t): a guest shutdown in both machines at 0008:001e3020, CR2 00000
+
+== 3. The profiler's own code on the PC: the sampler review's harness (rev-sampler/ph, adapted:
+== the app's description with the ELF's SHA-256, esp_random(), remove() and rename() on the card,
+== PROFILE.NEW), the real profile.c and prof_hist.c with ASan and UBSan, then ThreadSanitizer
+== files (ASan, UBSan)
+1. profile = 0
+  on 0; timers 0, PSRAM allocations 0, hotkeys 0, cache counters started 0
+2. the ini's folder not on /sdcard
+  console[2]: profile = 1 is ignored: PROFILE.TXT goes beside the ini, and /sdcard2 is not on the card's first partition (/sdcard).
+3. PSRAM short: largest free block 340 KiB
+  console[2]: profile = 1 is ignored: no room in PSRAM for its tables (largest free block 340 KiB).
+4. profile = 1, largest free block 504 KiB (v5.0's board after PC built)
+  console[2]: Profile: on ([esp] profile = 1). Core 0 samples core 1 about 2000 times a second while the PC runs, and writes /sdcard/tiny386/PROFILE.TXT every 60 s, on Ctrl+Alt+F8 (and PROF01.TXT, PROF02.TXT, ... then) and when the PC is switched off; the guest waits while it is written. Tables: 178 KiB of PSRAM.
+  on 1; timers 1, hotkeys 1
+  console[0]: Profile: sampling from now.
+  asked to write: 8
+  console[0]: Profile: /sdcard/tiny386/PROFILE.TXT written (timer, file 1): 3000 samples, 37064 bytes, in 0 ms, the guest waiting.
+  PROFILE.TXT: elf_sha256 1e128f97de0fb95ecb767c98c8fce764b9b6b2cb6b90f2949bd93b3f67c4ed19
+  PROFILE.TXT: file 1 timer
+  PROFILE.TXT: samples 3000
+  PROFILE.TXT: 37064 bytes, 2782 lines, end line yes
+5. Ctrl+Alt+F8 twice
+  console[0]: Profile: /sdcard/tiny386/PROFILE.TXT and /sdcard/tiny386/PROF01.TXT written (key, file 2): 4000 samples, 47713 bytes, in 0 ms, the guest waiting.
+  console[0]: Profile: /sdcard/tiny386/PROFILE.TXT and /sdcard/tiny386/PROF02.TXT written (key, file 3): 5000 samples, 57208 bytes, in 0 ms, the guest waiting.
+  console[0]: Profile: tables full: 4 samples' host PCs counted by 64-byte line (0 of them in the totals only); 0 guest and 0 instruction samples in the totals only.
+  PROFILE.TXT: elf_sha256 1e128f97de0fb95ecb767c98c8fce764b9b6b2cb6b90f2949bd93b3f67c4ed19
+  PROFILE.TXT: file 3 key
+  PROFILE.TXT: samples 5000
+  PROFILE.TXT: 57208 bytes, 4331 lines, end line yes
+  PROF01.TXT: elf_sha256 1e128f97de0fb95ecb767c98c8fce764b9b6b2cb6b90f2949bd93b3f67c4ed19
+  PROF01.TXT: file 2 key
+  PROF01.TXT: samples 4000
+  PROF01.TXT: 47713 bytes, 3601 lines, end line yes
+  PROF02.TXT: elf_sha256 1e128f97de0fb95ecb767c98c8fce764b9b6b2cb6b90f2949bd93b3f67c4ed19
+  PROF02.TXT: file 3 key
+  PROF02.TXT: samples 5000
+  PROF02.TXT: 57208 bytes, 4331 lines, end line yes
+6. Ctrl+Alt+F8 when PROF03.TXT cannot be opened (read-only, say)
+  console[3]: Profile: /sdcard/tiny386/PROFILE.TXT and /sdcard/tiny386/PROF03.TXT could not be written (it could not be opened; 0 ms); the last PROFILE.TXT is kept.
+  PROFILE.TXT 57208 bytes before, 57208 after; PROFILE.NEW -1, PROF03.TXT -1 (-1: none)
+  PROFILE.TXT: elf_sha256 1e128f97de0fb95ecb767c98c8fce764b9b6b2cb6b90f2949bd93b3f67c4ed19
+  PROFILE.TXT: file 3 key
+  PROFILE.TXT: samples 5000
+  PROFILE.TXT: 57208 bytes, 4331 lines, end line yes
+6b. Ctrl+Alt+F8 again: PROF03.TXT now (its number given back)
+  console[0]: Profile: /sdcard/tiny386/PROFILE.TXT and /sdcard/tiny386/PROF03.TXT written (key, file 4): 6100 samples, 67453 bytes, in 0 ms, the guest waiting.
+  console[0]: Profile: tables full: 15 samples' host PCs counted by 64-byte line (0 of them in the totals only); 0 guest and 0 instruction samples in the totals only.
+  PROF03.TXT: elf_sha256 1e128f97de0fb95ecb767c98c8fce764b9b6b2cb6b90f2949bd93b3f67c4ed19
+  PROF03.TXT: file 4 key
+  PROF03.TXT: samples 6100
+  PROF03.TXT: 67453 bytes, 5119 lines, end line yes
+  PROF04.TXT -1 (-1: none)
+7. the timer's write, when PROFILE.NEW cannot be opened (too many open files, say)
+  console[3]: Profile: /sdcard/tiny386/PROFILE.TXT could not be written (it could not be opened; 0 ms); the last PROFILE.TXT is kept.
+  PROFILE.TXT 67453 bytes before, 67453 after
+  PROFILE.TXT: elf_sha256 1e128f97de0fb95ecb767c98c8fce764b9b6b2cb6b90f2949bd93b3f67c4ed19
+  PROFILE.TXT: file 4 key
+  PROFILE.TXT: samples 6100
+  PROFILE.TXT: 67453 bytes, 5119 lines, end line yes
+8. the card full after 3000 bytes of PROFILE.TXT
+  console[0]: Profile: /sdcard/tiny386/PROFILE.TXT written (timer, file 5): 8100 samples, 84019 bytes, in 0 ms, the guest waiting.
+  console[0]: Profile: tables full: 231 samples' host PCs counted by 64-byte line (0 of them in the totals only); 0 guest and 0 instruction samples in the totals only.
+  console[3]: Profile: /sdcard/tiny386/PROFILE.TXT could not be written (a write failed; 0 ms); the last PROFILE.TXT is kept.
+  PROFILE.TXT 84019 bytes before, 84019 after; PROFILE.NEW -1 (-1: none)
+  PROFILE.TXT: elf_sha256 1e128f97de0fb95ecb767c98c8fce764b9b6b2cb6b90f2949bd93b3f67c4ed19
+  PROFILE.TXT: file 5 timer
+  PROFILE.TXT: samples 8100
+  PROFILE.TXT: 84019 bytes, 6393 lines, end line yes
+9. 120 presses of Ctrl+Alt+F8
+  PROF99.TXT 91952 bytes; PROF100.TXT -1
+10. the end, then a key and a write
+  console[0]: Profile: /sdcard/tiny386/PROFILE.TXT written (end, file 126): 10300 samples, 91952 bytes, in 0 ms, the guest waiting.
+  console[0]: Profile: tables full: 1599 samples' host PCs counted by 64-byte line (0 of them in the totals only); 0 guest and 0 instruction samples in the totals only.
+  PROFILE.TXT: elf_sha256 1e128f97de0fb95ecb767c98c8fce764b9b6b2cb6b90f2949bd93b3f67c4ed19
+  PROFILE.TXT: file 126 end
+  PROFILE.TXT: samples 10300
+  PROFILE.TXT: 91952 bytes, 7002 lines, end line yes
+  PROFILE.TXT 91952 bytes before, 91952 after
+exit 0
+100
+PROFILE.TXT
+== the report on the harness's last PROFILE.TXT, with an ELF whose SHA-256 is not the file's (refused) and with --force
+exit 1 (harness-asan has SHA-256 7aa16218163beb6d, but card/tiny386/PROFILE.TXT was written by the ELF 1e128f97de0fb95e: the names would be wrong. The release's images\*\tiny386.elf of the same version and bo)
+== race (ThreadSanitizer)
+exit 0
+ThreadSanitizer warnings: 0
+  PROFILE.TXT: elf_sha256 1e128f97de0fb95ecb767c98c8fce764b9b6b2cb6b90f2949bd93b3f67c4ed19
+  PROFILE.TXT: file 40 timer
+  PROFILE.TXT: samples 58377
+  PROFILE.TXT: 95740 bytes, 7210 lines, end line yes
+
+== 4. The report on files cut short: the harness's last PROFILE.TXT (91,952 bytes) cut at 175
+== places, the report run on each (--force: the harness is not the file's ELF), as merged
+== (0e62e39) and as it is now
+old: 175 cuts (173 in the tables): 148 tracebacks, 27 reports, 27 of them with the cut-short warning
+new: 175 cuts (173 in the tables): 0 tracebacks, 175 reports, 175 of them with the cut-short warning
+
+== 5. PROFILE_IN_FLASH switched on in both board headers (its line uncommented), the two boards
+== built from the same code (~/org2/v51/resolve/var-pif-b), against bt/ (the release's code)
+-- korvo1: release 124303 bytes left; PROFILE_IN_FLASH 126181; warnings outside ESP-IDF: 1
+-- dosboard: release 126467 bytes left; PROFILE_IN_FLASH 128345; warnings outside ESP-IDF: 0
+
+== 6. i386.c's object in the in-tree builds of 0c05825 against the integration's of 38b0fcb (the
+== same CPU code as 0e62e39): objdump -d -r, addresses and symbol offsets cut
+-- korvo1: 218376 lines; lines that differ: 2 (the object file's own name)
+-- dosboard: 218376 lines; lines that differ: 2 (the object file's own name)
+
+== 7. The stand-in's restart run's last PROFILE.TXT read by profile_report.py with the stand-in's ELF
+tiny386 profile report
+======================
+
+Firmware standin on the PC (stand-in) (ESP-IDF -); ELF 4e8d3df08149fb2f.
+The ELF's SHA-256 matches the file's 64 hex digits of it.
+Sampler: standin-sigprof at about 2000 a second; file 10 (end) of run 3820aa3d; ini -; fast_cpu 1.

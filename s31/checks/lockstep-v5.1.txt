@@ -1,21 +1,23 @@
-v5.1's release gate (BUILD-NOTES.md 34.4, tests/lockstep/README.md 11): tests/lockstep with v4.6's
-reference build (~/org2/v50/lock/builds/ref: s31-v4.6 with the tester's hook; the tree named on
-the command line is v4.6's own, ~/org2/v51/lock800/trees/v46) against v5.1's merged tree (git
-archive of 038c759, the release's code), built by the tree's tests/lockstep/build.sh as the
-boards build it, with the fast interpreter on and with -DI386_FAST_DEFAULT=0 (tiny386's own
-interpreter alone, as [esp] fast_cpu = 0). T386MON_EXE 1.2. One comparison at a time (two image
-copies, made and deleted by the tool). 2026-10-29, WSL. Host seconds with little else on the
-machine.
+v5.1's release gate (BUILD-NOTES.md 34.4, tests/lockstep/README.md 11), made again after the
+reviews of v5.1 (34.15): tests/lockstep with v4.6's reference build (~/org2/v50/lock/builds/ref:
+s31-v4.6 with the tester's hook; the tree named on the command line is v4.6's own,
+~/org2/v51/lock800/trees/v46) against v5.1's tree (git archive of 0c05825, the release's code;
+~/org2/v51/resolve/trees/final), built by the tree's tests/lockstep/build.sh as the boards build
+it, with the fast interpreter on and with -DI386_FAST_DEFAULT=0 (tiny386's own interpreter
+alone, as [esp] fast_cpu = 0). T386MON_EXE 1.2. One comparison at a time (two image copies, made
+and deleted by the tool). 2026-10-29, WSL. Host seconds on a machine shared with other work. The
+integration's own run of the same gate on 038c759 (before the reviews) gave the same results,
+records, interrupts and disks.
 
 | workload | guest instructions | records | interrupts | disk image after (sha256) | host s, v4.6 / v5.1 on | v4.6 / v5.1 off | result, on / off |
 |-|-|-|-|-|-|-|-|
-| b1 | 588,301,033 | 590 | 51,878 | `248cdd0473f55199` | 7.6 / 5.7 | 7.6 / 7.4 | no difference / no difference |
-| restart | 1,304,341,904 | 1,306 | 238,269 | `0991749feee656d8` | 28.4 / 24.0 | 28.5 / 28.1 | no difference / no difference |
-| msdos | 1,337,723,352 | 1,339 | 238,758 | `36979e52115af450` | 28.6 / 24.0 | 28.5 / 28.1 | no difference / no difference |
-| bench | 31,345,925 | 33 | 111 | `72fe423a80f365fb` | 0.3 / 0.2 | 0.3 / 0.3 | no difference / no difference |
-| vbe | 55,090,157 | 57 | 505 | `482c032f53c3a479` | 0.5 / 0.4 | 0.5 / 0.5 | no difference / no difference |
-| t386mon | 674,307,567 | 676 | 64,677 | `35c2db9b72859c03` | 12.0 / 10.0 | 12.1 / 12.0 | no difference / no difference |
-| t386mon800 | 792,272,554 | 794 | 148,032 | `b3df8b6bb0474edd` | 13.2 / 8.7 | 13.3 / 11.5 | no difference / no difference |
+| b1 | 588,301,033 | 590 | 51,878 | `248cdd0473f55199` | 7.9 / 6.0 | 8.2 / 8.1 | no difference / no difference |
+| restart | 1,304,341,904 | 1,306 | 238,269 | `0991749feee656d8` | 30.4 / 25.9 | 42.8 / 42.2 | no difference / no difference |
+| msdos | 1,337,723,352 | 1,339 | 238,758 | `36979e52115af450` | 30.6 / 25.8 | 30.9 / 30.0 | no difference / no difference |
+| bench | 31,345,925 | 33 | 111 | `72fe423a80f365fb` | 0.5 / 0.3 | 0.4 / 0.4 | no difference / no difference |
+| vbe | 55,090,157 | 57 | 505 | `482c032f53c3a479` | 0.9 / 0.6 | 0.6 / 0.5 | no difference / no difference |
+| t386mon | 674,307,567 | 676 | 64,677 | `35c2db9b72859c03` | 16.1 / 13.8 | 13.0 / 12.8 | no difference / no difference |
+| t386mon800 | 792,272,554 | 794 | 148,032 | `b3df8b6bb0474edd` | 14.1 / 9.4 | 13.9 / 12.1 | no difference / no difference |
 
 T386MON summary (t386mon800, cand): fill 490.40, scroll 328.07, text 3.51, text-aside 3.80, text-nopointer 3.78, sprite 73.41, full-copy 361.76, full-picture 1.13
 comparisons that are not "no difference" with equal ends, records and interrupts: 0
@@ -23,11 +25,11 @@ comparisons that are not "no difference" with equal ends, records and interrupts
 == fast b1
 lockstep: workload b1
   ref  ~/org2/v51/lock800/trees/v46 (?)
-  cand ~/org2/v51/int/trees/final (?)
+  cand ~/org2/v51/resolve/trees/final (?)
 pass 1: a record every 1000000 instructions, every interrupt
-  host time: ref 7.6 s, cand 5.7 s; exit status ref 0, cand 0
-  ref: [harness] END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s wall=7.6 s cs:eip=00a8:0000850a esp
-  cand: [harness] END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s wall=5.7 s cs:eip=00a8:0000850a es
+  host time: ref 7.9 s, cand 6.0 s; exit status ref 0, cand 0
+  ref: [harness] END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s wall=7.9 s cs:eip=00a8:0000850a esp
+  cand: [harness] END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s wall=6.0 s cs:eip=00a8:0000850a es
   records: ref 590, cand 590; interrupts: ref 51878, cand 51878
   last record: ref step 5741395, cycle 588301033, 00a8:0000850b (end), cand step 5741395, cycle 588301033, 00a8:0000850b (end)
   SAME: every record and every interrupt agree
@@ -36,11 +38,11 @@ RESULT: no difference in b1
 == off b1
 lockstep: workload b1
   ref  ~/org2/v51/lock800/trees/v46 (?)
-  cand ~/org2/v51/int/trees/final (?)
+  cand ~/org2/v51/resolve/trees/final (?)
 pass 1: a record every 1000000 instructions, every interrupt
-  host time: ref 7.6 s, cand 7.4 s; exit status ref 0, cand 0
-  ref: [harness] END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s wall=7.6 s cs:eip=00a8:0000850a esp
-  cand: [harness] END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s wall=7.4 s cs:eip=00a8:0000850a es
+  host time: ref 8.2 s, cand 8.1 s; exit status ref 0, cand 0
+  ref: [harness] END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s wall=8.2 s cs:eip=00a8:0000850a esp
+  cand: [harness] END t=331.032 s insns=588301033 idle=72956992 stall=0.4 s wall=8.1 s cs:eip=00a8:0000850a es
   records: ref 590, cand 590; interrupts: ref 51878, cand 51878
   last record: ref step 5741395, cycle 588301033, 00a8:0000850b (end), cand step 5741395, cycle 588301033, 00a8:0000850b (end)
   SAME: every record and every interrupt agree
@@ -49,11 +51,11 @@ RESULT: no difference in b1
 == fast restart
 lockstep: workload restart
   ref  ~/org2/v51/lock800/trees/v46 (?)
-  cand ~/org2/v51/int/trees/final (?)
+  cand ~/org2/v51/resolve/trees/final (?)
 pass 1: a record every 1000000 instructions, every interrupt
-  host time: ref 28.4 s, cand 24.0 s; exit status ref 0, cand 0
-  ref: [harness] END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s wall=28.4 s cs:eip=00a8:0000850
-  cand: [harness] END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s wall=24.0 s cs:eip=00a8:000085
+  host time: ref 30.4 s, cand 25.9 s; exit status ref 0, cand 0
+  ref: [harness] END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s wall=30.3 s cs:eip=00a8:0000850
+  cand: [harness] END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s wall=25.9 s cs:eip=00a8:000085
   records: ref 1306, cand 1306; interrupts: ref 238269, cand 238269
   last record: ref step 97491969, cycle 1304341904, 00a8:0000850b (end), cand step 97491969, cycle 1304341904, 00a8:0000850b (end)
   SAME: every record and every interrupt agree
@@ -62,11 +64,11 @@ RESULT: no difference in restart
 == off restart
 lockstep: workload restart
   ref  ~/org2/v51/lock800/trees/v46 (?)
-  cand ~/org2/v51/int/trees/final (?)
+  cand ~/org2/v51/resolve/trees/final (?)
 pass 1: a record every 1000000 instructions, every interrupt
-  host time: ref 28.5 s, cand 28.1 s; exit status ref 0, cand 0
-  ref: [harness] END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s wall=28.5 s cs:eip=00a8:0000850
-  cand: [harness] END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s wall=28.1 s cs:eip=00a8:000085
+  host time: ref 42.8 s, cand 42.2 s; exit status ref 0, cand 0
+  ref: [harness] END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s wall=42.8 s cs:eip=00a8:0000850
+  cand: [harness] END t=1411.032 s insns=1304341904 idle=1516078784 stall=0.8 s wall=42.2 s cs:eip=00a8:000085
   records: ref 1306, cand 1306; interrupts: ref 238269, cand 238269
   last record: ref step 97491969, cycle 1304341904, 00a8:0000850b (end), cand step 97491969, cycle 1304341904, 00a8:0000850b (end)
   SAME: every record and every interrupt agree
@@ -75,11 +77,11 @@ RESULT: no difference in restart
 == fast msdos
 lockstep: workload msdos
   ref  ~/org2/v51/lock800/trees/v46 (?)
-  cand ~/org2/v51/int/trees/final (?)
+  cand ~/org2/v51/resolve/trees/final (?)
 pass 1: a record every 1000000 instructions, every interrupt
-  host time: ref 28.6 s, cand 24.0 s; exit status ref 0, cand 0
-  ref: [harness] END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s wall=28.6 s cs:eip=00a8:0000850
-  cand: [harness] END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s wall=24.0 s cs:eip=00a8:000085
+  host time: ref 30.6 s, cand 25.8 s; exit status ref 0, cand 0
+  ref: [harness] END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s wall=30.5 s cs:eip=00a8:0000850
+  cand: [harness] END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s wall=25.8 s cs:eip=00a8:000085
   records: ref 1339, cand 1339; interrupts: ref 238758, cand 238758
   last record: ref step 95515302, cycle 1337723352, 00a8:0000850b (end), cand step 95515302, cycle 1337723352, 00a8:0000850b (end)
   SAME: every record and every interrupt agree
@@ -88,11 +90,11 @@ RESULT: no difference in msdos
 == off msdos
 lockstep: workload msdos
   ref  ~/org2/v51/lock800/trees/v46 (?)
-  cand ~/org2/v51/int/trees/final (?)
+  cand ~/org2/v51/resolve/trees/final (?)
 pass 1: a record every 1000000 instructions, every interrupt
-  host time: ref 28.5 s, cand 28.1 s; exit status ref 0, cand 0
-  ref: [harness] END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s wall=28.5 s cs:eip=00a8:0000850
-  cand: [harness] END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s wall=28.1 s cs:eip=00a8:000085
+  host time: ref 30.9 s, cand 30.0 s; exit status ref 0, cand 0
+  ref: [harness] END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s wall=30.9 s cs:eip=00a8:0000850
+  cand: [harness] END t=1411.032 s insns=1337723352 idle=1483475296 stall=0.4 s wall=30.0 s cs:eip=00a8:000085
   records: ref 1339, cand 1339; interrupts: ref 238758, cand 238758
   last record: ref step 95515302, cycle 1337723352, 00a8:0000850b (end), cand step 95515302, cycle 1337723352, 00a8:0000850b (end)
   SAME: every record and every interrupt agree
@@ -101,9 +103,9 @@ RESULT: no difference in msdos
 == fast bench
 lockstep: workload bench
   ref  ~/org2/v51/lock800/trees/v46 (?)
-  cand ~/org2/v51/int/trees/final (?)
+  cand ~/org2/v51/resolve/trees/final (?)
 pass 1: a record every 1000000 instructions, every interrupt
-  host time: ref 0.3 s, cand 0.2 s; exit status ref 0, cand 0
+  host time: ref 0.5 s, cand 0.3 s; exit status ref 0, cand 0
   records: ref 33, cand 33; interrupts: ref 111, cand 111
   last record: ref step 375294, cycle 31345925, 0008:00022e63 (stop-byte), cand step 375294, cycle 31345925, 0008:00022e63 (stop-byte)
   SAME: every record and every interrupt agree
@@ -112,9 +114,9 @@ RESULT: no difference in bench
 == off bench
 lockstep: workload bench
   ref  ~/org2/v51/lock800/trees/v46 (?)
-  cand ~/org2/v51/int/trees/final (?)
+  cand ~/org2/v51/resolve/trees/final (?)
 pass 1: a record every 1000000 instructions, every interrupt
-  host time: ref 0.3 s, cand 0.3 s; exit status ref 0, cand 0
+  host time: ref 0.4 s, cand 0.4 s; exit status ref 0, cand 0
   records: ref 33, cand 33; interrupts: ref 111, cand 111
   last record: ref step 375294, cycle 31345925, 0008:00022e63 (stop-byte), cand step 375294, cycle 31345925, 0008:00022e63 (stop-byte)
   SAME: every record and every interrupt agree
@@ -123,9 +125,9 @@ RESULT: no difference in bench
 == fast vbe
 lockstep: workload vbe
   ref  ~/org2/v51/lock800/trees/v46 (?)
-  cand ~/org2/v51/int/trees/final (?)
+  cand ~/org2/v51/resolve/trees/final (?)
 pass 1: a record every 1000000 instructions, every interrupt
-  host time: ref 0.5 s, cand 0.4 s; exit status ref 0, cand 0
+  host time: ref 0.9 s, cand 0.6 s; exit status ref 0, cand 0
   records: ref 57, cand 57; interrupts: ref 505, cand 505
   last record: ref step 424268, cycle 55090157, 22b2:00000214 (stop-byte), cand step 424268, cycle 55090157, 22b2:00000214 (stop-byte)
   SAME: every record and every interrupt agree
@@ -134,9 +136,9 @@ RESULT: no difference in vbe
 == off vbe
 lockstep: workload vbe
   ref  ~/org2/v51/lock800/trees/v46 (?)
-  cand ~/org2/v51/int/trees/final (?)
+  cand ~/org2/v51/resolve/trees/final (?)
 pass 1: a record every 1000000 instructions, every interrupt
-  host time: ref 0.5 s, cand 0.5 s; exit status ref 0, cand 0
+  host time: ref 0.6 s, cand 0.5 s; exit status ref 0, cand 0
   records: ref 57, cand 57; interrupts: ref 505, cand 505
   last record: ref step 424268, cycle 55090157, 22b2:00000214 (stop-byte), cand step 424268, cycle 55090157, 22b2:00000214 (stop-byte)
   SAME: every record and every interrupt agree
@@ -145,11 +147,11 @@ RESULT: no difference in vbe
 == fast t386mon
 lockstep: workload t386mon
   ref  ~/org2/v51/lock800/trees/v46 (?)
-  cand ~/org2/v51/int/trees/final (?)
+  cand ~/org2/v51/resolve/trees/final (?)
 pass 1: a record every 1000000 instructions, every interrupt
-  host time: ref 12.0 s, cand 10.0 s; exit status ref 0, cand 0
-  ref: [harness] END t=533.031 s insns=674307567 idle=390948032 stall=0.4 s wall=12.0 s cs:eip=00a8:0000850a e
-  cand: [harness] END t=533.031 s insns=674307567 idle=390948032 stall=0.4 s wall=10.0 s cs:eip=00a8:0000850a 
+  host time: ref 16.1 s, cand 13.8 s; exit status ref 0, cand 0
+  ref: [harness] END t=533.031 s insns=674307567 idle=390948032 stall=0.4 s wall=16.0 s cs:eip=00a8:0000850a e
+  cand: [harness] END t=533.031 s insns=674307567 idle=390948032 stall=0.4 s wall=13.8 s cs:eip=00a8:0000850a 
   records: ref 676, cand 676; interrupts: ref 64677, cand 64677
   last record: ref step 25800397, cycle 674307567, 00a8:0000850b (end), cand step 25800397, cycle 674307567, 00a8:0000850b (end)
   SAME: every record and every interrupt agree
@@ -160,11 +162,11 @@ RESULT: no difference in t386mon
 == off t386mon
 lockstep: workload t386mon
   ref  ~/org2/v51/lock800/trees/v46 (?)
-  cand ~/org2/v51/int/trees/final (?)
+  cand ~/org2/v51/resolve/trees/final (?)
 pass 1: a record every 1000000 instructions, every interrupt
-  host time: ref 12.1 s, cand 12.0 s; exit status ref 0, cand 0
-  ref: [harness] END t=533.031 s insns=674307567 idle=390948032 stall=0.4 s wall=12.1 s cs:eip=00a8:0000850a e
-  cand: [harness] END t=533.031 s insns=674307567 idle=390948032 stall=0.4 s wall=12.0 s cs:eip=00a8:0000850a 
+  host time: ref 13.0 s, cand 12.8 s; exit status ref 0, cand 0
+  ref: [harness] END t=533.031 s insns=674307567 idle=390948032 stall=0.4 s wall=12.9 s cs:eip=00a8:0000850a e
+  cand: [harness] END t=533.031 s insns=674307567 idle=390948032 stall=0.4 s wall=12.7 s cs:eip=00a8:0000850a 
   records: ref 676, cand 676; interrupts: ref 64677, cand 64677
   last record: ref step 25800397, cycle 674307567, 00a8:0000850b (end), cand step 25800397, cycle 674307567, 00a8:0000850b (end)
   SAME: every record and every interrupt agree
@@ -175,11 +177,11 @@ RESULT: no difference in t386mon
 == fast t386mon800
 lockstep: workload t386mon800
   ref  ~/org2/v51/lock800/trees/v46 (?)
-  cand ~/org2/v51/int/trees/final (?)
+  cand ~/org2/v51/resolve/trees/final (?)
 pass 1: a record every 1000000 instructions, every interrupt
-  host time: ref 13.2 s, cand 8.7 s; exit status ref 0, cand 0
-  ref: [harness] END t=480.000 s insns=792272554 idle=166927424 stall=0.4 s wall=13.2 s cs:eip=0028:c0003aeb e
-  cand: [harness] END t=480.000 s insns=792272554 idle=166927424 stall=0.4 s wall=8.6 s cs:eip=0028:c0003aeb e
+  host time: ref 14.1 s, cand 9.4 s; exit status ref 0, cand 0
+  ref: [harness] END t=480.000 s insns=792272554 idle=166927424 stall=0.4 s wall=14.0 s cs:eip=0028:c0003aeb e
+  cand: [harness] END t=480.000 s insns=792272554 idle=166927424 stall=0.4 s wall=9.3 s cs:eip=0028:c0003aeb e
   records: ref 794, cand 794; interrupts: ref 148032, cand 148032
   last record: ref step 12069552, cycle 792272554, 0028:c0003af2 (end), cand step 12069552, cycle 792272554, 0028:c0003af2 (end)
   SAME: every record and every interrupt agree
@@ -190,11 +192,11 @@ RESULT: no difference in t386mon800
 == off t386mon800
 lockstep: workload t386mon800
   ref  ~/org2/v51/lock800/trees/v46 (?)
-  cand ~/org2/v51/int/trees/final (?)
+  cand ~/org2/v51/resolve/trees/final (?)
 pass 1: a record every 1000000 instructions, every interrupt
-  host time: ref 13.3 s, cand 11.5 s; exit status ref 0, cand 0
-  ref: [harness] END t=480.000 s insns=792272554 idle=166927424 stall=0.4 s wall=13.3 s cs:eip=0028:c0003aeb e
-  cand: [harness] END t=480.000 s insns=792272554 idle=166927424 stall=0.4 s wall=11.5 s cs:eip=0028:c0003aeb 
+  host time: ref 13.9 s, cand 12.1 s; exit status ref 0, cand 0
+  ref: [harness] END t=480.000 s insns=792272554 idle=166927424 stall=0.4 s wall=13.8 s cs:eip=0028:c0003aeb e
+  cand: [harness] END t=480.000 s insns=792272554 idle=166927424 stall=0.4 s wall=12.0 s cs:eip=0028:c0003aeb 
   records: ref 794, cand 794; interrupts: ref 148032, cand 148032
   last record: ref step 12069552, cycle 792272554, 0028:c0003af2 (end), cand step 12069552, cycle 792272554, 0028:c0003af2 (end)
   SAME: every record and every interrupt agree
@@ -204,31 +206,30 @@ pass 1: a record every 1000000 instructions, every interrupt
 RESULT: no difference in t386mon800
 
 gate.sh's own summary:
-checked
-== b1: wall 17 s, load 1.53 2.22 2.97
-  fast: RESULT: no difference in b1 | cand: [harness] END t=331.032 s insns=588301033 | disk image after the run: the same (sha256 248cdd0473f55199) | host time: ref 7.6 s, cand 5.7 s;
-  off: RESULT: no difference in b1 | cand: [harness] END t=331.032 s insns=588301033 | disk image after the run: the same (sha256 248cdd0473f55199) | host time: ref 7.6 s, cand 7.4 s;
-== restart: wall 61 s, load 1.72 2.14 2.89
-  fast: RESULT: no difference in restart | cand: [harness] END t=1411.032 s insns=1304341904 | disk image after the run: the same (sha256 0991749feee656d8) | host time: ref 28.4 s, cand 24.0 s;
-  off: RESULT: no difference in restart | cand: [harness] END t=1411.032 s insns=1304341904 | disk image after the run: the same (sha256 0991749feee656d8) | host time: ref 28.5 s, cand 28.1 s;
-== msdos: wall 61 s, load 1.82 2.10 2.83
-  fast: RESULT: no difference in msdos | cand: [harness] END t=1411.032 s insns=1337723352 | disk image after the run: the same (sha256 36979e52115af450) | host time: ref 28.6 s, cand 24.0 s;
-  off: RESULT: no difference in msdos | cand: [harness] END t=1411.032 s insns=1337723352 | disk image after the run: the same (sha256 36979e52115af450) | host time: ref 28.5 s, cand 28.1 s;
-== bench: wall 1 s, load 1.82 2.10 2.83
-  fast: RESULT: no difference in bench |  | disk image after the run: the same (sha256 72fe423a80f365fb) | host time: ref 0.3 s, cand 0.2 s;
-  off: RESULT: no difference in bench |  | disk image after the run: the same (sha256 72fe423a80f365fb) | host time: ref 0.3 s, cand 0.3 s;
-== vbe: wall 1 s, load 1.82 2.10 2.83
-  fast: RESULT: no difference in vbe |  | disk image after the run: the same (sha256 482c032f53c3a479) | host time: ref 0.5 s, cand 0.4 s;
-  off: RESULT: no difference in vbe |  | disk image after the run: the same (sha256 482c032f53c3a479) | host time: ref 0.5 s, cand 0.5 s;
-== t386mon: wall 29 s, load 1.89 2.09 2.80
-  fast: RESULT: no difference in t386mon | cand: [harness] END t=533.031 s insns=674307567 | disk image after the run: the same (sha256 35c2db9b72859c03) | host time: ref 12.0 s, cand 10.0 s;
+== b1: wall 19 s, load 8.28 3.18 1.15
+  fast: RESULT: no difference in b1 | cand: [harness] END t=331.032 s insns=588301033 | disk image after the run: the same (sha256 248cdd0473f55199) | host time: ref 7.9 s, cand 6.0 s;
+  off: RESULT: no difference in b1 | cand: [harness] END t=331.032 s insns=588301033 | disk image after the run: the same (sha256 248cdd0473f55199) | host time: ref 8.2 s, cand 8.1 s;
+== restart: wall 77 s, load 14.18 6.20 2.37
+  fast: RESULT: no difference in restart | cand: [harness] END t=1411.032 s insns=1304341904 | disk image after the run: the same (sha256 0991749feee656d8) | host time: ref 30.4 s, cand 25.9 s;
+  off: RESULT: no difference in restart | cand: [harness] END t=1411.032 s insns=1304341904 | disk image after the run: the same (sha256 0991749feee656d8) | host time: ref 42.8 s, cand 42.2 s;
+== msdos: wall 66 s, load 7.80 5.90 2.53
+  fast: RESULT: no difference in msdos | cand: [harness] END t=1411.032 s insns=1337723352 | disk image after the run: the same (sha256 36979e52115af450) | host time: ref 30.6 s, cand 25.8 s;
+  off: RESULT: no difference in msdos | cand: [harness] END t=1411.032 s insns=1337723352 | disk image after the run: the same (sha256 36979e52115af450) | host time: ref 30.9 s, cand 30.0 s;
+== bench: wall 1 s, load 7.80 5.90 2.53
+  fast: RESULT: no difference in bench |  | disk image after the run: the same (sha256 72fe423a80f365fb) | host time: ref 0.5 s, cand 0.3 s;
+  off: RESULT: no difference in bench |  | disk image after the run: the same (sha256 72fe423a80f365fb) | host time: ref 0.4 s, cand 0.4 s;
+== vbe: wall 2 s, load 7.80 5.90 2.53
+  fast: RESULT: no difference in vbe |  | disk image after the run: the same (sha256 482c032f53c3a479) | host time: ref 0.9 s, cand 0.6 s;
+  off: RESULT: no difference in vbe |  | disk image after the run: the same (sha256 482c032f53c3a479) | host time: ref 0.6 s, cand 0.5 s;
+== t386mon: wall 34 s, load 7.85 6.19 2.76
+  fast: RESULT: no difference in t386mon | cand: [harness] END t=533.031 s insns=674307567 | disk image after the run: the same (sha256 35c2db9b72859c03) | host time: ref 16.1 s, cand 13.8 s;
   T386MON, cand: # summary: fill 344.11, scroll 352.08, text 7.35, text-aside 7.40, text-nopointer 7.38, sprite 57.88, full-copy 23.48, full-picture 0.45, frame
-  off: RESULT: no difference in t386mon | cand: [harness] END t=533.031 s insns=674307567 | disk image after the run: the same (sha256 35c2db9b72859c03) | host time: ref 12.1 s, cand 12.0 s;
+  off: RESULT: no difference in t386mon | cand: [harness] END t=533.031 s insns=674307567 | disk image after the run: the same (sha256 35c2db9b72859c03) | host time: ref 13.0 s, cand 12.8 s;
   T386MON, cand: # summary: fill 344.11, scroll 352.08, text 7.35, text-aside 7.40, text-nopointer 7.38, sprite 57.88, full-copy 23.48, full-picture 0.45, frame
-== t386mon800: wall 31 s, load 1.87 2.06 2.77
-  fast: RESULT: no difference in t386mon800 | cand: [harness] END t=480.000 s insns=792272554 | disk image after the run: the same (sha256 b3df8b6bb0474edd) | host time: ref 13.2 s, cand 8.7 s;
+== t386mon800: wall 33 s, load 6.58 6.06 2.84
+  fast: RESULT: no difference in t386mon800 | cand: [harness] END t=480.000 s insns=792272554 | disk image after the run: the same (sha256 b3df8b6bb0474edd) | host time: ref 14.1 s, cand 9.4 s;
   T386MON, cand: # summary: fill 490.40, scroll 328.07, text 3.51, text-aside 3.80, text-nopointer 3.78, sprite 73.41, full-copy 361.76, full-picture 1.13, fram
-  off: RESULT: no difference in t386mon800 | cand: [harness] END t=480.000 s insns=792272554 | disk image after the run: the same (sha256 b3df8b6bb0474edd) | host time: ref 13.3 s, cand 11.5 s;
+  off: RESULT: no difference in t386mon800 | cand: [harness] END t=480.000 s insns=792272554 | disk image after the run: the same (sha256 b3df8b6bb0474edd) | host time: ref 13.9 s, cand 12.1 s;
   T386MON, cand: # summary: fill 490.40, scroll 328.07, text 3.51, text-aside 3.80, text-nopointer 3.78, sprite 73.41, full-copy 361.76, full-picture 1.13, fram
 image copies left: 0
 

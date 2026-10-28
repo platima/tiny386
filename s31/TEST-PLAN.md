@@ -1712,6 +1712,9 @@ not (no room in PSRAM, the ini not on the card, the timer): a photo of it, pleas
   sound once a minute: note it; it is the guest waiting for the card.
 * **Anything that looks different from v5.0** with `profile = 1`: take `profile = 1` out and try
   again; if it goes away, that is the profiler's, and worth a photo.
+* **A `PROFILE.NEW` on the card** (since the reviews of v5.1, `PROFILE.md` 4): a write was cut
+  short, by a power cut, say; the `PROFILE.TXT` beside it is the last whole one. Send both. A red
+  `Profile: ... could not be written` line keeps the last `PROFILE.TXT` too.
 
 ### 19e. What to send back
 
@@ -1772,8 +1775,11 @@ bytes (about 114 KiB) less than v5.0's 241,444 [verified: the build's size repor
 `BUILD-NOTES.md` 34.8]. Your v5.0 console said 240 KiB free at the start and 208 KiB after `PC
 built.` [reported], so v5.1 should say about 126 KiB and about 94 KiB
 [inferred: the same allocations as v5.0, less what the code took]. The rule v5.1 was built to: at
-least 64 KiB free at the least, at any time. If any figure here is under 64 KiB, tell me:
-there are two ways back, in order (`BUILD-NOTES.md` 34.11).
+least 64 KiB free at the least, at any time. The rule is on the free figures and the least-free
+one (and the UART line's least, below), not on the largest blocks: those are expected lower,
+about 92 KiB at the start and about 60 KiB after `PC built.` [inferred: the RAM study's estimate],
+and that is fine. If a free or least-free figure is under 64 KiB, tell me: there are two ways
+back, in order, each one line in the board header (`BUILD-NOTES.md` 34.11).
 
 **One UART log** with `uart_log = 1` under `[esp]`: start Windows, run T386MON's tests once (20c),
 wait 20 s, and save the UART's text. Its line every 10 s now ends with `; internal RAM least free
@@ -1853,11 +1859,12 @@ interpreter is back in internal RAM [inferred].
   package folder, `set "TINY386_BIN=%CD%\previous-v5.0\images\korvo1-dualboot\tiny386.bin"`, then
   `flash-dualboot.bat COM10 app` (FLASH.txt 3); its lines should say `App version: v5.0`. Close
   that window afterwards, so that the next write is v5.1's app again (18f).
-* **Internal RAM under 64 KiB** in any figure of 20b, or a yellow line about memory, or a crash
-  with a memory message: a photo. v5.1 then has two builds ready to try, in order: the profiler's
-  code in flash (about 2 KiB back), then tiny386's interpreter built for size (about 31 KiB back,
-  `fast_cpu = 0` about 6 per cent slower, the fast interpreter the same) [verified on the PC:
-  `BUILD-NOTES.md` 34.11].
+* **Internal RAM under 64 KiB** in a free or least-free figure of 20b (not the largest blocks,
+  which are expected lower), or a yellow line about memory, or a crash with a memory message: a
+  photo. v5.1 then has two builds ready to try, in order, each one line in the board header: the
+  profiler's code in flash (`PROFILE_IN_FLASH`, about 1.8 KiB back), then tiny386's interpreter
+  built for size (`I386_EXEC1_SMALL`, about 31 KiB back, `fast_cpu = 0` about 6 per cent slower,
+  the fast interpreter the same) [verified on the PC: `BUILD-NOTES.md` 34.11].
 * **A test slower than on v5.0**: photos of both tables (v5.0's log has them); that would say
   where internal RAM's or a work item's cost shows on the board.
 * **The `CPU:` line says `this build has no fast one`**: the app is not v5.1's (20a).
@@ -1898,7 +1905,10 @@ settles the RAM decision.
     neighbours give a clean picture too: a same-edge pair can pass a quick look and sparkle when
     warm or on another board [inferred: the DOS board review, round 2];
   * look on the UART for `LCD underrun` (7b): at 800x600 from PSRAM the bandwidth is tighter
-    than on the Korvo-1. If it appears, try `lcd_bounce_px = 8000` before anything else;
+    than on the Korvo-1. If it appears, try `lcd_bounce_px = 8000` before anything else. Since
+    v5.1 its two buffers (31 KiB of internal RAM, and 8000 is now the most) are more than the
+    app has spare: use it with an app built with `I386_EXEC1_SMALL` (`BUILD-NOTES.md` 34.8), and
+    if underruns stay with it, one with `CONFIG_GDMA_ISR_HANDLER_IN_IRAM=y` as well;
   * red and blue swapped on the colour card: `rb_swap = 1`, no rebuild;
   * no sound: unplug and plug in the HDMI cable once (that sets the MS7210's audio up again with
     the sound already running, which tells the two possible causes apart), then

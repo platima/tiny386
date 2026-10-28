@@ -44,8 +44,9 @@ Tags, on every claim:
   against v4.6's 1.5 to 1.7, the text test 5.01 pictures a second against 2.91 [reported]. The frame
   buffer's pages have entries in its TLB: an instruction reads the screen as it reads RAM, and a MOV
   or STOS stores there and sets the drawing's marks itself (section 8) [verified: code, tests]. v5.1
-  should be about 1.15 to 1.2 times v5.0 again on Windows' own work (T386MON's text tests 5.8 to 6.0
-  pictures a second against v5.0's 5.01), more in fill, scroll and the copies as far as PSRAM allows
+  should be about 1.15 to 1.2 times v5.0 again on Windows' own work (T386MON's text tests 5.8 to 6.3
+  pictures a second against v5.0's 5.01 to 5.27; text itself 5.8 to 6.0), more in fill, scroll and
+  the copies as far as PSRAM allows
   [inferred: `BUILD-NOTES.md` 34.7]; [unknown] until Plat's board runs it.
 * **Where it runs.** On the Korvo-1 and the DOS board the fast interpreter's loop (121 KB), its TLB
   and the tiny386 helpers it calls most are in internal RAM. In v5.0 tiny386's `cpu_exec1()` (132
@@ -53,7 +54,7 @@ Tags, on every claim:
   tests at 16 colours, ran from flash; since v5.1 it is in internal RAM again
   (`I386_FAST_EXEC1_IRAM` in both board headers), with ESP-IDF code that need not be there moved
   to flash to make room. Internal RAM left after code and static data: 124,303 bytes on the
-  Korvo-1 in v5.1 (v5.0 241,444, v4.6 251,846) and 126,475 on the DOS board [verified: the
+  Korvo-1 in v5.1 (v5.0 241,444, v4.6 251,846) and 126,467 on the DOS board [verified: the
   size reports, `BUILD-NOTES.md` 34.8]; what ESP-IDF finds free at run time, at its least, is
   [unknown] until the board's new least-free line (section 5).
 * **The switch.** `[esp] fast_cpu = 0` in the ini runs tiny386's own interpreter alone: the same
@@ -131,8 +132,9 @@ after every step]. There is no known place where they differ.
   CPU, at any step boundary: a lockstep tester can run one machine each way.
 * `I386_FAST_EXEC1_IRAM` (compile time, in the board header) keeps `cpu_exec1()` in internal RAM
   as well; both board headers define it since v5.1 (section 5). `I386_EXEC1_SMALL` (off)
-  compiles `cpu_exec1()` for size, 32,000 bytes back, for a board short of internal RAM; the
-  profiler's `PROFILE_IN_FLASH` (off) puts its code in flash, about 2 KB back.
+  compiles `cpu_exec1()` for size, 32,042 bytes back, for a board short of internal RAM; the
+  profiler's `PROFILE_IN_FLASH` (off) puts its sample path in flash, 1,878 bytes back. Both are a
+  commented line in each board header (`PROFILE_IN_FLASH`'s since the reviews of v5.1).
 
 
 ## 5. Where it runs on the S31
@@ -150,12 +152,14 @@ size report, for a board that never has less than 64 KiB free.
 | `cpu_exec1()` | 131,456, internal RAM | 132,126, flash | 122,104, internal RAM |
 | internal RAM (DIRAM) used by code and static data | 251,898 | 262,300 | 379,441 |
 | left for ESP-IDF | 251,846 | 241,444 | 124,303 |
-| image | 937,884 | 1,062,004 | 1,065,593 |
+| image | 937,884 | 1,062,004 | 1,066,329 |
 
-The DOS board leaves 126,475 bytes (v5.0 239,202). `fast_exec()` calls nothing in flash
-now; `i386.c`'s functions still there are cold: the string and page-crossing byte paths, the BCD
-and segment-limit helpers, task switches, the debug printer, `cpui386_*()` and the profiler's
-`cpui386_prof_fields()`, called once [verified: `checks\placement-v5.1.txt`]. With `fast_cpu = 0`
+The DOS board leaves 126,467 bytes (v5.0 239,202). `fast_exec()` calls nothing in flash
+now; `i386.c`'s functions still there are cold or run once a step: the string and page-crossing
+byte paths, the BCD and segment-limit helpers, task switches, the debug printer, the profiler's
+`cpui386_prof_fields()` (called once), and `cpui386_*()`, of which `cpui386_step()` runs once a
+step (at most 512 guest instructions on the boards), as in v5.0 and v4.6, rare against the
+instructions but not cold [verified: `checks\placement-v5.1.txt`]. With `fast_cpu = 0`
 tiny386 runs from internal RAM again, as in v4.6, so the flash misses of the model below are gone
 [inferred]. What the board has free at its least is the console's new `Internal RAM least free
 since start` figure and the UART's stacks line (`TEST-PLAN.md` 20b).
@@ -301,6 +305,21 @@ and 239,202 on the DOS board, with `fast_exec()` at 120,198 bytes and `cpu_exec1
   build (seeds 1001 to 1500, 135.5 M instructions, 1,306,991 step ends, 14.2 M fast TLB entries
   checked with the board header, 0.41 M of them the frame buffer's), no difference and no
   invariant broken [verified, 2026-10-28].
+* **v5.1, after its three reviews** (`BUILD-NOTES.md` 34.15; `run.sh` 24 and 24b, 2026-10-29):
+  the work items' checks' own modes are in the test, which the CPU review found the gate needed:
+  modes p to s (WI-3's check: the group opcodes with every prefix, DIV and IDIV with #DE, segment
+  loads, at levels 0, 1 and 3 and in 16-bit protected mode) and mode t (WI-1's check: level 3
+  jumping into a page tiny386 holds as supervisor, code pages whose PTEs change without INVLPG,
+  RAM's last page run twice in a row, EIP wrapping at 4 GiB in a page and IP at 64 KiB in
+  virtual-8086 mode, accesses across 4 GiB), and in mode l stores through a null ES, FS or GS into
+  a frame buffer page that has a write tag. 31 scenarios a seed; six more planted faults, each
+  caught (the null test after the frame buffer's tag in `FPTR_IO_W()` and `FPTR_ST()`, the code
+  window and the inline refill in level 0's table, DIV without #DE's return address, the inline
+  refill caching RAM's last page). A guest shutdown ends its scenario, judged like a step, not the
+  run; the fetch cache's `xaddr` starts at 0 in both machines. Section 24b compiles the test with
+  the board's own compiler and options and runs it as RV32 code under qemu: 1,240 scenarios,
+  no difference. Seeds 41 to 340: 9,300 scenarios in each build, 108.2 M guest instructions, no
+  difference [verified].
 
 
 ## 7. Host instructions a guest instruction (qemu)
@@ -420,8 +439,10 @@ v5.1 (`TEST-PLAN.md` 20; v5.0's was 18):
 
 Scratch of this work: WSL `~/org2/v50/fast` (not in any repository).
 
-* `bash tests/host/run.sh` (72 tests in v5.0, 106 in v5.1, run in a git clone so that
-  `tests/host/lfb` finds v4.6; `FCSEEDS=` sets the lockstep test's seeds, 40 by default).
+* `bash tests/host/run.sh` (72 tests in v5.0, 106 in v5.1 as merged and 116 after its
+  reviews, run in a git clone so that `tests/host/lfb` finds v4.6; `FCSEEDS=` sets the lockstep
+  test's seeds, 40 by default; with `ESP_GCC` and `RV32_GCC` given and `qemu-riscv32-static` on
+  the path, section 24b runs the test as the board's compiler makes it, `FCSEEDS_RV=` seeds).
 * `bash tests/lockstep/lockstep.sh REF CAND WORKLOAD OUT` (`tests/lockstep/README.md`).
 * The Windows runs: the PC repro's harness (`~/org2/pcm/canary/harness`) built from this tree
   (`build.sh TREE esp OUT rv`, and with `EXTRA_CFLAGS=-DI386_FAST_DEFAULT=0` for the fast
@@ -474,7 +495,8 @@ stand-in, `PROFILE.md` 8]:
 * `fast_exec()`'s share of core 1, and each handler's (`op_8b`, `ALU6(op_38, ...) CMP`, `slow`,
   ...) by the source line each sample's PC is at, so a handler's waits on PSRAM count where they
   are;
-* how much of core 1 is in flash (`cpu_exec1()` since v5.0, section 5) and in internal RAM, with
+* how much of core 1 is in flash (`cpu_exec1()` was there in v5.0; in v5.1 it is in internal RAM
+  again, and what is left in flash is section 5's) and in internal RAM, with
   the cache counters' lines fetched from flash and PSRAM each second and per 1,000 guest
   instructions;
 * the instructions handed to `cpu_exec1()`, by their bytes and mode, weighted by the time they took
@@ -1181,7 +1203,10 @@ Left out: none (WI-4, optional, met its gate: a refill 136.9 host instructions, 
 
 * `tests/host/run.sh`: 106 passed, 0 failed, every planted fault of every item caught.
   `test_fast_cpu` on seeds 41 to 340, every mode (0 to j, k, l, m, n, o, x): 7,800 scenarios in
-  each build (the Korvo-1 header, and plain), 88.8 M guest instructions each, 0 failed.
+  each build (the Korvo-1 header, and plain), 88.8 M guest instructions each, 0 failed. After
+  the three reviews (`BUILD-NOTES.md` 34.15), on 0c05825: 116 passed, 0 failed, the six new
+  faults caught; with modes p to t, 9,300 scenarios in each build on seeds 41 to 340, 0 failed;
+  the gate and the Windows runs as below, again.
 * The lockstep tester against v4.6, its seven workloads with the fast interpreter on and off: no
   difference in any of the 14, each on v4.6's count and disk (`tests/lockstep/README.md` 11).
 * The three Windows runs on v4.6's counts with the fast interpreter on, off, and with the
@@ -1206,11 +1231,12 @@ dearer (`BUILD-NOTES.md` 34.7 has the table).
 
 **Sizes** [verified: the release's builds]: `fast_exec()` 120,768 bytes (v5.0 120,198),
 `cpu_exec1()` 122,104 in internal RAM (v5.0 132,126 in flash); internal RAM left for ESP-IDF
-124,303 bytes on the Korvo-1 and 126,475 on the DOS board (v5.0 241,444 and 239,202;
+124,303 bytes on the Korvo-1 and 126,467 on the DOS board (v5.0 241,444 and 239,202;
 v5.1's rule at least 110,000). `fast_exec()` calls nothing in flash.
 
-**On the board** [inferred: `BUILD-NOTES.md` 34.7]: the text tests 5.8 to 6.0 pictures a second
-(v5.0 5.01 to 5.27, v4.6 2.91 to 3.11), sprite 115 to 120 (97.2), full picture 1.77 to 1.83 (1.55),
+**On the board** [inferred: `BUILD-NOTES.md` 34.7]: the text tests 5.8 to 6.3 pictures a second
+(text itself 5.8 to 6.0; v5.0 5.01 to 5.27, v4.6 2.91 to 3.11), sprite 115 to 120 (97.2), full
+picture 1.77 to 1.83 (1.55),
 scroll 169 to 190 (145.8), full copy 52 to 61 (47.2) and fill 243 to 307 (185.1), the last three
 likelier at or below their low end, since they wait on PSRAM. [unknown] until Plat's board runs
 `TEST-PLAN.md` 20.

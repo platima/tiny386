@@ -1,5 +1,5 @@
 esptool v5.4.0
-Image size: 1065760 bytes
+Image size: 1066496 bytes
 
 ESP32-S31 Image Header
 ======================
@@ -22,23 +22,23 @@ Segments Information
 ====================
 Segment   Length   Load addr   File offs  Memory types
 -------  -------  ----------  ----------  ------------
-      0  0x3cfac  0x40080020  0x00000018  DROM, IROM
-      1  0x03044  0x2f000000  0x0003cfcc  DRAM, BYTE_ACCESSIBLE, IRAM
-      2  0x71ddc  0x40000020  0x00040018  DROM, IROM
-      3  0x4e5b4  0x2f003044  0x000b1dfc  DRAM, BYTE_ACCESSIBLE, IRAM
-      4  0x03f3c  0x2f051600  0x001003b8  DRAM, BYTE_ACCESSIBLE, IRAM
+      0  0x3d04c  0x40080020  0x00000018  DROM, IROM
+      1  0x02fa4  0x2f000000  0x0003d06c  DRAM, BYTE_ACCESSIBLE, IRAM
+      2  0x7201c  0x40000020  0x00040018  DROM, IROM
+      3  0x4e654  0x2f002fa4  0x000b203c  DRAM, BYTE_ACCESSIBLE, IRAM
+      4  0x03f3c  0x2f051600  0x00100698  DRAM, BYTE_ACCESSIBLE, IRAM
 
 ESP32-S31 Image Footer
 ======================
-Checksum: 0x3d (valid)
-Validation hash: f1246a236edb72348862d733094bc5473a89763379e5b8b9036d37590c2f9ba8 (valid)
+Checksum: 0xad (valid)
+Validation hash: bf72562fe148aa5ff37208e2924f4b70be7928e3fc705b14373cfdd3434490bc (valid)
 
 Application Information
 =======================
 Project name: tiny386
 App version: v5.1
 Compile time:  
-ELF file SHA256: 1e128f97de0fb95ecb767c98c8fce764b9b6b2cb6b90f2949bd93b3f67c4ed19
+ELF file SHA256: f1a629e5f6fa93a79b1eadce340ea900dcc87a6ab041e362a5b6483a7cc54952
 ESP-IDF: v6.1-dev-8142-g188e3e55bb
 Minimal eFuse block revision: 0.0
 Maximal eFuse block revision: 0.99

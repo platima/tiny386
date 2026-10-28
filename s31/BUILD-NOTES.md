@@ -7053,9 +7053,9 @@ Tags: [verified] seen or measured here, by the method named; [inferred] reasoned
   its 14 comparisons (seven workloads, Plat's 800x480 setup with T386MON among them, the fast
   interpreter on and off), each ending on v4.6's instruction count and disk (34.4). The three
   Windows runs end on v4.6's counts with the fast interpreter on, off, and with the profiler's
-  stand-in sampling all through (34.6). 106 host tests pass, every planted fault of every
-  work item caught; `test_fast_cpu` on seeds 41 to 340, 7,800 scenarios in each build, no
-  difference (34.5).
+  stand-in sampling all through (34.6). 116 host tests pass, every planted fault of every
+  work item and of the reviews caught; `test_fast_cpu` on seeds 41 to 340, 9,300 scenarios in
+  each build, no difference (34.5).
 * **Three things the merge had to put right** (34.2) [verified]: WI-4's lean refill, built from
   v5.0's code, lacked the two tests WI-1 and WI-2 had added to `fast_lpgno()`, and git merged it
   without a conflict: the merged tree differed from tiny386 in 32 of 80 scenarios of the test's
@@ -7070,18 +7070,24 @@ Tags: [verified] seen or measured here, by the method named; [inferred] reasoned
   micro-benchmark's 165 forms 33.1 fewer on average, 163 cheaper and one 1.0 dearer, every work
   item's own targets met; with `fast_cpu = 0` 4.4 fewer and none dearer.
 * **On the board** [inferred: each saved host instruction at 1.07 cycles, up to each test's own
-  cycles a host instruction on Plat's v5.0 board]: the text tests 5.8 to 6.0 pictures a second (v5.0
-  5.01 to 5.27, v4.6 2.91 to 3.11), sprite 115 to 120 (97.2), full picture 1.77 to 1.83 (1.55),
+  cycles a host instruction on Plat's v5.0 board]: the text tests 5.8 to 6.3 pictures a second
+  (text itself 5.8 to 6.0; v5.0 5.01 to 5.27, v4.6 2.91 to 3.11), sprite 115 to 120 (97.2), full
+  picture 1.77 to 1.83 (1.55),
   scroll 169 to 190 (145.8), full copy 52 to 61 (47.2) and fill 243 to 307 (185.1), the last three
   likelier at or below their low end, since they wait on PSRAM. How fast is [unknown] until Plat
   runs `TEST-PLAN.md` 20.
 * **Internal RAM** (34.8) [verified: the size reports]: 124,303 bytes left for ESP-IDF on the
-  Korvo-1 and 126,475 on the DOS board (v5.0 241,444 and 239,202; the rule at least 110,000),
+  Korvo-1 and 126,467 on the DOS board (v5.0 241,444 and 239,202; the rule at least 110,000),
   so neither fallback was needed. The board should show about 126 KiB free at the
   start and 94 KiB after `PC built.` [inferred]; the console's new least-free figure
   and the UART's stacks line will say.
 * **The release** (34.9, 34.10): `build.sh` run twice from nothing gives the same bytes; every
   bootloader, table and `flash_args` is v5.0's; the package is staged in `~/org2/v51/pkg`.
+* **Three reviews** of the merged tree (34.15), 2026-10-29: the CPU's correctness (ready; test gaps
+  only), the board, internal RAM, the package and the docs (one major finding: the DOS board's
+  bounce buffers no longer fitted), and the profiler (its report refused every board file). Every
+  finding was checked against the code; four commits take them in, and every check of this
+  section was made again on 0c05825, whose code is the release's.
 
 ### 34.1 The commits [verified: `git log 0d37002..v51`]
 
@@ -7100,10 +7106,17 @@ Tags: [verified] seen or measured here, by the method named; [inferred] reasoned
 | 038c759 | the merge | `esp/main`, `s31/card`: the `fast_cpu = 0` line and the four inis on internal RAM; `;profile = 0` in the inis (34.2) |
 | 38b0fcb | the merge | `s31/build.sh`: its first comment on v5.1 (the release's `build.sh`) |
 | 00329d0 | the merge | `tests/lockstep/README.md` 11: v5.1 against v4.6 |
-| (the next commit) | the merge | `s31/`: this section, `FAST-CPU.md` (1, 4, 5, 9, 13.5), `TEST-PLAN.md` 20, `FLASH.txt`, `FIRMWARE.md`, `README.md`, and the checks |
+| 0e62e39 | the merge | `s31/`: this section, `FAST-CPU.md` (1, 4, 5, 9, 13.5), `TEST-PLAN.md` 20, `FLASH.txt`, `FIRMWARE.md`, `README.md`, and the checks |
+| 895e521 | the reviews (34.15) | `test_fast_cpu.c`: modes p to s and t, the null selector case in mode l, a guest shutdown ends its scenario, the fetch cache's `xaddr` zeroed; `run.sh` 24: six more planted faults, and 24b, the test by the board's compiler under qemu (optional) |
+| 118df5a | the reviews | `i386_fast.h`: three comments |
+| 3aaa242 | the reviews | the profiler: the whole ELF hash, `PROFILE.NEW` renamed when whole, a run word, the next alarm from the count, internal RAM from `_iram_start`; `profile_report.py` takes 8 to 64 digits, reads a cut file; `run.sh` 25: three more tests |
+| 0c05825 | the reviews | the DOS board's bounce buffers held to 8000 pixels; `PROFILE_IN_FLASH` commented in both board headers; the sdkconfigs' comments |
+| (the next commit) | the reviews | `s31/`: 34.15 and this section brought up to date, `FAST-CPU.md`, `PROFILE.md`, `TEST-PLAN.md`, `README.md`, and the checks made again |
 
 `git diff --stat 0d37002 00329d0 -- . ':!s31'`: 38 files changed, 6,351 lines added, 430 taken out;
-`i386_fast.h` 2,300 lines (v5.0 2,013), `i386.c` 6,350. No binary, nothing of Windows'.
+`i386_fast.h` 2,300 lines (v5.0 2,013), `i386.c` 6,350. No binary, nothing of Windows'. With the
+reviews' commits (`git diff --stat 0d37002 0c05825 -- . ':!s31'`): 40 files changed, 7,191 lines
+added, 446 taken out.
 
 ### 34.2 How it was put together [verified: git, and the runs named]
 
@@ -7191,20 +7204,24 @@ Tags: [verified] seen or measured here, by the method named; [inferred] reasoned
 ### 34.4 The release gate: lockstep against v4.6 [verified: `checks\lockstep-v5.1.txt`]
 
 v4.6's reference build (`~/org2/v50/lock/builds/ref`: `s31-v4.6` with the tester's hook) against
-the merged tree (`git archive` of 038c759; `i386.c`, `i386.h` and `i386_fast.h` the same bytes
-as at 2ddbe01 and at every later commit), built by the tree's `tests/lockstep/build.sh` as the
-boards build it, with the fast interpreter on and with `-DI386_FAST_DEFAULT=0`; `T386MON_EXE` 1.2;
-one comparison at a time; pass 1 of each:
+the merged tree, built by the tree's `tests/lockstep/build.sh` as the boards build it, with the
+fast interpreter on and with `-DI386_FAST_DEFAULT=0`; `T386MON_EXE` 1.2; one comparison at a time;
+pass 1 of each. First on the merged tree (`git archive` of 038c759; `i386.c`, `i386.h` and
+`i386_fast.h` the same bytes as at 2ddbe01 and at every later commit until the reviews), then
+again after the reviews (34.15) on `git archive` of 0c05825, the release's code (`i386_fast.h`'s
+comments changed; `test_fast_cpu.c` and the profiler, which the harness does not build, changed).
+Both gave the same results, records, interrupts and disks; the table is the second run's
+(`~/org2/v51/resolve/gate`), its host seconds on a machine shared with other work:
 
 | workload | guest instructions | records | interrupts | disk image after (sha256) | host s, v4.6 / v5.1 on | v4.6 / v5.1 off | result, on / off |
 |-|-|-|-|-|-|-|-|
-| b1 | 588,301,033 | 590 | 51,878 | `248cdd0473f55199` | 7.6 / 5.7 | 7.6 / 7.4 | no difference / no difference |
-| restart | 1,304,341,904 | 1,306 | 238,269 | `0991749feee656d8` | 28.4 / 24.0 | 28.5 / 28.1 | no difference / no difference |
-| msdos | 1,337,723,352 | 1,339 | 238,758 | `36979e52115af450` | 28.6 / 24.0 | 28.5 / 28.1 | no difference / no difference |
-| bench | 31,345,925 | 33 | 111 | `72fe423a80f365fb` | 0.3 / 0.2 | 0.3 / 0.3 | no difference / no difference |
-| vbe | 55,090,157 | 57 | 505 | `482c032f53c3a479` | 0.5 / 0.4 | 0.5 / 0.5 | no difference / no difference |
-| t386mon | 674,307,567 | 676 | 64,677 | `35c2db9b72859c03` | 12.0 / 10.0 | 12.1 / 12.0 | no difference / no difference |
-| t386mon800 | 792,272,554 | 794 | 148,032 | `b3df8b6bb0474edd` | 13.2 / 8.7 | 13.3 / 11.5 | no difference / no difference |
+| b1 | 588,301,033 | 590 | 51,878 | `248cdd0473f55199` | 7.9 / 6.0 | 8.2 / 8.1 | no difference / no difference |
+| restart | 1,304,341,904 | 1,306 | 238,269 | `0991749feee656d8` | 30.4 / 25.9 | 42.8 / 42.2 | no difference / no difference |
+| msdos | 1,337,723,352 | 1,339 | 238,758 | `36979e52115af450` | 30.6 / 25.8 | 30.9 / 30.0 | no difference / no difference |
+| bench | 31,345,925 | 33 | 111 | `72fe423a80f365fb` | 0.5 / 0.3 | 0.4 / 0.4 | no difference / no difference |
+| vbe | 55,090,157 | 57 | 505 | `482c032f53c3a479` | 0.9 / 0.6 | 0.6 / 0.5 | no difference / no difference |
+| t386mon | 674,307,567 | 676 | 64,677 | `35c2db9b72859c03` | 16.1 / 13.8 | 13.0 / 12.8 | no difference / no difference |
+| t386mon800 | 792,272,554 | 794 | 148,032 | `b3df8b6bb0474edd` | 14.1 / 9.4 | 13.9 / 12.1 | no difference / no difference |
 
 In each, both sides end on the same instruction, every record agrees (the CPU with its segment
 caches and the hash of its state after every step, RAM by MiB with the page tables' accessed and
@@ -7238,6 +7255,21 @@ a second by the guest's clock in the harness. The report's `ref` line names v4.6
   17.0 M fast TLB entries checked (1.05 M of the frame buffer), 90,000 descriptor reads against
   v5.0's; plain (`I386_ALIGNED_ONLY`, the FPU) 7,800 scenarios, 1,745,199 steps; **0 failed in
   each** (92 s).
+* **After the reviews** (34.15), on 0c05825 in my clone of the branch (WSL
+  `~/org2/v51/resolve/repo`, git, so that the comparisons with v4.6 run), with the board's
+  compilers given for section 24b: **116 passed, 0 failed** (1,671 s;
+  `checks\host-tests-v5.1.log`). New since the merge: section 24's six faults of the CPU review,
+  each caught in 40 seeds of the 31 default modes (1,240 scenarios; those that differ): `lfbwnull`
+  3, `stnull` 20, `fwcpl` 8, `st4cpl` 7, `divip`
+  160, `st4end` 8; every earlier fault still caught (now in 1,240 scenarios);
+  section 24b, the test as the board's compiler makes it, run as RV32 code under qemu on 40 seeds:
+  1,240 scenarios, 0 failed; section 25's three (9 digits of the ELF taken, of another ELF and
+  7 refused; the demo file cut at every 7th byte read with the warning and never a traceback;
+  `--since` across two runs refused). `test_fast_cpu` on seeds 41 to 340, every default mode (31
+  a seed now): **9,300 scenarios in each build, 0 failed** (the Korvo-1 header 2,756,684 steps,
+  108.2 M guest instructions, 28.3 M fast TLB entries checked; plain 2,752,613 steps), 2
+  scenarios in each ending in a guest shutdown the same in both machines (44 s, 6 processes a
+  build).
 
 ### 34.6 Windows 95 on the PC [verified: `checks\windows-v5.1.txt`]
 
@@ -7257,6 +7289,13 @@ All nine reach the desktop (the taskbar at 211 s of guest time), the disk checks
 each column (6,620, 56,175 and 56,592 sectors changed), and every picture the runs took (11, 149
 and 150) is v5.0's own runs' picture byte for byte, in all nine. The stand-in wrote 3, 10 and 9
 `PROFILE.TXT` files in its three runs. The pictures were then deleted (they show Windows' screen).
+
+After the reviews (34.15) the nine runs were made again the same way on `git archive` of 0c05825
+(the stand-in now writes a run word; `~/org2/v51/resolve/reg`): all nine end on v4.6's three
+counts, reach the desktop at 211 s, have the same disk checks, and every picture (11, 149 and
+150 in each column) is v5.0's own runs' byte for byte; the pictures were deleted again. The
+stand-in wrote 3, 10 and 10 files, and `profile_report.py` reads its last restart file with its
+own ELF (all 64 digits matched, `run 3820aa3d`).
 
 ### 34.7 Host instructions, and what they may mean on the board [verified: `checks\counts-v5.1.txt`, `checks\mb-v5.1.txt`]
 
@@ -7366,20 +7405,30 @@ may add about 1 per cent where the hand-overs were in flash [inferred: the v5.0 
 model], and more with `fast_cpu = 0`, which should be back at about v4.6's speed [inferred]. BENCH
 (no v5.0 board figure was kept) and Windows' boot: about 1.19 and 1.23 times v5.0 by the counts.
 
+After the reviews (34.15) these counts stand: `i386.c`'s object in the in-tree builds of 0c05825
+is the integration's (38b0fcb) instruction for instruction and relocation for relocation, on both
+boards (`objdump -d -r`; only the file's name differs) [verified]; `i386_fast.h` changed in
+comments only.
+
 ### 34.8 Builds, warnings, sizes, internal RAM [verified: `checks\size-*-v5.1.txt`, `checks\placement-v5.1.txt`]
 
-The three builds of `build.sh` (34.9) and the same three in the tree (`git archive` of 38b0fcb, the
-same code, `make prepare`, `s31/dependencies.lock`): all exit 0; the Korvo-1 builds have the one old
-warning (`i2s_task` unused), the DOS board build none: no new warning.
+The three builds of `build.sh` (34.9) and the same three in the tree (`git archive` of the same
+code, `make prepare`, `s31/dependencies.lock`): all exit 0; the Korvo-1 builds have the one old
+warning (`i2s_task` unused), the DOS board build none: no new warning. First the merge's (38b0fcb's
+code), then again after the reviews (0c05825's, `~/org2/v51/resolve/bt`, and `build.sh`'s, 34.9);
+the table is the second:
 
 | Build | DIRAM used | v5.0 | left for ESP-IDF | v5.0 | flash | v5.0 | total image | v5.0 |
 |-|-|-|-|-|-|-|-|-|
-| Korvo-1 (dual boot and standalone) | 379,441 | 262,300 | 124,303 | 241,444 | 716,168 | 828,792 | 1,065,593 | 1,062,004 |
-| DOS board | 377,269 | 264,542 | 126,475 | 239,202 | 738,324 | 846,094 | 1,086,729 | 1,082,688 |
+| Korvo-1 (dual boot and standalone) | 379,441 | 262,300 | 124,303 | 241,444 | 716,904 | 828,792 | 1,066,329 | 1,062,004 |
+| DOS board | 377,277 | 264,542 | 126,467 | 239,202 | 739,060 | 846,094 | 1,087,465 | 1,082,688 |
 
-Against v5.0: 117,141 bytes more of internal RAM used on the Korvo-1 (112,727 on the DOS board),
-112,624 bytes less of flash (107,770), and the image 3,589 bytes larger (4,041). LP SRAM as v5.0's
-(8,444 and 8,244). The parts, from the items' own builds [verified: their size reports]: `v51-ram`
+The reviews' changes left the Korvo-1's internal RAM the same to the byte and took 8 bytes of the
+DOS board's (126,475 left at the merge); both images grew by 736 bytes of flash (the profiler's
+file handling and the ELF's whole hash). Against v5.0: 117,141 bytes more of internal RAM used on
+the Korvo-1 (112,735 on the DOS board), 111,888 bytes less of flash (107,034), and the image 4,325
+bytes larger (4,777). LP SRAM as v5.0's (8,444 and 8,244). At the merge, the parts, from the items'
+own builds [verified: their size reports]: `v51-ram`
 -114,681 bytes left (`cpu_exec1()` in, ESP-IDF code and the console's buffer out), the sampler
 -3,016, WI-1 -360, WI-2 -754, WI-3 +1,848 (with `cpu_exec1()` in internal RAM: the lazy flags' store
 and the frameless `read_desc()` make it 1.7 KB smaller), WI-4 -284: -117,247 together. The merged
@@ -7387,10 +7436,36 @@ build uses 106 bytes less than that sum: the merge's two code commits, and the i
 together.
 
 * **Against the rule** (at least 110,000 bytes left for ESP-IDF, the judge's figure for a board
-  least-free of at least 64 KiB): 124,303 and 126,475, 14,303 and 16,475 bytes over it. Neither
-  fallback was switched on (`PROFILE_IN_FLASH`, then `I386_EXEC1_SMALL`). Against the plan's
-  estimate (about 122,300 to 124,150 on the Korvo-1): 124,303 and 126,475, at the top of its range
-  and above it, since WI-3 made `cpu_exec1()` 1.7 KB smaller.
+  least-free of at least 64 KiB): 124,303 and 126,467, 14,303 and 16,467 bytes over it. Neither
+  fallback was switched on (`PROFILE_IN_FLASH`, then `I386_EXEC1_SMALL`; since the reviews each is
+  a commented line in both board headers). Against the plan's estimate (about 122,300 to 124,150
+  on the Korvo-1): 124,303 and 126,467, at the top of its range and above it, since WI-3 made
+  `cpu_exec1()` 1.7 KB smaller.
+* **The fallbacks, built on the release's code** [verified]: `PROFILE_IN_FLASH` gives 1,878 bytes
+  back on each board (126,181 and 128,345 left; `~/org2/v51/resolve/var-pif-b`), the same as the
+  board review measured on 0e62e39; `I386_EXEC1_SMALL` gave 32,042 more on each there, and the
+  lockstep gate found no difference from v4.6 with it (the board review, its 3.4).
+* **The DOS board's bounce buffers** (the board review's M1). `lcd_bounce_px`, the first cure
+  `TEST-PLAN.md` gives for an LCD underrun or tearing on the DOS board, takes two buffers of
+  `lcd_bounce_px` x 2 bytes from internal RAM when the panel starts, before the sound, the tasks and
+  the PC take theirs; v5.0 allowed up to 16,000 (62.5 KiB). With v5.1's 112,735 bytes more of
+  internal RAM used, 8000 (31.25 KiB) would take the DOS board to about 53 to 58 KiB at its least,
+  under the 64 KiB rule, and 16,000 to about 22 to 27 KiB, too little for what is allocated after
+  it [inferred: the RAM study's DOS board estimate, 84 to 89 KiB at the least, less the buffers].
+  Since 0c05825 the clamp is 8000 (`dosboard.h`), and `dosboard.ini`, `board_dosboard.h` and
+  `TEST-PLAN.md`'s DOS board steps say that bounce buffers want an app built with
+  `I386_EXEC1_SMALL`. The default stays 0, and the DOS board has not been built yet, so the
+  Korvo-1 is not touched by any of it. With bounce buffers GDMA's interrupt dispatcher, which
+  `v51-ram` moved to flash, runs for every buffer the panel sends (the refill itself stays in
+  internal RAM); if underruns stay with them, `CONFIG_GDMA_ISR_HANDLER_IN_IRAM=y` is the next thing
+  to try (`sdkconfig.dosboard` says so).
+* **The profiler's interrupt** (the board review's m1, the sampler review's R5) [verified: `nm`
+  of the release's ELF]: `v51-ram`'s sdkconfig lines put the GPTimer driver's code in flash, so the
+  interrupt's entry and the next alarm's call run from flash on core 0 with `profile = 1`; only the
+  sample itself is in internal RAM. Safe (the interrupt is not marked for internal RAM, so it waits
+  while the cache is off), and the sdkconfigs and `PROFILE.md` 5 and 7 now say so. The handler
+  was not put back in internal RAM: it would cost every board a few hundred bytes for a feature
+  that is off by default.
 * **Where it went** [verified: `nm` of `tiny386.elf`, its disassembly]: `cpu_exec1()` 122,104
   bytes, now in internal RAM; `fast_exec()` 120,768 (v5.0 120,198); `fast_miss()` 716,
   `fast_window()` 432, `fast_miss2()` 68, `fill_aligned()` 108, `fast_tlb_flush()` 92,
@@ -7407,24 +7482,29 @@ together.
 ### 34.9 `build.sh`, the images, the dual-boot set [verified: `checks\reproducible-v5.1.txt`]
 
 `build.sh` from `s31/` (its first comment moved on to v5.1, 38b0fcb), with the release's two patches
-made from the branch with `s31/` left out: `git diff 4ce2e06 00329d0 -- . ':(exclude)s31'` (227
-files, 53,019 lines added, 916 taken out; 2,150,215 bytes) and the same against 9ed786b (234 files,
-53,649 lines added, 931 taken out; 2,178,322 bytes); neither holds a binary. Their diffstats are
-`git diff --stat=200`, which gives v5.0's package diffstats byte for byte from `s31-v5.0`; v5.0's
-patches made the same way from 0d37002 are the package's byte for byte. `dependencies.lock` is
-v5.0's, and the patched tree's `esp/dependencies.lock` is the same bytes. Two runs from nothing,
-side by side, each in a clean environment, into WSL `~/org2/v51/int/rel/build-a` and `build-b`: 302
-s each, both exit 0, the 23 files of the two image trees the same, and the size, bit-bang and
-`esptool image-info` outputs the same but for the folder's name. A preview of both runs from 38b0fcb
-(the same code, before the lockstep README's section 11 was in the patch) gave the same 23 files.
-Built in the tree (34.8) with the same build folder names, all three `tiny386.bin` and `tiny386.elf`
-are `build.sh`'s byte for byte, and the standalone and DOS board's bootloader and table too.
+made from the branch with `s31/` left out. At the merge they were made from 00329d0 (`git diff
+4ce2e06 00329d0 -- . ':(exclude)s31'`: 227 files, 53,019 lines added, 916 taken out; 2,150,215
+bytes; against 9ed786b 234 files, 53,649 added, 931 out; 2,178,322 bytes), and the two runs from
+nothing took 300 and 301 s (`~/org2/v51/int/rel`), with the same 23 files in both. After the
+reviews (34.15) everything here was made again from 0c05825, the release's code (the docs commit
+after it changes `s31/` only, so the patches are the same bytes from either): `git diff 4ce2e06
+0c05825 -- . ':(exclude)s31'` 227 files, 53,843 lines added, 916 taken out (2,192,195 bytes), and
+against 9ed786b 234 files, 54,473 lines added, 931 taken out (2,220,302 bytes); neither holds a
+binary. Their diffstats are `git diff --stat=200`, which gives v5.0's package diffstats byte for
+byte from `s31-v5.0`; v5.0's patches made the same way from 0d37002 are the package's byte for
+byte. `dependencies.lock` is v5.0's, and the patched tree's `esp/dependencies.lock` is the same
+bytes. Two runs from nothing, side by side, each in a clean environment, into WSL
+`~/org2/v51/resolve/rel/build-a` and `build-b`: 356 s each (the machine shared with other runs),
+both exit 0, the 23 files of the two image trees the same, and the size, bit-bang and `esptool
+image-info` outputs the same but for the folder's name. Built in the tree (34.8) with the same
+build folder names, all three `tiny386.bin` and `tiny386.elf` are `build.sh`'s byte for byte, and
+the standalone and DOS board's bootloader and table too.
 
 | Image set | `tiny386.bin` | of its partition | SHA-256 | v5.0's |
 |-|-|-|-|-|
-| `korvo1-dualboot` (and `-tiny386-default`) | 1,065,760 bytes | 1,966,080 (54.2 per cent; 900,320 free) | `d5c2eebdf7eaa604` | 1,062,176 |
-| `korvo1-standalone` | 1,065,760 bytes | 1,835,008 (58.1 per cent) | `f87049153eb9d151` | 1,062,176 |
-| `dosboard` | 1,086,896 bytes | 1,835,008 (59.2 per cent) | `99e9f28b78123af3` | 1,082,864 |
+| `korvo1-dualboot` (and `-tiny386-default`) | 1,066,496 bytes | 1,966,080 (54.2 per cent; 899,584 free) | `ff8a7a5e7da4d93f` | 1,062,176 |
+| `korvo1-standalone` | 1,066,496 bytes | 1,835,008 (58.1 per cent) | `298c434f46aedd5b` | 1,062,176 |
+| `dosboard` | 1,087,632 bytes | 1,835,008 (59.3 per cent) | `078f402bcf694adf` | 1,082,864 |
 
 Every bootloader, table and `flash_args` of the four sets is v5.0's byte for byte (and so v4.6's and
 earlier): the dual-boot bootloader `b57469cd`, the Linux-default table `d41cba3c`, the
@@ -7434,37 +7514,43 @@ bootloader valid, App version `v5.1`. `build.sh`'s check of the status LED's bit
 all three ELFs in both runs. The flash scripts, `flash-paths.cmd` and every card file but the four
 inis' comments are v5.0's, and what the scripts read from an image is `esptool image-info`'s App
 version, so the flash simulations were not run again (as for v5.0, 33.9): `flash-dualboot.bat
-COM10 app` writes 1,065,760 bytes at 0xE20000, inside tiny386's partition.
+COM10 app` writes 1,066,496 bytes at 0xE20000, inside tiny386's partition.
 
 ### 34.10 The package, staged [verified: `checks\sums-v5.1.txt`]
 
 `D:\Repos\esp32-s31-linux-release\tiny386-idf\v3`, where Plat flashes from, was only read. v5.1's
 package is staged in WSL `~/org2/v51/pkg`, laid out as that folder and holding only what v5.1
-changes or adds (99 files), for the release step to copy over it.
+changes or adds (102 files since the reviews; 99 at the merge), for the release step to copy
+over it. It was staged again after the reviews (34.15), from 0c05825's release builds and this
+commit's docs, by the integration's script with two more files kept and replaced.
 
-* `previous-v5.0\`: v5.0 as released, copied from the package (38 files): its four image sets,
-  both patches and their diffstats, `build.sh`, `README.md`, `BUILD-NOTES.md`, `TEST-PLAN.md`,
-  `FLASH.txt`, `FAST-CPU.md` and its `SHA256SUMS`, and v5.0's four card inis, which v5.1 changes.
-  Every one of the 25 files the stage replaces is there, as the package has it byte for byte.
-* The v5.1 images (`~/org2/v51/int/rel/build-a`'s), both patches and their diffstats, and
+* `previous-v5.0\`: v5.0 as released, copied from the package (39 files): its four image
+  sets, both patches and their diffstats, `build.sh`, `README.md`, `BUILD-NOTES.md`,
+  `TEST-PLAN.md`, `FLASH.txt`, `FAST-CPU.md` and its `SHA256SUMS`, v5.0's four card inis, which
+  v5.1 changes, and since the reviews the DOS board's `card-dosboard\tiny386\dosboard.ini`, whose
+  comment on `lcd_bounce_px` v5.1 changes. Every one of the 26 files the stage replaces is
+  there, as the package has it byte for byte.
+* The v5.1 images (`~/org2/v51/resolve/rel/build-a`'s), both patches and their diffstats, and
   `build.sh`, in their places.
 * From the branch: `BUILD-NOTES.md`, `TEST-PLAN.md`, `FLASH.txt`, `FAST-CPU.md`, and, new,
   `PROFILE.md` and `profile\profile_report.py`, as the sampler's notes ask (each image set's
-  `tiny386.elf` was already in the package, for the report); the four card inis; and in `checks\`
-  v5.1's checks. The package's own `README.md`, edited to match `FIRMWARE.md`.
+  `tiny386.elf` was already in the package, for the report); the four card inis and the DOS
+  board's `dosboard.ini`; and in `checks\` v5.1's checks. The package's own `README.md`, edited to
+  match `FIRMWARE.md`.
 * No flash script, `newcard\` file, `THIRD_PARTY.md`, `STATUS-LED.md`, `LINE-OUT.md`,
   `REVIEW-*.md`, `dualboot\` file or `dependencies.lock` changed, so none is staged.
 
 The top `SHA256SUMS` is v5.0's 187 files in v5.0's order, then `PROFILE.md` and
 `profile/profile_report.py`: 189 lines, every one OK when each file is read from the stage if it
-is there and from the package folder if not, as the folder will be. Against v5.0's list 21 files'
-hashes changed: the docs (`README.md`, `BUILD-NOTES.md`, `TEST-PLAN.md`, `FLASH.txt`,
-`FAST-CPU.md`), `build.sh`, the two patches and their diffstats, the four card inis, and the seven
-`tiny386.bin` and `tiny386.elf`. Every bootloader, table, `flash_args`, script, review and the
-other card files are v5.0's. Each image folder's own list checks. Every earlier list,
-`previous-v5.0\` to `previous-v3.2\`, finds every one of its files with its hash, in itself, in
-`v3\` as it will be, or in a later `previous-*` folder: not one missing (`previous-v5.0\`'s 187: 33
-inside it, 154 from `v3\`). As before, the list leaves out `dualboot\` and most of `checks\`.
+is there and from the package folder if not, as the folder will be. Against v5.0's list
+22 files' hashes changed: the docs (`README.md`, `BUILD-NOTES.md`, `TEST-PLAN.md`,
+`FLASH.txt`, `FAST-CPU.md`), `build.sh`, the two patches and their diffstats, the four card inis
+and `dosboard.ini`, and the seven `tiny386.bin` and `tiny386.elf`. Every bootloader, table,
+`flash_args`, script, review and the other card files are v5.0's. Each image folder's own list
+checks. Every earlier list, `previous-v5.0\` to `previous-v3.2\`, finds every one of its files
+with its hash, in itself, in `v3\` as it will be, or in a later `previous-*` folder: not one
+missing (`previous-v5.0\`'s 187: 34 inside it, 153 from `v3\`). As before, the list
+leaves out `dualboot\` and most of `checks\`.
 
 ### 34.11 Left for later, and why
 
@@ -7500,28 +7586,40 @@ taken in v5.1:
   interpreter); a new thing to prove, after v5.1.
 * **Flash auto-suspend** (38 KB of ESP-IDF code out of internal RAM): needs chip and bootloader
   support [unknown], and is not needed with v5.1's margin.
-* **The RAM fallbacks**, ready if the board's least free is under 64 KiB: `PROFILE_IN_FLASH`
-  (about 2 KB back), then `I386_EXEC1_SMALL` (32,000 bytes back; `fast_cpu = 0` about 6 per cent
-  more host instructions, the fast interpreter the same) [verified on the PC by `v51-ram`].
+* **The RAM fallbacks**, ready if the board's least free is under 64 KiB, each one commented line
+  in both board headers since the reviews: `PROFILE_IN_FLASH` (1,878 bytes back), then
+  `I386_EXEC1_SMALL` (32,042 bytes back; `fast_cpu = 0` about 6 per cent more host instructions,
+  the fast interpreter the same) [verified on the PC by `v51-ram` and the board review; 34.8].
+* **`PROFILE_IN_FLASH` as the default** (the sampler review's R5): with the GPTimer's own handler
+  in flash since `v51-ram`, the profiler's 1.9 KB of internal RAM buys less than it was sized for.
+  The RAM decision kept it there; the board's first profile file (`sampler_cost`) and least-free
+  figure decide whether to flip it.
+* **tiny386's empty fetch cache on a 32-bit host** (the CPU review's N2, tiny386's own):
+  `ifetch.laddr = -1` means "no page", but with a 32-bit `unsigned long` it matches the top linear page
+  (FFFFF000h up), so code there right after a TLB flush is fetched through a stale or never-set
+  `xaddr`. Both interpreters do the same, so v5.1 shows the guest what v4.6 does, and Windows runs
+  no code up there [inferred: read]. A fix (a marker no page can match, or a flag) changes what the
+  guest sees in that corner: for a correctness release and upstream, not v5.1.
 
 The findings of the work items' checks that their branches did not take (all minor or notes; by
 the checks' own reading none makes the guest differ, crash or lose drawing):
 
-* WI-1's check: M1, no test of a code fetch into a page tiny386's held entry refuses (the
-  refusal test covers it [inferred]; the check's own mode m found none on the branch); M2, ST4's
-  end-of-RAM rule untested; N1 and N2 (an EIP wrap at 4 GiB inside a page reaches `refill:` on a
-  64-bit host only; `FAST-CPU.md` 13.1 now says so), N3 (`tlb_size` dividing FFFFFh not asserted;
-  256 and 512 do not), N4 (`codelfb` needs a 64-bit host), N5 (tiny386's own: the second page of
-  an access across 4 GiB is not wrapped, v4.6's too).
+* WI-1's check: M1 and M2 (no test of a code fetch into a page tiny386's held entry refuses; ST4's
+  end-of-RAM rule untested) are taken since the reviews (34.15: its mode m is mode t, with the
+  faults `fwcpl`, `st4cpl` and `st4end`); N1 and N2 (an EIP wrap at 4 GiB inside a page reaches
+  `refill:` on a 64-bit host only; `FAST-CPU.md` 13.1 now says so), N3 (`tlb_size` dividing FFFFFh
+  not asserted; 256 and 512 do not), N4 (`codelfb` needs a 64-bit host), N5 (tiny386's own: the
+  second page of an access across 4 GiB is not wrapped, v4.6's too).
 * WI-2's second check: N1, speed only: the code page test refuses a refill over the code page's
   entry for every instruction of that page, so a multi-page REP MOVS whose pages pass the code
   page's TLB index right after a CALL or interrupt into it hands its rest to tiny386 (about 10
   times dearer for that rest; [inferred] rare: about 2k/256 for a k-page copy); N2, BENCH's +0.181
-  is +0.190 from the raw counts; N3, mode x can triple fault beyond the seeds `run.sh` runs.
-* WI-3's check: C1, DIV and IDIV of bytes and from memory, #DE and the group opcodes' prefixes not
-  in the generator (its own modes p to s caught five faults there and pass on the branch); C3,
-  no planted fault for the count fix (mode o catches it); C4, `pfx` carries a pointer between a
-  group handler and its operation; C7, `parity_tab` is in flash (v5.0's placement).
+  is +0.190 from the raw counts; N3, mode x can triple fault beyond the seeds `run.sh` runs (since
+  the reviews a guest shutdown ends its scenario, not the run, 34.15).
+* WI-3's check: C1 (DIV and IDIV of bytes and from memory, #DE and the group opcodes' prefixes not
+  in the generator) is taken since the reviews: its modes p to s are in the test, with the fault
+  `divip`; C3, no planted fault for the count fix (mode o catches it); C4, `pfx` carries a pointer
+  between a group handler and its operation; C7, `parity_tab` is in flash (v5.0's placement).
 * WI-4's check: F1, mode n's probes do not reach `pt_addr_lean()`'s two edges (B0000h to BFFFFh,
   RAM's last dword; the code is right at both, by its widened probes); F2, `pt_addr_lean()` is a
   second copy of `pt_addr_ok()`'s test.
@@ -7546,6 +7644,11 @@ the checks' own reading none makes the guest differ, crash or lose drawing):
 * **The release**: the tag `s31-v5.1` goes on this branch's last commit, and the staged package
   goes into the package folder, `previous-v5.0\` keeping v5.0's files (34.10). A way back to
   v5.0's app is in `TEST-PLAN.md` 20f.
+* **One question** (the board review's n4): `tests/lockstep/qemumini-pointer.py`, which the
+  lockstep tester uses to make your pointer change on its copy of the image, holds the six bytes of
+  VMDisp9x's `QEMUMINI.DRV` it looks for and the two files' SHA-256, as `qemumini-pointer.ps1` has
+  since v4.2. If six bytes and two hashes of the (MIT) driver are not fine in the tree, say so and
+  both scripts can take them from a file beside the image instead.
 
 ### 34.14 Where things are
 
@@ -7553,8 +7656,12 @@ On the branch (`s31\`): this section; `TEST-PLAN.md` 20; `FAST-CPU.md` 13.5; `PR
 `checks\` (text only) `host-tests-v5.1.log`, `lockstep-v5.1.txt`, `windows-v5.1.txt`,
 `counts-v5.1.txt`, `mb-v5.1.txt`, `merge-v5.1.txt`, `placement-v5.1.txt`, `reproducible-v5.1.txt`,
 `build-sh-v5.1-run1.txt`, `build-sh-v5.1-run2.txt`, `image-info-*-v5.1.txt` (six), `size-*-v5.1.txt`
-(three), `sums-v5.1.txt`, and the sampler's `profile-v5.1.txt`. In `tests/`: `lockstep/` (README 11,
-the gate), `host/cpu/test_fast_cpu.c`, `host/lfb/`, `host/profile/`.
+(three), `sums-v5.1.txt`, the sampler's `profile-v5.1.txt` (its own branch's tests, before the
+reviews changed the profiler), and since the reviews `reviews-v5.1.txt` (34.15's own runs). The
+host tests, the lockstep gate, the Windows runs, the placement, the sizes, the image information,
+the two `build.sh` runs, the reproducibility and the sums are the runs made again after the
+reviews, on 0c05825's code. In `tests/`: `lockstep/` (README 11, the gate),
+`host/cpu/test_fast_cpu.c`, `host/lfb/`, `host/profile/`.
 
 WSL `~/org2/v51/` (all made for v5.1, throw-away): `profile/`, `ram/`, `ideas/`, `lock800/`,
 `sampler/`, `design-hotspots/`, `design-structure/` (part 1); `loop/`, `lfbrep/`, `fix-lfbrep/`,
@@ -7562,6 +7669,58 @@ WSL `~/org2/v51/` (all made for v5.1, throw-away): `profile/`, `ram/`, `ideas/`,
 `repo/` with the branch `v51`; `trees/` the exported trees; `host-*` the host tests; `seeds/`;
 `gate/` the lockstep runs; `reg/` the Windows runs, their pictures deleted; `qh/` and `qruns/` the
 counted runs; `prof/` the W1 traces; `mb/`; `esp-2ddbe01/` and `bt/` the in-tree builds; `rel/` the
-release's stage and its two builds) and `pkg/` (the package, staged). No copy of a Windows image is
+release's stage and its two builds) and `pkg/` (the package, staged); after the reviews `rev-*/`
+(the three reviews' clones and runs) and `resolve/` (34.15: `repo/` the clone the reviews' commits
+were made in, then put on `int/repo`'s `v51`; `trees/final`; `host-0c05825*`, `seeds/`, `gate/`,
+`reg/`, `bt/`, `var-pif-b/`, `rel/`, `ph/` the profiler's harness). No copy of a Windows image is
 left. On Windows the session's scratch folder `v51\` holds the plan, every item's notes and checks,
-and `integrate.md`.
+`integrate.md`, the three reviews (`REVIEW-v51-*.md`) and `REVIEW-RESOLUTION-v51.md`.
+
+### 34.15 The three reviews of v5.1, and what was done (2026-10-29)
+
+Three reviews read the merged v5.1 at 0e62e39: the CPU's correctness (M1 to M3, N1 to N4; "ready",
+test gaps only), the board, internal RAM, the package and the docs (M1 major, m1 to m5, n1 to n5;
+"needs changes"), and the profiler (R1 to R9; "needs changes, but not to the images"). Each finding
+was checked against the code before anything was done. Four commits take them in, then this one;
+every check of this section was made again on 0c05825, the last of the four, whose code the
+release's patches carry. Rejected: none; two notes are left as they are, with the reason (CPU N2,
+board n4), and two choices went the other way from a review's first suggestion (board m1, sampler
+R5), with the reason.
+
+| finding | weight | what it found | what was done |
+|-|-|-|-|
+| CPU M1 | minor | stores through a null ES, FS or GS into a frame buffer page that has a write tag never tested: the null test moved after the tag test (`lfbwnull`, `stnull`) passed the gate | the review's case in mode l (895e521); both faults in `run.sh` 24, caught in 3 and 20 of 1,240 scenarios [verified] |
+| CPU M2 | minor | `fast_window()` and the inline refill looking in level 0's table (`fwcpl`, `st4cpl`) passed the gate (WI-1's check's M1) | WI-1's check's mode m, second version, as mode t (895e521); both faults caught, 8 and 7 [verified] |
+| CPU M3 | minor | #DE's return address in the group 3 tables (`divip`) and the inline refill's end-of-RAM test (`st4end`) untested (WI-3's check's C1, WI-1's check's M2) | WI-3's check's modes p to s, and mode t (895e521); `divip` caught in 160, `st4end` in 8 [verified] |
+| CPU N1 | note | `ifetch.xaddr` never set at the start: 41 false differences at step 0 under musl | zeroed in the test's `mach_new()` (895e521); and the board compiler's run is `run.sh` 24b, run when `ESP_GCC` and `RV32_GCC` are given: 1,240 scenarios, 0 failed [verified] |
+| CPU N2 | note | tiny386's empty fetch cache (`laddr` -1) matches the top linear page on a 32-bit host | not changed: both interpreters do it, so v5.1 shows the guest what v4.6 does, and a fix changes what the guest sees in that corner; on the later list (34.11) as tiny386's |
+| CPU N3 | note | a guest shutdown ends the whole `test_fast_cpu` run | a shutdown now ends its scenario (tiny386's `cpu_abort_note` to a `longjmp`), which passes only if both machines stop in the same step and agree (895e521): 10 of mode t's seeds 1 to 1,000 end so, seed 19 among `run.sh`'s 40, and 2 of seeds 41 to 340 [verified] |
+| CPU N4 | note | three stale comments in `i386_fast.h` | brought up to date (118df5a) |
+| board M1 | major | the DOS board's `lcd_bounce_px` (two buffers in internal RAM) no longer fits: 8000 under the 64 KiB rule, the clamp of 16,000 far under it | the clamp is 8000, and the ini, the board header and `TEST-PLAN.md`'s DOS board steps say that bounce buffers want an app built with `I386_EXEC1_SMALL` (0c05825; 34.8) |
+| board m1 | minor | the profiler's GPTimer handler and next alarm run from flash since `v51-ram`, against the sdkconfig's comment and `PROFILE.md` 5 | the comments and `PROFILE.md` 5 and 7 corrected (0c05825, this commit); the handler left in flash: putting it back costs every board a few hundred bytes for a feature that is off by default, and it is safe where it is (34.8) |
+| board m2 | minor | `PROFILE_IN_FLASH` had no switch in the tree | `//#define PROFILE_IN_FLASH` beside `I386_EXEC1_SMALL` in both board headers (0c05825); built: 1,878 bytes back on each board [verified] |
+| board m3 | minor | `TEST-PLAN.md` 20b's "any figure under 64 KiB" would trip on the largest blocks (about 60 KiB expected) | the rule is on the free and least-free figures; the largest blocks' expected figures given (this commit) |
+| board m4 | minor | "the text tests 5.8 to 6.0", but two of them are 6.08 to 6.30 | "5.8 to 6.3 (text itself 5.8 to 6.0)" in 34.0 and `FAST-CPU.md` 1 and 13.5 (this commit) |
+| board m5 | minor | two entries of `s31/README.md`'s layout on one line | the newline back (this commit) |
+| board n1 | note | with bounce buffers GDMA's dispatcher runs from flash for every buffer | in `sdkconfig.dosboard` (0c05825), 34.8 and `TEST-PLAN.md`: `CONFIG_GDMA_ISR_HANDLER_IN_IRAM=y` if underruns stay |
+| board n2 | note | 34.9 said 302 s each; the runs took 300 and 301 s | 34.9 gives the runs' own times (this commit) |
+| board n3 | note | `FAST-CPU.md` 12 and `PROFILE.md` 5 kept v5.0's or the sampler branch's words and figures | brought up to v5.1, the branch's figures labelled as its own (this commit) |
+| board n4 | note | `tests/lockstep/qemumini-pointer.py` holds six bytes of VMDisp9x's driver and two hashes | not changed: the same as `s31/qemumini-pointer/qemumini-pointer.ps1`, in the tree since v4.2; a byte pattern to find, under the driver's MIT licence. A question for Plat (34.13) |
+| board n5 | note | `FAST-CPU.md` 5 called the rest of `i386.c` in flash cold, but `cpui386_step()` runs every step | it says so (this commit) |
+| sampler R1 | minor | the board writes 9 hex digits of the ELF's SHA-256 (`esp_app_get_elf_sha256()`, `CONFIG_APP_RETRIEVE_LEN_ELF_SHA` 9) and the report compared 64: it refused every board file | both of the review's fixes: `profile.c` writes all 64 from the app's description (where esptool puts them), and the report takes 8 to 64 digits as a prefix and says how many it compared; `run.sh` 25 tries 9 digits of the right ELF (taken), of another (refused) and 7 (refused) (3aaa242) [verified] |
+| sampler R2 | minor | a failed open or a full card emptied or cut PROFILE.TXT; a PROFnn number used up by a failed file | `PROFILE.NEW`, renamed over PROFILE.TXT only when whole; a failed file removed and its numbers given back (3aaa242). The review's harness on the real `profile.c`: PROFILE.TXT kept, byte for byte, with PROF03.TXT unopenable, PROFILE.NEW unopenable and the card full after 3,000 bytes; no PROFILE.NEW left; the next key press writes PROF03.TXT [verified] |
+| sampler R3 | minor | the report died with a traceback on most files cut short | it reads to the last whole line that parses and warns (3aaa242): the harness's 91,952-byte file cut at 175 places gave 148 tracebacks with the merged script and none now, each read with the warning [verified] |
+| sampler R4 | note | the console lines read counts after the sampling resumed (4 ThreadSanitizer reports) | copied before (3aaa242): the race mode under ThreadSanitizer, 0 reports [verified] |
+| sampler R5 | note | the GPTimer's handler and `prof_alarm()`'s other calls run from flash; `PROFILE.md` 5 counted them in internal RAM | `PROFILE.md` 5 and 7 corrected (this commit). `PROFILE_IN_FLASH` as the default not taken: the RAM decision kept the sampler in internal RAM, and the board's first profile and least-free figure decide (34.11) |
+| sampler R6 | note | the next alarm counted from the alarm that fired: a late interrupt gives a burst of samples | counted from the timer's count (3aaa242) |
+| sampler R7 | note | core 1's interrupt entry and exit below `_iram_text_start` counted as "other" | the region starts at `_iram_start` (3aaa242) |
+| sampler R8 | note | PROFnn numbers restart each boot, and `--since` could subtract files of two boots | a run word in every file (`run`), and `--since` refuses two runs (3aaa242); `run.sh` 25 tries it [verified] |
+| sampler R9 | note | the S31 header contradicts itself about the PC record | nothing to change; `TEST-PLAN.md` 19d's photo if the firmware's warning shows |
+
+Checked again after the reviews, on 0c05825 [verified, 2026-10-29, WSL]: 116 host tests
+(34.5), `test_fast_cpu` on seeds 41 to 340 in both builds (34.5), the lockstep gate's 14
+comparisons (34.4), the nine Windows runs (34.6), `i386.c`'s object code against the integration's
+(34.7), the in-tree builds with their placement and sizes (34.8), two release builds from nothing,
+the same bytes (34.9), the package staged again (34.10). The reviews' own extra runs, made here
+again on the release's code, are in `checks\reviews-v5.1.txt`: the six faults, the new modes on
+more seeds, the profiler's harness, the cut files and the fallback's build.

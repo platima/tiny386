@@ -58,7 +58,8 @@ s31/
   TEST-PLAN.md            the steps on the board, and what to photograph
   FLASH.txt               flashing, and every way back to Linux
   BUILD-NOTES.md          how each release was built and checked
-  STATUS-LED.md           the status LED's colours and blinks  FAST-CPU.md             v5.0 and v5.1: the fast interpreter from tab5-pc, how it stays tiny386, its tests and counts
+  STATUS-LED.md           the status LED's colours and blinks
+  FAST-CPU.md             v5.0 and v5.1: the fast interpreter from tab5-pc, how it stays tiny386, its tests and counts
   PROFILE.md              v5.1: the profiler ([esp] profile = 1), PROFILE.TXT, and the report on the PC
   profile/                profile_report.py: PROFILE.TXT and tiny386.elf into a report
   THIRD_PARTY.md          code from other projects (tab5-pc's fast interpreter), with its MIT notice
