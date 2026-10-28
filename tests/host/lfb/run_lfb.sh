@@ -16,7 +16,13 @@
 #     pfill and pcopy too, the frame buffer through the page tables);
 #  4. (v5.1) the accessed-bit probes (guest_lfb.S's probe_ cases): this tree
 #     with the fast interpreter on and off, and v4.6's tree, must leave the
-#     same words (the first operand's page table entry above all).
+#     same words (the first operand's page table entry above all);
+#  5. (v5.1) faults planted in copies of i386.c or i386_fast.h, each of which
+#     the cases (against v4.6's output) or the probes must catch: the
+#     two-operand rule taken out of REP MOVS and MOVS's destination (N2), and
+#     out of CMPS; the last 16-bit store of a word fill dropped; the frame
+#     buffer's physical address a page off where a REP piece finds its
+#     write tag.
 #
 #   bash tests/host/lfb/run_lfb.sh [OUT]
 #
@@ -181,9 +187,10 @@ else
     echo "== the accessed-bit probes: the fast interpreter on, off, and v4.6"
     st=0
     for p in $PROBES; do
-        a=$("$OUT/new/test_lfb" "$OUT/guest_lfb.bin" "$OUT/guest_lfb.sym" probe $p 1) || st=1
-        b=$("$OUT/new/test_lfb" "$OUT/guest_lfb.bin" "$OUT/guest_lfb.sym" probe $p 0) || st=1
-        c=$("$OUT/old/test_lfb" "$OUT/guest_lfb.bin" "$OUT/guest_lfb.sym" probe $p) || st=1
+        a=$("$OUT/new/test_lfb" "$OUT/guest_lfb.bin" "$OUT/guest_lfb.sym" probe $p 1 2>> "$OUT/probe.err") || st=1
+        b=$("$OUT/new/test_lfb" "$OUT/guest_lfb.bin" "$OUT/guest_lfb.sym" probe $p 0 2>> "$OUT/probe.err") || st=1
+        c=$("$OUT/old/test_lfb" "$OUT/guest_lfb.bin" "$OUT/guest_lfb.sym" probe $p 2>> "$OUT/probe.err") || st=1
+        echo "$c" > "$OUT/probe-old-$p.txt"
         if [ "$a" = "$b" ] && [ "$a" = "$c" ]; then
             echo "    | $a"
         else
@@ -192,6 +199,54 @@ else
         fi
     done
     result $st "the accessed-bit probes (the two-operand rule): the fast interpreter on and off and v4.6 leave the same"
+fi
+
+# ==== 5. planted faults (v5.1) ====
+# mutant NAME FILE SED: FILE (i386.c or i386_fast.h) with the sed script in
+# a copy of the tree's sources, i386.o built from it and linked with the
+# rest of build 1; caught when the cases' output is not v4.6's or a probe's
+# words are not v4.6's (with the fast interpreter on)
+mutant() {
+    local name=$1 file=$2 expr=$3 d="$OUT/mut-$1" p st=1
+    rm -rf "$d"
+    mkdir -p "$d/src/esp/main" "$d/obj"
+    cp "$TREE"/*.c "$TREE"/*.h "$TREE"/*.def "$TREE"/*.inc "$d/src/" 2>/dev/null
+    cp "$TREE/esp/main/board_korvo1.h" "$d/src/esp/main/"
+    sed "$expr" "$TREE/$file" > "$d/src/$file"
+    if cmp -s "$TREE/$file" "$d/src/$file"; then
+        echo "    | ($name: the sed found nothing)"
+        return 1
+    fi
+    gcc -O3 -g -w -fno-jump-tables -fno-tree-switch-conversion -include "$d/src/esp/main/board_korvo1.h" \
+        -I"$HERE/shim" -I"$TREE/tests/host/shim" -I"$d/src" -DI386_ENABLE_FPU \
+        -c "$d/src/i386.c" -o "$d/obj/i386.o" || return 1
+    gcc -o "$d/test_lfb" "$d/obj/i386.o" $(ls "$OUT"/new/*.o | grep -v '/i386\.o$') \
+        -Wl,--wrap=cpui386_new -lm -lpthread || return 1
+    "$d/test_lfb" "$OUT/guest_lfb.bin" "$OUT/guest_lfb.sym" > "$d/cases.log" 2> "$d/cases.err"
+    if ! cmp -s "$OUT/old.log" "$d/cases.log"; then
+        st=0
+        echo "    | ($name: the cases' output differs from v4.6's: $(diff "$OUT/old.log" "$d/cases.log" | grep -c '^>') lines)"
+    fi
+    for p in $PROBES; do
+        if [ "$("$d/test_lfb" "$OUT/guest_lfb.bin" "$OUT/guest_lfb.sym" probe $p 1 2>> "$d/probe.err")" != "$(cat "$OUT/probe-old-$p.txt")" ]; then
+            st=0
+            echo "    | ($name: probe $p differs)"
+        fi
+    done
+    return $st
+}
+if [ -z "$OLD" ]; then
+    echo "SKIP lfb planted faults: no v4.6 here"
+else
+    echo "== planted faults"
+    mutant n2 i386_fast.h 's/1, \&mpaddr, (H1)))) { \\$/1, \&mpaddr, (NULL)))) { \\/'
+    result $? "the lfb test catches a planted fault (n2: MOVS's destination refilled over its source's entry)"
+    mutant cmpsrule i386_fast.h 's/^\t\tFPTR2(d, SEG_ES, DI_, n, 0, s);$/\t\tFPTR(d, SEG_ES, DI_, n, 0);/'
+    result $? "the lfb test catches a planted fault (cmpsrule: the two-operand rule taken out of CMPS)"
+    mutant filltail i386.c 's/^\tif ((u8 \*) q < end)$/\tif (0)/'
+    result $? "the lfb test catches a planted fault (filltail: a word fill's last 16-bit store dropped)"
+    mutant mpaddr i386_fast.h 's/^\(.*\)(uintptr_t) cpu->cb.lfb_mem); \\$/\1(uintptr_t) cpu->cb.lfb_mem) + 0x1000; \\/'
+    result $? "the lfb test catches a planted fault (mpaddr: the frame buffer's address a page off on a REP piece's write tag)"
 fi
 
 echo "lfb: $pass passed, $fail failed"

@@ -863,6 +863,12 @@ fi
 # saves (st4fold), and, in i386.c, fast_lpgno() without its test of an
 # entry that refuses the access (lpgno, the v5.0 difference mode l found).
 # Of these five the 800 scenarios of modes 0 to j catch only jumplo, in 2.
+# v5.1 (WI-2): case j's REP STOSD and REP MOVSD into the frame buffer with
+# its dirty bits cleared between them, OUTs to its BAR between REP
+# instructions and level 3 against a supervisor page of it, and case m, the
+# two-operand rule by hand; and three more faults: no dirty bit where a REP
+# piece or MOVS finds the frame buffer's write tag (FPTR_IO_W()), the
+# two-operand rule taken out of MOVS's destination, and out of CMPS.
 echo
 FCSEEDS=${FCSEEDS:-40}
 fcbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_fast_cpu-name
@@ -893,7 +899,10 @@ for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN
          codelfb:'/^\t\t\tif ((uintptr_t) (h - (const u8 \*) cpu->phys_mem) >= (uintptr_t) cpu->phys_mem_size)$/{N;d}' \
          plnull:'s/^#define FAST_PL(sg, lin, size) ((((lin) + (size) - 1) >> 12) | (((nullsegs >> (sg)) & 1u) << 20))$/#define FAST_PL(sg, lin, size) (((lin) + (size) - 1) >> 12)/' \
          st4fold:'s/^\t*nofold_it = FAST_ITER(); nofold_laddr = cpu->ifetch.laddr; nofold_xaddr = cpu->ifetch.xaddr;.*$/\t\t\t\t(void) 0;/' \
-         lpgno:'s/^\tif (ent->lpgno == lpgno && ent->pte_lookup\[cpl > 0\]\[rwm > 1\])$/\tif (0)/'; do
+         lpgno:'s/^\tif (ent->lpgno == lpgno && ent->pte_lookup\[cpl > 0\]\[rwm > 1\])$/\tif (0)/' \
+         repdirty:'/} else if (_e->wtag == (_pg | FAST_TAG_LFB) && _in) {/,/goto LABEL;/s/\*_e->ppte |= 0x40;/(void) 0;/' \
+         n2:'s/1, \&mpaddr, (H1)))) { \\$/1, \&mpaddr, (NULL)))) { \\/' \
+         cmpsrule:'s/^\t\tFPTR2(d, SEG_ES, DI_, n, 0, s);$/\t\tFPTR(d, SEG_ES, DI_, n, 0);/'; do
     mname=${m%%:*}
     mfile=i386_fast.h       # (v5.1: lpgno's fault is in i386.c)
     [ "$mname" = lpgno ] && mfile=i386.c
