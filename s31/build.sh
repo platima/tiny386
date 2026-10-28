@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds tiny386 v5.0 (v3.9 merged with tiny386's master of 2026-10-22, and
+# Builds tiny386 v5.1 (v3.9 merged with tiny386's master of 2026-10-22, and
 # Windows at the screen's own size: VBE pictures drawn from the blocks of
 # video memory written; v4.1 takes in the two reviews of v4.0; v4.2 makes a
 # clear of the screen with no black between it and the picture after it,
@@ -10,13 +10,15 @@
 # makes double buffering's two frame buffers with the panel at power-on,
 # and keeps the guest's stores and DMA out of the devices' state; v5.0 puts
 # a fast interpreter, Yejun Yang's from tab5-pc, in front of tiny386's own
-# and lets the CPU store into the VBE frame buffer itself), bare
+# and lets the CPU store into the VBE frame buffer itself; v5.1 makes that
+# interpreter cheaper with the same guest, puts tiny386's own back in
+# internal RAM, and adds a profiler of core 1), bare
 # metal under ESP-IDF, for the ESP32-S31-Korvo-1
 # and for the DOS board, from tiny386's master as its author left it on
 # 2026-10-22 (4ce2e06) and tiny386-idf-v4.patch beside this script (on the
-# esp32-s31 branch: git diff 4ce2e06 s31-v5.0 -- . ':(exclude)s31').  Until
+# esp32-s31 branch: git diff 4ce2e06 s31-v5.1 -- . ':(exclude)s31').  Until
 # v3.9 the base was the release 9ed786b; tiny386-idf-v3.patch is still the
-# whole of it against 9ed786b (now giving the v5.0 tree), for comparing
+# whole of it against 9ed786b (now giving the v5.1 tree), for comparing
 # with the earlier patches, and is not used here.  Build only: this script
 # never flashes anything and never opens a serial port.
 #
