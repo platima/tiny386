@@ -426,6 +426,16 @@ _Static_assert(offsetof(struct CPUI386, cc.mask) == offsetof(struct CPUI386, cc.
    NEXT against 1.0 (the board's compiler). */
 static noinline int IRAM_ATTR_FAST_HELPER get_CF_cc(CPUI386 *cpu)
 {
+#if QW_CF2
+	/* the commonest first: -fno-jump-tables makes the switch a chain of compares */
+	unsigned op = cpu->cc.op;
+	if (op == CC_ADD)
+		return cpu->cc.dst < cpu->cc.src2;
+	if (op == CC_SUB)
+		return cpu->cc.src1 < cpu->cc.src2;
+	if (op >= CC_AND)
+		return 0;
+#endif
 	{
 		switch(cpu->cc.op) {
 		case CC_ADC:

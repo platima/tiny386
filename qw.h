@@ -9,6 +9,9 @@
 #ifndef QW_CF
 #define QW_CF 0         /* get_CF(): the mask's test in line, the switch out of line */
 #endif
+#ifndef QW_CF2
+#define QW_CF2 0        /* get_CF_cc(): ADD, SUB and the logical operations first */
+#endif
 #ifndef QW_INC
 #define QW_INC 0        /* INC and DEC: nothing done for CF unless the lazy flags hold it */
 #endif
