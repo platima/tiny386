@@ -1,3 +1,4 @@
+#include "qw.h"
 /*
  * SPDX-FileCopyrightText: 2010-2022 Espressif Systems (Shanghai) CO LTD
  *
@@ -539,7 +540,14 @@ static void run_pc(PC *pc)
 		}
 #endif
 		status_led_heartbeat();
+#if QW_CLK1
+		/* v5.2 (prototype): the time this step began, as the PIT read it,
+		   for the speed screen's deltas and the disk's 2 s of quiet */
+		extern uint32_t i8254_step_us;
+		uint32_t now = i8254_step_us;
+#else
 		uint32_t now = get_uticks();
+#endif
 		speed_run_step(pc, now);
 		unsigned w = disk_writes();
 		if (w != writes) {

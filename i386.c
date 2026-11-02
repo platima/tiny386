@@ -1,3 +1,4 @@
+#include "qw.h"
 #include "i386.h"
 #include "unaligned.h"
 #include <stdio.h>
@@ -417,6 +418,68 @@ _Static_assert((CF | PF | AF | ZF | SF | OF) <= 0xffff, "every lazy flag fits cc
 _Static_assert(offsetof(struct CPUI386, cc.mask) == offsetof(struct CPUI386, cc.op) + 2 &&
 	       offsetof(struct CPUI386, cc.op) % 4 == 0, "cc.op and cc.mask make one aligned word");
 
+#if QW_CF
+/* v5.2 (prototype): the mask's test in line at each use, the switch out of line.  It is what GCC's
+   partial inlining makes of get_CF() without a section attribute (get_CF.part.0); with IRAM_ATTR on
+   the whole function GCC does not split it, every INC and DEC is a call, and values
+   fast_exec() keeps in registers across its calls go to the stack: 4.1 stack operations in each
+   NEXT against 1.0 (the board's compiler). */
+static noinline int IRAM_ATTR_FAST_HELPER get_CF_cc(CPUI386 *cpu)
+{
+	{
+		switch(cpu->cc.op) {
+		case CC_ADC:
+			return cpu->cc.dst <= cpu->cc.src2;
+		case CC_ADD:
+			return cpu->cc.dst < cpu->cc.src2;
+		case CC_SBB:
+			return cpu->cc.src1 <= cpu->cc.src2;
+		case CC_SUB:
+			return cpu->cc.src1 < cpu->cc.src2;
+		case CC_NEG8: case CC_NEG16: case CC_NEG32:
+			return cpu->cc.dst != 0;
+		case CC_DEC8: case CC_DEC16: case CC_DEC32:
+		case CC_INC8: case CC_INC16: case CC_INC32:
+			assert(false); // should not happen
+		case CC_IMUL8:
+			return sext8(cpu->cc.dst) != cpu->cc.dst;
+		case CC_IMUL16:
+			return sext16(cpu->cc.dst) != cpu->cc.dst;
+		case CC_IMUL32:
+			return (((s32) cpu->cc.dst) >> 31) != cpu->cc.dst2;
+		case CC_MUL8:
+			return (cpu->cc.dst >> 8) != 0;
+		case CC_MUL16:
+			return (cpu->cc.dst >> 16) != 0;
+		case CC_MUL32:
+			return (cpu->cc.dst2) != 0;
+		case CC_SHL:
+		case CC_SHR:
+		case CC_SAR:
+			return cpu->cc.dst2 & 1;
+		case CC_SHLD:
+			return cpu->cc.dst2 >> 31;
+		case CC_SHRD:
+			return cpu->cc.dst2 & 1;
+		case CC_BSF:
+		case CC_BSR:
+			return 0;
+		case CC_AND:
+		case CC_OR:
+		case CC_XOR:
+			return 0;
+		}
+	}
+	assert(false);
+}
+
+static inline __attribute__((always_inline)) int get_CF(CPUI386 *cpu)
+{
+	if (cpu->cc.mask & CF)
+		return get_CF_cc(cpu);
+	return !!(cpu->flags & CF);
+}
+#else
 static int IRAM_ATTR_FAST_HELPER get_CF(CPUI386 *cpu)
 {
 	if (cpu->cc.mask & CF) {
@@ -467,6 +530,8 @@ static int IRAM_ATTR_FAST_HELPER get_CF(CPUI386 *cpu)
 	}
 	assert(false);
 }
+#define get_CF_cc get_CF
+#endif
 
 const static u8 parity_tab[256] = {
   1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
@@ -534,7 +599,11 @@ static int IRAM_ATTR_FAST_HELPER get_AF(CPUI386 *cpu)
 
 static int IRAM_ATTR get_ZF(CPUI386 *cpu)
 {
+#if QW_HINT
+	if (likely(cpu->cc.mask & ZF)) {
+#else
 	if (cpu->cc.mask & ZF) {
+#endif
 		return cpu->cc.dst == 0;
 	} else {
 		return !!(cpu->flags & ZF);

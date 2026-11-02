@@ -1,3 +1,4 @@
+#include "qw.h"
 /*
  * QEMU 8253/8254 interval timer emulation
  *
@@ -59,6 +60,10 @@ struct PITState {
 	PITChannelState channels[3];
 	void *pic;
 	void (*set_irq)(void *pic, int irq, int level);
+#if QW_PIT
+	uint32_t next_us;       /* i8254_update_irq(): nothing can happen before this time ... */
+	uint32_t next_valid;    /* ... if this is set; every write to the PIT clears it */
+#endif
 };
 
 uint32_t get_uticks();
@@ -131,6 +136,9 @@ static int pit_get_out1(PITChannelState *s, uint32_t current_time)
 
 static inline void pit_load_count(PITState *pit, PITChannelState *s, int val)
 {
+#if QW_PIT
+	pit->next_valid = 0;
+#endif
 	if (val == 0)
 		val = 0x10000;
 	s->reload_pending = 0;
@@ -153,6 +161,9 @@ void i8254_ioport_write(PITState *pit, uint32_t addr, uint32_t val)
 	int channel, access;
 	PITChannelState *s;
 
+#if QW_PIT
+	pit->next_valid = 0;
+#endif
 	addr &= 3;
 	if (addr == 3) {
 		channel = val >> 6;
@@ -275,6 +286,9 @@ static void pit_reset(void *opaque)
 	PITChannelState *s;
 	int i;
 
+#if QW_PIT
+	pit->next_valid = 0;
+#endif
 	for(i = 0;i < 3; i++) {
 		s = &pit->channels[i];
 		s->mode = 3;
@@ -302,10 +316,67 @@ int i8254_max_owed = 1;
    for a front end's diagnostics */
 uint32_t i8254_owed_max, i8254_dropped;
 
+#if QW_CLK1
+/* v5.2 (prototype): the clock as i8254_update_irq() read it this step: the run loop uses it in place
+   of a read of its own */
+uint32_t i8254_step_us;
+#endif
+
+#if QW_PIT
+/* v5.2 (prototype): i8254_update_irq() below tests d, the PIT's count since the load, once a step, and
+   a 64-bit division makes d.  What it tests only starts to hold at a time that can be worked out once:
+   d reaches x at the first T = uticks - count_load_time with T * PIT_FREQ >= x * 1000000, as d is
+   floor(T * PIT_FREQ / 1000000), and uticks never goes back.  So here, after the switch has run:
+   the time from which it has anything to do, at the cost of one division a tick and not one a step.
+   Until then it does nothing, as the switch would have done nothing.  Modes 2 and 3 fire at d above
+   last_irq_count + count, while their difference is under 2^31 as here it is (checked with d as it
+   stands now, and d only moves towards it); modes 0 and 4 at d >= count, once; every other state
+   never, until a write to the PIT, which clears next_valid. */
+static void pit_plan(PITState *pit, uint32_t uticks, uint32_t d)
+{
+	PITChannelState *s = pit->channels;
+	uint64_t x;
+	pit->next_valid = 1;
+	switch (pit_mode(s)) {
+	case 2:
+	case 3:
+		x = (uint32_t) (s->last_irq_count + s->count);
+		if ((uint32_t) (x - d) >= 0x80000000) {   /* due at once, or not as the test reads it */
+			pit->next_valid = 0;
+			return;
+		}
+		x++;
+		break;
+	case 0:
+	case 4:
+		if (s->reload_pending || s->last_irq_count != 0)
+			goto never;
+		if (d - s->count < 0x80000000) {
+			pit->next_valid = 0;
+			return;
+		}
+		x = s->count;
+		break;
+	default:
+	never:
+		pit->next_us = uticks + (1u << 30);   /* looked at again in 18 minutes */
+		return;
+	}
+	pit->next_us = s->count_load_time + (uint32_t) ((x * 1000000 + PIT_FREQ - 1) / PIT_FREQ);
+}
+#endif
+
 void i8254_update_irq(PITState *pit)
 {
 	uint32_t uticks = get_uticks();
 	PITChannelState *s = pit->channels;
+#if QW_CLK1
+	i8254_step_us = uticks;
+#endif
+#if QW_PIT
+	if (__builtin_expect(pit->next_valid && (int32_t) (uticks - pit->next_us) < 0, 1))
+		return;
+#endif
 	uint32_t d = ((uint64_t) (uticks - s->count_load_time)) * PIT_FREQ / 1000000;
 	switch(pit_mode(s)) {
 	case 2:
@@ -352,6 +423,9 @@ void i8254_update_irq(PITState *pit)
 		   (always high) never has: no interrupt */
 		break;
 	}
+#if QW_PIT
+	pit_plan(pit, uticks, ((uint64_t) (uticks - s->count_load_time)) * PIT_FREQ / 1000000);
+#endif
 }
 
 PITState *i8254_init(int irq, void *pic, void (*set_irq)(void *pic, int irq, int level))
@@ -384,6 +458,9 @@ void pit_set_gate(PITState *pit, int channel, int val)
 {
 	PITChannelState *s = &pit->channels[channel];
 
+#if QW_PIT
+	pit->next_valid = 0;
+#endif
 	switch(pit_mode(s)) {
 	default:
 	case 0:

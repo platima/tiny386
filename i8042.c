@@ -1,3 +1,4 @@
+#include "qw.h"
 /*
  * QEMU PC keyboard emulation
  *
@@ -1068,6 +1069,14 @@ static void mouse_forget(PS2MouseState *s)
 /* kbd_step(), on the emulator's thread: the reports into packets. */
 static void ps2_mouse_step(PS2MouseState *s)
 {
+#if QW_CLK1
+    /* v5.2 (prototype): nothing in the ring, nothing merged, nothing part-way: all that the rest
+       would do is move next_send_us up to the time, and a first packet goes at once with it left
+       behind too.  So no clock read while the mouse is still. */
+    if (!s->pending && s->ring_tail == __atomic_load_n(&s->ring_head, __ATOMIC_ACQUIRE) &&
+        !__atomic_load_n(&s->carry, __ATOMIC_ACQUIRE))
+        return;
+#endif
     uint32_t now = get_uticks();
 
     /* further ahead than any sample (10 a second at the slowest): a time

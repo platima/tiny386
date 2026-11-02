@@ -334,6 +334,52 @@ static noinline void IRAM_ATTR_FAST_EXEC fast_io_store(CPUI386 *cpu, uword paddr
 		store32(cpu, &a, v);
 }
 
+#if QW_SEG
+/* v5.2 (prototype): a protected-mode load of DS, ES, FS, GS or SS with a selector above null: what
+   set_seg() and read_desc() do when both words of the descriptor are inside the limit, in RAM, in
+   one page that tiny386's TLB holds with level 0 reads allowed (read_desc()'s own test), and the
+   descriptor faults nowhere (present; for a data segment, S set).  Nothing changes the
+   guest's TLB or page tables, nothing reads the instruction count, nothing can raise; false,
+   with nothing changed, leaves it all to set_seg(). */
+static noinline bool IRAM_ATTR_FAST_EXEC fast_load_seg(CPUI386 *cpu, int sg, unsigned sel)
+{
+	uword off = sel & 0xfff8;
+	uword base, limit;
+	if (sel & 4) {
+		base = cpu->seg[SEG_LDT].base;
+		limit = cpu->seg[SEG_LDT].limit;
+	} else {
+		base = cpu->gdt.base;
+		limit = cpu->gdt.limit;
+	}
+	uword la = base + off;
+	if (off + 7 > limit || (la & 0xfff) > 0x1000 - 8)
+		return false;
+	uword pa = la;
+	if (cpu->cr0 & CR0_PG) {
+		struct tlb_entry *ent = &(cpu->tlb.tab[(la >> 12) % tlb_size]);
+		if (ent->lpgno != la >> 12 || ent->pte_lookup[0][0])
+			return false;
+		pa = ent->xaddr ^ la;
+	}
+	if (in_iomem(pa) || pa > (uword) cpu->phys_mem_size - 8)
+		return false;
+	uword w1 = pload32(cpu, pa), w2 = pload32(cpu, pa + 4);
+	if (!(w2 & 0x8000) || (sg != SEG_SS && !(w2 & 0x1000)))
+		return false;
+	uword lim = (w2 & 0xf0000) | (w1 & 0xffff);
+	if (w2 & 0x00800000)
+		lim = (lim << 12) | 0xfff;
+	cpu->seg[sg].sel = sel;
+	cpu->seg[sg].base = (w1 >> 16) | ((w2 & 0xff) << 16) | (w2 & 0xff000000);
+	cpu->seg[sg].limit = lim;
+	cpu->seg[sg].flags = (w2 >> 8) & 0xffff;
+	if (sg == SEG_SS)
+		cpu->sp_mask = cpu->seg[SEG_SS].flags & SEG_B_BIT ? 0xffffffff : 0xffff;
+	return true;
+}
+#endif
+
 /* Segments that would fault as null selectors in protected mode (tiny386's
    segcheck()): accesses through them go to tiny386. */
 static inline unsigned fast_nullsegs(CPUI386 *cpu)
@@ -370,6 +416,28 @@ static const u8 DRAM_ATTR fast_r8off[8] = { 0, 4, 8, 12, 1, 5, 9, 13 };
 #define FTESTw(...) LOP0_helper(AND, 16, &, __VA_ARGS__)
 #define FTESTd(...) LOP0_helper(AND, 32, &, __VA_ARGS__)
 
+/* v5.2 (prototypes, qw.h) */
+#if QW_HINT
+#define QH_MEMOP(m) unlikely((m) >= 0xc0)   /* a handler whose memory form is the common one */
+#define QH_O16(x) unlikely(x)               /* 32-bit operands are the common size */
+#define QH_A16(x) unlikely(x)               /* 32-bit addresses are the common size */
+#define QH_U(x) unlikely(x)
+#define QH_L(x) likely(x)
+#else
+#define QH_MEMOP(m) ((m) >= 0xc0)
+#define QH_O16(x) (x)
+#define QH_A16(x) (x)
+#define QH_U(x) (x)
+#define QH_L(x) (x)
+#endif
+#if QW_NULLBIT
+_Static_assert(sizeof(((CPUI386 *) 0)->seg[0]) == 16, "the fast segment base's stride");
+/* a segment's base with one shift and one add before the load */
+#define FAST_SEG_BASE(sg) (*(uword *) ((char *) cpu + offsetof(CPUI386, seg[0].base) + ((uintptr_t) (unsigned) (sg) << 4)))
+#else
+#define FAST_SEG_BASE(sg) (cpu->seg[sg].base)
+#endif
+
 /* The offset of a memory operand (modrm's mod != 3), reading its SIB byte
    and displacement, as modsib16() and modsib32(); the segment is set to
    the default unless overridden. */
@@ -380,8 +448,8 @@ static inline __attribute__((always_inline)) uword fast_ea(CPUI386 *cpu, const u
 	const u8 *pc = *ppc;
 	int mod = modrm >> 6, rm = modrm & 7;
 	uword a;
-	if (adsz16) {
-		if (mod == 0 && rm == 6) {
+	if (QH_A16(adsz16)) {
+		if (QH_U(mod == 0 && rm == 6)) {
 			a = fm16(pc);
 			pc += 2;
 			if (*seg < 0)
@@ -395,12 +463,12 @@ static inline __attribute__((always_inline)) uword fast_ea(CPUI386 *cpu, const u
 				pc += 2;
 			}
 			a &= 0xffff;
-			if (*seg < 0)
+			if (QH_L(*seg < 0))
 				*seg = (rm == 2 || rm == 3 || rm == 6) ? SEG_SS : SEG_DS;
 		}
 	} else {
 		int dseg = SEG_DS;
-		if (rm == 4) {
+		if (QH_U(rm == 4)) {
 			u8 sib = *pc++;
 			int b = sib & 7, i = (sib >> 3) & 7;
 			if (b == 5 && mod == 0) {
@@ -413,7 +481,7 @@ static inline __attribute__((always_inline)) uword fast_ea(CPUI386 *cpu, const u
 			}
 			if (i != 4)
 				a += REGi(i) << (sib >> 6);
-		} else if (rm == 5 && mod == 0) {
+		} else if (QH_U(rm == 5 && mod == 0)) {
 			a = fm32(pc);
 			pc += 4;
 		} else {
@@ -421,18 +489,83 @@ static inline __attribute__((always_inline)) uword fast_ea(CPUI386 *cpu, const u
 			if (rm == 5)
 				dseg = SEG_SS;
 		}
-		if (mod == 1)
+		if (QH_L(mod == 1))
 			a += (s8) *pc++;
-		else if (mod == 2) {
+		else if (QH_U(mod == 2)) {
 			a += fm32(pc);
 			pc += 4;
 		}
-		if (*seg < 0)
+		if (QH_L(*seg < 0))
 			*seg = dseg;
 	}
 	*ppc = pc;
 	return a;
 }
+
+#if QW_EA
+/* v5.2 (prototype): fast_ea() with the same results, shaped for the common forms: ov is the segment
+   override + 1 as pfx holds it (0: none), and the special forms are tested from modrm in one
+   compare each.  T386MON's tests: 64 per cent of memory operands with 32-bit addresses, 55 per cent of
+   those mod 1, 41 mod 0; with 16-bit addresses mod 2 42, mod 1 32, and rm 4 to 7 the most. */
+static inline __attribute__((always_inline)) uword fast_ea2(CPUI386 *cpu, const u8 **ppc, u8 modrm, int adsz16, unsigned ov, int *seg)
+{
+	const u8 *pc = *ppc;
+	int mod = modrm >> 6, rm = modrm & 7;
+	uword a;
+	int dseg;
+	if (QH_A16(adsz16)) {
+		if (unlikely((modrm & 0xc7) == 6)) {
+			a = fm16(pc);
+			pc += 2;
+			dseg = SEG_DS;
+		} else {
+			a = cpu->gprx[fast_ea16_base[rm]].r16;
+			if (rm < 4)
+				a += cpu->gprx[fast_ea16_index[rm]].r16;
+			if (mod == 2) {
+				a += fm16(pc);
+				pc += 2;
+			} else if (mod == 1)
+				a += (s8) *pc++;
+			a &= 0xffff;
+			dseg = (rm == 2 || rm == 3 || rm == 6) ? SEG_SS : SEG_DS;
+		}
+	} else {
+		if (unlikely(rm == 4)) {
+			dseg = SEG_DS;
+			u8 sib = *pc++;
+			int b = sib & 7, i = (sib >> 3) & 7;
+			if (b == 5 && mod == 0) {
+				a = fm32(pc);
+				pc += 4;
+			} else {
+				a = REGi(b);
+				if (b == 4 || b == 5)
+					dseg = SEG_SS;
+			}
+			if (i != 4)
+				a += REGi(i) << (sib >> 6);
+		} else if (unlikely((modrm & 0xc7) == 5)) {
+			a = fm32(pc);
+			pc += 4;
+			dseg = SEG_DS;
+		} else {
+			a = REGi(rm);
+			dseg = SEG_DS - (rm == 5);
+		}
+		if (mod == 1)
+			a += (s8) *pc++;
+		else if (unlikely(mod == 2)) {
+			a += fm32(pc);
+			pc += 4;
+		}
+	}
+	*seg = likely(!ov) ? dseg : (int) ov - 1;
+	*ppc = pc;
+	return a;
+}
+_Static_assert(SEG_DS - 1 == SEG_SS, "fast_ea2()'s default segment for EBP");
+#endif
 
 /* Conditions of Jcc and SETcc (tiny386's COND()), comparing the operands
    directly after a CMP or SUB. */
@@ -554,6 +687,9 @@ static noinline int IRAM_ATTR_FAST_EXEC fast_window(CPUI386 *cpu, struct fast_tl
 /* Runs up to stepcount instructions, as cpu_exec1(): false on an exception
    (cpu->excno, cpu->ip at the instruction), for cpui386_step() to
    deliver. */
+#ifdef QW_FEOPT
+__attribute__((optimize(QW_FEOPT)))
+#endif
 static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 {
 	/* the jump tables: every opcode to tiny386 (slow) but those handled
@@ -660,6 +796,9 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	static const DRAM_ATTR void *const g3dr[8] = FAST_GRP3_TAB(g3dr_);
 	static const DRAM_ATTR void *const g3wm[8] = FAST_GRP3_TAB(g3wm_);
 	static const DRAM_ATTR void *const g3dm[8] = FAST_GRP3_TAB(g3dm_);
+#if QW_GRP5
+	static const DRAM_ATTR void *const g5[8] = { &&g5_inc, &&g5_dec, &&g5_call, &&g5_far, &&g5_jmp, &&g5_far, &&g5_push, &&slow };
+#endif
 
 	if (stepcount <= 0)
 		return true;
@@ -683,7 +822,13 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	volatile unsigned long nofold_laddr = 0;
 	volatile uword nofold_xaddr = 0;
 	const u8 *pc;             /* the next instruction byte (host address) */
+#if QW_INSV
+	/* v5.2 (prototype): written by every dispatch and read only when an instruction goes to tiny386
+	   or faults: kept in memory, so that its register can hold what NEXT reads */
+	const u8 * volatile ins;
+#else
 	const u8 *ins;            /* the current instruction's first byte */
+#endif
 	const u8 *win_lo;         /* the code window: instructions start in [win_lo, win_lo + FAST_WIN) */
 	uintptr_t win_hi;         /* v5.1: win_lo + FAST_WIN, NEXT's one bound; 0 after a jump below win_lo */
 	uintptr_t ipd;            /* eip = pc - ipd */
@@ -733,14 +878,30 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   which set win_hi to 0 when the target is below win_lo, so that the
 	   next NEXT refills.  They are the only backward moves of pc: any new
 	   one must go through them. */
+#if QW_NEXTFT
+	/* v5.2 (prototype): out and refill are more than a conditional branch's
+	   4 KB away from most handlers, so each test compiled to an inverted
+	   branch taken over a far jump: two taken branches an instruction.  With a
+	   far jump of its own right after the dispatch, reached by the test
+	   not taken, both fall through.  The empty asm keeps GCC from threading
+	   the test to the far label and undoing it. */
+#define NEXT do { __label__ _n_out, _n_ref; \
+		if (unlikely(--steps < 0)) goto _n_out; \
+		if (unlikely((uintptr_t) pc >= win_hi)) goto _n_ref; \
+		DISPATCH; \
+	_n_out: __asm__ volatile (""); goto out; \
+	_n_ref: __asm__ volatile (""); goto refill; \
+	} while (0)
+#else
 #define NEXT do { \
 		if (unlikely(--steps < 0)) goto out; \
 		if (unlikely((uintptr_t) pc >= win_hi)) goto refill; \
 		DISPATCH; \
 	} while (0)
+#endif
 	/* relative and absolute jumps; 16-bit code wraps at 64 KB */
 #define JUMP_REL(d) do { \
-		if (code16) pc = (const u8 *) (ipd + ((EIP_OF(pc) + (d)) & 0xffff)); \
+		if (QH_U(code16)) pc = (const u8 *) (ipd + ((EIP_OF(pc) + (d)) & 0xffff)); \
 		else pc += (d); \
 		if (unlikely((uintptr_t) pc < (uintptr_t) win_lo)) win_hi = 0; \
 	} while (0)
@@ -770,9 +931,15 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   pages have 20 bits, FAST_TAG_LFB is bit 31, and no tag is -1).  The
 	   null segment's test is then the miss's first, before fast_miss() and
 	   before FPTR_ST()'s frame buffer test; a null segment always misses. */
-#define FAST_PL(sg, lin, size) ((((lin) + (size) - 1) >> 12) | (((nullsegs >> (sg)) & 1u) << 20))
+#if QW_NULLBIT && defined(__riscv_zbs)
+#define FAST_NULL20(sg) ({ uword _b; if (__builtin_constant_p(sg)) _b = (nullsegs >> (sg)) & 1u; \
+		else __asm__ ("bext %0,%1,%2" : "=r" (_b) : "r" (nullsegs), "r" (sg)); _b << 20; })
+#else
+#define FAST_NULL20(sg) (((nullsegs >> (sg)) & 1u) << 20)
+#endif
+#define FAST_PL(sg, lin, size) ((((lin) + (size) - 1) >> 12) | FAST_NULL20(sg))
 #define FPTR(p, sg, off, size, wr) do { \
-		uword _lin = cpu->seg[sg].base + (off); \
+		uword _lin = FAST_SEG_BASE(sg) + (off); \
 		struct fast_tlb_entry *_e = &ftlb[(_lin >> 12) % tlb_size]; \
 		if (likely(((wr) ? _e->wtag : _e->rtag) == FAST_PL(sg, _lin, size))) { \
 			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
@@ -786,7 +953,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	} while (0)
 	/* as FPTR, but an access to MMIO goes to the label (mpaddr set) */
 #define FPTR_IO(p, sg, off, size, wr, LABEL) do { \
-		uword _lin = cpu->seg[sg].base + (off); \
+		uword _lin = FAST_SEG_BASE(sg) + (off); \
 		struct fast_tlb_entry *_e = &ftlb[(_lin >> 12) % tlb_size]; \
 		if (likely(((wr) ? _e->wtag : _e->rtag) == FAST_PL(sg, _lin, size))) { \
 			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
@@ -809,8 +976,13 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   reviews).  (v5.1: the frame buffer's test, in the miss, is one
 	   compare too: the last byte's page with FAST_TAG_LFB, which a
 	   crossing store never matches.) */
+#if QW_LFBSZ
+#define LFB_ST(size) lfb_st##size
+#else
+#define LFB_ST(size) lfb_st
+#endif
 #define FPTR_ST(p, sg, off, size, LABEL, LFBLABEL) do { \
-		uword _lin = cpu->seg[sg].base + (off); \
+		uword _lin = FAST_SEG_BASE(sg) + (off); \
 		struct fast_tlb_entry *_e = &ftlb[(_lin >> 12) % tlb_size]; \
 		if (likely(_e->wtag == FAST_PL(sg, _lin, size))) { \
 			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
@@ -852,7 +1024,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   hit in one compare with FAST_PL(), the null segment's test first in
 	   the miss, the frame buffer's tag against the last byte's page. */
 #define FPTR_IO_W(p, sg, off, size, LABEL, H1) do { \
-		uword _lin = cpu->seg[sg].base + (off); \
+		uword _lin = FAST_SEG_BASE(sg) + (off); \
 		struct fast_tlb_entry *_e = &ftlb[(_lin >> 12) % tlb_size]; \
 		if (likely(_e->wtag == FAST_PL(sg, _lin, size))) { \
 			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
@@ -878,7 +1050,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   (MOVS: with the whole of FPTR_IO_W() in line, the board's compiler
 	   laid the hit out of line, five host instructions dearer, mb) */
 #define FPTR_W(p, sg, off, size, MISS) do { \
-		uword _lin = cpu->seg[sg].base + (off); \
+		uword _lin = FAST_SEG_BASE(sg) + (off); \
 		struct fast_tlb_entry *_e = &ftlb[(_lin >> 12) % tlb_size]; \
 		if (likely(_e->wtag == FAST_PL(sg, _lin, size))) { \
 			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
@@ -891,7 +1063,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   at host address H1 (or NULL): a miss through fast_miss2(), the
 	   two-operand rule */
 #define FPTR2(p, sg, off, size, wr, H1) do { \
-		uword _lin = cpu->seg[sg].base + (off); \
+		uword _lin = FAST_SEG_BASE(sg) + (off); \
 		struct fast_tlb_entry *_e = &ftlb[(_lin >> 12) % tlb_size]; \
 		if (likely(((wr) ? _e->wtag : _e->rtag) == FAST_PL(sg, _lin, size))) { \
 			p = (u8 *) (uintptr_t) (_lin + _e->delta); \
@@ -923,6 +1095,13 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 		if (_sp > sp_mask - ((size) - 1)) goto slow; \
 		FPTR2(p, SEG_SS, _sp, size, wr, H1); \
 	} while (0)
+#if QW_EA
+#define EA_OFF(off, m) \
+	uword off = fast_ea2(cpu, &pc, m, adsz16, (unsigned) (pfx >> 4), &seg);
+#define EA_PTR(p, m, size, wr) \
+	uword _off = fast_ea2(cpu, &pc, m, adsz16, (unsigned) (pfx >> 4), &seg); \
+	FPTR(p, seg, _off, size, wr)
+#else
 #define EA_OFF(off, m) \
 	seg = SEG_OVERRIDE; \
 	uword off = fast_ea(cpu, &pc, m, adsz16, &seg);
@@ -930,6 +1109,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	seg = SEG_OVERRIDE; \
 	uword _off = fast_ea(cpu, &pc, m, adsz16, &seg); \
 	FPTR(p, seg, _off, size, wr)
+#endif
 	/* a stack slot: the stack pointer's address after moving it by d
 	   bytes.  STACK_PTR_N for several slots in one go: tiny386 masks each
 	   slot's offset on its own, so slots that would wrap around the stack
@@ -958,6 +1138,23 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   fast_nullsegs()'s CR0.PE term holds) and never for CS (op_8e sends
 	   it to tiny386; POP and LES/LDS name ES, SS, DS, FS and GS).  A
 	   selector with bits above its RPL is never null (sel is 16 bits). */
+#if QW_SEG
+	/* v5.2 (prototype): fast_load_seg() first, which does what set_seg() does
+	   for a selector above null whose descriptor is in RAM with nothing to
+	   fault, and needs neither the count nor cpu->ip */
+#define FAST_LOAD_SEG(sg, sel) do { \
+		if (!((sel) & 0xfffc) || !fast_load_seg(cpu, (sg), (sel))) { \
+			cpu->ip = EIP_OF(ins); \
+			SYNC_IN(); \
+			if (!set_seg(cpu, (sg), (sel))) goto fault; \
+		} \
+		if (likely((sel) & 0xfffc)) \
+			nullsegs &= ~(1u << (sg)); \
+		else \
+			nullsegs = (nullsegs & ~(1u << (sg))) | \
+				((unsigned) (cpu->seg[sg].limit == 0 && (cpu->seg[sg].sel & ~0x3) == 0) << (sg)); \
+	} while (0)
+#else
 #define FAST_LOAD_SEG(sg, sel) do { \
 		cpu->ip = EIP_OF(ins); \
 		SYNC_IN(); \
@@ -968,6 +1165,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 			nullsegs = (nullsegs & ~(1u << (sg))) | \
 				((unsigned) (cpu->seg[sg].limit == 0 && (cpu->seg[sg].sel & ~0x3) == 0) << (sg)); \
 	} while (0)
+#endif
 	/* after an instruction that changed CS (eip: the next one; cpu->ip
 	   left as tiny386 leaves it) */
 #define RELOAD do { \
@@ -1061,8 +1259,14 @@ pfx_ss: SEG_PREFIX(SEG_SS)
 pfx_ds: SEG_PREFIX(SEG_DS)
 pfx_fs: SEG_PREFIX(SEG_FS)
 pfx_gs: SEG_PREFIX(SEG_GS)
+#if QW_PFX
+	/* pfx0 is 0 or 3 */
+pfx_opsz: pfx = (pfx & ~1u) | !pfx0; goto *ops[*pc++];
+pfx_adsz: pfx = (pfx & ~2u) | ((uintptr_t) !pfx0 << 1); goto *ops[*pc++];
+#else
 pfx_opsz: pfx = (pfx & ~1u) | ((pfx0 & 1) ^ 1); goto *ops[*pc++];
 pfx_adsz: pfx = (pfx & ~2u) | ((pfx0 & 2) ^ 2); goto *ops[*pc++];
+#endif
 pfx_rep: pfx = (pfx & ~0xcu) | (1 << 2); goto *ops[*pc++];
 pfx_repne: pfx = (pfx & ~0xcu) | (2 << 2); goto *ops[*pc++];
 pfx_lock: goto *ops[*pc++];
@@ -1076,10 +1280,10 @@ L0: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 	else { u8 *p; EA_PTR(p, m, 1, WR); OPb(p, r, fm8, fs8, fr8, fw8) } \
 	POST NEXT; } \
 L1: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
-	if (m >= 0xc0) { \
-		if (opsz16) { OPw(rm, r, lreg16, sreg16, lreg16, sreg16) } \
+	if (QH_MEMOP(m)) { \
+		if (QH_O16(opsz16)) { OPw(rm, r, lreg16, sreg16, lreg16, sreg16) } \
 		else { OPd(rm, r, lreg32, sreg32, lreg32, sreg32) } \
-	} else if (opsz16) { u8 *p; EA_PTR(p, m, 2, WR); OPw(p, r, fm16, fs16, lreg16, sreg16) } \
+	} else if (QH_O16(opsz16)) { u8 *p; EA_PTR(p, m, 2, WR); OPw(p, r, fm16, fs16, lreg16, sreg16) } \
 	else { u8 *p; EA_PTR(p, m, 4, WR); OPd(p, r, fm32, fs32, lreg32, sreg32) } \
 	POST NEXT; } \
 L2: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
@@ -1088,9 +1292,9 @@ L2: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 	POST NEXT; } \
 L3: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 	if (m >= 0xc0) { \
-		if (opsz16) { OPw(r, rm, lreg16, sreg16, lreg16, sreg16) } \
+		if (QH_O16(opsz16)) { OPw(r, rm, lreg16, sreg16, lreg16, sreg16) } \
 		else { OPd(r, rm, lreg32, sreg32, lreg32, sreg32) } \
-	} else if (opsz16) { u8 *p; EA_PTR(p, m, 2, 0); OPw(r, p, lreg16, sreg16, fm16, fs16) } \
+	} else if (QH_O16(opsz16)) { u8 *p; EA_PTR(p, m, 2, 0); OPw(r, p, lreg16, sreg16, fm16, fs16) } \
 	else { u8 *p; EA_PTR(p, m, 4, 0); OPd(r, p, lreg32, sreg32, fm32, fs32) } \
 	POST NEXT; } \
 L4: { u8 i = *pc++; int r = 0; OPb(r, i, fr8, fw8, limm, 0) POST NEXT; } \
@@ -1134,25 +1338,25 @@ op_87: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	else { u8 *p; EA_PTR(p, m, 4, 1); XCHGd(p, r, fm32, fs32, lreg32, sreg32) }
 	NEXT; }
 op_88: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
-	if (m >= 0xc0) fw8(rm, fr8(r));
-	else { EA_OFF(off, m) mval = fr8(r); u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, lfb_st); fs8(p, mval); }
+	if (QH_MEMOP(m)) fw8(rm, fr8(r));
+	else { EA_OFF(off, m) mval = fr8(r); u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, LFB_ST(1)); fs8(p, mval); }
 	NEXT; }
 op_89: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
-	if (m >= 0xc0) {
-		if (opsz16) sreg16(rm, lreg16(r));
+	if (QH_MEMOP(m)) {
+		if (QH_O16(opsz16)) sreg16(rm, lreg16(r));
 		else sreg32(rm, lreg32(r));
-	} else if (opsz16) { EA_OFF(off, m) mval = lreg16(r); u8 *p; FPTR_ST(p, seg, off, 2, mmio_st, lfb_st); fs16(p, mval); }
-	else { EA_OFF(off, m) mval = lreg32(r); u8 *p; FPTR_ST(p, seg, off, 4, mmio_st, lfb_st); fs32(p, mval); }
+	} else if (QH_O16(opsz16)) { EA_OFF(off, m) mval = lreg16(r); u8 *p; FPTR_ST(p, seg, off, 2, mmio_st, LFB_ST(2)); fs16(p, mval); }
+	else { EA_OFF(off, m) mval = lreg32(r); u8 *p; FPTR_ST(p, seg, off, 4, mmio_st, LFB_ST(4)); fs32(p, mval); }
 	NEXT; }
 op_8a: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
-	if (m >= 0xc0) fw8(r, fr8(rm));
+	if (QH_MEMOP(m)) fw8(r, fr8(rm));
 	else { EA_OFF(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 1, 0, mmio_ld); fw8(r, fm8(p)); }
 	NEXT; }
 op_8b: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
-	if (m >= 0xc0) {
-		if (opsz16) sreg16(r, lreg16(rm));
+	if (QH_MEMOP(m)) {
+		if (QH_O16(opsz16)) sreg16(r, lreg16(rm));
 		else sreg32(r, lreg32(rm));
-	} else if (opsz16) { EA_OFF(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 2, 0, mmio_ld); sreg16(r, fm16(p)); }
+	} else if (QH_O16(opsz16)) { EA_OFF(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 2, 0, mmio_ld); sreg16(r, fm16(p)); }
 	else { EA_OFF(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 4, 0, mmio_ld); sreg32(r, fm32(p)); }
 	NEXT; }
 	/* MMIO for the MOVs above (mpaddr, msize; mval to store, mreg to load into) */
@@ -1163,10 +1367,16 @@ mmio_st: {
 	/* ... and into a page of the frame buffer with an entry (FPTR_ST):
 	   the bytes, then the marks and the flag, as store8() to store32()
 	   (nothing there reads the instruction count) */
+#if QW_LFBSZ
+lfb_st1: fs8(mhost, mval); lfb_marked(cpu, (uword) ((uintptr_t) mhost - (uintptr_t) cpu->cb.lfb_mem), 1); NEXT;
+lfb_st2: fs16(mhost, mval); lfb_marked(cpu, (uword) ((uintptr_t) mhost - (uintptr_t) cpu->cb.lfb_mem), 2); NEXT;
+lfb_st4: fs32(mhost, mval); lfb_marked(cpu, (uword) ((uintptr_t) mhost - (uintptr_t) cpu->cb.lfb_mem), 4); NEXT;
+#else
 lfb_st: {
 	if (msize == 1) fs8(mhost, mval); else if (msize == 2) fs16(mhost, mval); else fs32(mhost, mval);
 	lfb_marked(cpu, (uword) ((uintptr_t) mhost - (uintptr_t) cpu->cb.lfb_mem), msize);
 	NEXT; }
+#endif
 mmio_ld: {
 	SYNC_IN();
 	u32 v = fast_io_load(cpu, mpaddr, msize);
@@ -1237,15 +1447,15 @@ op_mov_rv: { int r = pc[-1] & 7;
 op_c6: { u8 m = *pc++; int rm = m & 7;
 	if (((m >> 3) & 7) != 0) goto slow;
 	if (m >= 0xc0) fw8(rm, *pc++);
-	else { EA_OFF(off, m) mval = *pc++; u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, lfb_st); fs8(p, mval); }
+	else { EA_OFF(off, m) mval = *pc++; u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, LFB_ST(1)); fs8(p, mval); }
 	NEXT; }
 op_c7: { u8 m = *pc++; int rm = m & 7;
 	if (((m >> 3) & 7) != 0) goto slow;
 	if (m >= 0xc0) {
 		if (opsz16) { sreg16(rm, fm16(pc)); pc += 2; }
 		else { sreg32(rm, fm32(pc)); pc += 4; }
-	} else if (opsz16) { EA_OFF(off, m) mval = fm16(pc); pc += 2; u8 *p; FPTR_ST(p, seg, off, 2, mmio_st, lfb_st); fs16(p, mval); }
-	else { EA_OFF(off, m) mval = fm32(pc); pc += 4; u8 *p; FPTR_ST(p, seg, off, 4, mmio_st, lfb_st); fs32(p, mval); }
+	} else if (opsz16) { EA_OFF(off, m) mval = fm16(pc); pc += 2; u8 *p; FPTR_ST(p, seg, off, 2, mmio_st, LFB_ST(2)); fs16(p, mval); }
+	else { EA_OFF(off, m) mval = fm32(pc); pc += 4; u8 *p; FPTR_ST(p, seg, off, 4, mmio_st, LFB_ST(4)); fs32(p, mval); }
 	NEXT; }
 #define MOFFS(off) \
 	uword off; \
@@ -1256,10 +1466,10 @@ op_a1: { MOFFS(off) mreg = 0;
 	if (opsz16) { u8 *p; FPTR_IO(p, seg, off, 2, 0, mmio_ld); sreg16(0, fm16(p)); }
 	else { u8 *p; FPTR_IO(p, seg, off, 4, 0, mmio_ld); sreg32(0, fm32(p)); }
 	NEXT; }
-op_a2: { MOFFS(off) mval = fr8(0); u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, lfb_st); fs8(p, mval); NEXT; }
+op_a2: { MOFFS(off) mval = fr8(0); u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, LFB_ST(1)); fs8(p, mval); NEXT; }
 op_a3: { MOFFS(off)
-	if (opsz16) { mval = lreg16(0); u8 *p; FPTR_ST(p, seg, off, 2, mmio_st, lfb_st); fs16(p, mval); }
-	else { mval = lreg32(0); u8 *p; FPTR_ST(p, seg, off, 4, mmio_st, lfb_st); fs32(p, mval); }
+	if (opsz16) { mval = lreg16(0); u8 *p; FPTR_ST(p, seg, off, 2, mmio_st, LFB_ST(2)); fs16(p, mval); }
+	else { mval = lreg32(0); u8 *p; FPTR_ST(p, seg, off, 4, mmio_st, LFB_ST(4)); fs32(p, mval); }
 	NEXT; }
 op_a8: { u8 i = *pc++; int r = 0; FTESTb(r, i, fr8, fw8, limm, 0) FOLD_JCC(); NEXT; }
 op_a9: { int r = 0;
@@ -1269,11 +1479,46 @@ op_a9: { int r = 0;
 	NEXT; }
 
 	/* INC, DEC, PUSH, POP of registers */
+#if QW_INC
+	/* v5.2 (prototype): INC and DEC keep CF.  With the lazy flags not
+	   holding it, cpu->flags has it already and nothing is done; holding it,
+	   the commonest (ADD, SUB, then AND, OR, XOR: 96 per cent of INC r and
+	   DEC r in T386MON's tests) in line. */
+#define FAST_KEEP_CF() do { \
+		if (cpu->cc.mask & CF) { \
+			unsigned _op = cpu->cc.op; \
+			int _cf; \
+			if (_op == CC_ADD) _cf = cpu->cc.dst < cpu->cc.src2; \
+			else if (_op == CC_SUB) _cf = cpu->cc.src1 < cpu->cc.src2; \
+			else _cf = get_CF_cc(cpu); \
+			SET_BIT(cpu->flags, _cf, CF); \
+		} \
+	} while (0)
+#define FINCDEC_helper(NAME, BIT, OP, a, la, sa) \
+	FAST_KEEP_CF(); \
+	cpu->cc.dst = sext ## BIT(sext ## BIT(la(a)) OP 1); \
+	cpu->cc.op = CC_ ## NAME ## BIT; \
+	cpu->cc.mask = PF | AF | ZF | SF | OF; \
+	sa(a, cpu->cc.dst);
+#define FINCb(...) FINCDEC_helper(INC,  8, +, __VA_ARGS__)
+#define FINCw(...) FINCDEC_helper(INC, 16, +, __VA_ARGS__)
+#define FINCd(...) FINCDEC_helper(INC, 32, +, __VA_ARGS__)
+#define FDECb(...) FINCDEC_helper(DEC,  8, -, __VA_ARGS__)
+#define FDECw(...) FINCDEC_helper(DEC, 16, -, __VA_ARGS__)
+#define FDECd(...) FINCDEC_helper(DEC, 32, -, __VA_ARGS__)
+#else
+#define FINCb(...) INCb(__VA_ARGS__)
+#define FINCw(...) INCw(__VA_ARGS__)
+#define FINCd(...) INCd(__VA_ARGS__)
+#define FDECb(...) DECb(__VA_ARGS__)
+#define FDECw(...) DECw(__VA_ARGS__)
+#define FDECd(...) DECd(__VA_ARGS__)
+#endif
 op_inc_r: { int r = pc[-1] & 7;
-	if (opsz16) { INCw(r, lreg16, sreg16) } else { INCd(r, lreg32, sreg32) }
+	if (QH_O16(opsz16)) { FINCw(r, lreg16, sreg16) } else { FINCd(r, lreg32, sreg32) }
 	NEXT; }
 op_dec_r: { int r = pc[-1] & 7;
-	if (opsz16) { DECw(r, lreg16, sreg16) } else { DECd(r, lreg32, sreg32) }
+	if (QH_O16(opsz16)) { FDECw(r, lreg16, sreg16) } else { FDECd(r, lreg32, sreg32) }
 	NEXT; }
 op_push_r: { int r = pc[-1] & 7;
 	if (opsz16) { u8 *s; STACK_PTR(s, -2, 2, 1); u16 v = lreg16(r); SP_ADD(-2); fs16(s, v); }
@@ -1705,28 +1950,34 @@ op_grp1_v: { u8 m = *pc++; int op = (m >> 3) & 7;   /* 81h */
 	if (opsz16) GRP_OPND_M(g81wm, 2, op != 7);
 	GRP_OPND_M(g81dm, 4, op != 7); }
 op_grp1_vb: { u8 m = *pc++; int op = (m >> 3) & 7;  /* 83h */
-	if (m >= 0xc0) GRP_OPND_R(opsz16 ? g83wr : g83dr);
-	if (opsz16) GRP_OPND_M(g83wm, 2, op != 7);
+	if (m >= 0xc0) GRP_OPND_R(QH_O16(opsz16) ? g83wr : g83dr);
+	if (QH_O16(opsz16)) GRP_OPND_M(g83wm, 2, op != 7);
 	GRP_OPND_M(g83dm, 4, op != 7); }
-#define GRP1_OPS(P, SFX, X, LA, SA, IMM) \
-P##0: { IMM; ADD##SFX(X, i, LA, SA, limm, 0) goto grp_next; } \
-P##1: { IMM; OR##SFX(X, i, LA, SA, limm, 0) goto grp_next; } \
+#define GRP_NEXT goto grp_next
+#if QW_GRP
+#define GRP_HOT NEXT
+#else
+#define GRP_HOT GRP_NEXT
+#endif
+#define GRP1_OPS(P, SFX, X, LA, SA, IMM, END) \
+P##0: { IMM; ADD##SFX(X, i, LA, SA, limm, 0) END; } \
+P##1: { IMM; OR##SFX(X, i, LA, SA, limm, 0) END; } \
 P##2: { IMM; ADC##SFX(X, i, LA, SA, limm, 0) goto grp_next; } \
 P##3: { IMM; SBB##SFX(X, i, LA, SA, limm, 0) goto grp_next; } \
-P##4: { IMM; AND##SFX(X, i, LA, SA, limm, 0) goto grp_next; } \
-P##5: { IMM; SUB##SFX(X, i, LA, SA, limm, 0) goto grp_next; } \
+P##4: { IMM; AND##SFX(X, i, LA, SA, limm, 0) END; } \
+P##5: { IMM; SUB##SFX(X, i, LA, SA, limm, 0) END; } \
 P##6: { IMM; XOR##SFX(X, i, LA, SA, limm, 0) goto grp_next; } \
-P##7: { IMM; FCMP##SFX(X, i, LA, SA, limm, 0) FOLD_JCC(); goto grp_next; }
-	GRP1_OPS(g80r_, b, GRP_R, fr8, fw8, u8 i = *pc++)
-	GRP1_OPS(g80m_, b, GRP_M, fm8, fs8, u8 i = *pc++)
-	GRP1_OPS(g81wr_, w, GRP_R, lreg16, sreg16, u16 i = fm16(pc); pc += 2)
-	GRP1_OPS(g81dr_, d, GRP_R, lreg32, sreg32, u32 i = fm32(pc); pc += 4)
-	GRP1_OPS(g81wm_, w, GRP_M, fm16, fs16, u16 i = fm16(pc); pc += 2)
-	GRP1_OPS(g81dm_, d, GRP_M, fm32, fs32, u32 i = fm32(pc); pc += 4)
-	GRP1_OPS(g83wr_, w, GRP_R, lreg16, sreg16, u16 i = (s8) *pc++)
-	GRP1_OPS(g83dr_, d, GRP_R, lreg32, sreg32, u32 i = (s8) *pc++)
-	GRP1_OPS(g83wm_, w, GRP_M, fm16, fs16, u16 i = (s8) *pc++)
-	GRP1_OPS(g83dm_, d, GRP_M, fm32, fs32, u32 i = (s8) *pc++)
+P##7: { IMM; FCMP##SFX(X, i, LA, SA, limm, 0) FOLD_JCC(); END; }
+	GRP1_OPS(g80r_, b, GRP_R, fr8, fw8, u8 i = *pc++, GRP_HOT)
+	GRP1_OPS(g80m_, b, GRP_M, fm8, fs8, u8 i = *pc++, GRP_HOT)
+	GRP1_OPS(g81wr_, w, GRP_R, lreg16, sreg16, u16 i = fm16(pc); pc += 2, GRP_NEXT)
+	GRP1_OPS(g81dr_, d, GRP_R, lreg32, sreg32, u32 i = fm32(pc); pc += 4, GRP_HOT)
+	GRP1_OPS(g81wm_, w, GRP_M, fm16, fs16, u16 i = fm16(pc); pc += 2, GRP_NEXT)
+	GRP1_OPS(g81dm_, d, GRP_M, fm32, fs32, u32 i = fm32(pc); pc += 4, GRP_NEXT)
+	GRP1_OPS(g83wr_, w, GRP_R, lreg16, sreg16, u16 i = (s8) *pc++, GRP_HOT)
+	GRP1_OPS(g83dr_, d, GRP_R, lreg32, sreg32, u32 i = (s8) *pc++, GRP_HOT)
+	GRP1_OPS(g83wm_, w, GRP_M, fm16, fs16, u16 i = (s8) *pc++, GRP_HOT)
+	GRP1_OPS(g83dm_, d, GRP_M, fm32, fs32, u32 i = (s8) *pc++, GRP_HOT)
 
 	/* shifts and rotates: by an immediate (C0h Eb, C1h Ev), by 1 (D0h,
 	   D1h), by CL (D2h, D3h).  A register's number goes with the count
@@ -1757,20 +2008,20 @@ grp2_bm: { u8 m = gm; int op = (m >> 3) & 7; GRP_OPND_M(g2bm, 1, 1); }
 grp2_vm: { u8 m = gm; int op = (m >> 3) & 7;
 	if (opsz16) GRP_OPND_M(g2wm, 2, 1);
 	GRP_OPND_M(g2dm, 4, 1); }
-#define GRP2_OPS(P, SFX, X, N, LA, SA) \
-P##0: { ROL##SFX(X, N, LA, SA, limm, 0) goto grp_next; } \
-P##1: { ROR##SFX(X, N, LA, SA, limm, 0) goto grp_next; } \
+#define GRP2_OPS(P, SFX, X, N, LA, SA, END) \
+P##0: { ROL##SFX(X, N, LA, SA, limm, 0) END; } \
+P##1: { ROR##SFX(X, N, LA, SA, limm, 0) END; } \
 P##2: { RCL##SFX(X, N, LA, SA, limm, 0) goto grp_next; } \
 P##3: { RCR##SFX(X, N, LA, SA, limm, 0) goto grp_next; } \
-P##4: { SHL##SFX(X, N, LA, SA, limm, 0) goto grp_next; } \
-P##5: { SHR##SFX(X, N, LA, SA, limm, 0) goto grp_next; } \
-P##7: { SAR##SFX(X, N, LA, SA, limm, 0) goto grp_next; }
-	GRP2_OPS(g2br_, b, (pfx & 7), (pfx >> 3), fr8, fw8)
-	GRP2_OPS(g2bm_, b, GRP_M, gcnt, fm8, fs8)
-	GRP2_OPS(g2wr_, w, (pfx & 7), (pfx >> 3), lreg16, sreg16)
-	GRP2_OPS(g2dr_, d, (pfx & 7), (pfx >> 3), lreg32, sreg32)
-	GRP2_OPS(g2wm_, w, GRP_M, gcnt, fm16, fs16)
-	GRP2_OPS(g2dm_, d, GRP_M, gcnt, fm32, fs32)
+P##4: { SHL##SFX(X, N, LA, SA, limm, 0) END; } \
+P##5: { SHR##SFX(X, N, LA, SA, limm, 0) END; } \
+P##7: { SAR##SFX(X, N, LA, SA, limm, 0) END; }
+	GRP2_OPS(g2br_, b, (pfx & 7), (pfx >> 3), fr8, fw8, GRP_NEXT)
+	GRP2_OPS(g2bm_, b, GRP_M, gcnt, fm8, fs8, GRP_NEXT)
+	GRP2_OPS(g2wr_, w, (pfx & 7), (pfx >> 3), lreg16, sreg16, GRP_HOT)
+	GRP2_OPS(g2dr_, d, (pfx & 7), (pfx >> 3), lreg32, sreg32, GRP_HOT)
+	GRP2_OPS(g2wm_, w, GRP_M, gcnt, fm16, fs16, GRP_NEXT)
+	GRP2_OPS(g2dm_, d, GRP_M, gcnt, fm32, fs32, GRP_NEXT)
 
 	/* F6/F7: TEST NOT NEG MUL IMUL DIV IDIV (TEST with tiny386's fusion;
 	   its immediate after the operand's bytes) */
@@ -1782,7 +2033,7 @@ op_grp3_v: { u8 m = *pc++; int op = (m >> 3) & 7;
 	if (opsz16) GRP_OPND_M(g3wm, 2, op == 2 || op == 3);
 	GRP_OPND_M(g3dm, 4, op == 2 || op == 3); }
 #define GRP3_OPS(P, SFX, SZ, X, LA, SA, IMM) \
-P##0: { u##SZ i = IMM; FTEST##SFX(X, i, LA, SA, limm, 0) FOLD_JCC(); goto grp_next; } \
+P##0: { u##SZ i = IMM; FTEST##SFX(X, i, LA, SA, limm, 0) FOLD_JCC(); GRP_HOT; } \
 P##2: { NOT##SFX(X, LA, SA) goto grp_next; } \
 P##3: { NEG##SFX(X, LA, SA) goto grp_next; } \
 P##4: { MUL##SFX(X, LA, SA) goto grp_next; } \
@@ -1801,15 +2052,58 @@ grp_next: NEXT;
 op_grp4: { u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;
 	if (op > 1) goto slow;
 	if (m >= 0xc0) {
-		if (op == 0) { INCb(rm, fr8, fw8) } else { DECb(rm, fr8, fw8) }
+		if (op == 0) { FINCb(rm, fr8, fw8) } else { FDECb(rm, fr8, fw8) }
 	} else {
 		u8 *p; EA_PTR(p, m, 1, 1);
-		if (op == 0) { INCb(p, fm8, fs8) } else { DECb(p, fm8, fs8) }
+		if (op == 0) { FINCb(p, fm8, fs8) } else { FDECb(p, fm8, fs8) }
 	}
 	NEXT; }
+#if QW_GRP5
+	/* v5.2 (prototype): FFh by a table of its operations, each with its
+	   operand's write rights known (a chain of tests on /r, a test of rights
+	   at the lookup, a chain again at the end, as it was) */
+op_grp5: { u8 m = *pc++; goto *g5[(m >> 3) & 7]; }
+g5_inc: { u8 m = pc[-1]; int rm = m & 7;
+	if (m >= 0xc0) {
+		if (QH_O16(opsz16)) { FINCw(rm, lreg16, sreg16) } else { FINCd(rm, lreg32, sreg32) }
+	} else if (QH_O16(opsz16)) { u8 *p; EA_PTR(p, m, 2, 1); FINCw(p, fm16, fs16) }
+	else { u8 *p; EA_PTR(p, m, 4, 1); FINCd(p, fm32, fs32) }
+	NEXT; }
+g5_dec: { u8 m = pc[-1]; int rm = m & 7;
+	if (m >= 0xc0) {
+		if (QH_O16(opsz16)) { FDECw(rm, lreg16, sreg16) } else { FDECd(rm, lreg32, sreg32) }
+	} else if (QH_O16(opsz16)) { u8 *p; EA_PTR(p, m, 2, 1); FDECw(p, fm16, fs16) }
+	else { u8 *p; EA_PTR(p, m, 4, 1); FDECd(p, fm32, fs32) }
+	NEXT; }
+#define G5_READ() \
+	uword v; \
+	u8 *p = NULL; \
+	if (m >= 0xc0) v = opsz16 ? lreg16(rm) : lreg32(rm); \
+	else if (QH_O16(opsz16)) { EA_PTR(p, m, 2, 0); v = fm16(p); } \
+	else { EA_PTR(p, m, 4, 0); v = fm32(p); }
+g5_call: { u8 m = pc[-1]; int rm = m & 7;
+	G5_READ()
+	if (QH_O16(opsz16)) { u8 *s; STACK_PTR2(s, -2, 2, 1, p); SP_ADD(-2); fs16(s, EIP_OF(pc)); }
+	else { u8 *s; STACK_PTR2(s, -4, 4, 1, p); SP_ADD(-4); fs32(s, EIP_OF(pc)); }
+	JUMP_ABS(v);
+	NEXT; }
+g5_jmp: { u8 m = pc[-1]; int rm = m & 7;
+	G5_READ()
+	JUMP_ABS(v);
+	NEXT; }
+g5_push: { u8 m = pc[-1]; int rm = m & 7;
+	G5_READ()
+	if (QH_O16(opsz16)) { u8 *s; STACK_PTR2(s, -2, 2, 1, p); SP_ADD(-2); fs16(s, v); }
+	else { u8 *s; STACK_PTR2(s, -4, 4, 1, p); SP_ADD(-4); fs32(s, v); }
+	NEXT; }
+g5_far: { u8 m = pc[-1]; int op = (m >> 3) & 7;
+	if (m >= 0xc0) goto slow;
+	{
+#else
 op_grp5: { u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;
 	if (op == 7 || ((op == 3 || op == 5) && m >= 0xc0)) goto slow;
 	if (op == 3 || op == 5) {   /* CALL / JMP far through memory: offset, then the selector */
+#endif
 		u8 *p;
 		uword off;
 		u16 sel;
@@ -1834,6 +2128,9 @@ op_grp5: { u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;
 		eip = off;
 		RELOAD;
 	}
+#if QW_GRP5
+	}
+#else
 	uword v;
 	u8 *p = NULL;
 	if (m >= 0xc0) v = opsz16 ? lreg16(rm) : lreg32(rm);
@@ -1842,11 +2139,11 @@ op_grp5: { u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;
 	switch (op) {
 	case 0: case 1:
 		if (p) {
-			if (opsz16) { if (op == 0) { INCw(p, fm16, fs16) } else { DECw(p, fm16, fs16) } }
-			else { if (op == 0) { INCd(p, fm32, fs32) } else { DECd(p, fm32, fs32) } }
+			if (opsz16) { if (op == 0) { FINCw(p, fm16, fs16) } else { FDECw(p, fm16, fs16) } }
+			else { if (op == 0) { FINCd(p, fm32, fs32) } else { FDECd(p, fm32, fs32) } }
 		} else {
-			if (opsz16) { if (op == 0) { INCw(rm, lreg16, sreg16) } else { DECw(rm, lreg16, sreg16) } }
-			else { if (op == 0) { INCd(rm, lreg32, sreg32) } else { DECd(rm, lreg32, sreg32) } }
+			if (opsz16) { if (op == 0) { FINCw(rm, lreg16, sreg16) } else { FDECw(rm, lreg16, sreg16) } }
+			else { if (op == 0) { FINCd(rm, lreg32, sreg32) } else { FDECd(rm, lreg32, sreg32) } }
 		}
 		break;
 	case 2:
@@ -1863,6 +2160,7 @@ op_grp5: { u8 m = *pc++; int op = (m >> 3) & 7, rm = m & 7;
 		break;
 	}
 	NEXT; }
+#endif
 
 	/* string instructions; REP runs in pieces within a page, as tiny386 */
 #define STR_SEG (SEG_OVERRIDE < 0 ? SEG_DS : SEG_OVERRIDE)
