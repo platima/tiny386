@@ -2126,6 +2126,285 @@ static int rd_check(int seed)
 	return why[0] != 0;
 }
 
+#if QW_SEG
+/* == v5.2: fast_load_seg() (qw.h's QW_SEG) against set_seg(), in mode o.
+   First on rd_check()'s kinds of random tables, selectors, limits, paging
+   and TLB contents, half of them with a present descriptor of the right
+   kind put at the selector's place, for ES, SS, DS, FS and GS: machine 0
+   as FAST_LOAD_SEG() does it (fast_load_seg(), then set_seg() when it
+   declines), machine 1 set_seg() alone.  Then each of fast_load_seg()'s
+   ways out by hand, with the case beside it that it takes: past the limit,
+   one byte past it, across a page, an entry of tiny386's TLB that refuses a
+   read at level 0, in MMIO, and at RAM's end.  The scenarios reached none of
+   the first five (CHECK-qw section 5); the fourth no guest can reach today,
+   as every row of pte_lookup[][] lets level 0 read a present page. */
+static long sl_trials, sl_fast, sl_cases;
+static int sl_refuse[2][2] = { { 1, 1 }, { 1, 1 } };
+static const char *const sl_names[6] = { "ES", "CS", "SS", "DS", "FS", "GS" };
+
+/* one state change on both machines */
+#define SL_BOTH(stmt) do { for (int _i = 0; _i < 2; _i++) { CPUI386 *c = RX[_i].cpu; u8 *mem = RX[_i].mem; (void) c; (void) mem; stmt; } } while (0)
+
+/* tiny386's TLB given the page of la on both machines; false if it would not hold it */
+static bool sl_tlb(uword la)
+{
+	bool ok = true;
+	SL_BOTH({ OptAddr o; translate_laddr(c, &o, 1, la, 1, 0);
+		  if (c->tlb.tab[(la >> 12) % tlb_size].lpgno != la >> 12) ok = false; });
+	return ok;
+}
+
+/* fast_load_seg() on machine 0 must say want; taken, the segment must be
+   what set_seg() makes of it on machine 1; declined, nothing changed */
+static void sl_case(const char *what, int sg, unsigned sel, bool want, char *why, size_t n)
+{
+	CPUI386 *c0 = RX[0].cpu, *c1 = RX[1].cpu;
+	__typeof__(c0->seg[0]) before = c0->seg[sg];
+	uword spm = c0->sp_mask;
+	sl_cases++;
+	if (why[0])
+		return;
+	bool got = fast_load_seg(c0, sg, sel);
+	if (got != want) {
+		snprintf(why, n, "%s: fast_load_seg() says %s", what, got ? "yes" : "no");
+		return;
+	}
+	if (!got) {
+		if (memcmp(&before, &c0->seg[sg], sizeof(before)) || c0->sp_mask != spm)
+			snprintf(why, n, "%s: declined, but the segment changed", what);
+		return;
+	}
+	if (!set_seg(c1, sg, sel))
+		snprintf(why, n, "%s: set_seg() faults (%d, %x)", what, c1->excno, c1->excerr);
+	else if (memcmp(&c0->seg[sg], &c1->seg[sg], sizeof(c0->seg[sg])) || c0->sp_mask != c1->sp_mask)
+		snprintf(why, n, "%s: base %08x limit %x flags %x, set_seg()'s %08x %x %x", what,
+			 c0->seg[sg].base, c0->seg[sg].limit, c0->seg[sg].flags,
+			 c1->seg[sg].base, c1->seg[sg].limit, c1->seg[sg].flags);
+	/* both the same again for the next case */
+	c1->seg[sg] = c0->seg[sg];
+	c1->sp_mask = c0->sp_mask;
+}
+
+static void sl_hand(char *why, size_t n)
+{
+	u32 w1, w2;
+	for (int i = 0; i < 2; i++)
+		mach_new(&RX[i], 0);
+	setup_o(RX[0].mem, RX[0].cpu);
+	setup_o(RX[1].mem, RX[1].cpu);
+	/* the first GDT with a data descriptor at 60h, past its limit of 5Fh */
+	desc_w(O_MARK + 0x10, 0xfffff, 0xc92, &w1, &w2);
+	SL_BOTH({ put32(mem, GDT_PHYS + 0x60, w1); put32(mem, GDT_PHYS + 0x64, w2);
+		  c->cr0 |= CR0_PG; c->cpl = 0; c->gdt.base = GDT_PHYS; c->gdt.limit = 0x67; });
+	if (!sl_tlb(GDT_PHYS + 0x60)) {
+		snprintf(why, n, "(tiny386's TLB would not hold the GDT's page)");
+		return;
+	}
+	sl_case("in the limit", SEG_FS, 0x60, true, why, n);
+	SL_BOTH(c->gdt.limit = 0x5f);
+	sl_case("past the limit", SEG_FS, 0x60, false, why, n);
+	sl_case("the limit's last entry", SEG_GS, 0x58, true, why, n);
+	SL_BOTH(c->gdt.limit = 0x5e);
+	sl_case("one byte past the limit", SEG_GS, 0x58, false, why, n);
+	sl_case("one byte past the limit, SS", SEG_SS, 0x58, false, why, n);
+	SL_BOTH(c->gdt.limit = 0x67);
+	/* an entry of tiny386's TLB that refuses a read at level 0 */
+	{
+		int (*keep[2])[2];
+		for (int i = 0; i < 2; i++) {
+			struct tlb_entry *e = &RX[i].cpu->tlb.tab[((GDT_PHYS + 0x58) >> 12) % tlb_size];
+			keep[i] = e->pte_lookup;
+			e->pte_lookup = sl_refuse;
+		}
+		sl_case("the TLB's entry refuses level 0", SEG_DS, 0x58, false, why, n);
+		for (int i = 0; i < 2; i++)
+			RX[i].cpu->tlb.tab[((GDT_PHYS + 0x58) >> 12) % tlb_size].pte_lookup = keep[i];
+		sl_case("the TLB's entry as it was", SEG_DS, 0x58, true, why, n);
+	}
+	/* LDT A, both its pages present: entry 510 the page's last whole one,
+	   entry 511 across the page into one that lies apart from it */
+	SL_BOTH({ u8 *pte = mem + PT2_PHYS + ((0x541000 >> 12) & 1023) * 4; *pte |= 1;
+		  c->seg[SEG_LDT].base = O_LDTA; c->seg[SEG_LDT].limit = 0xfff; });
+	if (!sl_tlb(O_LDTA + 0xff0) || !sl_tlb(0x541000)) {
+		snprintf(why, n, "(tiny386's TLB would not hold LDT A's pages)");
+		return;
+	}
+	sl_case("a page's last entry", SEG_FS, 0xff4, true, why, n);
+	sl_case("across a page", SEG_FS, 0xffc, false, why, n);
+	sl_case("across a page, SS", SEG_SS, 0xffc, false, why, n);
+	/* LDT B in the VGA window and LDT C in the frame buffer, with paging and
+	   without; the guest RAM behind the window holds a good descriptor at
+	   LDT B's entry 2, which a read of RAM there would take */
+	desc_w(O_MARK + 0x40, 0xfffff, 0xc92, &w1, &w2);
+	SL_BOTH({ put32(mem, O_LDTB + 0x10, w1); put32(mem, O_LDTB + 0x14, w2);
+		  c->seg[SEG_LDT].base = O_LDTB; c->seg[SEG_LDT].limit = 0xff; });
+	if (!sl_tlb(O_LDTB + 0x10)) {
+		snprintf(why, n, "(tiny386's TLB would not hold the VGA window's page)");
+		return;
+	}
+	sl_case("in the VGA window", SEG_ES, 0x14, false, why, n);
+	SL_BOTH(c->seg[SEG_LDT].base = O_LDTC);
+	if (!sl_tlb(O_LDTC + 0x18)) {
+		snprintf(why, n, "(tiny386's TLB would not hold the frame buffer's page)");
+		return;
+	}
+	sl_case("in the frame buffer", SEG_ES, 0x1c, false, why, n);
+	SL_BOTH({ c->cr0 &= ~CR0_PG; c->seg[SEG_LDT].base = O_LDTB; });
+	sl_case("in the VGA window, no paging", SEG_ES, 0x14, false, why, n);
+	/* RAM's end, no paging: an entry in its last 8 bytes, one 4 bytes in
+	   past it, one wholly past it */
+	desc_w(O_MARK + 0x40, 0xfffff, 0xc92, &w1, &w2);
+	SL_BOTH({ put32(mem, MEM - 8, w1); put32(mem, MEM - 4, w2);
+		  c->seg[SEG_LDT].base = MEM - 8; c->seg[SEG_LDT].limit = 0xff; });
+	sl_case("RAM's last 8 bytes", SEG_GS, 0x04, true, why, n);
+	SL_BOTH(c->seg[SEG_LDT].base = MEM - 4);
+	sl_case("half past RAM", SEG_GS, 0x04, false, why, n);
+	SL_BOTH(c->seg[SEG_LDT].base = MEM + 0x100);
+	sl_case("past RAM", SEG_GS, 0x04, false, why, n);
+	/* not present, and S clear for a data segment (SS takes it) */
+	desc_w(O_MARK + 0x10, 0xfffff, 0x412, &w1, &w2);   /* P clear */
+	SL_BOTH({ put32(mem, GDT_PHYS + 0x60, w1); put32(mem, GDT_PHYS + 0x64, w2); c->cr0 |= CR0_PG; });
+	sl_case("not present", SEG_FS, 0x60, false, why, n);
+	desc_w(O_MARK + 0x10, 0xfffff, 0xc82, &w1, &w2);   /* S clear */
+	SL_BOTH({ put32(mem, GDT_PHYS + 0x60, w1); put32(mem, GDT_PHYS + 0x64, w2); });
+	sl_case("S clear", SEG_FS, 0x60, false, why, n);
+	sl_case("S clear, SS", SEG_SS, 0x60, true, why, n);
+}
+
+static int sl_check(int seed)
+{
+	char why[200] = "";
+	int t;
+	static const int sgs[5] = { SEG_ES, SEG_SS, SEG_DS, SEG_FS, SEG_GS };
+	for (int i = 0; i < 2; i++)
+		mach_new(&RX[i], 0);
+	setup_o(RX[0].mem, RX[0].cpu);
+	setup_o(RX[1].mem, RX[1].cpu);
+	for (uword a = 0; a < 0xa0000; a++) RX[0].mem[a] = rnd(256);
+	for (uword a = 0x190000; a < 0x1a0000; a++) RX[0].mem[a] = rnd(256);
+	for (uword a = MEM - 0x1000; a < MEM; a++) RX[0].mem[a] = rnd(256);
+	memcpy(RX[1].mem, RX[0].mem, MEM);
+	for (unsigned k = 0; k < sizeof(RX[0].vga); k++) RX[0].vga[k] = RX[1].vga[k] = rnd(256);
+	for (unsigned k = 0; k < LFB_SIZE; k++) RX[0].lfbp[k] = RX[1].lfbp[k] = rnd(256);
+	for (t = 0; t < 300 && !why[0]; t++) {
+		CPUI386 *c0 = RX[0].cpu, *c1 = RX[1].cpu;
+		int pg = !chance(5), ldt = chance(2), cpl = rnd(4), sg = sgs[rnd(5)];
+		unsigned pres = rnd(8);
+		uword base;
+		if (pg) {
+			switch (rnd(9)) {
+			case 0: base = O_LDTA; break;
+			case 1: base = O_GDT2; break;
+			case 2: base = O_LDTD2 - rnd(8); break;
+			case 3: base = 0x540000 + rnd(0x7000); break;
+			case 4: base = P_DATA + rnd(0x4000); break;
+			case 5: base = 0x9f000 + rnd(0x22000); break;              /* RAM, the VGA window, RAM */
+			case 6: base = LFB_BASE + rnd(LFB_SIZE + 0x3000); break;   /* the frame buffer, past it */
+			case 7: base = 0x7ff000 + rnd(0x1000); break;              /* the next 4 MiB not present */
+			default: base = rnd(0x800000); break;
+			}
+		} else {
+			switch (rnd(7)) {
+			case 0: base = 0x190000 + rnd(0x10000); break;
+			case 1: base = MEM - rnd(0x40); break;
+			case 2: base = MEM - 0x1000 + rnd(0x1100); break;
+			case 3: base = 0x9f000 + rnd(0x22000); break;
+			case 4: base = LFB_BASE + rnd(LFB_SIZE + 0x1000); break;
+			default: base = rnd(0x1a0000); break;
+			}
+		}
+		uword limit = chance(8) ? rnd(0x2000) : 0xffff;
+		uword off;
+		if (chance(2))   /* the entry near the end of a page: across it, or its last whole entries */
+			off = ((0xfe8 + rnd(24) - base) & 0xfff) & ~7u;
+		else
+			off = rnd(0x2000) & ~7u;
+		if (chance(4))   /* the entry at the limit, or one byte past it */
+			limit = off + 6 + rnd(2);
+		unsigned sel = off | (ldt ? 4 : 0) | rnd(4);
+		for (int i = 0; i < 2; i++) {
+			CPUI386 *c = RX[i].cpu;
+			c->cr0 = (c->cr0 & ~(CR0_PG | CR0_WP)) | (pg ? CR0_PG : 0);
+			c->cpl = cpl;
+			for (int k = 0; k < 3; k++) {
+				static const uword pgs[3] = { 0x541000, 0x543000, P_DATA + 0x1000 };
+				u8 *pte = RX[i].mem + PT2_PHYS + ((pgs[k] >> 12) & 1023) * 4;
+				*pte = (*pte & ~1) | ((pres >> k) & 1);
+			}
+			if (ldt) { c->seg[SEG_LDT].base = base; c->seg[SEG_LDT].limit = limit; }
+			else { c->gdt.base = base; c->gdt.limit = limit; }
+			c->cr2 = 0x5a5a5a5a; c->excno = -1; c->excerr = 0x1234;
+			RX[i].log = 0; RX[i].nlog = 0;
+		}
+		/* half the time a present descriptor of the right kind there, where it is in RAM in one page */
+		uword la = base + off, pa;
+		if (chance(2) && (la & 0xfff) <= 0xff8 && o_walk(RX[0].mem, c0, la, &pa) && pa + 8 <= MEM && !in_iomem(pa)) {
+			u32 w1, w2;
+			desc_w(rnd(0x100000) << 12, rnd(0x100000), 0x092 | (rnd(16) << 8) | (rnd(16) << 1), &w1, &w2);
+			for (int i = 0; i < 2; i++) {
+				put32(RX[i].mem, pa, w1);
+				put32(RX[i].mem, pa + 4, w2);
+			}
+		}
+		/* tiny386's TLB: emptied, or with entries made by reads and writes near the descriptor */
+		if (chance(3)) {
+			tlb_clear(c0);
+			tlb_clear(c1);
+		} else {
+			int k = rnd(4);
+			while (k--) {
+				uword a = la + rnd(32) - 16;
+				int rwm = chance(3) ? 2 : 1;
+				OptAddr o;
+				translate_laddr(c0, &o, rwm, a, 1, 0);
+				translate_laddr(c1, &o, rwm, a, 1, 0);
+			}
+		}
+		bool f = (sel & 0xfffc) && fast_load_seg(c0, sg, sel);
+		bool r0 = f || set_seg(c0, sg, sel);
+		bool r1 = set_seg(c1, sg, sel);
+		sl_trials++;
+		sl_fast += f;
+		if (r0 != r1)
+			snprintf(why, sizeof(why), "returns %d, set_seg() %d", r0, r1);
+		else if (r0 && (memcmp(&c0->seg[sg], &c1->seg[sg], sizeof(c0->seg[sg])) || c0->sp_mask != c1->sp_mask))
+			snprintf(why, sizeof(why), "segment %08x %x %x, set_seg()'s %08x %x %x", c0->seg[sg].base, c0->seg[sg].limit,
+				 c0->seg[sg].flags, c1->seg[sg].base, c1->seg[sg].limit, c1->seg[sg].flags);
+		else if (!r0 && (c0->excno != c1->excno || c0->excerr != c1->excerr))
+			snprintf(why, sizeof(why), "exception %d (%x), set_seg()'s %d (%x)", c0->excno, c0->excerr, c1->excno, c1->excerr);
+		else if (c0->cr2 != c1->cr2)
+			snprintf(why, sizeof(why), "CR2 %08x, set_seg()'s %08x", c0->cr2, c1->cr2);
+		else if (RX[0].log != RX[1].log || RX[0].nlog != RX[1].nlog)
+			snprintf(why, sizeof(why), "MMIO accesses (%u / %u)", RX[0].nlog, RX[1].nlog);
+		else if (memcmp(RX[0].mem + PD_PHYS, RX[1].mem + PD_PHYS, 0x4000))
+			snprintf(why, sizeof(why), "the page tables (accessed or dirty bits)");
+		for (int i = 0; !why[0] && i < tlb_size; i++) {
+			struct tlb_entry *x = &c0->tlb.tab[i], *y = &c1->tlb.tab[i];
+			if (x->lpgno != y->lpgno || (x->lpgno != (uword) -1 && (x->xaddr != y->xaddr || x->pte_lookup != y->pte_lookup)))
+				snprintf(why, sizeof(why), "tiny386's TLB entry %d (%08x / %08x)", i, x->lpgno, y->lpgno);
+		}
+		if (why[0])
+			printf("  FAIL segment loads (mode o) seed %d trial %d: %s; %s selector %04x, table at %08x limit %x, paging %d, %s\n",
+			       seed, t, why, sl_names[sg], sel, base, limit, pg, f ? "fast_load_seg() took it" : "set_seg()'s");
+		/* both the same again */
+		c1->seg[sg] = c0->seg[sg];
+		c1->sp_mask = c0->sp_mask;
+	}
+	for (int i = 0; i < 2; i++)
+		mach_free(&RX[i]);
+	if (!why[0]) {
+		sl_hand(why, sizeof(why));
+		for (int i = 0; i < 2; i++)
+			mach_free(&RX[i]);
+		if (why[0])
+			printf("  FAIL segment loads by hand (mode o) seed %d: %s\n", seed, why);
+	}
+	if (why[0])
+		fails++;
+	return why[0] != 0;
+}
+#endif
+
 /* == the fast interpreter's TLB (v5.1, from v5.0's recheck): its
    invariants, on machine 0 after each step.  First fast_tlb_check(), which
    the fast interpreter itself calls at the start of every step: it empties
@@ -3632,6 +3911,14 @@ static int run(int mode, int seed)
 	rs = 0x9e3779b97f4a7c15ull ^ ((uint64_t) seed * 0x100000001b3ull) ^ mode;
 	for (int k = 0; k < 4; k++) rnd(0);
 	int rdbad = mode == 24 ? rd_check(seed) : 0;   /* v5.1 (o): read_desc() against v5.0's */
+#if QW_SEG
+	if (mode == 24) {   /* v5.2 (o): fast_load_seg() against set_seg(), on random numbers of its own */
+		uint64_t keep = rs;
+		rs = 0x5e65e65e65e65e6full ^ ((uint64_t) seed * 0x100000001b3ull);
+		rdbad |= sl_check(seed);
+		rs = keep;
+	}
+#endif
 	gm = M[0].mem;
 	g32 = mode == 1 || mode == 2 || mode == 5 || mode == 7 || mode == 9 || mode == 12 || mode == 13 || mode == 16 || mode == 17 || mode == 19;
 	two_op_v86 = mode == 22 && seed % TWO_OP_N == TWO_OP_N - 1;   /* (v5.1) its last case is in virtual-8086 mode */
@@ -3982,6 +4269,11 @@ int main(int argc, char **argv)
 	if (rd_trials)
 		printf("descriptor reads against v5.0's (mode o): %ld, %ld in RAM in one page (one lookup since v5.1), %ld faults, %ld in MMIO, %ld at RAM's end or past it\n",
 		       rd_trials, rd_one, rd_faults, rd_mmio, rd_end);
+#if QW_SEG
+	if (sl_trials)
+		printf("segment loads, fast_load_seg() against set_seg() (mode o): %ld, %ld taken the fast way; %ld cases by hand\n",
+		       sl_trials, sl_fast, sl_cases);
+#endif
 	if (shutdowns)
 		printf("guest shutdowns, the same in both machines: %ld scenarios\n", shutdowns);
 	return bad ? 1 : 0;

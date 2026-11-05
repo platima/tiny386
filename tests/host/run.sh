@@ -912,7 +912,7 @@ grep "FAIL\|^test_fast_cpu" "$OUT/fast-cpu-plain.log"
 result $st "the fast interpreter without the board header: the same"
 for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN();$/\t(void) 0;/' \
          cpl:'s/cpu->cpl == 3\];/cpu->cpl > 0];/' \
-         lfbmark:'/^lfb_st: {/,/NEXT; }/s/^\tlfb_marked(cpu, .*$/\t(void) 0;/' \
+         lfbmark:'/^lfb_st: {/,/NEXT; }/s/^\tlfb_marked(cpu, .*$/\t(void) 0;/;s/^\(lfb_st[124]: [^;]*;\) lfb_marked([^;]*);/\1/' \
          lfbwtag:'s/^\t\t\te->wtag = pg | FAST_TAG_LFB;$/\t\t\te->wtag = pg;/' \
          outflush:'s/if (unlikely(cpu->cb.lfb_gen != cpu->fast->lfb_gen_seen))/if (0)/' \
          checkgen:'s/cpu->cb.lfb_gen != fs->lfb_gen_seen))/0))/' \
@@ -920,7 +920,7 @@ for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN
          lfbkeepw:'s/^\t\tif (e->rtag != pg || e->delta != delta)$/\t\tif (0)/' \
          jumplo:'s/if (unlikely((uintptr_t) pc < (uintptr_t) win_lo)) win_hi = 0;/(void) 0;/' \
          codelfb:'/^\t\t\tif ((uintptr_t) (h - (const u8 \*) cpu->phys_mem) >= (uintptr_t) cpu->phys_mem_size)$/{N;d}' \
-         plnull:'s/^#define FAST_PL(sg, lin, size) ((((lin) + (size) - 1) >> 12) | (((nullsegs >> (sg)) & 1u) << 20))$/#define FAST_PL(sg, lin, size) (((lin) + (size) - 1) >> 12)/' \
+         plnull:'s/^#define FAST_PL(sg, lin, size) ((((lin) + (size) - 1) >> 12) | FAST_NULL20(sg))$/#define FAST_PL(sg, lin, size) (((lin) + (size) - 1) >> 12)/' \
          st4fold:'s/^\t*nofold_it = FAST_ITER(); nofold_laddr = cpu->ifetch.laddr; nofold_xaddr = cpu->ifetch.xaddr;.*$/\t\t\t\t(void) 0;/' \
          lpgno:'s/^#define FAST_REFUSED(ent, cpl, wr) .*$/#define FAST_REFUSED(ent, cpl, wr) 0/' \
          repdirty:'/^#define FPTR_IO_W(/,/goto LABEL;/{/FAST_TAG_LFB)) { \\$/,/goto LABEL;/s/\*_e->ppte |= 0x40;/(void) 0;/}' \
@@ -988,6 +988,17 @@ fcfault rdpage i386.c 's/if (w1 \&\& (la \& 0xfff) <= 0x1000 - 8) {/if (w1) {/'
 fcfault rdmmio i386.c 's/if (!in_iomem(pa) \&\& pa <= /if (pa <= /'
 fcfault rdend i386.c 's/ \&\& pa <= (uword) cpu->phys_mem_size - 8) {/) {/'
 fcfault nullfs i386_fast.h 's/nullsegs = (nullsegs \& ~(1u << (sg)))/if ((sg) != SEG_FS) &/'
+# v5.2: fast_load_seg() (QW_SEG) without each of its ways out to set_seg()
+# (CHECK-qw section 5): its limit test (seglimit), the limit one byte
+# short (segoff1), its page test (segpage), its look at the TLB entry's
+# rights (segrights), its MMIO test (segmmio) and RAM's end (segend), each
+# caught by mode o's cases by hand
+fcfault seglimit i386_fast.h 's/^\tif (off + 7 > limit || (la \& 0xfff) > 0x1000 - 8)$/\tif ((la \& 0xfff) > 0x1000 - 8)/'
+fcfault segoff1 i386_fast.h 's/^\tif (off + 7 > limit || (la \& 0xfff) > 0x1000 - 8)$/\tif (off + 6 > limit || (la \& 0xfff) > 0x1000 - 8)/'
+fcfault segpage i386_fast.h 's/^\tif (off + 7 > limit || (la \& 0xfff) > 0x1000 - 8)$/\tif (off + 7 > limit)/'
+fcfault segrights i386_fast.h 's/^\t\tif (ent->lpgno != la >> 12 || ent->pte_lookup\[0\]\[0\])$/\t\tif (ent->lpgno != la >> 12)/'
+fcfault segmmio i386_fast.h 's/^\tif (in_iomem(pa) || pa > (uword) cpu->phys_mem_size - 8)$/\tif (pa > (uword) cpu->phys_mem_size - 8)/'
+fcfault segend i386_fast.h 's/^\tif (in_iomem(pa) || pa > (uword) cpu->phys_mem_size - 8)$/\tif (in_iomem(pa))/'
 fcfault grp2swap i386_fast.h 's/^#define FAST_GRP2_TAB(P) { \&\&P##0, \&\&P##1,/#define FAST_GRP2_TAB(P) { \&\&P##1, \&\&P##0,/'
 fcfault grp1op i386_fast.h 's/^\(#define FAST_GRP1_TAB(P) { \&\&P##0, \&\&P##1, \)\&\&P##2,/\1\&\&P##0,/'
 
