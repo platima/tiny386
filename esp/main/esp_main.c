@@ -6,6 +6,8 @@
  */
 
 #include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
 #include <inttypes.h>
 #include <assert.h>
 #include <errno.h>
@@ -44,6 +46,10 @@
 #include "bootmenu.h"
 #include "speed.h"
 #include "profile.h"
+#if CONFIG_IDF_TARGET_ESP32S31
+#include "sdmmc_clk_wrap.h"
+#include "membench.h"
+#endif
 #include "status_led.h"
 #ifdef LCD_ZERO_COPY
 #include "display.h"
@@ -325,6 +331,8 @@ struct esp_ini_config {
 	int double_buffer;      /* v4.4: a second frame buffer, swapped at the panel's frame */
 	int fast_cpu;           /* v5.0: the fast interpreter (i386_fast.h); 0 tiny386's own */
 	int profile;            /* v5.1: the profiler (profile.c, s31/PROFILE.md); 0 off */
+	int sd_clock_fix;       /* v5.2: the SD clock kept between commands (sdmmc_clk_wrap.c) */
+	int membench;           /* v5.2: the memory benchmark instead of the PC (membench.c) */
 };
 
 #ifdef TINY386_CRASH_TEST
@@ -384,6 +392,8 @@ static struct esp_ini_config config = {
 	.double_buffer = 0,     /* v4.4: one frame buffer, as before (BUILD-NOTES 29) */
 	.fast_cpu = 1,          /* v5.0: the fast interpreter, where the board header has it */
 	.profile = 0,           /* v5.1: no profiler: nothing of it set up */
+	.sd_clock_fix = 1,      /* v5.2: the clock set only when it is not already right */
+	.membench = 0,          /* v5.2: only when an ini asks for it */
 };
 static PCConfig conf;
 
@@ -719,6 +729,7 @@ static const char *const known_keys[] = {
 	"esp:uart_log", "esp:fast_seek", "esp:timer_catchup", "esp:memtest",
 	"esp:verbose_log", "esp:vbe_blocks", "esp:pace_quiet", "esp:pace_wait_ms",
 	"esp:double_buffer", "esp:fast_cpu", "esp:profile",
+	"esp:sd_clock_fix", "esp:membench",
 #ifdef TINY386_CRASH_TEST
 	"esp:crash_test",
 #endif
@@ -839,6 +850,10 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		ini_whole(name, value, 0, 1, &conf->fast_cpu);
 	} else if (NAME("profile")) {
 		ini_whole(name, value, 0, 1, &conf->profile);
+	} else if (NAME("sd_clock_fix")) {
+		ini_whole(name, value, 0, 1, &conf->sd_clock_fix);
+	} else if (NAME("membench")) {
+		ini_whole(name, value, 0, 1, &conf->membench);
 	} else if (NAME("crash_test")) {
 		conf->crash_test = atoi(value);
 	}
@@ -922,6 +937,80 @@ static inline uint32_t memtest_word(uint32_t i, uint32_t pass)
 	x ^= x >> 15;
 	return pass & 1 ? ~x : x;
 }
+
+#if CONFIG_IDF_TARGET_ESP32S31
+/* [esp] membench = 1 (v5.2): the board's memory measured once (membench.c),
+   in place of the PC, from an ini of its own (the card's membench.ini).  The
+   lines go to the console as they come and to a buffer in internal RAM, and
+   only at the end to MEMBENCH.TXT beside the ini, so that nothing is written
+   to the card while the cache is being tried.  Then the board waits for
+   RESET: the PC is not built after it. */
+#define MEMBENCH_TEXT (12 * 1024)
+static char *s_mb_text;
+static size_t s_mb_len;
+
+static void membench_say(const char *fmt, ...)
+{
+	char line[224];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(line, sizeof(line), fmt, ap);
+	va_end(ap);
+	console_puts(CON_INFO, line);
+	size_t n = strlen(line);
+	if (s_mb_text && s_mb_len + n + 2 <= MEMBENCH_TEXT) {
+		memcpy(s_mb_text + s_mb_len, line, n);
+		s_mb_len += n;
+		s_mb_text[s_mb_len++] = '\r';
+		s_mb_text[s_mb_len++] = '\n';
+	}
+}
+
+static void membench_board(void)
+{
+	console_puts(CON_WARN, "membench ([esp] membench = 1): the board's memory measured "
+		     "once, about half a minute. The PC is not started after it.");
+	if (!psram) {
+		console_puts(CON_ERROR, "membench: no PSRAM pool to measure in.");
+		console_hold();
+		for (;;)
+			vTaskDelay(portMAX_DELAY);
+	}
+	s_mb_text = heap_caps_malloc(MEMBENCH_TEXT, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+	s_mb_len = 0;
+	if (!s_mb_text)
+		console_puts(CON_WARN, "membench: no internal RAM for MEMBENCH.TXT's text: "
+			     "the lines are on the console and the UART only.");
+	uint32_t t0 = get_uticks();
+	int r = membench_run(membench_say, (uint8_t *) psram, (size_t) psram_len);
+	unsigned s = (unsigned) ((get_uticks() - t0) / 1000000);
+	if (r < 0) {
+		console_printf(CON_ERROR, "membench could not run: %s.", r == -1 ?
+			       "the emulator's PSRAM pool is under 3.2 MiB" :
+			       "no internal RAM for its 32 KiB buffer");
+	} else {
+		console_printf(r ? CON_WARN : CON_GOOD, "membench: done in %u s%s.", s,
+			       r ? ", but the cache's preload engine stuck once" : "");
+	}
+	memset(psram, 0, psram_len);
+	if (s_mb_text && s_mb_len) {
+		char path[128];
+		snprintf(path, sizeof(path), "%s/MEMBENCH.TXT", s_ini_dir);
+		FILE *f = fopen(path, "w");
+		bool ok = f && fwrite(s_mb_text, 1, s_mb_len, f) == s_mb_len;
+		if (f && fclose(f) != 0)
+			ok = false;
+		if (ok)
+			console_printf(CON_GOOD, "membench: %s written (%u bytes).", path, (unsigned) s_mb_len);
+		else
+			console_printf(CON_ERROR, "membench: %s could not be written.", path);
+	}
+	console_puts(CON_INFO, "Press RESET to start again (the boot menu comes back).");
+	console_hold();
+	for (;;)
+		vTaskDelay(portMAX_DELAY);      /* never the PC after it */
+}
+#endif
 
 static void psram_test(int passes)
 {
@@ -1623,6 +1712,17 @@ void app_main(void)
 		console_puts(CON_INFO, "pace_quiet is ignored: this board's drawing does not wait.");
 #endif
 	psram_test(config.memtest);
+#if CONFIG_IDF_TARGET_ESP32S31
+	if (config.membench)
+		membench_board();
+	sd_clock_fix = config.sd_clock_fix;
+	if (!config.sd_clock_fix)
+		console_puts(CON_INFO, "sd_clock_fix = 0: the SD clock is set again before every "
+			     "command, as before v5.2.");
+#else
+	if (config.membench || !config.sd_clock_fix)
+		console_puts(CON_INFO, "membench and sd_clock_fix are ignored: not in this build.");
+#endif
 
 	if (config.enable_usb) {
 		input_setup();          /* once: it may be running for the menu */

@@ -47,6 +47,7 @@ set(srcs "esp_main.c"
 "lcd_elecrow7s3.c"
 "lcd_korvo1.c"
 "sdmmc_crc_wrap.c"
+"sdmmc_clk_wrap.c"
 "i2s.c"
 "audio_mix.c"
 "storage.c"
@@ -107,6 +108,15 @@ endif()
 # ini and crashes on purpose (esp_main.c).  Not for the release images.
 if(CRASH_TEST)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE TINY386_CRASH_TEST)
+endif()
+
+# v5.2, the S31 boards: the SD clock kept between commands (sdmmc_clk_wrap.c,
+# [esp] sd_clock_fix), and the memory benchmark ([esp] membench, membench.c)
+if(IDF_TARGET STREQUAL "esp32s31")
+    target_sources(${COMPONENT_LIB} PRIVATE "membench.c" "membench_pie.S")
+    target_link_options(${COMPONENT_LIB} INTERFACE
+        -Wl,--wrap=sd_host_slot_get_real_freq
+        -Wl,--undefined=__wrap_sd_host_slot_get_real_freq)
 endif()
 
 # Linker wrap for SPI SD CMD59 workaround (elecrow7s3 only)

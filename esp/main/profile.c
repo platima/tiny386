@@ -47,6 +47,9 @@
 #include "kbd_input.h"
 #include "speed.h"
 #include "profile.h"
+#if CONFIG_IDF_TARGET_ESP32S31
+#include "sdmmc_clk_wrap.h"
+#endif
 
 #if CONFIG_IDF_TARGET_ESP32S31
 #define PROFILE_SUPPORTED 1
@@ -421,6 +424,11 @@ void profile_write(const char *why)
 	console_printf(CON_INFO, "Profile: %s%s%s written (%s, file %u): %" PRIu32 " samples, %ld "
 		       "bytes, in %u ms, the guest waiting.", s_path, key ? " and " : "", path2, why,
 		       (unsigned) s_files, samples, bytes, ms);
+#if CONFIG_IDF_TARGET_ESP32S31
+	/* v5.2: what sd_clock_fix did since the start */
+	console_printf(CON_INFO, "Profile: SD commands that kept the clock %" PRIu32 ", that set it "
+		       "%" PRIu32 " (sd_clock_fix = %d).", sd_clock_kept, sd_clock_set, sd_clock_fix);
+#endif
 	/* the PC record moving, and pointing at code: else the host half of
 	   the file says nothing (the guest half still holds) */
 	if (samples >= 1000 && places < 8)
