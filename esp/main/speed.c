@@ -349,8 +349,15 @@ void speed_double_refused(void)
 void speed_run_step(void *opaque, uint32_t now_us)
 {
 	PC *pc = opaque;
-	int ev = speed_step(&s_speed, now_us, (uint32_t) cpui386_get_cycle(pc->cpu),
-			    (uint8_t) pc->phys_mem[0x4f0]);
+	speed_run_step_at(pc, now_us, (uint32_t) cpui386_get_cycle(pc->cpu));
+}
+
+/* v5.2: the same, with the instruction count that goes with now_us, where
+   the run loop has the time from the start of the step (QW_CLK1) */
+void speed_run_step_at(void *opaque, uint32_t now_us, uint32_t cycle)
+{
+	PC *pc = opaque;
+	int ev = speed_step(&s_speed, now_us, cycle, (uint8_t) pc->phys_mem[0x4f0]);
 	if (ev & SPEED_SECOND) {
 		s_kips = s_speed.kips;
 		s_halt_pct = s_speed.halt_pct;

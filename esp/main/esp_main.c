@@ -529,6 +529,12 @@ static void run_pc(PC *pc)
 
 	speed_run_init(pc);
 	while (pc->shutdown_state != 8) {
+#if QW_CLK1
+		/* the count as this step begins, to go with the time the PIT
+		   reads at its start: the speed screen's run and halt times
+		   then belong to the instructions they are given with */
+		uint32_t step_cycle = (uint32_t) cpui386_get_cycle(pc->cpu);
+#endif
 		pc_step(pc);
 #ifdef LCD_ZERO_COPY
 		/* v4.4: the guest's last store into video memory, for the
@@ -548,7 +554,11 @@ static void run_pc(PC *pc)
 #else
 		uint32_t now = get_uticks();
 #endif
+#if QW_CLK1
+		speed_run_step_at(pc, now, step_cycle);
+#else
 		speed_run_step(pc, now);
+#endif
 		unsigned w = disk_writes();
 		if (w != writes) {
 			writes = w;

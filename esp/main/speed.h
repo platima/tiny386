@@ -74,6 +74,7 @@ const char *speed_mark_name(int mark);
 /* the firmware's part: speed.c (pc is the PC of pc.h) */
 void speed_run_init(void *pc);          /* on the emulator's core, PC built */
 void speed_run_step(void *pc, uint32_t now_us);        /* after each pc_step() */
+void speed_run_step_at(void *pc, uint32_t now_us, uint32_t cycle);   /* the same, the count given */
 /* time since the last step that was not the guest's (the card): left
    out, as the Linux route leaves it out; speed_run_aside() counts a disk
    flush too, speed_run_pause() does not */
