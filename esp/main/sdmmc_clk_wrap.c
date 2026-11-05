@@ -35,6 +35,13 @@
 int sd_clock_fix = 1;
 uint32_t sd_clock_kept, sd_clock_set;
 
+/* the last request found right, and the clock its dividers give: a pure
+   function of the request (the slot's clock source does not change), so
+   the dividers are not worked out again for every command */
+static sd_host_sdmmc_slot_t *s_slot;
+static uint32_t s_req_hz;
+static int s_real_khz;
+
 esp_err_t __real_sd_host_slot_get_real_freq(sd_host_sdmmc_slot_t *slot, int *real_freq_khz);
 
 esp_err_t __wrap_sd_host_slot_get_real_freq(sd_host_sdmmc_slot_t *slot, int *real_freq_khz)
@@ -42,9 +49,19 @@ esp_err_t __wrap_sd_host_slot_get_real_freq(sd_host_sdmmc_slot_t *slot, int *rea
 	esp_err_t ret = __real_sd_host_slot_get_real_freq(slot, real_freq_khz);
 	if (ret != ESP_OK || !sd_clock_fix)
 		return ret;
-	int want = 0;
-	if (sd_host_slot_get_calc_real_freq(slot, &want) == ESP_OK && want == *real_freq_khz) {
-		*real_freq_khz = (int) (slot->freq.freq_hz / 1000);
+	uint32_t req = slot->freq.freq_hz;
+	bool right = slot == s_slot && req == s_req_hz && *real_freq_khz == s_real_khz;
+	if (!right) {
+		int want = 0;
+		right = sd_host_slot_get_calc_real_freq(slot, &want) == ESP_OK && want == *real_freq_khz;
+		if (right) {
+			s_slot = slot;
+			s_req_hz = req;
+			s_real_khz = want;
+		}
+	}
+	if (right) {
+		*real_freq_khz = (int) (req / 1000);
 		sd_clock_kept++;
 	} else {
 		sd_clock_set++;

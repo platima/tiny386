@@ -73,8 +73,16 @@ else()
     list(APPEND srcs "usb_input.c")
 endif()
 
+# v5.2: the code core 1 runs from flash most, in internal RAM (linker_hot.lf);
+# the S31 boards only, -DNO_HOT_IRAM=1 leaves it out
+set(ldfrags "")
+if(IDF_TARGET STREQUAL "esp32s31" AND NOT NO_HOT_IRAM)
+    set(ldfrags "linker_hot.lf")
+endif()
+
 idf_component_register(SRCS ${srcs}
-INCLUDE_DIRS "")
+INCLUDE_DIRS ""
+LDFRAGMENTS ${ldfrags})
 
 message(STATUS "Building for BOARD=${BOARD}")
 
