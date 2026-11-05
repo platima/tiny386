@@ -1652,7 +1652,7 @@ op_int: {   /* INT n in real mode, as call_isr1()'s real-address branch: FLAGS, 
 	fs16(s + 4, cpu->flags);
 	fs16(s + 2, cpu->seg[SEG_CS].sel);
 	fs16(s, EIP_OF(pc));
-	REGi(4) = slot;   /* sreg32(): ESP's top half goes, as in tiny386 */
+	REGi(4) = (sp & ~ssm) | slot;   /* set_sp(): only SP moves, as call_isr1() since upstream's 6bd2794 */
 	LOAD_CS(w1 >> 16);
 	eip = w1 & 0xffff;
 	cpu->ip = eip;    /* (call_isr1() leaves it so) */

@@ -220,6 +220,7 @@ struct VGAState {
     uint8_t last_cursor_end;
     uint8_t last_preset;
     uint8_t last_underline;
+    uint8_t last_cheight;   /* the cell height last drawn (a change moves every row) */
     uint8_t last_blink;
     bool blink_visible;             /* blinking characters, now */
     int last_text_x1, last_text_y1, last_text_w1, last_text_h1;
@@ -1250,6 +1251,12 @@ static void vga_text_refresh(VGAState *s,
     }
 #endif
 #endif
+    /* taller or shorter cells move every row, even where the number of
+       rows stays the same */
+    if (cheight != s->last_cheight) {
+        s->last_cheight = cheight;
+        full_update = 1;
+    }
     if ((s->cr[0x14] & 0x1f) != s->last_underline) {
         s->last_underline = s->cr[0x14] & 0x1f;
         full_update = 1;
@@ -1348,7 +1355,7 @@ static void vga_text_refresh(VGAState *s,
                     fgcol = textcol;
                 }
                 dup9 = 0;
-                if (cwidth == 9 && ch >= 0xb0 && ch <= 0xdf && (s->ar[0x10] & 0x04))
+                if (cwidth == 9 && ch >= 0xc0 && ch <= 0xdf && (s->ar[0x10] & 0x04))
                     dup9 = 1;
                 vga_draw_cell(dst, stride, font_ptr + 4 * first, last - first,
                               fgcol, bgcol, cwidth, dup9, dw);

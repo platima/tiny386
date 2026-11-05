@@ -4172,7 +4172,7 @@ noinline static void __AAM_helper(CPUI386 *cpu, u8 i)
 	cpu->cc.dst = sext8(res); \
 	cpu->cc.mask = ZF | SF | PF;
 }
-#define AAM(i, li, _) __AAM_helper(cpu, li(i));
+#define AAM(i, li, _) if (li(i) == 0) THROW0(EX_DE); __AAM_helper(cpu, li(i));
 
 #define SALC() \
 	if (get_CF(cpu)) sreg8(0, 0xff); else sreg8(0, 0x00);
@@ -5340,7 +5340,7 @@ static bool IRAM_ATTR call_isr1(CPUI386 *cpu, int no, bool pusherr, int ext)
 		saddr16(&meml1, cpu->flags);
 		saddr16(&meml2, cpu->seg[SEG_CS].sel);
 		saddr16(&meml3, cpu->ip);
-		sreg32(4, (sp - 2 * 3) & sp_mask);
+		set_sp(sp - 2 * 3, sp_mask);
 
 		TRY1(set_seg(cpu, SEG_CS, newcs));
 		cpu->next_ip = newip;

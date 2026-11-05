@@ -507,6 +507,8 @@ struct PS2MouseState {
     /* the emulator's only: movement or a button change not yet sent */
     bool pending;
     uint32_t next_send_us;      /* no packet before this (the sample rate) */
+#else
+    uint8_t mouse_pending; /* a packet found no room: send with the next event */
 #endif
 };
 
@@ -1144,8 +1146,42 @@ void ps2_mouse_event(PS2MouseState *s,
 
 #else /* tiny386's own: the packets made where the report comes in */
 
-static void ps2_mouse_send_packet(PS2MouseState *s)
+/* n bytes into the queue, all of them or none: none if headroom places or
+   fewer are free, or if the n bytes do not fit.  A mouse packet cut short
+   by a full queue would put every packet after it out of step in the
+   guest's driver. */
+static int ps2_queue_packet(PS2State *s, const uint8_t *b, int n, int headroom)
 {
+    PS2Queue *q = &s->queue;
+    int ok;
+
+#ifdef THREAD_SAFE
+    xSemaphoreTake(q->mutex, portMAX_DELAY);
+#endif
+    ok = q->count < PS2_QUEUE_SIZE - headroom && q->count + n <= PS2_QUEUE_SIZE;
+    if (ok) {
+        for (int i = 0; i < n; i++) {
+            q->data[q->wptr] = b[i];
+            if (++q->wptr == PS2_QUEUE_SIZE)
+                q->wptr = 0;
+        }
+        q->count += n;
+    }
+#ifdef THREAD_SAFE
+    xSemaphoreGive(q->mutex);
+#else
+    if (ok)
+        s->update_irq(s->update_arg, 1);
+#endif
+    return ok;
+}
+
+/* One packet of what has not been sent yet, if all of it fits with
+   headroom places to spare; 0 if it does not, and nothing is sent. */
+static int ps2_mouse_send_packet(PS2MouseState *s, int headroom)
+{
+    uint8_t p[4];
+    int n = 3;
     unsigned int b;
     int dx1, dy1, dz1;
 
@@ -1162,9 +1198,9 @@ static void ps2_mouse_send_packet(PS2MouseState *s)
     else if (dy1 < -127)
         dy1 = -127;
     b = 0x08 | ((dx1 < 0) << 4) | ((dy1 < 0) << 5) | (s->mouse_buttons & 0x07);
-    ps2_queue(&s->common, b);
-    ps2_queue(&s->common, dx1 & 0xff);
-    ps2_queue(&s->common, dy1 & 0xff);
+    p[0] = b;
+    p[1] = dx1 & 0xff;
+    p[2] = dy1 & 0xff;
     /* extra byte for IMPS/2 or IMEX */
     switch(s->mouse_type) {
     default:
@@ -1174,7 +1210,7 @@ static void ps2_mouse_send_packet(PS2MouseState *s)
             dz1 = 127;
         else if (dz1 < -127)
                 dz1 = -127;
-        ps2_queue(&s->common, dz1 & 0xff);
+        p[n++] = dz1 & 0xff;
         break;
     case 4:
         if (dz1 > 7)
@@ -1182,15 +1218,18 @@ static void ps2_mouse_send_packet(PS2MouseState *s)
         else if (dz1 < -7)
             dz1 = -7;
         b = (dz1 & 0x0f) | ((s->mouse_buttons & 0x18) << 1);
-        ps2_queue(&s->common, b);
+        p[n++] = b;
         break;
     }
+    if (!ps2_queue_packet(&s->common, p, n, headroom))
+        return 0;
 
     /* update deltas */
     s->mouse_dx -= dx1;
     s->mouse_dy -= dy1;
     s->mouse_dz -= dz1;
     ps2_mouse_packets = ps2_mouse_packets + 1;
+    return 1;
 }
 
 void ps2_mouse_event(PS2MouseState *s,
@@ -1206,16 +1245,21 @@ void ps2_mouse_event(PS2MouseState *s,
     s->mouse_dz += dz;
     /* XXX: SDL sometimes generates nul events: we delete them */
     if (s->mouse_dx == 0 && s->mouse_dy == 0 && s->mouse_dz == 0 &&
-        s->mouse_buttons == buttons_state)
+        s->mouse_buttons == buttons_state && !s->mouse_pending)
         return;
     s->mouse_buttons = buttons_state;
 
-    if (!(s->mouse_status & MOUSE_STATUS_REMOTE) &&
-        (s->common.queue.count < (PS2_QUEUE_SIZE - 16))) {
-        for(;;) {
-            /* if not remote, send event. Multiple events are sent if
-               too big deltas */
-            ps2_mouse_send_packet(s);
+    if (!(s->mouse_status & MOUSE_STATUS_REMOTE)) {
+        /* if not remote, send event. Multiple events are sent if
+           too big deltas, while more than 16 places are free (they
+           are kept for replies to commands); what is left, a change
+           of buttons too, is sent with the next event */
+        for (;;) {
+            if (!ps2_mouse_send_packet(s, 16)) {
+                s->mouse_pending = 1;
+                break;
+            }
+            s->mouse_pending = 0;
             if (s->mouse_dx == 0 && s->mouse_dy == 0 && s->mouse_dz == 0)
                 break;
         }
@@ -1281,11 +1325,7 @@ void ps2_write_mouse(void *opaque, int val)
             break;
         case AUX_POLL:
             ps2_queue(&s->common, AUX_ACK);
-#ifdef PS2_MOUSE_DEFERRED
             ps2_mouse_send_packet(s, 0);
-#else
-            ps2_mouse_send_packet(s);
-#endif
             break;
         case AUX_ENABLE_DEV:
             s->mouse_status |= MOUSE_STATUS_ENABLED;
