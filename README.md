@@ -20,6 +20,8 @@ To assemble a complete PC system, we have ported many peripherals from TinyEMU a
 
 For firmware, the BIOS/VGABIOS comes from seabios. Tiny386 also supports booting linux kernel directly, without traditional BIOS. The idea comes from JSLinux, and it uses a small stub code called linuxstart.
 
+By default the directly booted kernel gets an 80x25 text console. With `vga=<mode>` in its command line (VESA mode number + 0x200, as with other boot loaders, e.g. `vga=0x303` for 800x600 with 256 colours, `0x314` with 16-bit colour, `0x305`/`0x317` for 1024x768), linuxstart sets that graphics mode and describes the linear frame buffer to the kernel, for its VESA frame buffer driver (`CONFIG_FB_VESA`, with `CONFIG_FRAMEBUFFER_CONSOLE` for a console). The mode has to fit the `[display]` size and `vga_mem_size`; otherwise text mode stays.
+
 Tiny386 now supports i686, MMX, SSE (up to SSSE3) and amd64 (64bit long mode only). As these features are optional, they may be safely disregarded if not required.
 
 ## Demo
@@ -36,6 +38,13 @@ To build with display and sound:
 - WebAssembly: Install `clang` first, then run `cd wasm; make`.
 
 For details, please refer to `.github/workflows/build.yml` and `Makefile`.
+
+`make USE_FAST=y` builds the CPU with a fast path (in `fast/`): common instructions run there, and the rest goes to the interpreter one instruction at a time. `make USE_FAST=pd` also decodes hot code once into blocks, which is faster but needs more memory. It's portable C (GCC/clang: computed goto) for little-endian hosts, as `i386.c`; on hosts without unaligned loads, build with `-DI386_ALIGNED_ONLY` as for `i386.c`. For the ESP32 build, compile `fast/fast.c` instead of `i386.c` with `-DUSE_FAST`.
+
+Options (`CFLAGS`):
+- `-DFAST_PD`: pre-decoding (`USE_FAST=pd`).
+- `-DFAST_PD_SIZE=<bytes>`: memory for decoded blocks, default 2 MB. Pre-decoding also needs RAM/32 bytes (RAM/16 on 64-bit hosts) for its tables. If any of it can't be allocated, the fast path runs without pre-decoding.
+- `-DFAST_VERIFY`: redo every instruction in the interpreter and compare (slow; for testing).
 
 Pre-built binaries: [here](https://github.com/hchunhui/tiny386/releases)
 

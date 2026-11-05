@@ -911,7 +911,7 @@ st=$?
 grep "FAIL\|^test_fast_cpu" "$OUT/fast-cpu-plain.log"
 result $st "the fast interpreter without the board header: the same"
 for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN();$/\t(void) 0;/' \
-         cpl:'s/cpu->cpl > 0\];/cpu->cpl == 3];/' \
+         cpl:'s/cpu->cpl == 3\];/cpu->cpl > 0];/' \
          lfbmark:'/^lfb_st: {/,/NEXT; }/s/^\tlfb_marked(cpu, .*$/\t(void) 0;/' \
          lfbwtag:'s/^\t\t\te->wtag = pg | FAST_TAG_LFB;$/\t\t\te->wtag = pg;/' \
          outflush:'s/if (unlikely(cpu->cb.lfb_gen != cpu->fast->lfb_gen_seen))/if (0)/' \

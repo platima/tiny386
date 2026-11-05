@@ -633,8 +633,8 @@ typedef struct {
 
 #ifdef I386_FAST
 /* v5.0: the fast interpreter's TLB (i386_fast.h).  For each of tiny386's
-   entries, one for privilege levels 1 to 3 and one for 0 (and for no
-   paging), as tiny386 checks a page's rights for levels 1 to 3 alike: a
+   entries, one for privilege level 3 and one for 0 to 2 (and for no
+   paging), as tiny386 checks a page's rights for levels 0 to 2 alike: a
    linear page's host address, for reads and for writes (RAM, and the VBE
    frame buffer's pages, whose write tag is marked).  An entry is kept only
    while tiny386's own entry at the same index holds the same page, so that
@@ -691,8 +691,15 @@ static noinline void IRAM_ATTR fast_tlb_slot(CPUI386 *cpu, struct tlb_entry *ent
 #define FAST_TLB_CLEARED(cpu) do {} while (0)
 #endif
 
+#ifdef USE_FAST
+static unsigned tlb_gen; /* counts TLB clears (fast/fast.h keeps a TLB of its own) */
+#endif
+
 static void IRAM_ATTR_EXEC1_HELPER tlb_clear(CPUI386 *cpu)
 {
+#ifdef USE_FAST
+	tlb_gen++;
+#endif
 	FAST_TLB_CLEARED(cpu);
 	for (int i = 0; i < tlb_size; i++) {
 		cpu->tlb.tab[i].lpgno = -1;
@@ -701,7 +708,7 @@ static void IRAM_ATTR_EXEC1_HELPER tlb_clear(CPUI386 *cpu)
 	cpu->ifetch.paddr = 0;
 }
 
-static int pte_lookup[2][4][2][2] = { //[wp != 0][(pte >> 1) & 3][cpl > 0][rwm > 1]
+static int pte_lookup[2][4][2][2] = { //[wp != 0][(pte >> 1) & 3][cpl == 3][rwm > 1]
 	{ // wp == 0
 		{ {0, 0}, {1, 1} }, // s,r
 		{ {0, 0}, {1, 1} }, // s,w
@@ -832,7 +839,7 @@ static inline __attribute__((always_inline)) void lpgno_fault(CPUI386 *cpu, int 
 	cpu->excerr = err;
 	if (rwm & 2)
 		cpu->excerr |= 2;
-	if (cpl)
+	if (cpl == 3)
 		cpu->excerr |= 4;
 }
 
@@ -843,7 +850,7 @@ static inline __attribute__((always_inline)) void lpgno_fault(CPUI386 *cpu, int 
 #define LPGNO_RIGHTS(NAME, LEAN) \
 static inline __attribute__((always_inline)) bool NAME(CPUI386 *cpu, struct tlb_entry *ent, int rwm, uword lpgno, uword laddr, int cpl, uword *paddr) \
 { \
-	if (ent->pte_lookup[cpl > 0][rwm > 1]) { \
+	if (ent->pte_lookup[cpl == 3][rwm > 1]) { \
 		lpgno_fault(cpu, rwm, laddr, cpl, 1); \
 		if (LEAN) \
 			FAST_TLB_SLOT_LEAN(cpu, lpgno % tlb_size); \
@@ -912,7 +919,7 @@ static bool IRAM_ATTR translate_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uword 
    (v5.1, at the merge: the two tests are the macros FAST_REFUSED() and
    FAST_CODE_PAGE(), which fast_translate() below, the lean refill of
    WI-4 that fast_miss() calls in place of this function, makes too.) */
-#define FAST_REFUSED(ent, cpl, wr) ((ent)->pte_lookup[(cpl) > 0][(wr)] != 0)
+#define FAST_REFUSED(ent, cpl, wr) ((ent)->pte_lookup[(cpl) == 3][(wr)] != 0)
 #define FAST_CODE_PAGE(cpu, ent) ((ent)->lpgno == ((uword) (cpu)->ifetch.laddr >> 12))
 static noinline bool IRAM_ATTR fast_lpgno(CPUI386 *cpu, int rwm, uword lpgno, uword laddr, int cpl, uword *paddr)
 {
@@ -1029,16 +1036,16 @@ static bool IRAM_ATTR translate8r(CPUI386 *cpu, OptAddr *res, int seg, uword add
 				cpu->cr2 = laddr;
 				cpu->excno = EX_PF;
 				cpu->excerr = 0;
-				if (cpu->cpl)
+				if (cpu->cpl == 3)
 					cpu->excerr |= 4;
 				return false;
 			}
 		}
-		if (ent->pte_lookup[cpu->cpl > 0][0]) {
+		if (ent->pte_lookup[cpu->cpl == 3][0]) {
 			cpu->cr2 = laddr;
 			cpu->excno = EX_PF;
 			cpu->excerr = 1;
-			if (cpu->cpl)
+			if (cpu->cpl == 3)
 				cpu->excerr |= 4;
 			FAST_TLB_SLOT(cpu, ent);
 			ent->lpgno = -1;

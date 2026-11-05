@@ -477,26 +477,6 @@ unsigned emulink_error_count(void)
 	return fdd_errors;
 }
 
-/* the guest's drive, cylinder, head, sector and count name sectors the
-   image has: a first sector the disk has (a sector past the track's, or a
-   head it lacks, is not found, as on a real drive, rather than read from
-   somewhere else), and no seek past its end, which on the card would make
-   the file grow */
-static int emulink_range_ok(EMULINK *e)
-{
-	if (e->args[0] >= 2 || !e->fdd[e->args[0]])
-		return 0;
-	const struct fdfmt *f = &(fmt[e->fdfmti[e->args[0]]]);
-	int64_t c = e->args[1] >> 16;
-	int64_t h = (e->args[1] >> 8) & 0xff;
-	int64_t s = e->args[1] & 0xff;
-	if (c >= f->tracks || h >= f->heads || s < 1 || s > f->sectors)
-		return 0;
-	int64_t total = (int64_t) f->sectors * f->tracks * f->heads;
-	int64_t lba = (c * f->heads + h) * f->sectors + (s - 1);
-	return s >= 1 && lba >= 0 && lba + (int64_t) e->args[2] <= total;
-}
-
 /* the floppy reads and writes, for the status LED's disk light (v3.8) */
 volatile unsigned emulink_activity;
 #define FDD_ACTIVITY() (emulink_activity++)
@@ -558,6 +538,26 @@ uint32_t emulink_status_read(void *s)
 	return e->status;
 }
 
+/* The guest's drive, cylinder, head, sector and count name sectors of an
+   image that is there: nothing outside fdd[]; a first sector the disk has
+   (a sector number past the track's, or a head it lacks, is not found, as
+   on a real drive, rather than read from somewhere else); and no seek past
+   the end of the image, which a write would make longer. */
+static int emulink_range_ok(EMULINK *e)
+{
+	if (e->args[0] >= 2 || !e->fdd[e->args[0]])
+		return 0;
+	const struct fdfmt *f = &(fmt[e->fdfmti[e->args[0]]]);
+	int64_t c = e->args[1] >> 16;
+	int64_t h = (e->args[1] >> 8) & 0xff;
+	int64_t s = e->args[1] & 0xff;
+	if (c >= f->tracks || h >= f->heads || s < 1 || s > f->sectors)
+		return 0;
+	int64_t total = (int64_t) f->sectors * f->tracks * f->heads;
+	int64_t lba = (c * f->heads + h) * f->sectors + (s - 1);
+	return lba + (int64_t) e->args[2] <= total;
+}
+
 static void exec_cmd(EMULINK *e)
 {
 	switch (e->cmd) {
@@ -577,15 +577,7 @@ static void exec_cmd(EMULINK *e)
 	case 0x102:
 		if (e->argi == 3) {
 			int ret;
-#ifdef EMULINK_CHECKED
-			/* drive 0 or 1 only, and sectors the image has */
 			if (!emulink_range_ok(e)) {
-				e->status = -EIO;
-				e->cmd = -1;
-				break;
-			}
-#endif
-			if (!e->fdd[e->args[0]]) {
 				e->status = -EIO;
 				e->cmd = -1;
 				break;
@@ -634,11 +626,7 @@ int emulink_data_write_string(void *s, uint8_t *buf, int size, int count)
 	EMULINK *e = s;
 	switch (e->cmd) {
 	case 0x102: // floppy write
-#ifdef EMULINK_CHECKED
-		if (e->args[0] >= 2)
-			break;
-#endif
-		if (!e->fdd[e->args[0]])
+		if (e->args[0] >= 2 || !e->fdd[e->args[0]])
 			break;
 		if (e->argi == 3) {
 			int len = size * count;
@@ -680,11 +668,7 @@ int emulink_data_read_string(void *s, uint8_t *buf, int size, int count)
 	EMULINK *e = s;
 	switch (e->cmd) {
 	case 0x101: // floppy read
-#ifdef EMULINK_CHECKED
-		if (e->args[0] >= 2)
-			break;
-#endif
-		if (!e->fdd[e->args[0]])
+		if (e->args[0] >= 2 || !e->fdd[e->args[0]])
 			break;
 		if (e->argi == 3) {
 			int len = size * count;

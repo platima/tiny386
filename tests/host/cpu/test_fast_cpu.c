@@ -2848,7 +2848,7 @@ static const char *probe(uword lin, int size, int wr)
 	int cross = (lin & 0xfff) > (uword) (0x1000 - size);
 	struct tlb_entry *t0 = &c0->tlb.tab[(lin >> 12) % tlb_size], s0 = *t0;
 	int leave = !cross && (c0->cr0 & CR0_PG) &&
-		(t0->lpgno == lin >> 12 ? t0->pte_lookup[c0->cpl > 0][wr != 0] != 0 :
+		(t0->lpgno == lin >> 12 ? t0->pte_lookup[c0->cpl == 3][wr != 0] != 0 :
 		 t0->lpgno == ((uword) c0->ifetch.laddr >> 12));
 	uword cr2 = c0->cr2;
 	int exc = c0->excno, err = c0->excerr;

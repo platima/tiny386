@@ -153,8 +153,8 @@ static noinline void IRAM_ATTR_FAST_EXEC fast_tlb_flush(CPUI386 *cpu)
 }
 
 /* The entries depend on paging (CR0, CR3) and, with paging, on whether the
-   privilege level is above 0 (tiny386 checks a page's rights for levels 1
-   to 3 alike: translate_lpgno()'s pte_lookup[cpl > 0]); they go when
+   privilege level is 3 (tiny386 checks a page's rights for levels 0 to 2
+   alike: translate_lpgno()'s pte_lookup[cpl == 3]); they go when
    tiny386's TLB does (tlb_clear(): MOV CR0 and CR3, INVLPG, task
    switches).  Without paging they are linear = physical, in real and
    protected mode alike, and a tlb_clear() then does not empty them (DOS
@@ -169,7 +169,7 @@ static inline struct fast_tlb_entry *IRAM_ATTR_FAST_EXEC fast_tlb_check(CPUI386 
 		     ((cpu->cr0 & CR0_PG) && cpu->cr3 != fs->cr3) || fs->gen != fs->gen_seen ||
 		     cpu->cb.lfb_gen != fs->lfb_gen_seen))
 		fast_tlb_flush(cpu);
-	return fs->tab[(cpu->cr0 & CR0_PG) && cpu->cpl > 0];
+	return fs->tab[(cpu->cr0 & CR0_PG) && cpu->cpl == 3];
 }
 
 /* The host address of a size-byte access at linear address lin, filling

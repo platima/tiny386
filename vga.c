@@ -611,8 +611,8 @@ static void scale_3_2(uint8_t *dst, int dst_stride, uint8_t *src, int w)
            int sh1 = shift[idx][1];
            int sh2 = shift[idx][2];
            int sh3 = shift[idx][3];
-           *(uint16_t *)dst1 = c96(((c69(*p0) << sh0) + (c69(*p1) << sh1) +
-                                    (c69(*p2) << sh2) + (c69(*p3) << sh3)) >> 3);
+           PUT16(dst1, 0, c96(((c69(*p0) << sh0) + (c69(*p1) << sh1) +
+                               (c69(*p2) << sh2) + (c69(*p3) << sh3)) >> 3));
 #ifdef SWAPXY
            dst1 += dst_stride;
 #else
@@ -634,7 +634,7 @@ static void scale_3_3(uint8_t *dst, int dst_stride, uint8_t *src, int w)
        uint8_t *dst1 = dst;
        uint8_t *src1 = src + (j * w) * (BPP / 8);
        for (int k = 0; k < w; k++) {
-           *(uint16_t *)dst1 = *(uint16_t *) (src1 + k * (BPP / 8));
+           PUT16(dst1, 0, *(uint16_t *) (src1 + k * (BPP / 8)));
 #ifdef SWAPXY
            dst1 += dst_stride;
 #else
@@ -654,8 +654,8 @@ static void scale_2_1(uint8_t *dst, int dst_stride, uint8_t *src, int w)
         uint16_t *p1 = p0 + 1;
         uint16_t *p2 = p0 + w;
         uint16_t *p3 = p1 + w;
-        *(uint16_t *)dst1 = c96((c69(*p0) + c69(*p1) +
-                                 c69(*p2) + c69(*p3)) >> 2);
+        PUT16(dst1, 0, c96((c69(*p0) + c69(*p1) +
+                            c69(*p2) + c69(*p3)) >> 2));
 #ifdef SWAPXY
         dst1 += dst_stride;
 #else
@@ -2104,6 +2104,11 @@ static void vga_graphic_refresh(VGAState *s,
         line_compare = 0xffff;  /* none: the BIOS's mode set leaves the
                                    register at 511 in VBE modes */
     int split_after = (line_compare + 1) / (multi_scan + 1) * (multi_scan + 1) - 1;
+    if (split_after < 0) {  /* a split within the first row: all of the picture is below it */
+        addr1 = 0;
+        if (s->ar[0x10] & 0x20)
+            pan = 0;
+    }
 #ifdef VGA_PLANAR_FAST
     /*
      * A clear that a write to the CRT controller asked for and that was
@@ -2339,7 +2344,9 @@ static void vga_graphic_refresh(VGAState *s,
             if (shift_control == 0) {
                 if (plane_mask == 1) {
                     if (s->comp_ntsc) {
-                        if (!(x1 & 3)) {
+                        /* a colour for every four pixels, from the first
+                           pixel of a panned line too */
+                        if (!(x1 & 3) || x == x0) {
                             int k = vram[addr + 4 * (x1 >> 3)];
                             if (!(x1 & 4))
                                 k >>= 4;
