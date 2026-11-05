@@ -6,8 +6,8 @@ It runs on the ESP32-S31-Korvo-1, either beside Linux (hold VOL+ through reset f
 
 ## What this branch is 🌿
 
-- **Upstream tiny386 underneath.** The branch is hchunhui's master of 2026-10-22 (`4ce2e06`) merged with my work, so `git log` shows what's mine and every upstream commit keeps its own hash.
-- **My firmware on top**, v3 to v5.0: the board support, the boot console and crash screen, the status LED, the dual boot, the card and ini handling, the Windows 95 fixes, the VBE drawing at 800x480, the information port that [T386Mon](https://github.com/platima/T386Mon) reads, (v4.4) Windows on a partition of the card of its own, (v4.6) double buffering made at power-on, (v5.0) a fast interpreter in front of tiny386's own, from Yejun Yang's [tab5-pc](https://github.com/yejun/tab5-pc), with the emulated processor storing into the frame buffer itself, and (v5.1) that interpreter made cheaper with tiny386's own back in internal RAM, and a profiler of the emulator's core on the board.
+- **Upstream tiny386 underneath.** The branch is hchunhui's master of 2026-11-05 (`2c1205c`) merged with my work, so `git log` shows what's mine and every upstream commit keeps its own hash.
+- **My firmware on top**, v3 to v5.0: the board support, the boot console and crash screen, the status LED, the dual boot, the card and ini handling, the Windows 95 fixes, the VBE drawing at 800x480, the information port that [T386Mon](https://github.com/platima/T386Mon) reads, (v4.4) Windows on a partition of the card of its own, (v4.6) double buffering made at power-on, (v5.0) a fast interpreter in front of tiny386's own, from Yejun Yang's [tab5-pc](https://github.com/yejun/tab5-pc), with the emulated processor storing into the frame buffer itself, (v5.1) that interpreter made cheaper with tiny386's own back in internal RAM, and a profiler of the emulator's core on the board, and (v5.2, a test build) upstream merged again, that interpreter's code laid out and trimmed by the profile, the SD card's clock no longer set again before every command, the code it ran from flash most moved to internal RAM, and a memory benchmark (`[esp] membench`).
 - **`s31/`** - the notes, test plans, reviews, flash scripts, card inis and the evidence behind each release. That folder only exists on this branch.
 
 This branch never goes upstream as a whole. Fixes and improvements that make sense for tiny386 itself go to hchunhui as separate, small PRs, each cut from upstream's master on its own branch. That's what the other branches on this fork are.
@@ -47,7 +47,7 @@ idf.py -B build-dosboard -DBOARD=dosboard -DIDF_TARGET=esp32s31 build
 
 The dual-boot build refuses `idf.py flash` on purpose: write it with `s31/flash-dualboot.bat`, which backs up the board's flash first.
 
-`s31/build.sh` is the release build: it starts from upstream's `4ce2e06`, applies the release's `tiny386-idf-v4.patch` (this branch's tree against `4ce2e06`, `s31/` left out: `git diff 4ce2e06 s31-v5.1 -- . ':(exclude)s31'`), builds all three, and lays out the four image sets with their `SHA256SUMS`. It needs the patch beside it and the dual-boot bootloader and tables in `s31/dualboot/`, all from the release, and builds the same bytes twice from nothing (`s31/FIRMWARE.md`, "Building again").
+`s31/build.sh` is the release build: it starts from upstream's `2c1205c` (since v5.2; `4ce2e06` up to v5.1), applies the release's `tiny386-idf-v4.patch` (this branch's tree against that commit, `s31/` left out: `git diff 2c1205c HEAD -- . ':(exclude)s31'`), builds all three, and lays out the four image sets with their `SHA256SUMS`. It needs the patch beside it and the dual-boot bootloader and tables in `s31/dualboot/`, all from the release, and builds the same bytes twice from nothing (`s31/FIRMWARE.md`, "Building again").
 
 ## Layout 📁
 
