@@ -718,6 +718,16 @@ class Source:
         if here.startswith("ALU6(") or here.startswith("ALU_"):
             return here.split(",")[0] + ", ...) " + here.split(",")[6].strip() \
                 if here.count(",") > 6 else here[:40]
+        # v5.2: the Jcc short handlers are made by JCC_B(c) on indented lines
+        # of their own, with no label at the start of a line, so the walk up
+        # below put them under op_xlat (CHECK-profan section 3); a sample can
+        # also be given the macro's #define line
+        jcc = re.findall(r"JCC_B\((\d+)\)", here)
+        if jcc and not here.startswith("#define"):
+            return "Jcc short, JCC_B(%s..%s)" % (jcc[0], jcc[-1]) if len(jcc) > 1 \
+                else "Jcc short, JCC_B(%s)" % jcc[0]
+        if here.startswith("#define JCC_B("):
+            return "Jcc short, JCC_B (its #define line)"
         for i in range(line - 1, -1, -1):
             m = self.LABEL.match(lines[i])
             if m:
