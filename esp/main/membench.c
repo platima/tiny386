@@ -157,6 +157,19 @@ static void cnt_read(struct cnt *c)
 
 typedef void (*op_fn)(uint32_t arg);
 
+/* a figure with dec decimals, by integer printing: the firmware's C library
+   may be built to print without floating point (speed.c does the same) */
+static const char *fx(char *b, double v, int dec)
+{
+	static const uint32_t sc[3] = { 1, 10, 100 };
+	uint32_t t = v <= 0 ? 0 : v >= 4e9 / sc[dec] ? 4000000000u : (uint32_t) (v * sc[dec] + 0.5);
+	if (dec)
+		sprintf(b, "%lu.%0*lu", (unsigned long) (t / sc[dec]), dec, (unsigned long) (t % sc[dec]));
+	else
+		sprintf(b, "%lu", (unsigned long) t);
+	return b;
+}
+
 static int cmp_u32(const void *a, const void *b)
 {
 	uint32_t x = *(const uint32_t *) a, y = *(const uint32_t *) b;
@@ -179,10 +192,11 @@ static void measure(const char *name, uint32_t bytes, op_fn prep, op_fn op, uint
 	}
 	qsort(t, MB_RUNS, sizeof(t[0]), cmp_u32);
 	uint32_t lines = bytes / LINE, m = t[MB_RUNS / 2];
-	say("%-28s %8u %7.1f MB/s %6.1f cy/line  fill %.2f wb %.2f stall %.0f confl %.2f",
-	    name, (unsigned) bytes, (double) bytes * mhz / m, (double) m / lines,
-	    (double) c.fills / lines, (double) c.wbs / lines,
-	    (double) c.stalls / lines, (double) c.conflicts / lines);
+	char f1[16], f2[16], f3[16], f4[16], f5[16], f6[16];
+	say("%-28s %8u %7s MB/s %6s cy/line  fill %s wb %s stall %s confl %s",
+	    name, (unsigned) bytes, fx(f1, (double) bytes * mhz / m, 1), fx(f2, (double) m / lines, 1),
+	    fx(f3, (double) c.fills / lines, 2), fx(f4, (double) c.wbs / lines, 2),
+	    fx(f5, (double) c.stalls / lines, 0), fx(f6, (double) c.conflicts / lines, 2));
 }
 
 /* ==== the tests: arg is what the op works on (a size, mostly) ==== */
@@ -445,10 +459,11 @@ static void dma_tests(const char *bus, dma_install install, unsigned burst)
 		}
 		for (int w = 0; w < 3; w++)
 			qsort(t[w], MB_RUNS, sizeof(uint32_t), cmp_u32);
-		say("DMA %s burst %3u %8u: PSRAM to PSRAM %6.1f; %u: internal to PSRAM %6.1f, "
-		    "PSRAM to internal %6.1f MB/s",
-		    bus, burst, (unsigned) n, (double) n * mhz / t[0][MB_RUNS / 2], (unsigned) m,
-		    (double) m * mhz / t[1][MB_RUNS / 2], (double) m * mhz / t[2][MB_RUNS / 2]);
+		char f1[16], f2[16], f3[16];
+		say("DMA %s burst %3u %8u: PSRAM to PSRAM %6s; %u: internal to PSRAM %6s, "
+		    "PSRAM to internal %6s MB/s",
+		    bus, burst, (unsigned) n, fx(f1, (double) n * mhz / t[0][MB_RUNS / 2], 1), (unsigned) m,
+		    fx(f2, (double) m * mhz / t[1][MB_RUNS / 2], 1), fx(f3, (double) m * mhz / t[2][MB_RUNS / 2], 1));
 	}
 	esp_async_memcpy_uninstall(h);
 }
@@ -500,10 +515,11 @@ static void core0_part(void *arg)
 		t0 = esp_cpu_get_cycle_count();
 		wr_words(pc, PS_BIG, l);
 		d = esp_cpu_get_cycle_count() - t0;
-		say("core 0, core 1 running %-14s: internal read %6.1f, PSRAM hits %6.1f, "
-		    "PSRAM read %6.1f, PSRAM write %6.1f MB/s",
-		    nm[l], 64.0 * 32 * 1024 * mhz / a, 64.0 * PS_SMALL * mhz / b,
-		    (double) PS_BIG * mhz / c, (double) PS_BIG * mhz / d);
+		char f1[16], f2[16], f3[16], f4[16];
+		say("core 0, core 1 running %-14s: internal read %6s, PSRAM hits %6s, "
+		    "PSRAM read %6s, PSRAM write %6s MB/s",
+		    nm[l], fx(f1, 64.0 * 32 * 1024 * mhz / a, 1), fx(f2, 64.0 * PS_SMALL * mhz / b, 1),
+		    fx(f3, (double) PS_BIG * mhz / c, 1), fx(f4, (double) PS_BIG * mhz / d, 1));
 	}
 	s_load = -1;
 	while (s_load != -2)
@@ -571,9 +587,11 @@ static void nl_two_cores(void)
 	uint32_t right = 0;
 	for (uint32_t o = 0; o < n; o += ch)
 		right += count_words(pa + o, ch, nl_pattern(o));
-	say("no-load fill under core 0's write-backs and reads: %u bytes %7.1f MB/s %6.1f cy/line; "
+	char f1[16], f2[16];
+	say("no-load fill under core 0's write-backs and reads: %u bytes %7s MB/s %6s cy/line; "
 	    "core 0 %u rounds; %u of %u words right after (%s)",
-	    (unsigned) done, (double) done * mhz / t, (double) t / (done / LINE), (unsigned) rounds,
+	    (unsigned) done, fx(f1, (double) done * mhz / t, 1), fx(f2, (double) t / (done / LINE ? done / LINE : 1), 1),
+	    (unsigned) rounds,
 	    (unsigned) right, (unsigned) (n / 4), right == n / 4 ? "all kept" : "SOME LOST");
 }
 
