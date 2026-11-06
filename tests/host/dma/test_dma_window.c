@@ -138,14 +138,17 @@ int main(int argc, char **argv)
 	else
 		CHECK(r == 1 && changed_window() == 0, "the byte dropped (%d)", r);
 
-	printf("== D3: four bytes ending at A0001h, address going down\n");
-	prog(DOWN, 0x0a, 0x0002);
+	/* v5.2: upstream's 4808f17 makes decrement mode the controller's order,
+	   byte i at the current address less i; v4.5 put the bytes below the
+	   address in their own order */
+	printf("== D3: four bytes from A0001h, address going down\n");
+	prog(DOWN, 0x0a, 0x0001);
 	r = dma_write("\x11\x12\x13\x14", 4);
 	if (before)
-		CHECK(r == 4 && mem_is("9fffe=11 9ffff=12 a0000=13 a0001=14") && changed_window() == 2,
-		      "v4.5: two bytes into phys_mem at A0000h");
+		CHECK(r == 4 && mem_is("9fffd=11 9fffe=12 9ffff=13 a0000=14") && changed_window() == 1,
+		      "v4.5: one byte into phys_mem at A0000h");
 	else
-		CHECK(r == 4 && mem_is("9fffe=11 9ffff=12") && changed_window() == 0,
+		CHECK(r == 4 && mem_is("9ffff=13 9fffe=14") && changed_window() == 0,
 		      "two bytes to RAM, the two for the window dropped (%d)", r);
 
 	printf("== D4: four bytes from BFFFEh, out of the window's top\n");
