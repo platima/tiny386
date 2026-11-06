@@ -7724,3 +7724,105 @@ comparisons (34.4), the nine Windows runs (34.6), `i386.c`'s object code against
 the same bytes (34.9), the package staged again (34.10). The reviews' own extra runs, made here
 again on the release's code, are in `checks\reviews-v5.1.txt`: the six faults, the new modes on
 more seeds, the profiler's harness, the cut files and the fallback's build.
+
+## 35. v5.2, a test build (2026-11-06)
+
+Upstream merged again, the board profile's cheap fixes, the SD clock kept, the hottest flash code in
+internal RAM, and a memory benchmark. Branch `v52` in the work clone, not pushed; PC-tested only. The
+studies behind it (PROFILE-BOARD-v52, QUICKWINS-v52, PSRAM-v52, UPPLAN-v52 and their checks) are not
+in this tree.
+
+### 35.1 The commits
+
+| Commit | What |
+|-|-|
+| ee0a87a | merge of upstream 7fd4d05 by the plan's recipe (variant A: levels 1 and 2 supervisor for paging, followed in `lpgno_fault()`, `LPGNO_RIGHTS()`, `FAST_REFUSED()`, `fast_tlb_check()`; the five silent traps fixed); tree 1d8827b, the checked one |
+| ec618fd | merge of upstream 2c1205c: AAM 0 raises #DE, a real-mode INT moves SP only (and `op_int` in `i386_fast.h` follows: git left it clearing ESP's top half), SB16's buffer, i8257 decrement mode (the 0xA0000 window guard kept), #38's cell height check, the ninth column for C0h to DFh only, #46 in tiny386's own mouse path |
+| 889f7ae, 1ef4004, 9078261 | the quick wins (`qw.h`, `qw-config.h`): fifteen switches on, and `-freorder-blocks-algorithm=simple -fno-tree-tail-merge` on `i386.c` |
+| 8a4cd0f | CLK1: the speed screen gets the count from the step's start, with the time from then |
+| a8b427d | `test_fast_cpu`: `fast_load_seg()` against `set_seg()` (random and by hand); six planted faults; `lfbmark` and `plnull` follow LFBSZ and NULLBIT |
+| ff510e0 | `[esp] sd_clock_fix` (`sdmmc_clk_wrap.c`) and `[esp] membench` (`membench.c`, `membench_pie.S`, `membench.ini`) |
+| c054ea8 | `linker_hot.lf`: the hottest flash code in internal RAM |
+| 31864eb | `CLAUDE.md`; `profile_report.py` names the Jcc short handlers |
+| 826654a | `build.sh` on 2c1205c, `README.md`, `FAST-CPU.md`, the inis' `sd_clock_fix` line |
+| 551f8cf | `esp/version.txt`: v5.2 |
+| d4e75b8 | `membench.c` prints its figures with integers (the C library may print without floating point) |
+| 07db77b | `test_dma_window.c` follows upstream's decrement-mode order (35.3) |
+| (the next commit) | this section |
+
+The package (`tiny386-idf\v52-test` in the release folder) is `s31/build.sh` from upstream's 2c1205c and
+the patch of d4e75b8; its three `tiny386.bin` are the branch's own builds of d4e75b8 byte for byte.
+07db77b changes a host test only. Korvo-1 dual boot: `tiny386.bin` 1,071,168 bytes, SHA-256
+97b99809664d5019...
+
+### 35.2 What the guest sees
+
+Against v4.6 the guest differs where upstream now differs, on purpose: levels 1 and 2 with paging (no
+workload reaches them), a real-mode INT with something in ESP's top half (Windows 95 does five on its
+way out to real mode), AAM 0, the ninth text column for B0h to BFh, and a change of cell height drawn
+at once. The lockstep gate was run against v4.6's reference build and against the same build with the
+three lines a workload reaches (the INT, the ninth column, the cell height) put in by `sed`; that
+second build's code and data are v4.6's byte for byte but for those lines (its plain twin matches the
+reference's `.text`, `.rodata` and `.data`).
+
+On 826654a (whose PC code is the package's: the two commits after it change only `membench.c` and
+`esp/version.txt`, which no PC build has), fast interpreter on and off, the seven workloads:
+
+| reference | no difference | differs |
+|-|-|-|
+| v4.6 with the three lines | 14 of 14 | none |
+| v4.6 | 10 of 14 | `restart` and `msdos`, on and off: field `sh` alone, first at INT 2Fh at 0A82:063F with ESP = C13A0BCCh, the top half now kept; counts, interrupts and disks as v4.6's |
+
+b1 ends on 588,301,033 instructions, `restart` on 1,304,341,904, `msdos` on 1,337,723,352, each disk as
+v4.6's; T386MON's summary in `t386mon800` is the reference's. No image copy was left in the gate.
+
+### 35.3 Host tests and `test_fast_cpu`
+
+`tests/host/run.sh` on 07db77b, in a worktree (so the comparisons with older tags run), with the
+board's compilers and qemu: **122 passed, 0 failed, none skipped**, 1,653 s. That is v5.1's 116 and
+the six new planted faults in `fast_load_seg()` (seglimit, segoff1, segpage, segrights, segmmio,
+segend), each caught; `lfbmark` and `plnull` are put in and caught again (152 and 198 of 1,240
+scenarios differ). `test_fast_cpu`: 1,240 scenarios, 0 failed, as the Korvo-1 builds it and without
+the board header, and 1,240, 0 failed by the board's compiler under qemu-riscv32. Mode o's new segment
+loads: 300 random a seed (about one in six taken by `fast_load_seg()`, the rest declined to
+`set_seg()`), each the same as `set_seg()` alone, and 19 cases by hand.
+
+The first run (on 826654a) failed one: the DMA window test's case D3, written for v4.5's
+decrement-mode order, which upstream's 4808f17 corrected. 07db77b moves the case to the controller's
+order (the window guard is unchanged) and gives the v4.5 comparison the old order's bytes.
+
+### 35.4 RV32 counts (the quick wins' harness, the board's compiler, under qwemu)
+
+| | v5.1 | v5.2 | fewer |
+|-|-|-|-|
+| BENCH without A4, host instructions a guest instruction | 61.15 | 54.90 | 10.2% |
+| A9 (a TLB miss every time) | 112.57 | 102.30 | 9.1% |
+| Windows' boot, first 300 M | 64.16 | 56.46 | 12.0% |
+
+The guest's output in both runs is v5.1's, 0 lines differing. The kept set alone gave 54.88 and 56.45:
+the merge costs 0.02 and 0.01.
+
+### 35.5 Builds and internal RAM
+
+All three builds exit 0 with the one old warning (`i2s.c`'s unused `i2s_task`, the DOS board none).
+
+| Korvo-1 dual boot | DIRAM used | left | image |
+|-|-|-|-|
+| v5.1 | 379,441 | 124,303 | 1,066,329 |
+| v5.2 without `linker_hot.lf` (ff510e0) | 362,035 | 141,709 | 1,067,625 |
+| v5.2 | 380,949 | 122,795 | 1,068,841 |
+
+The DOS board: 124,975 left (v5.1 126,475). The functions moved take 18,914 bytes. v5.1 on the board
+had 92 KiB at its least with 124,303 left here, so v5.2 should keep about 90 KiB, well above the 64
+KiB rule. membench, while it runs, takes 32 KiB and its stacks, and 12 KiB for its text.
+
+### 35.6 What only the board can say
+
+* The quick wins' real factor (estimate 1.07 to 1.2; T386MON text about 5.9 means only the saved
+  instructions count, about 6.1 or more that the transfer model holds).
+* The SD clock fix (estimate 1.25% in use, 2.1% in the boot); PROFILE.TXT's console line counts the
+  commands that kept the clock.
+* The flash code in internal RAM (estimate 2 to 3% in use, 3.5 to 4.5% in the boot).
+* membench's every line, first of all whether the no-load preload skips the fetch and keeps dirty
+  lines it pushes out (way 2 of PSRAM-v52).
+* Optional: FPT2 at `fpu = 1`, for the S31's FPU erratum (`SOC_CPU_HAS_FPU_EXT_ILL_BUG`).
