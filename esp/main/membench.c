@@ -234,15 +234,6 @@ static void IRAM_ATTR op_rd_rand(uint32_t n)
 	sink += a;
 }
 
-/* the same memory by the alias that goes round the cache (gdma_link.c uses
-   it for its descriptors).  What is stored this way is not in the cache: the
-   range must not be there (prep_cold_*).  Core 1 only, for the PIE. */
-#define UC(p) ((p) + SOC_NON_CACHEABLE_OFFSET_PSRAM)
-static void op_uc_rd(uint32_t n) { sink += rd_words(UC(pa), n); }
-static void op_uc_wr(uint32_t n) { wr_words(UC(pa), n, 0x12345678); }
-static void op_uc_pie(uint32_t n) { mb_pie_fill64(UC(pa), 0x12345678, n / 64); }
-static void op_uc_cpy(uint32_t n) { mb_pie_copy64(UC(pb), pa, n / 64); }
-
 /* internal RAM, the same kernels */
 static void op_si_rd(uint32_t n) { sink += rd_words(si, n); }
 static void op_si_wr(uint32_t n) { wr_words(si, n, 0x12345678); }
@@ -382,21 +373,6 @@ static void noload_checks(void)
 	say("no-load: dirty lines it pushed out: %u of %u words right in memory%s",
 	    (unsigned) same, (unsigned) (64 * 1024 / 4),
 	    same == 64 * 1024 / 4 ? "" : " (LOST: other dirty data in PSRAM could go the same way)");
-}
-
-/* stored round the cache, then read through it at once: does the read see
-   the store?  (Is a fence needed between the two paths?) */
-static void uncached_checks(void)
-{
-	const uint32_t N = 4096, W = N / 4;
-	wbi(pa, N);
-	mb_pie_fill64(UC(pa), 0x5AA5C33C, N / 64);
-	uint32_t same = count_words(pa, N, 0x5AA5C33C);
-	say("uncached: stored round the cache, read through it at once: %u of %u right",
-	    (unsigned) same, (unsigned) W);
-	wbi(pa, N);
-	same = count_words(pa, N, 0x5AA5C33C);
-	say("uncached: and after dropping those lines: %u of %u right", (unsigned) same, (unsigned) W);
 }
 
 /* ==== the DMA ==== */
@@ -674,12 +650,10 @@ static void run_all(void)
 	if (engine_ok("before the two-core no-load line"))
 		nl_two_cores();
 
-	say("== round the cache");
-	uncached_checks();
-	measure("uncached: read words", PS_BIG, prep_cold_a, op_uc_rd, PS_BIG);
-	measure("uncached: write words", PS_BIG, prep_cold_a, op_uc_wr, PS_BIG);
-	measure("uncached: write PIE", PS_BIG, prep_cold_a, op_uc_pie, PS_BIG);
-	measure("uncached: PIE copy to it", PS_BIG, prep_cold_ab, op_uc_cpy, PS_BIG);
+	/* Not the alias that goes round the cache (SOC_NON_CACHEABLE_OFFSET_PSRAM):
+	   on the board (2026-11-07) the first store to it was a store access fault
+	   (mtval C00C2000h), core 1's PIE fill.  The DMA reaches PSRAM that way;
+	   the processor may not store there. */
 
 	say("== the hardware's prefetch (autoload)");
 	autoload_tests();

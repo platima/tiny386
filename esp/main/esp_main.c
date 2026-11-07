@@ -942,12 +942,26 @@ static inline uint32_t memtest_word(uint32_t i, uint32_t pass)
 /* [esp] membench = 1 (v5.2): the board's memory measured once (membench.c),
    in place of the PC, from an ini of its own (the card's membench.ini).  The
    lines go to the console as they come and to a buffer in internal RAM, and
-   only at the end to MEMBENCH.TXT beside the ini, so that nothing is written
-   to the card while the cache is being tried.  Then the board waits for
-   RESET: the PC is not built after it. */
+   to MEMBENCH.TXT beside the ini at the start of each section ("== ") and at
+   the end, so that a crash keeps what came before it.  Nothing is written to
+   the card while something is being measured: a section's header comes
+   before its first measurement.  Then the board waits for RESET: the PC is
+   not built after it. */
 #define MEMBENCH_TEXT (12 * 1024)
 static char *s_mb_text;
 static size_t s_mb_len;
+
+/* the text so far to MEMBENCH.TXT, the whole file again */
+static bool membench_save(void)
+{
+	char path[128];
+	snprintf(path, sizeof(path), "%s/MEMBENCH.TXT", s_ini_dir);
+	FILE *f = fopen(path, "w");
+	bool ok = f && fwrite(s_mb_text, 1, s_mb_len, f) == s_mb_len;
+	if (f && fclose(f) != 0)
+		ok = false;
+	return ok;
+}
 
 static void membench_say(const char *fmt, ...)
 {
@@ -957,6 +971,8 @@ static void membench_say(const char *fmt, ...)
 	vsnprintf(line, sizeof(line), fmt, ap);
 	va_end(ap);
 	console_puts(CON_INFO, line);
+	if (s_mb_text && s_mb_len && line[0] == '=' && line[1] == '=' && !membench_save())
+		console_puts(CON_WARN, "membench: MEMBENCH.TXT could not be written; going on.");
 	size_t n = strlen(line);
 	if (s_mb_text && s_mb_len + n + 2 <= MEMBENCH_TEXT) {
 		memcpy(s_mb_text + s_mb_len, line, n);
@@ -994,16 +1010,11 @@ static void membench_board(void)
 	}
 	memset(psram, 0, psram_len);
 	if (s_mb_text && s_mb_len) {
-		char path[128];
-		snprintf(path, sizeof(path), "%s/MEMBENCH.TXT", s_ini_dir);
-		FILE *f = fopen(path, "w");
-		bool ok = f && fwrite(s_mb_text, 1, s_mb_len, f) == s_mb_len;
-		if (f && fclose(f) != 0)
-			ok = false;
-		if (ok)
-			console_printf(CON_GOOD, "membench: %s written (%u bytes).", path, (unsigned) s_mb_len);
+		if (membench_save())
+			console_printf(CON_GOOD, "membench: %s/MEMBENCH.TXT written (%u bytes).", s_ini_dir,
+				       (unsigned) s_mb_len);
 		else
-			console_printf(CON_ERROR, "membench: %s could not be written.", path);
+			console_printf(CON_ERROR, "membench: %s/MEMBENCH.TXT could not be written.", s_ini_dir);
 	}
 	console_puts(CON_INFO, "Press RESET to start again (the boot menu comes back).");
 	console_hold();
