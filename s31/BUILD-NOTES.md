@@ -7826,3 +7826,61 @@ KiB rule. membench, while it runs, takes 32 KiB and its stacks, and 12 KiB for i
 * membench's every line, first of all whether the no-load preload skips the fetch and keeps dirty
   lines it pushes out (way 2 of PSRAM-v52).
 * Optional: FPT2 at `fpu = 1`, for the S31's FPU erratum (`SOC_CPU_HAS_FPU_EXT_ILL_BUG`).
+
+### 35.7 On the board (2026-11-07), and a second test build
+
+Plat ran the package's Korvo-1 dual boot build. T386MON at 800x480x16 (the run with `profile = 1`; the
+run with `pace_quiet` and `pace_wait_ms` gave text 7.28) and BENCH in FreeDOS, against v5.1's on the
+same board:
+
+| | v5.1 | v5.2 | |
+|-|-|-|-|
+| T386MON text | 5.79 | 7.21 | 1.25x |
+| text-aside, text-nopointer | 6.05 | 7.49, 7.50 | 1.24x |
+| sprite | 114.6 | 143.96 | 1.26x |
+| full picture | 1.73 | 2.25 | 1.30x |
+| scroll | 174.2 | 188.66 | 1.08x |
+| fill | 212.3 | 221.75 | 1.04x |
+| full copy | 50.5 | 52.37 | 1.04x |
+| BENCH without a4, `fast_cpu 1`, M/s | 3.842 | 4.549 | 1.18x |
+| BENCH without a4, `fast_cpu 0`, M/s | 2.225 | 2.268 | 1.02x |
+
+BENCH's pieces at `fast_cpu 1`, thousand a second: a3 4794 to 5430, a5 3785 to 4321, a6 5363 to 6251, a7
+3159 to 4645 (1.47x), a8 4648 to 5562, a9 1718 to 1931. At `fast_cpu 0`: a3 2711 to 2777, a5 2166 to
+2207, a6 3186 to 3326, a7 1720 to 1763, a8 2254 to 2206, a9 1312 to 1350. The drawing that waits on
+PSRAM (fill, scroll, full copy) moved least, as 35.6 expected. The estimate was 1.07 to 1.2.
+
+FPT2.EXE at `fpu = 1` ran every kernel with no crash or reset: the same results in each of its three
+runs, and its checks 0 bad words, so the S31's FPU erratum did not show here.
+
+membench stopped at "== round the cache": a store access fault on core 1, mtval C00C2000h, at the first
+store to PSRAM's uncached alias (`SOC_NON_CACHEABLE_OFFSET_PSRAM`), the PIE fill. Everything before it
+had run, and the screen kept the last lines:
+
+| line | MB/s | cycles a line |
+|-|-|-|
+| loads ahead, no-load, 4096 | 120.3 | 170.2 |
+| engine loads, read, 4096 | 205.0 | 99.9 |
+| engine alone, 16320 | 2397.2 | 8.5 |
+| no-load fill, 16320 | 281.8 | 72.7 |
+| no-load copy, 16320 | 92.4 | 221.6 |
+| loads ahead, no-load, 16320 | 119.7 | 171.1 |
+| engine loads, read, 16320 | 198.9 | 103.0 |
+| no-load fill under core 0's write-backs and reads, 1 MiB | 206.9 | 99.0 |
+
+The last line's check: 5 rounds, 262,144 of 262,144 words right after, so the no-load preload kept the
+dirty lines it pushed out while the other core worked the cache. MEMBENCH.TXT was to be written only
+at the end, so the earlier lines were lost.
+
+The second test build, b440a73 (package `tiny386-idf\v52-test2`):
+
+| Commit | What |
+|-|-|
+| cb72b00 | merge of upstream 61bfd3e: 606b4e7 (the mouse at the guest's sample rate) into the path without `PS2_MOUSE_DEFERRED`, beside #46, with `last_report`; 61bfd3e (IRETD in real mode and V86 at IOPL 3) in `IRET()`, which `op_iret` in `i386_fast.h` already hands a 32-bit IRET to |
+| b440a73 | membench: the round-the-cache section gone; MEMBENCH.TXT written at each section's start as well as at the end |
+
+On b440a73: the lockstep gate 14 of 14 against v4.6 with the three lines, 10 of 14 against v4.6 (the
+same four as 35.2); b1 588,301,033, `restart` 1,304,341,904, `msdos` 1,337,723,352, each disk as before;
+host tests 122 passed, 0 failed, none skipped; `test_fast_cpu` 1,240, 0 failed, in both builds; RV32
+BENCH 54.90 and the boot's first 300 M 56.46, guest output as v5.1's. Korvo-1 dual boot: DIRAM left
+122,615, image 1,070,645; the DOS board 124,795 left.
