@@ -51,4 +51,20 @@
 #ifndef QW_PFX
 #define QW_PFX 0        /* prefixes: fewer instructions */
 #endif
+/* after v5.2: fast_exec()'s host instructions, measured on the board's compiler (fastx) */
+#ifndef QW_OPSREG
+#define QW_OPSREG 0     /* the dispatch table's address in a register of its own (RV32) */
+#endif
+#ifndef QW_STK
+#define QW_STK 0        /* the hot stack handlers with the stack's size as a constant */
+#endif
+#ifndef QW_NULLI
+#define QW_NULLI 0      /* a constant segment's null bit by one bexti */
+#endif
+#ifndef QW_C16
+#define QW_C16 0        /* relative jumps test pfx0 for 16-bit code, not code16 on the stack */
+#endif
+#ifndef QW_EAP
+#define QW_EAP 0        /* the hot handlers' common memory form in one test of the prefixes */
+#endif
 #endif

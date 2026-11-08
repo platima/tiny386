@@ -799,6 +799,16 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 #if QW_GRP5
 	static const DRAM_ATTR void *const g5[8] = { &&g5_inc, &&g5_dec, &&g5_call, &&g5_far, &&g5_jmp, &&g5_far, &&g5_push, &&slow };
 #endif
+#if QW_OPSREG && defined(__riscv)
+	/* after v5.2 (fastx): GCC kept ops[]'s address in a stack slot and loaded it at every
+	   dispatch, one host instruction a guest instruction.  Held in s4, a callee-saved register
+	   the handlers hardly used, it needs no load.  (A local register variable: GCC keeps it
+	   there because it is live at every dispatch.) */
+	register const void *const *fx_ops __asm__("s4") = ops;
+#define FX_OPS fx_ops
+#else
+#define FX_OPS ops
+#endif
 
 	if (stepcount <= 0)
 		return true;
@@ -872,7 +882,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 #define STEPS_SS() do { steps++; sadj++; } while (0)
 	/* every handler ends dispatching the next instruction itself (so that
 	   the host's branch predictor sees one indirect jump per handler) */
-#define DISPATCH do { ins = pc; pfx = pfx0; goto *ops[*pc++]; } while (0)
+#define DISPATCH do { ins = pc; pfx = pfx0; goto *FX_OPS[*pc++]; } while (0)
 	/* v5.1: the window's test against one bound.  Between two refills pc
 	   only moves up (pc++, pc += n), but for JUMP_REL() and JUMP_ABS(),
 	   which set win_hi to 0 when the target is below win_lo, so that the
@@ -900,8 +910,15 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	} while (0)
 #endif
 	/* relative and absolute jumps; 16-bit code wraps at 64 KB */
+#if QW_C16 && QW_PFX
+	/* after v5.2 (fastx): pfx0 (a register) is 3 for 16-bit code and 0 for 32-bit, so its test is
+	   code16's without the load of code16 from the stack */
+#define FX_CODE16 (pfx0 != 0)
+#else
+#define FX_CODE16 code16
+#endif
 #define JUMP_REL(d) do { \
-		if (QH_U(code16)) pc = (const u8 *) (ipd + ((EIP_OF(pc) + (d)) & 0xffff)); \
+		if (QH_U(FX_CODE16)) pc = (const u8 *) (ipd + ((EIP_OF(pc) + (d)) & 0xffff)); \
 		else pc += (d); \
 		if (unlikely((uintptr_t) pc < (uintptr_t) win_lo)) win_hi = 0; \
 	} while (0)
@@ -931,7 +948,12 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   pages have 20 bits, FAST_TAG_LFB is bit 31, and no tag is -1).  The
 	   null segment's test is then the miss's first, before fast_miss() and
 	   before FPTR_ST()'s frame buffer test; a null segment always misses. */
-#if QW_NULLBIT && defined(__riscv_zbs)
+#if QW_NULLBIT && QW_NULLI && defined(__riscv_zbs)
+/* after v5.2 (fastx): for a constant segment (SS on the stack, ES in the string instructions) GCC
+   made the bit's test a shift, a lui and an and; the empty asm keeps it one bexti and a shift */
+#define FAST_NULL20(sg) ({ uword _b; if (__builtin_constant_p(sg)) { _b = (nullsegs >> (sg)) & 1u; __asm__ ("" : "+r" (_b)); } \
+		else __asm__ ("bext %0,%1,%2" : "=r" (_b) : "r" (nullsegs), "r" (sg)); _b << 20; })
+#elif QW_NULLBIT && defined(__riscv_zbs)
 #define FAST_NULL20(sg) ({ uword _b; if (__builtin_constant_p(sg)) _b = (nullsegs >> (sg)) & 1u; \
 		else __asm__ ("bext %0,%1,%2" : "=r" (_b) : "r" (nullsegs), "r" (sg)); _b << 20; })
 #else
@@ -1110,6 +1132,28 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	uword _off = fast_ea(cpu, &pc, m, adsz16, &seg); \
 	FPTR(p, seg, _off, size, wr)
 #endif
+#if QW_EAP && QW_EA
+	/* after v5.2 (fastx): the hot handlers' common memory form in one test of pfx, not three
+	   (operand size, address size, then the override inside fast_ea2()): EAP_D() for 32-bit
+	   operands, 32-bit addresses and no override (pfx's bits 0, 1 and 4 to 6 clear), EAP_B()
+	   for byte operands (bits 1 and 4 to 6).  The statements given are the else-if branch of
+	   the handler's memory form, with EA_PTR32() and EA_OFF32() for its operand; every other
+	   form takes the handler's own code after it, as before. */
+#define EAP_D(...) else if (likely(!(pfx & 0x73))) { __VA_ARGS__ }
+#define EAP_B(...) else if (likely(!(pfx & 0x72))) { __VA_ARGS__ }
+#define EAP_IF_D(...) if (likely(!(pfx & 0x73))) { __VA_ARGS__ }
+#define EAP_IF_B(...) if (likely(!(pfx & 0x72))) { __VA_ARGS__ }
+#define EA_OFF32(off, m) \
+	uword off = fast_ea2(cpu, &pc, m, 0, 0, &seg);
+#define EA_PTR32(p, m, size, wr) \
+	uword _off = fast_ea2(cpu, &pc, m, 0, 0, &seg); \
+	FPTR(p, seg, _off, size, wr)
+#else
+#define EAP_D(...)
+#define EAP_B(...)
+#define EAP_IF_D(...)
+#define EAP_IF_B(...)
+#endif
 	/* a stack slot: the stack pointer's address after moving it by d
 	   bytes.  STACK_PTR_N for several slots in one go: tiny386 masks each
 	   slot's offset on its own, so slots that would wrap around the stack
@@ -1123,8 +1167,28 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 		if (_sp > sp_mask - ((size) - 1)) goto slow; \
 		FPTR(p, SEG_SS, _sp, size, wr); \
 	} while (0)
+#if QW_STK
+	/* after v5.2 (fastx): sp_mask is 0xffff or 0xffffffff (tiny386 sets it so, from SS's B bit,
+	   and nothing else), and lived on the stack: each slot's address loaded it and masked, and
+	   each move of (E)SP loaded it again and merged.  FX_STK() runs its statements in two copies,
+	   each with sp_mask a constant that shadows the variable: a 32-bit stack's slot is ESP + d and
+	   its move a store of ESP; a 16-bit stack's slot is zero-extended and its move stores SP
+	   alone, as set_sp() leaves ESP's top half */
+#define FX_STK(...) do { \
+		if ((sword) sp_mask < 0) { const uword sp_mask = 0xffffffff; __VA_ARGS__ } \
+		else { const uword sp_mask = 0xffff; __VA_ARGS__ } \
+	} while (0)
+#define FX_SETSP(v) do { \
+		if (__builtin_constant_p(sp_mask) && sp_mask == 0xffff) sreg16(4, (v)); \
+		else set_sp((v), sp_mask); \
+	} while (0)
+#define SP_ADD(d) FX_SETSP(REGi(4) + (d))
+#else
+#define FX_STK(...) do { __VA_ARGS__ } while (0)
+#define FX_SETSP(v) set_sp((v), sp_mask)
 #define SP_ADD(d) set_sp(REGi(4) + (d), sp_mask)
-#define PMODE (cpu->cr0 & 1)                          /* protected mode, virtual-8086 mode included */
+#endif
+#define PMODE (cpu->cr0 & 1)                         /* protected mode, virtual-8086 mode included */
 #define PROTECTED (PMODE && !(cpu->flags & VM))       /* ... with descriptors (segment loads, far transfers) */
 #define V86_IOPL3 (!(cpu->flags & VM) || get_IOPL(cpu) == 3)   /* not trapped in virtual-8086 mode */
 	/* a protected-mode load of a segment register by tiny386's set_seg():
@@ -1252,7 +1316,7 @@ refill:   /* the next instruction is outside the code window */
 	DISPATCH;
 
 	/* == prefixes */
-#define SEG_PREFIX(s) pfx = (pfx & 0x0f) | (((s) + 1) << 4); goto *ops[*pc++];
+#define SEG_PREFIX(s) pfx = (pfx & 0x0f) | (((s) + 1) << 4); goto *FX_OPS[*pc++];
 pfx_es: SEG_PREFIX(SEG_ES)
 pfx_cs: SEG_PREFIX(SEG_CS)
 pfx_ss: SEG_PREFIX(SEG_SS)
@@ -1261,15 +1325,15 @@ pfx_fs: SEG_PREFIX(SEG_FS)
 pfx_gs: SEG_PREFIX(SEG_GS)
 #if QW_PFX
 	/* pfx0 is 0 or 3 */
-pfx_opsz: pfx = (pfx & ~1u) | !pfx0; goto *ops[*pc++];
-pfx_adsz: pfx = (pfx & ~2u) | ((uintptr_t) !pfx0 << 1); goto *ops[*pc++];
+pfx_opsz: pfx = (pfx & ~1u) | !pfx0; goto *FX_OPS[*pc++];
+pfx_adsz: pfx = (pfx & ~2u) | ((uintptr_t) !pfx0 << 1); goto *FX_OPS[*pc++];
 #else
-pfx_opsz: pfx = (pfx & ~1u) | ((pfx0 & 1) ^ 1); goto *ops[*pc++];
-pfx_adsz: pfx = (pfx & ~2u) | ((pfx0 & 2) ^ 2); goto *ops[*pc++];
+pfx_opsz: pfx = (pfx & ~1u) | ((pfx0 & 1) ^ 1); goto *FX_OPS[*pc++];
+pfx_adsz: pfx = (pfx & ~2u) | ((pfx0 & 2) ^ 2); goto *FX_OPS[*pc++];
 #endif
-pfx_rep: pfx = (pfx & ~0xcu) | (1 << 2); goto *ops[*pc++];
-pfx_repne: pfx = (pfx & ~0xcu) | (2 << 2); goto *ops[*pc++];
-pfx_lock: goto *ops[*pc++];
+pfx_rep: pfx = (pfx & ~0xcu) | (1 << 2); goto *FX_OPS[*pc++];
+pfx_repne: pfx = (pfx & ~0xcu) | (2 << 2); goto *FX_OPS[*pc++];
+pfx_lock: goto *FX_OPS[*pc++];
 op_0f: goto *ops0f[*pc++];
 
 	/* == ALU: op Eb,Gb / Ev,Gv / Gb,Eb / Gv,Ev / AL,Ib / eAX,Iv
@@ -1277,24 +1341,28 @@ op_0f: goto *ops0f[*pc++];
 #define ALU6(L0, L1, L2, L3, L4, L5, OP, OPb, OPw, OPd, WR, POST) \
 L0: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 	if (m >= 0xc0) { OPb(rm, r, fr8, fw8, fr8, fw8) } \
+	EAP_B(u8 *p; EA_PTR32(p, m, 1, WR); OPb(p, r, fm8, fs8, fr8, fw8)) \
 	else { u8 *p; EA_PTR(p, m, 1, WR); OPb(p, r, fm8, fs8, fr8, fw8) } \
 	POST NEXT; } \
 L1: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 	if (QH_MEMOP(m)) { \
 		if (QH_O16(opsz16)) { OPw(rm, r, lreg16, sreg16, lreg16, sreg16) } \
 		else { OPd(rm, r, lreg32, sreg32, lreg32, sreg32) } \
-	} else if (QH_O16(opsz16)) { u8 *p; EA_PTR(p, m, 2, WR); OPw(p, r, fm16, fs16, lreg16, sreg16) } \
+	} EAP_D(u8 *p; EA_PTR32(p, m, 4, WR); OPd(p, r, fm32, fs32, lreg32, sreg32)) \
+	else if (QH_O16(opsz16)) { u8 *p; EA_PTR(p, m, 2, WR); OPw(p, r, fm16, fs16, lreg16, sreg16) } \
 	else { u8 *p; EA_PTR(p, m, 4, WR); OPd(p, r, fm32, fs32, lreg32, sreg32) } \
 	POST NEXT; } \
 L2: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 	if (m >= 0xc0) { OPb(r, rm, fr8, fw8, fr8, fw8) } \
+	EAP_B(u8 *p; EA_PTR32(p, m, 1, 0); OPb(r, p, fr8, fw8, fm8, fs8)) \
 	else { u8 *p; EA_PTR(p, m, 1, 0); OPb(r, p, fr8, fw8, fm8, fs8) } \
 	POST NEXT; } \
 L3: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 	if (m >= 0xc0) { \
 		if (QH_O16(opsz16)) { OPw(r, rm, lreg16, sreg16, lreg16, sreg16) } \
 		else { OPd(r, rm, lreg32, sreg32, lreg32, sreg32) } \
-	} else if (QH_O16(opsz16)) { u8 *p; EA_PTR(p, m, 2, 0); OPw(r, p, lreg16, sreg16, fm16, fs16) } \
+	} EAP_D(u8 *p; EA_PTR32(p, m, 4, 0); OPd(r, p, lreg32, sreg32, fm32, fs32)) \
+	else if (QH_O16(opsz16)) { u8 *p; EA_PTR(p, m, 2, 0); OPw(r, p, lreg16, sreg16, fm16, fs16) } \
 	else { u8 *p; EA_PTR(p, m, 4, 0); OPd(r, p, lreg32, sreg32, fm32, fs32) } \
 	POST NEXT; } \
 L4: { u8 i = *pc++; int r = 0; OPb(r, i, fr8, fw8, limm, 0) POST NEXT; } \
@@ -1339,24 +1407,28 @@ op_87: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	NEXT; }
 op_88: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	if (QH_MEMOP(m)) fw8(rm, fr8(r));
+	EAP_B(EA_OFF32(off, m) mval = fr8(r); u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, LFB_ST(1)); fs8(p, mval);)
 	else { EA_OFF(off, m) mval = fr8(r); u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, LFB_ST(1)); fs8(p, mval); }
 	NEXT; }
 op_89: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	if (QH_MEMOP(m)) {
 		if (QH_O16(opsz16)) sreg16(rm, lreg16(r));
 		else sreg32(rm, lreg32(r));
-	} else if (QH_O16(opsz16)) { EA_OFF(off, m) mval = lreg16(r); u8 *p; FPTR_ST(p, seg, off, 2, mmio_st, LFB_ST(2)); fs16(p, mval); }
+	} EAP_D(EA_OFF32(off, m) mval = lreg32(r); u8 *p; FPTR_ST(p, seg, off, 4, mmio_st, LFB_ST(4)); fs32(p, mval);)
+	else if (QH_O16(opsz16)) { EA_OFF(off, m) mval = lreg16(r); u8 *p; FPTR_ST(p, seg, off, 2, mmio_st, LFB_ST(2)); fs16(p, mval); }
 	else { EA_OFF(off, m) mval = lreg32(r); u8 *p; FPTR_ST(p, seg, off, 4, mmio_st, LFB_ST(4)); fs32(p, mval); }
 	NEXT; }
 op_8a: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	if (QH_MEMOP(m)) fw8(r, fr8(rm));
+	EAP_B(EA_OFF32(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 1, 0, mmio_ld); fw8(r, fm8(p));)
 	else { EA_OFF(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 1, 0, mmio_ld); fw8(r, fm8(p)); }
 	NEXT; }
 op_8b: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	if (QH_MEMOP(m)) {
 		if (QH_O16(opsz16)) sreg16(r, lreg16(rm));
 		else sreg32(r, lreg32(rm));
-	} else if (QH_O16(opsz16)) { EA_OFF(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 2, 0, mmio_ld); sreg16(r, fm16(p)); }
+	} EAP_D(EA_OFF32(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 4, 0, mmio_ld); sreg32(r, fm32(p));)
+	else if (QH_O16(opsz16)) { EA_OFF(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 2, 0, mmio_ld); sreg16(r, fm16(p)); }
 	else { EA_OFF(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 4, 0, mmio_ld); sreg32(r, fm32(p)); }
 	NEXT; }
 	/* MMIO for the MOVs above (mpaddr, msize; mval to store, mreg to load into) */
@@ -1521,20 +1593,28 @@ op_dec_r: { int r = pc[-1] & 7;
 	if (QH_O16(opsz16)) { FDECw(r, lreg16, sreg16) } else { FDECd(r, lreg32, sreg32) }
 	NEXT; }
 op_push_r: { int r = pc[-1] & 7;
+	FX_STK(
 	if (opsz16) { u8 *s; STACK_PTR(s, -2, 2, 1); u16 v = lreg16(r); SP_ADD(-2); fs16(s, v); }
 	else { u8 *s; STACK_PTR(s, -4, 4, 1); u32 v = lreg32(r); SP_ADD(-4); fs32(s, v); }
+	);
 	NEXT; }
 op_pop_r: { int r = pc[-1] & 7;
+	FX_STK(
 	if (opsz16) { u8 *s; STACK_PTR(s, 0, 2, 0); u16 v = fm16(s); SP_ADD(2); sreg16(r, v); }
 	else { u8 *s; STACK_PTR(s, 0, 4, 0); u32 v = fm32(s); SP_ADD(4); sreg32(r, v); }
+	);
 	NEXT; }
 op_push_iv: {
+	FX_STK(
 	if (opsz16) { u8 *s; STACK_PTR(s, -2, 2, 1); SP_ADD(-2); fs16(s, fm16(pc)); pc += 2; }
 	else { u8 *s; STACK_PTR(s, -4, 4, 1); SP_ADD(-4); fs32(s, fm32(pc)); pc += 4; }
+	);
 	NEXT; }
 op_push_ib: { uword v = (sword) (s8) *pc++;
+	FX_STK(
 	if (opsz16) { u8 *s; STACK_PTR(s, -2, 2, 1); SP_ADD(-2); fs16(s, v); }
 	else { u8 *s; STACK_PTR(s, -4, 4, 1); SP_ADD(-4); fs32(s, v); }
+	);
 	NEXT; }
 op_pusha: {
 	if (opsz16) {
@@ -1595,8 +1675,10 @@ op_arpl: { if (!PROTECTED) goto slow;
 op_push_seg: {
 	u8 op = pc[-1];   /* 06 0E 16 1E, or 0F A0 / 0F A8 (primary A0 and A8 are other instructions) */
 	int sg = op == 0xa0 ? SEG_FS : op == 0xa8 ? SEG_GS : op >> 3;
+	FX_STK(
 	if (opsz16) { u8 *s; STACK_PTR(s, -2, 2, 1); SP_ADD(-2); fs16(s, cpu->seg[sg].sel); }
 	else { u8 *s; STACK_PTR(s, -4, 2, 1); SP_ADD(-4); fs16(s, cpu->seg[sg].sel); }
+	);
 	NEXT; }
 op_pop_seg: {
 	u8 op = pc[-1];
@@ -1754,6 +1836,7 @@ op_jmp_v: {   /* Jv: as JCC above */
 	NEXT; }
 op_call: {
 	sword d;
+	FX_STK(
 	if (opsz16) {
 		d = (s16) fm16(pc); pc += 2;
 		u8 *s; STACK_PTR(s, -2, 2, 1);
@@ -1763,15 +1846,20 @@ op_call: {
 		u8 *s; STACK_PTR(s, -4, 4, 1);
 		SP_ADD(-4); fs32(s, EIP_OF(pc));
 	}
+	);
 	JUMP_REL(d);
 	NEXT; }
 op_ret: {
+	FX_STK(
 	if (opsz16) { u8 *s; STACK_PTR(s, 0, 2, 0); SP_ADD(2); JUMP_ABS(fm16(s)); }
 	else { u8 *s; STACK_PTR(s, 0, 4, 0); SP_ADD(4); JUMP_ABS(fm32(s)); }
+	);
 	NEXT; }
 op_ret_iw: { u16 n = fm16(pc); pc += 2;
+	FX_STK(
 	if (opsz16) { u8 *s; STACK_PTR(s, 0, 2, 0); SP_ADD(2 + n); JUMP_ABS(fm16(s)); }
 	else { u8 *s; STACK_PTR(s, 0, 4, 0); SP_ADD(4 + n); JUMP_ABS(fm32(s)); }
+	);
 	NEXT; }
 op_loop: { s8 d = *pc++;
 	if (adsz16) { u16 c = lreg16(1) - 1; sreg16(1, c); if (c) JUMP_REL(d); }
@@ -1807,16 +1895,18 @@ op_enter: {   /* nesting level 0 only */
 	}
 	NEXT; }
 op_leave: {
+	FX_STK(
 	uword bp = REGi(5) & sp_mask;
 	if (opsz16) {
 		u8 *p; FPTR(p, SEG_SS, bp, 2, 0);
-		set_sp(REGi(5) + 2, sp_mask);
+		FX_SETSP(REGi(5) + 2);
 		sreg16(5, fm16(p));
 	} else {
 		u8 *p; FPTR(p, SEG_SS, bp, 4, 0);
-		set_sp(REGi(5) + 4, sp_mask);
+		FX_SETSP(REGi(5) + 4);
 		sreg32(5, fm32(p));
 	}
+	);
 	NEXT; }
 
 	/* far jumps, calls and returns, INT and IRET: in real mode and
@@ -1940,17 +2030,22 @@ op_iret: {   /* in protected mode by tiny386's pmret(); in real mode, 16-bit */
 #define GRP_OPND_R(T) do { const void *const *_t = (T); pfx = m & 7; goto *_t[op]; } while (0)
 #define GRP_OPND_M(T, SIZE, WR) do { const void *const *_t = (T); u8 *_p; EA_PTR(_p, m, SIZE, WR); \
 		pfx = (uintptr_t) _p; goto *_t[op]; } while (0)
+#define GRP_OPND_M32(T, SIZE, WR) do { const void *const *_t = (T); u8 *_p; EA_PTR32(_p, m, SIZE, WR); \
+		pfx = (uintptr_t) _p; goto *_t[op]; } while (0)
 #define GRP_R pfx                  /* the operation's register operand */
 #define GRP_M ((u8 *) pfx)         /* ... its memory operand */
 op_grp1_b: { u8 m = *pc++; int op = (m >> 3) & 7;   /* 80h, 82h */
 	if (m >= 0xc0) GRP_OPND_R(g80r);
+	EAP_IF_B(GRP_OPND_M32(g80m, 1, op != 7));
 	GRP_OPND_M(g80m, 1, op != 7); }
 op_grp1_v: { u8 m = *pc++; int op = (m >> 3) & 7;   /* 81h */
 	if (m >= 0xc0) GRP_OPND_R(opsz16 ? g81wr : g81dr);
+	EAP_IF_D(GRP_OPND_M32(g81dm, 4, op != 7));
 	if (opsz16) GRP_OPND_M(g81wm, 2, op != 7);
 	GRP_OPND_M(g81dm, 4, op != 7); }
 op_grp1_vb: { u8 m = *pc++; int op = (m >> 3) & 7;  /* 83h */
 	if (m >= 0xc0) GRP_OPND_R(QH_O16(opsz16) ? g83wr : g83dr);
+	EAP_IF_D(GRP_OPND_M32(g83dm, 4, op != 7));
 	if (QH_O16(opsz16)) GRP_OPND_M(g83wm, 2, op != 7);
 	GRP_OPND_M(g83dm, 4, op != 7); }
 #define GRP_NEXT goto grp_next
@@ -2083,8 +2178,10 @@ g5_dec: { u8 m = pc[-1]; int rm = m & 7;
 	else { EA_PTR(p, m, 4, 0); v = fm32(p); }
 g5_call: { u8 m = pc[-1]; int rm = m & 7;
 	G5_READ()
+	FX_STK(
 	if (QH_O16(opsz16)) { u8 *s; STACK_PTR2(s, -2, 2, 1, p); SP_ADD(-2); fs16(s, EIP_OF(pc)); }
 	else { u8 *s; STACK_PTR2(s, -4, 4, 1, p); SP_ADD(-4); fs32(s, EIP_OF(pc)); }
+	);
 	JUMP_ABS(v);
 	NEXT; }
 g5_jmp: { u8 m = pc[-1]; int rm = m & 7;
@@ -2093,8 +2190,10 @@ g5_jmp: { u8 m = pc[-1]; int rm = m & 7;
 	NEXT; }
 g5_push: { u8 m = pc[-1]; int rm = m & 7;
 	G5_READ()
+	FX_STK(
 	if (QH_O16(opsz16)) { u8 *s; STACK_PTR2(s, -2, 2, 1, p); SP_ADD(-2); fs16(s, v); }
 	else { u8 *s; STACK_PTR2(s, -4, 4, 1, p); SP_ADD(-4); fs32(s, v); }
+	);
 	NEXT; }
 g5_far: { u8 m = pc[-1]; int op = (m >> 3) & 7;
 	if (m >= 0xc0) goto slow;
