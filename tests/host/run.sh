@@ -587,6 +587,24 @@ $CC $CFLAGS -DEMULINK_CHECKED -I"$TREE" -o "$OUT/test_floppy" "$HERE/test_floppy
 "$OUT/test_floppy" "$OUT"
 result $? "misc.c: floppy drives 0 and 1 only, nothing past the image's end, refused writes counted"
 
+# ==== 14c. a command's blocks gathered and read ahead (v5.2): tests/host/ide ====
+# ide.c with IDE_ENABLE_WRITE_GATHER (upstream's PR 70) and
+# IDE_ENABLE_READ_AHEAD, as the boards build it, against ide.c without them:
+# random command sequences driven side by side at the IDE ports, every value
+# read, every interrupt and both disks compared (PR 70's failed writes
+# against a model of them), and faults planted in copies of ide.c that the
+# test has to see.  Then the card commands through disk_image.c and
+# ESP-IDF's own FatFs, as test 13 builds them (SKIP without them).
+echo
+if bash "$HERE/ide/run_ide.sh" "$OUT/ide" > "$OUT/ide.log" 2>&1; then
+    st=0
+else
+    st=1
+fi
+grep "^SKIP" "$OUT/ide.log"
+grep -E "FAILED|^ide:" "$OUT/ide.log"
+result $st "ide.c: a command's blocks gathered and read ahead, the guest sees the same; fewer card commands"
+
 # ==== 15. the status LED (v3.3; the brightness v3.7; the disk light v3.8) ====
 # status_code.c as the firmware has it, and status_bb.h (the panic handler's
 # bit-bang) with a pretend cycle counter: the RMT frame and every bit-banged
