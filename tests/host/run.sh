@@ -910,7 +910,7 @@ fcbuild plain "$TREE" -DI386_ALIGNED_ONLY -DI386_ENABLE_FPU
 st=$?
 grep "FAIL\|^test_fast_cpu" "$OUT/fast-cpu-plain.log"
 result $st "the fast interpreter without the board header: the same"
-for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN();$/\t(void) 0;/' \
+for m in fold:'s/!NOFOLD_IS() \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN();$/\t(void) 0;/' \
          cpl:'s/cpu->cpl == 3\];/cpu->cpl > 0];/' \
          lfbmark:'/^lfb_st: {/,/NEXT; }/s/^\tlfb_marked(cpu, .*$/\t(void) 0;/;s/^\(lfb_st[124]: [^;]*;\) lfb_marked([^;]*);/\1/' \
          lfbwtag:'s/^\t\t\te->wtag = pg | FAST_TAG_LFB;$/\t\t\te->wtag = pg;/' \
@@ -921,12 +921,12 @@ for m in fold:'s/FAST_ITER() != nofold_it \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN
          jumplo:'s/if (unlikely((uintptr_t) pc < (uintptr_t) win_lo)) win_hi = 0;/(void) 0;/' \
          codelfb:'/^\t\t\tif ((uintptr_t) (h - (const u8 \*) cpu->phys_mem) >= (uintptr_t) cpu->phys_mem_size)$/{N;d}' \
          plnull:'s/^#define FAST_PL(sg, lin, size) ((((lin) + (size) - 1) >> 12) | FAST_NULL20(sg))$/#define FAST_PL(sg, lin, size) (((lin) + (size) - 1) >> 12)/' \
-         st4fold:'s/^\t*nofold_it = FAST_ITER(); nofold_laddr = cpu->ifetch.laddr; nofold_xaddr = cpu->ifetch.xaddr;.*$/\t\t\t\t(void) 0;/' \
+         st4fold:'s/^\t*NOFOLD_SET(); nofold_laddr = cpu->ifetch.laddr; nofold_xaddr = cpu->ifetch.xaddr;.*$/\t\t\t\t(void) 0;/' \
          lpgno:'s/^#define FAST_REFUSED(ent, cpl, wr) .*$/#define FAST_REFUSED(ent, cpl, wr) 0/' \
          repdirty:'/^#define FPTR_IO_W(/,/goto LABEL;/{/FAST_TAG_LFB)) { \\$/,/goto LABEL;/s/\*_e->ppte |= 0x40;/(void) 0;/}' \
          n2:'s/1, \&mpaddr, (H1)))) { \\$/1, \&mpaddr, (NULL)))) { \\/' \
          cmpsrule:'s/^\t\tFPTR2(d, SEG_ES, DI_, n, 0, s);$/\t\tFPTR(d, SEG_ES, DI_, n, 0);/' \
-         restore:'s/^\tif (FAST_ITER() == nofold_it) {$/\tif (0) {/' \
+         restore:'s/^\tif (NOFOLD_IS()) {$/\tif (0) {/' \
          destheld:'s/|| cpu->tlb.tab\[((lin) >> 12) % tlb_size\].lpgno == ((lin) >> 12))$/|| 1)/' \
          codepage:'s/^#define FAST_CODE_PAGE(cpu, ent) .*$/#define FAST_CODE_PAGE(cpu, ent) 0/' \
          lfbwnull:'/^#define FPTR_IO_W(/,/} while (0)/{/^\t\t\tif (nullsegs & (1u << (sg))) goto slow; \\$/d;s/^\t\t\tif (!(p = fast_miss2(cpu, ftlb, _lin, (size), 1, &mpaddr, (H1)))) { \\$/\t\t\tif (nullsegs \& (1u << (sg))) goto slow; \\\n&/}' \

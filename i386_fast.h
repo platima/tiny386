@@ -553,7 +553,12 @@ static inline __attribute__((always_inline)) uword fast_ea2(CPUI386 *cpu, const 
 			a = REGi(rm);
 			dseg = SEG_DS - (rm == 5);
 		}
+#if QW_EAM1
+		/* after v5.2 (fastx): mod 1, the commonest form, in line */
+		if (likely(mod == 1))
+#else
 		if (mod == 1)
+#endif
 			a += (s8) *pc++;
 		else if (unlikely(mod == 2)) {
 			a += fm32(pc);
@@ -995,15 +1000,8 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	} while (0)
 #endif
 	/* relative and absolute jumps; 16-bit code wraps at 64 KB */
-#if QW_C16 && QW_PFX
-	/* after v5.2 (fastx): pfx0 (a register) is 3 for 16-bit code and 0 for 32-bit, so its test is
-	   code16's without the load of code16 from the stack */
-#define FX_CODE16 (pfx0 != 0)
-#else
-#define FX_CODE16 code16
-#endif
 #define JUMP_REL(d) do { \
-		if (QH_U(FX_CODE16)) pc = (const u8 *) (ipd + ((EIP_OF(pc) + (d)) & 0xffff)); \
+		if (QH_U(code16)) pc = (const u8 *) (ipd + ((EIP_OF(pc) + (d)) & 0xffff)); \
 		else pc += (d); \
 		if (unlikely((uintptr_t) pc < (uintptr_t) win_lo)) win_hi = 0; \
 	} while (0)

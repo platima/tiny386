@@ -61,9 +61,6 @@
 #ifndef QW_NULLI
 #define QW_NULLI 0      /* a constant segment's null bit by one bexti */
 #endif
-#ifndef QW_C16
-#define QW_C16 0        /* relative jumps test pfx0 for 16-bit code, not code16 on the stack */
-#endif
 #ifndef QW_EAP
 #define QW_EAP 0        /* the hot handlers' common memory form in one test of the prefixes (2: fewer) */
 #endif
@@ -75,6 +72,9 @@
 #endif
 #ifndef QW_EAS
 #define QW_EAS 0        /* with QW_EAP: the lookup in two copies, DS and SS as constants */
+#endif
+#ifndef QW_EAM1
+#define QW_EAM1 0       /* fast_ea2(): mod 1 hinted as the likely form with 32-bit addresses */
 #endif
 #ifndef QW_NOFOLD
 #define QW_NOFOLD 0     /* the fusion rule's instruction kept as a value of steps */
