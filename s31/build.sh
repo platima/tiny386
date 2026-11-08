@@ -17,8 +17,8 @@
 # makes the fast interpreter and the run loop cheaper), bare
 # metal under ESP-IDF, for the ESP32-S31-Korvo-1
 # and for the DOS board, from tiny386's master as its author left it on
-# 2026-11-05 (2c1205c) and tiny386-idf-v4.patch beside this script (on the
-# esp32-s31 branch: git diff 2c1205c s31-v5.2 -- . ':(exclude)s31').  Until
+# 2026-11-07 (a080c5d) and tiny386-idf-v4.patch beside this script (on the
+# esp32-s31 branch: git diff a080c5d s31-v5.2 -- . ':(exclude)s31').  Until
 # v3.9 the base was the release 9ed786b; tiny386-idf-v3.patch is still the
 # whole of it against 9ed786b (now giving the v5.2 tree), for comparing
 # with the earlier patches, and is not used here.  Build only: this script
@@ -68,7 +68,7 @@ W=${1:-$HOME/tiny386-idf-v4-build}
 IDF_PATH=${IDF_PATH:-$HOME/esp/esp-idf}
 IDF_TOOLS_PATH=${IDF_TOOLS_PATH:-$HOME/.espressif-upstream}
 TINY_GIT=https://github.com/hchunhui/tiny386.git
-TINY_COMMIT=2c1205cf1212c2fdfd4552ff239be0db38b8a666
+TINY_COMMIT=a080c5d347f432481710902423c93992edde52d7
 PATCH=$HERE/tiny386-idf-v4.patch
 LOCK=$HERE/dependencies.lock
 DB=$HERE/dualboot
