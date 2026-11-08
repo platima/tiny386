@@ -70,9 +70,6 @@
 #ifndef QW_OPS0F
 #define QW_OPS0F 0      /* ops0f[] right after ops[], at a constant offset from it */
 #endif
-#ifndef QW_EAP16
-#define QW_EAP16 0      /* with QW_EAP: 16-bit code's common memory form in one test too */
-#endif
 #ifndef QW_EAS
 #define QW_EAS 0        /* with QW_EAP: the lookup in two copies, DS and SS as constants */
 #endif
@@ -84,9 +81,6 @@
 #endif
 #ifndef QW_DECJ
 #define QW_DECJ 0       /* a JZ or JNZ right after DEC r done without its dispatch */
-#endif
-#ifndef QW_ALUJ
-#define QW_ALUJ 0       /* ... and right after ADD, OR, AND, SUB and XOR */
 #endif
 #ifndef QW_NOFOLD
 #define QW_NOFOLD 0     /* the fusion rule's instruction kept as a value of steps */

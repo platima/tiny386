@@ -1007,10 +1007,9 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	/* tiny386's try_jcc8() after a CMP or TEST: a JZ or JNZ right after it,
 	   if taken, in the same step, unless tiny386 fetched the CMP the slow
 	   way (the first instruction in a newly cached page) */
-	/* after v5.2 (fastx), QW_DECJ and QW_ALUJ: a JZ or JNZ right after DEC r (a loop's count) or
-	   an ALU operation done here as the next instruction without its dispatch, as QW_FOLD2 does
-	   after CMP (no fusion here: tiny386 fuses after CMP and TEST only).  Each leaves ZF in the
-	   lazy flags (cc.dst). */
+	/* after v5.2 (fastx), QW_DECJ: a JZ or JNZ right after DEC r (a loop's count) done here as the
+	   next instruction without its dispatch, as QW_FOLD2 does after CMP (no fusion here: tiny386
+	   fuses after CMP and TEST only).  DEC leaves ZF in the lazy flags (cc.dst). */
 #define JZNZ_INLINE() do { \
 		u8 _op = pc[0]; \
 		if ((_op & ~1) == 0x74) { \
@@ -1023,11 +1022,6 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 			if (_t) JUMP_REL(_d); \
 		} \
 	} while (0)
-#if QW_ALUJ
-#define ALUJ JZNZ_INLINE();
-#else
-#define ALUJ
-#endif
 #if QW_FOLD2
 	/* after v5.2 (fastx): a JZ or JNZ right after a CMP or TEST that is not fused (not taken, or
 	   the CMP fetched the slow way) is done here as the next instruction, without its dispatch:
@@ -1304,32 +1298,6 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 #define EA_PTR32(p, m, size, wr) \
 	FX_SEGL uword _off = fast_ea2(cpu, &pc, m, 0, 0, &seg); \
 	EAS(FPTR(p, seg, _off, size, wr);)
-#if QW_EAP16
-	/* after v5.2 (fastx), QW_EAP16: the same for 16-bit code's common form, 16-bit operands and
-	   addresses and no override (pfx's bits 0 and 1 set, 4 to 6 clear; for bytes bit 1 set), after
-	   the 32-bit form's test */
-#define EAP_DW(...) else if ((pfx & 0x73) == 3) { __VA_ARGS__ }
-#define EAP_BW(...) else if ((pfx & 0x72) == 2) { __VA_ARGS__ }
-#define EAP_IF_DW(...) if ((pfx & 0x73) == 3) { __VA_ARGS__; }
-#define EAP_IF_BW(...) if ((pfx & 0x72) == 2) { __VA_ARGS__; }
-#else
-#define EAP_DW(...)
-#define EAP_BW(...)
-#define EAP_IF_DW(...)
-#define EAP_IF_BW(...)
-#endif
-#if QW_EAP == 1
-#define EAP_D2W EAP_DW
-#define EAP_B2W EAP_BW
-#else
-#define EAP_D2W(...)
-#define EAP_B2W(...)
-#endif
-#define EA_OFF16(off, m) \
-	FX_SEGL uword off = fast_ea2(cpu, &pc, m, 1, 0, &seg);
-#define EA_PTR16(p, m, size, wr) \
-	FX_SEGL uword _off = fast_ea2(cpu, &pc, m, 1, 0, &seg); \
-	FPTR(p, seg, _off, size, wr)
 #else
 #define EAP_D(...)
 #define EAP_B(...)
@@ -1337,12 +1305,6 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 #define EAP_IF_B(...)
 #define EAP_D2(...)
 #define EAP_B2(...)
-#define EAP_DW(...)
-#define EAP_BW(...)
-#define EAP_IF_DW(...)
-#define EAP_IF_BW(...)
-#define EAP_D2W(...)
-#define EAP_B2W(...)
 #endif
 	/* a stack slot: the stack pointer's address after moving it by d
 	   bytes.  STACK_PTR_N for several slots in one go: tiny386 masks each
@@ -1545,7 +1507,6 @@ op_0f: goto *ops0f[*pc++];
 L0: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 	if (m >= 0xc0) { OPb(rm, r, fr8, fw8, fr8, fw8) } \
 	EAPB(u8 *p; EA_PTR32(p, m, 1, WR); OPb(p, r, fm8, fs8, fr8, fw8)) \
-	EAPB##W(u8 *p; EA_PTR16(p, m, 1, WR); OPb(p, r, fm8, fs8, fr8, fw8)) \
 	else { u8 *p; EA_PTR(p, m, 1, WR); OPb(p, r, fm8, fs8, fr8, fw8) } \
 	POST NEXT; } \
 L1: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
@@ -1553,14 +1514,12 @@ L1: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 		if (QH_O16(opsz16)) { OPw(rm, r, lreg16, sreg16, lreg16, sreg16) } \
 		else { OPd(rm, r, lreg32, sreg32, lreg32, sreg32) } \
 	} EAPD(u8 *p; EA_PTR32(p, m, 4, WR); OPd(p, r, fm32, fs32, lreg32, sreg32)) \
-	EAPD##W(u8 *p; EA_PTR16(p, m, 2, WR); OPw(p, r, fm16, fs16, lreg16, sreg16)) \
 	else if (QH_O16(opsz16)) { u8 *p; EA_PTR(p, m, 2, WR); OPw(p, r, fm16, fs16, lreg16, sreg16) } \
 	else { u8 *p; EA_PTR(p, m, 4, WR); OPd(p, r, fm32, fs32, lreg32, sreg32) } \
 	POST NEXT; } \
 L2: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 	if (m >= 0xc0) { OPb(r, rm, fr8, fw8, fr8, fw8) } \
 	EAPB(u8 *p; EA_PTR32(p, m, 1, 0); OPb(r, p, fr8, fw8, fm8, fs8)) \
-	EAPB##W(u8 *p; EA_PTR16(p, m, 1, 0); OPb(r, p, fr8, fw8, fm8, fs8)) \
 	else { u8 *p; EA_PTR(p, m, 1, 0); OPb(r, p, fr8, fw8, fm8, fs8) } \
 	POST NEXT; } \
 L3: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
@@ -1568,7 +1527,6 @@ L3: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 		if (QH_O16(opsz16)) { OPw(r, rm, lreg16, sreg16, lreg16, sreg16) } \
 		else { OPd(r, rm, lreg32, sreg32, lreg32, sreg32) } \
 	} EAPD(u8 *p; EA_PTR32(p, m, 4, 0); OPd(r, p, lreg32, sreg32, fm32, fs32)) \
-	EAPD##W(u8 *p; EA_PTR16(p, m, 2, 0); OPw(r, p, lreg16, sreg16, fm16, fs16)) \
 	else if (QH_O16(opsz16)) { u8 *p; EA_PTR(p, m, 2, 0); OPw(r, p, lreg16, sreg16, fm16, fs16) } \
 	else { u8 *p; EA_PTR(p, m, 4, 0); OPd(r, p, lreg32, sreg32, fm32, fs32) } \
 	POST NEXT; } \
@@ -1578,13 +1536,13 @@ L5: { int r = 0; \
 	else { u32 i = fm32(pc); pc += 4; OPd(r, i, lreg32, sreg32, limm, 0) } \
 	POST NEXT; }
 
-	ALU6(op_00, op_01, op_02, op_03, op_04, op_05, ADD, ADDb, ADDw, ADDd, 1, ALUJ, EAP_D, EAP_B2)
-	ALU6(op_08, op_09, op_0a, op_0b, op_0c, op_0d, OR, ORb, ORw, ORd, 1, ALUJ, EAP_D, EAP_B2)
+	ALU6(op_00, op_01, op_02, op_03, op_04, op_05, ADD, ADDb, ADDw, ADDd, 1, , EAP_D, EAP_B2)
+	ALU6(op_08, op_09, op_0a, op_0b, op_0c, op_0d, OR, ORb, ORw, ORd, 1, , EAP_D, EAP_B2)
 	ALU6(op_10, op_11, op_12, op_13, op_14, op_15, ADC, ADCb, ADCw, ADCd, 1, , EAP_D2, EAP_B2)
 	ALU6(op_18, op_19, op_1a, op_1b, op_1c, op_1d, SBB, SBBb, SBBw, SBBd, 1, , EAP_D2, EAP_B2)
-	ALU6(op_20, op_21, op_22, op_23, op_24, op_25, AND, ANDb, ANDw, ANDd, 1, ALUJ, EAP_D, EAP_B2)
-	ALU6(op_28, op_29, op_2a, op_2b, op_2c, op_2d, SUB, SUBb, SUBw, SUBd, 1, ALUJ, EAP_D, EAP_B2)
-	ALU6(op_30, op_31, op_32, op_33, op_34, op_35, XOR, XORb, XORw, XORd, 1, ALUJ, EAP_D, EAP_B2)
+	ALU6(op_20, op_21, op_22, op_23, op_24, op_25, AND, ANDb, ANDw, ANDd, 1, , EAP_D, EAP_B2)
+	ALU6(op_28, op_29, op_2a, op_2b, op_2c, op_2d, SUB, SUBb, SUBw, SUBd, 1, , EAP_D, EAP_B2)
+	ALU6(op_30, op_31, op_32, op_33, op_34, op_35, XOR, XORb, XORw, XORd, 1, , EAP_D, EAP_B2)
 	ALU6(op_38, op_39, op_3a, op_3b, op_3c, op_3d, CMP, FCMPb, FCMPw, FCMPd, 0, FOLD_JCC();, EAP_D, EAP_B)
 
 	/* TEST, XCHG, MOV with modrm */
@@ -1615,7 +1573,6 @@ op_87: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 op_88: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	if (QH_MEMOP(m)) fw8(rm, fr8(r));
 	EAP_B(EA_OFF32(off, m) mval = fr8(r); u8 *p; EAS(FPTR_ST(p, seg, off, 1, mmio_st, LFB_ST(1));); fs8(p, mval);)
-	EAP_BW(EA_OFF16(off, m) mval = fr8(r); u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, LFB_ST(1)); fs8(p, mval);)
 	else { EA_OFF(off, m) mval = fr8(r); u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, LFB_ST(1)); fs8(p, mval); }
 	NEXT; }
 op_89: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
@@ -1623,14 +1580,12 @@ op_89: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 		if (QH_O16(opsz16)) sreg16(rm, lreg16(r));
 		else sreg32(rm, lreg32(r));
 	} EAP_D(EA_OFF32(off, m) mval = lreg32(r); u8 *p; EAS(FPTR_ST(p, seg, off, 4, mmio_st, LFB_ST(4));); fs32(p, mval);)
-	EAP_DW(EA_OFF16(off, m) mval = lreg16(r); u8 *p; FPTR_ST(p, seg, off, 2, mmio_st, LFB_ST(2)); fs16(p, mval);)
 	else if (QH_O16(opsz16)) { EA_OFF(off, m) mval = lreg16(r); u8 *p; FPTR_ST(p, seg, off, 2, mmio_st, LFB_ST(2)); fs16(p, mval); }
 	else { EA_OFF(off, m) mval = lreg32(r); u8 *p; FPTR_ST(p, seg, off, 4, mmio_st, LFB_ST(4)); fs32(p, mval); }
 	NEXT; }
 op_8a: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	if (QH_MEMOP(m)) fw8(r, fr8(rm));
 	EAP_B(EA_OFF32(off, m) mreg = r; u8 *p; EAS(FPTR_IO(p, seg, off, 1, 0, mmio_ld);); fw8(r, fm8(p));)
-	EAP_BW(EA_OFF16(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 1, 0, mmio_ld); fw8(r, fm8(p));)
 	else { EA_OFF(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 1, 0, mmio_ld); fw8(r, fm8(p)); }
 	NEXT; }
 op_8b: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
@@ -1638,7 +1593,6 @@ op_8b: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 		if (QH_O16(opsz16)) sreg16(r, lreg16(rm));
 		else sreg32(r, lreg32(rm));
 	} EAP_D(EA_OFF32(off, m) mreg = r; u8 *p; EAS(FPTR_IO(p, seg, off, 4, 0, mmio_ld);); sreg32(r, fm32(p));)
-	EAP_DW(EA_OFF16(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 2, 0, mmio_ld); sreg16(r, fm16(p));)
 	else if (QH_O16(opsz16)) { EA_OFF(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 2, 0, mmio_ld); sreg16(r, fm16(p)); }
 	else { EA_OFF(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 4, 0, mmio_ld); sreg32(r, fm32(p)); }
 	NEXT; }
@@ -2254,25 +2208,20 @@ op_iret: {   /* in protected mode by tiny386's pmret(); in real mode, 16-bit */
 		pfx = (uintptr_t) _p; goto *_t[op]; } while (0)
 #define GRP_OPND_M32(T, SIZE, WR) do { const void *const *_t = (T); u8 *_p; EA_PTR32(_p, m, SIZE, WR); \
 		pfx = (uintptr_t) _p; goto *_t[op]; } while (0)
-#define GRP_OPND_M16(T, SIZE, WR) do { const void *const *_t = (T); u8 *_p; EA_PTR16(_p, m, SIZE, WR); \
-		pfx = (uintptr_t) _p; goto *_t[op]; } while (0)
 #define GRP_R pfx                  /* the operation's register operand */
 #define GRP_M ((u8 *) pfx)         /* ... its memory operand */
 op_grp1_b: { u8 m = *pc++; int op = (m >> 3) & 7;   /* 80h, 82h */
 	if (m >= 0xc0) GRP_OPND_R(g80r);
 	EAP_IF_B(GRP_OPND_M32(g80m, 1, op != 7));
-	EAP_IF_BW(GRP_OPND_M16(g80m, 1, op != 7));
 	GRP_OPND_M(g80m, 1, op != 7); }
 op_grp1_v: { u8 m = *pc++; int op = (m >> 3) & 7;   /* 81h */
 	if (m >= 0xc0) GRP_OPND_R(opsz16 ? g81wr : g81dr);
 	EAP_IF_D(GRP_OPND_M32(g81dm, 4, op != 7));
-	EAP_IF_DW(GRP_OPND_M16(g81wm, 2, op != 7));
 	if (opsz16) GRP_OPND_M(g81wm, 2, op != 7);
 	GRP_OPND_M(g81dm, 4, op != 7); }
 op_grp1_vb: { u8 m = *pc++; int op = (m >> 3) & 7;  /* 83h */
 	if (m >= 0xc0) GRP_OPND_R(QH_O16(opsz16) ? g83wr : g83dr);
 	EAP_IF_D(GRP_OPND_M32(g83dm, 4, op != 7));
-	EAP_IF_DW(GRP_OPND_M16(g83wm, 2, op != 7));
 	if (QH_O16(opsz16)) GRP_OPND_M(g83wm, 2, op != 7);
 	GRP_OPND_M(g83dm, 4, op != 7); }
 #define GRP_NEXT goto grp_next
