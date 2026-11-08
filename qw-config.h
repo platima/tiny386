@@ -14,3 +14,15 @@
 #define QW_PFX 1
 #define QW_PIT 1
 #define QW_CLK1 1
+/* after v5.2 (fastx): fast_exec()'s host instructions on the board's compiler */
+#define QW_OPSREG 1
+#define QW_OPS0F 1
+#define QW_GRPTAB 1
+#define QW_NULLI 1
+#define QW_JCCV 1
+#define QW_STK 2
+#define QW_NOFOLD 1
+#define QW_EAP 2
+#define QW_SEGL 1
+#define QW_FOLD2 1
+#define QW_DECJ 1
