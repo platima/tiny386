@@ -876,6 +876,11 @@ static void ide_identify_cb(IDEState *s)
 }
 
 #ifdef IDE_ENABLE_WRITE_GATHER
+/* (here) every interface, so that ide_flush() can write what each drive has
+   gathered */
+static IDEIFState *ide_gather_ifs[4];
+static int ide_gather_nifs;
+
 static void ide_write_gathered_cb(void *opaque, int ret)
 {
 }
@@ -2216,6 +2221,17 @@ unsigned ide_write_count(void)
 void ide_flush(void)
 {
     int i;
+#ifdef IDE_ENABLE_WRITE_GATHER
+    /* (here) the blocks of a write command the guest left part way, which
+       would otherwise wait for that drive's next command: the next block
+       of a command still going starts a new gather where it belongs */
+    for (i = 0; i < ide_gather_nifs; i++) {
+        int j;
+        for (j = 0; j < 2; j++)
+            if (ide_gather_ifs[i]->drives[j])
+                ide_write_gathered(ide_gather_ifs[i]->drives[j]);
+    }
+#endif
     for (i = 0; i < bf_rw_count; i++) {
         FILE *f = bf_rw[i]->f;
 #ifdef BUILD_ESP32
@@ -2252,6 +2268,14 @@ void ide_flush(void)
 
 //#define DUMP_BLOCK_READ
 
+/* sectors sector_num to sector_num + n - 1 all inside the image (a CHS
+   address with sector 0 comes here as sector -1, so the sum could wrap) */
+static int bf_in_range(BlockDeviceFile *bf, uint64_t sector_num, int n)
+{
+    return n >= 0 && sector_num <= (uint64_t) bf->nb_sectors &&
+           (uint64_t) n <= (uint64_t) bf->nb_sectors - sector_num;
+}
+
 static int bf_read_async(BlockDevice *bs,
                          uint64_t sector_num, uint8_t *buf, int n,
                          BlockDeviceCompletionFunc *cb, void *opaque)
@@ -2276,7 +2300,7 @@ static int bf_read_async(BlockDevice *bs,
        until the partition is full (boot safety review, round 2, m1).  The
        guest is told of an error, as on a disk that has no such sector;
        not counted as the card's. */
-    if (n < 0 || sector_num + (uint64_t) n > (uint64_t) bf->nb_sectors)
+    if (!bf_in_range(bf, sector_num, n))
         return -1;
     if (bf->img) {
         /* disk_image.c has already opened the image again and tried once
@@ -2343,7 +2367,7 @@ static int bf_write_async(BlockDevice *bs,
 #ifdef BUILD_ESP32
         /* nothing past the image's end, which would stretch the file on
            the card (as in bf_read_async()) */
-        if (n < 0 || sector_num + (uint64_t) n > (uint64_t) bf->nb_sectors) {
+        if (!bf_in_range(bf, sector_num, n)) {
             ret = -1;
             break;
         }
@@ -2385,7 +2409,7 @@ static int bf_write_async(BlockDevice *bs,
     case BF_MODE_SNAPSHOT:
         {
             int i;
-            if ((sector_num + n) > bf->nb_sectors)
+            if (!bf_in_range(bf, sector_num, n))
                 return -1;
             for(i = 0; i < n; i++) {
                 if (!bf->sector_table[sector_num]) {
@@ -2820,6 +2844,10 @@ IDEIFState *ide_allocate(int irq, void *pic, void (*set_irq)(void *pic, int irq,
     s->set_irq = set_irq;
 
     s->cur_drive = s->drives[0];
+#ifdef IDE_ENABLE_WRITE_GATHER
+    if (ide_gather_nifs < 4)
+        ide_gather_ifs[ide_gather_nifs++] = s;
+#endif
     return s;
 }
 

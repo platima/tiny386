@@ -20,9 +20,9 @@
  * own FatFs (esp_main.c lets /sdcardN go first, and never /sdcard).
  *
  * Writes: only inside the partition: every sector of each transfer, or none
- * of it.  (A transfer is what ide.c passes at once, at most four sectors;
- * a guest command that runs across the partition's end has its sectors
- * inside written and then fails.)  Reads: LBA 0 is the record made here,
+ * of it.  (A transfer is what ide.c passes at once: since v5.2 up to 128
+ * sectors, a command's blocks gathered, and four without that; a transfer
+ * that runs across the partition's end is refused whole.)  Reads: LBA 0 is the record made here,
  * the partition's sectors the card's, everything else zeros.  A card error is tried once more, as
  * disk_image.c does, and counted in disk_image.c's figures (the speed
  * screen's Disk line, the information port).
@@ -373,11 +373,22 @@ uint64_t sd_part_sectors(const struct sd_part *p)
 	return p->plan.disk_sectors;
 }
 
+static unsigned s_buf_sectors;          /* SDP_BUF_SECTORS, or 4 if internal RAM was short */
+
 static bool buf_ready(void)
 {
-	if (!s_buf)
+	if (!s_buf) {
 		s_buf = heap_caps_aligned_alloc(64, SDP_BUF_SECTORS * 512,
 						MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+		s_buf_sectors = SDP_BUF_SECTORS;
+	}
+	if (!s_buf) {
+		/* v5.2: without room for that, 2 KiB as before: more card
+		   commands, but the PC still starts */
+		s_buf = heap_caps_aligned_alloc(64, 4 * 512,
+						MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+		s_buf_sectors = 4;
+	}
 	return s_buf != NULL;
 }
 
@@ -464,7 +475,7 @@ static int card_rw(struct sd_part *p, uint32_t sector, uint8_t *buf, unsigned n,
 	uint32_t s = sector;
 	uint8_t *b = buf;
 	while (left > 0) {
-		unsigned k = left < SDP_BUF_SECTORS ? left : SDP_BUF_SECTORS;
+		unsigned k = left < s_buf_sectors ? left : s_buf_sectors;
 		DRESULT r;
 		if (write) {
 			memcpy(s_buf, b, k * 512);
@@ -497,7 +508,7 @@ static int card_rw(struct sd_part *p, uint32_t sector, uint8_t *buf, unsigned n,
 int sd_part_read(struct sd_part *p, uint64_t lba, void *buf, unsigned n)
 {
 	uint8_t *b = buf;
-	if (!p || !p->used || lba + n > p->plan.disk_sectors)
+	if (!p || !p->used || lba > p->plan.disk_sectors || n > p->plan.disk_sectors - lba)
 		return SD_PART_REFUSED;
 	uint64_t ps = p->plan.start, pe = ps + p->plan.count;
 	while (n > 0) {
@@ -527,7 +538,7 @@ int sd_part_write(struct sd_part *p, uint64_t lba, const void *buf, unsigned n)
 	if (!p || !p->used)
 		return SD_PART_REFUSED;
 	uint64_t ps = p->plan.start, pe = ps + p->plan.count;
-	if (lba < ps || lba + n > pe || !n) {
+	if (lba < ps || lba >= pe || n > pe - lba || !n) {
 		/* the first few, then every hundredth */
 		if (p->said < 4 || !(p->said % 100)) {
 			char line[200];

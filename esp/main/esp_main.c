@@ -594,8 +594,9 @@ static void run_pc(PC *pc)
 		}
 		disk_errors(now);
 	}
-	if (unflushed)
-		disk_flush(pc);
+	/* v5.2: always, as ide.c may hold the blocks of a write command the
+	   guest left part way, which only ide_flush() writes now */
+	disk_flush(pc);
 	unsigned saves = speed_take_saves();
 	if (saves)
 		save_settings(saves & ~SPEED_SAVE_PROFILE);
