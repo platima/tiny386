@@ -891,7 +891,9 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	int nslow = 0;            /* instructions done by tiny386 (which counts them) */
 	int fsync = 0;            /* instructions done here and added to cpu->cycle */
 #if QW_NOFOLD
-	int nofold_st = -0x7fffffff - 1;   /* steps at the instruction that tiny386 fetched the slow way
+	/* (after the fastx review) -0x40000000: far below anything steps reaches, and far
+	   enough above INT_MIN that STI's and the SS loads' moves cannot overflow it */
+	int nofold_st = -0x40000000;   /* steps at the instruction that tiny386 fetched the slow way
 					      (none yet: far below any value steps takes, with its moves) */
 #else
 	int nofold_it = -1;       /* the instruction that tiny386 fetched the slow way */

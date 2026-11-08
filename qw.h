@@ -88,4 +88,7 @@
 #ifndef QW_GRPTAB
 #define QW_GRPTAB 0     /* the group tables just before ops[] (with QW_OPS0F and QW_GRP5) */
 #endif
+#if QW_GRPTAB && !(QW_OPS0F && QW_GRP5)
+#error "QW_GRPTAB needs QW_OPS0F and QW_GRP5"
+#endif
 #endif
