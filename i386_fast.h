@@ -890,7 +890,12 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	int sadj = 0;             /* the moves of steps by STI and SS loads */
 	int nslow = 0;            /* instructions done by tiny386 (which counts them) */
 	int fsync = 0;            /* instructions done here and added to cpu->cycle */
+#if QW_NOFOLD
+	int nofold_st = -0x7fffffff - 1;   /* steps at the instruction that tiny386 fetched the slow way
+					      (none yet: far below any value steps takes, with its moves) */
+#else
 	int nofold_it = -1;       /* the instruction that tiny386 fetched the slow way */
+#endif
 	/* ... and tiny386's fetch cache before it.  v5.1: volatile, so kept in
 	   memory: they are written when a page is newly cached and read only
 	   when an instruction goes to tiny386, and with them in registers GCC
@@ -945,8 +950,21 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 #define SYNC_OUT() do { int _f = FAST_DONE(); cpu->cycle += _f - fsync; fsync = _f; } while (0)
 	/* STI's rule (cpu_exec1()'s stepcount < 2 is steps < 1 here) and a
 	   load of SS's */
+#if QW_NOFOLD
+	/* after v5.2 (fastx): the instruction tiny386 fetched the slow way kept as the value steps
+	   has at it (nofold_st), moved with steps by STI and SS loads as sadj is, so that
+	   FAST_ITER() == nofold_it is steps == nofold_st: one load and a compare, not four loads
+	   and two sums, in every CMP and TEST before a JZ or JNZ */
+#define NOFOLD_SET() (nofold_st = steps)
+#define NOFOLD_IS() (steps == nofold_st)
+#define STEPS_STI() do { int _o = steps; if (cpu->intr || steps < 1) steps = 1; sadj += steps - _o; nofold_st += steps - _o; } while (0)
+#define STEPS_SS() do { steps++; sadj++; nofold_st++; } while (0)
+#else
+#define NOFOLD_SET() (nofold_it = FAST_ITER())
+#define NOFOLD_IS() (FAST_ITER() == nofold_it)
 #define STEPS_STI() do { int _o = steps; if (cpu->intr || steps < 1) steps = 1; sadj += steps - _o; } while (0)
 #define STEPS_SS() do { steps++; sadj++; } while (0)
+#endif
 	/* every handler ends dispatching the next instruction itself (so that
 	   the host's branch predictor sees one indirect jump per handler) */
 #define DISPATCH do { ins = pc; pfx = pfx0; goto *FX_OPS[*pc++]; } while (0)
@@ -998,7 +1016,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   way (the first instruction in a newly cached page) */
 #define FOLD_JCC() do { \
 		u8 _op = pc[0]; \
-		if ((_op & ~1) == 0x74 && FAST_ITER() != nofold_it && \
+		if ((_op & ~1) == 0x74 && !NOFOLD_IS() && \
 		    ((cpu->cc.dst == 0) ^ (_op & 1))) { \
 			sword _d = (s8) pc[1]; \
 			pc += 2; \
@@ -1210,16 +1228,37 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 #define EAP_B(...) else if (likely(!(pfx & 0x72))) { __VA_ARGS__ }
 #define EAP_IF_D(...) if (likely(!(pfx & 0x73))) { __VA_ARGS__; }
 #define EAP_IF_B(...) if (likely(!(pfx & 0x72))) { __VA_ARGS__; }
+#if QW_EAP == 1
+#define EAP_D2 EAP_D
+#define EAP_B2 EAP_B
+#else
+	/* (QW_EAP 2: only the hotter ALU forms: no ADC or SBB, and of the byte forms only CMP) */
+#define EAP_D2(...)
+#define EAP_B2(...)
+#endif
 #define EA_OFF32(off, m) \
 	uword off = fast_ea2(cpu, &pc, m, 0, 0, &seg);
+#if QW_EAS
+	/* after v5.2 (fastx), QW_EAS: with no override the segment is DS or SS, so the lookup is made
+	   in two copies, each with its segment a constant (shadowing seg): the base is one load at a
+	   fixed offset and the null bit one bexti, not a shift, an add, a load and a bext */
+#define EAS(...) do { \
+		if (likely(seg == SEG_DS)) { const int seg = SEG_DS; __VA_ARGS__ } \
+		else { const int seg = SEG_SS; __VA_ARGS__ } \
+	} while (0)
+#else
+#define EAS(...) do { __VA_ARGS__ } while (0)
+#endif
 #define EA_PTR32(p, m, size, wr) \
 	uword _off = fast_ea2(cpu, &pc, m, 0, 0, &seg); \
-	FPTR(p, seg, _off, size, wr)
+	EAS(FPTR(p, seg, _off, size, wr);)
 #else
 #define EAP_D(...)
 #define EAP_B(...)
 #define EAP_IF_D(...)
 #define EAP_IF_B(...)
+#define EAP_D2(...)
+#define EAP_B2(...)
 #endif
 	/* a stack slot: the stack pointer's address after moving it by d
 	   bytes.  STACK_PTR_N for several slots in one go: tiny386 masks each
@@ -1341,7 +1380,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 		win_hi = (uintptr_t) _w.lo + FAST_WIN; \
 		ipd = _w.ipd; \
 		if (_r == 2) { \
-			nofold_it = FAST_ITER(); \
+			NOFOLD_SET(); \
 			nofold_laddr = _l0; \
 			nofold_xaddr = _x0; \
 		} \
@@ -1376,7 +1415,7 @@ refill:   /* the next instruction is outside the code window */
 			const u8 *h = (const u8 *) (uintptr_t) (lin + e->delta);
 			uintptr_t po = (uintptr_t) (h - (const u8 *) cpu->phys_mem);
 			if (po < (uintptr_t) cpu->phys_mem_size - 4096 && !in_iomem((uword) po) && !in_iomem((uword) po + 16)) {
-				nofold_it = FAST_ITER(); nofold_laddr = cpu->ifetch.laddr; nofold_xaddr = cpu->ifetch.xaddr;   /* (the page's first instruction) */
+				NOFOLD_SET(); nofold_laddr = cpu->ifetch.laddr; nofold_xaddr = cpu->ifetch.xaddr;   /* (the page's first instruction) */
 				cpu->ifetch.laddr = lin & (~4095ul);
 				cpu->ifetch.xaddr = (uword) po ^ lin;
 				pc = h;
@@ -1418,30 +1457,30 @@ op_0f: goto *ops0f[*pc++];
 
 	/* == ALU: op Eb,Gb / Ev,Gv / Gb,Eb / Gv,Ev / AL,Ib / eAX,Iv
 	   (POST: CMP's fusion with a JZ or JNZ after it) */
-#define ALU6(L0, L1, L2, L3, L4, L5, OP, OPb, OPw, OPd, WR, POST) \
+#define ALU6(L0, L1, L2, L3, L4, L5, OP, OPb, OPw, OPd, WR, POST, EAPD, EAPB) \
 L0: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 	if (m >= 0xc0) { OPb(rm, r, fr8, fw8, fr8, fw8) } \
-	EAP_B(u8 *p; EA_PTR32(p, m, 1, WR); OPb(p, r, fm8, fs8, fr8, fw8)) \
+	EAPB(u8 *p; EA_PTR32(p, m, 1, WR); OPb(p, r, fm8, fs8, fr8, fw8)) \
 	else { u8 *p; EA_PTR(p, m, 1, WR); OPb(p, r, fm8, fs8, fr8, fw8) } \
 	POST NEXT; } \
 L1: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 	if (QH_MEMOP(m)) { \
 		if (QH_O16(opsz16)) { OPw(rm, r, lreg16, sreg16, lreg16, sreg16) } \
 		else { OPd(rm, r, lreg32, sreg32, lreg32, sreg32) } \
-	} EAP_D(u8 *p; EA_PTR32(p, m, 4, WR); OPd(p, r, fm32, fs32, lreg32, sreg32)) \
+	} EAPD(u8 *p; EA_PTR32(p, m, 4, WR); OPd(p, r, fm32, fs32, lreg32, sreg32)) \
 	else if (QH_O16(opsz16)) { u8 *p; EA_PTR(p, m, 2, WR); OPw(p, r, fm16, fs16, lreg16, sreg16) } \
 	else { u8 *p; EA_PTR(p, m, 4, WR); OPd(p, r, fm32, fs32, lreg32, sreg32) } \
 	POST NEXT; } \
 L2: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 	if (m >= 0xc0) { OPb(r, rm, fr8, fw8, fr8, fw8) } \
-	EAP_B(u8 *p; EA_PTR32(p, m, 1, 0); OPb(r, p, fr8, fw8, fm8, fs8)) \
+	EAPB(u8 *p; EA_PTR32(p, m, 1, 0); OPb(r, p, fr8, fw8, fm8, fs8)) \
 	else { u8 *p; EA_PTR(p, m, 1, 0); OPb(r, p, fr8, fw8, fm8, fs8) } \
 	POST NEXT; } \
 L3: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7; \
 	if (m >= 0xc0) { \
 		if (QH_O16(opsz16)) { OPw(r, rm, lreg16, sreg16, lreg16, sreg16) } \
 		else { OPd(r, rm, lreg32, sreg32, lreg32, sreg32) } \
-	} EAP_D(u8 *p; EA_PTR32(p, m, 4, 0); OPd(r, p, lreg32, sreg32, fm32, fs32)) \
+	} EAPD(u8 *p; EA_PTR32(p, m, 4, 0); OPd(r, p, lreg32, sreg32, fm32, fs32)) \
 	else if (QH_O16(opsz16)) { u8 *p; EA_PTR(p, m, 2, 0); OPw(r, p, lreg16, sreg16, fm16, fs16) } \
 	else { u8 *p; EA_PTR(p, m, 4, 0); OPd(r, p, lreg32, sreg32, fm32, fs32) } \
 	POST NEXT; } \
@@ -1451,14 +1490,14 @@ L5: { int r = 0; \
 	else { u32 i = fm32(pc); pc += 4; OPd(r, i, lreg32, sreg32, limm, 0) } \
 	POST NEXT; }
 
-	ALU6(op_00, op_01, op_02, op_03, op_04, op_05, ADD, ADDb, ADDw, ADDd, 1, )
-	ALU6(op_08, op_09, op_0a, op_0b, op_0c, op_0d, OR, ORb, ORw, ORd, 1, )
-	ALU6(op_10, op_11, op_12, op_13, op_14, op_15, ADC, ADCb, ADCw, ADCd, 1, )
-	ALU6(op_18, op_19, op_1a, op_1b, op_1c, op_1d, SBB, SBBb, SBBw, SBBd, 1, )
-	ALU6(op_20, op_21, op_22, op_23, op_24, op_25, AND, ANDb, ANDw, ANDd, 1, )
-	ALU6(op_28, op_29, op_2a, op_2b, op_2c, op_2d, SUB, SUBb, SUBw, SUBd, 1, )
-	ALU6(op_30, op_31, op_32, op_33, op_34, op_35, XOR, XORb, XORw, XORd, 1, )
-	ALU6(op_38, op_39, op_3a, op_3b, op_3c, op_3d, CMP, FCMPb, FCMPw, FCMPd, 0, FOLD_JCC();)
+	ALU6(op_00, op_01, op_02, op_03, op_04, op_05, ADD, ADDb, ADDw, ADDd, 1, , EAP_D, EAP_B2)
+	ALU6(op_08, op_09, op_0a, op_0b, op_0c, op_0d, OR, ORb, ORw, ORd, 1, , EAP_D, EAP_B2)
+	ALU6(op_10, op_11, op_12, op_13, op_14, op_15, ADC, ADCb, ADCw, ADCd, 1, , EAP_D2, EAP_B2)
+	ALU6(op_18, op_19, op_1a, op_1b, op_1c, op_1d, SBB, SBBb, SBBw, SBBd, 1, , EAP_D2, EAP_B2)
+	ALU6(op_20, op_21, op_22, op_23, op_24, op_25, AND, ANDb, ANDw, ANDd, 1, , EAP_D, EAP_B2)
+	ALU6(op_28, op_29, op_2a, op_2b, op_2c, op_2d, SUB, SUBb, SUBw, SUBd, 1, , EAP_D, EAP_B2)
+	ALU6(op_30, op_31, op_32, op_33, op_34, op_35, XOR, XORb, XORw, XORd, 1, , EAP_D, EAP_B2)
+	ALU6(op_38, op_39, op_3a, op_3b, op_3c, op_3d, CMP, FCMPb, FCMPw, FCMPd, 0, FOLD_JCC();, EAP_D, EAP_B)
 
 	/* TEST, XCHG, MOV with modrm */
 op_84: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
@@ -1487,27 +1526,27 @@ op_87: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	NEXT; }
 op_88: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	if (QH_MEMOP(m)) fw8(rm, fr8(r));
-	EAP_B(EA_OFF32(off, m) mval = fr8(r); u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, LFB_ST(1)); fs8(p, mval);)
+	EAP_B(EA_OFF32(off, m) mval = fr8(r); u8 *p; EAS(FPTR_ST(p, seg, off, 1, mmio_st, LFB_ST(1));); fs8(p, mval);)
 	else { EA_OFF(off, m) mval = fr8(r); u8 *p; FPTR_ST(p, seg, off, 1, mmio_st, LFB_ST(1)); fs8(p, mval); }
 	NEXT; }
 op_89: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	if (QH_MEMOP(m)) {
 		if (QH_O16(opsz16)) sreg16(rm, lreg16(r));
 		else sreg32(rm, lreg32(r));
-	} EAP_D(EA_OFF32(off, m) mval = lreg32(r); u8 *p; FPTR_ST(p, seg, off, 4, mmio_st, LFB_ST(4)); fs32(p, mval);)
+	} EAP_D(EA_OFF32(off, m) mval = lreg32(r); u8 *p; EAS(FPTR_ST(p, seg, off, 4, mmio_st, LFB_ST(4));); fs32(p, mval);)
 	else if (QH_O16(opsz16)) { EA_OFF(off, m) mval = lreg16(r); u8 *p; FPTR_ST(p, seg, off, 2, mmio_st, LFB_ST(2)); fs16(p, mval); }
 	else { EA_OFF(off, m) mval = lreg32(r); u8 *p; FPTR_ST(p, seg, off, 4, mmio_st, LFB_ST(4)); fs32(p, mval); }
 	NEXT; }
 op_8a: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	if (QH_MEMOP(m)) fw8(r, fr8(rm));
-	EAP_B(EA_OFF32(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 1, 0, mmio_ld); fw8(r, fm8(p));)
+	EAP_B(EA_OFF32(off, m) mreg = r; u8 *p; EAS(FPTR_IO(p, seg, off, 1, 0, mmio_ld);); fw8(r, fm8(p));)
 	else { EA_OFF(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 1, 0, mmio_ld); fw8(r, fm8(p)); }
 	NEXT; }
 op_8b: { u8 m = *pc++; int r = (m >> 3) & 7, rm = m & 7;
 	if (QH_MEMOP(m)) {
 		if (QH_O16(opsz16)) sreg16(r, lreg16(rm));
 		else sreg32(r, lreg32(rm));
-	} EAP_D(EA_OFF32(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 4, 0, mmio_ld); sreg32(r, fm32(p));)
+	} EAP_D(EA_OFF32(off, m) mreg = r; u8 *p; EAS(FPTR_IO(p, seg, off, 4, 0, mmio_ld);); sreg32(r, fm32(p));)
 	else if (QH_O16(opsz16)) { EA_OFF(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 2, 0, mmio_ld); sreg16(r, fm16(p)); }
 	else { EA_OFF(off, m) mreg = r; u8 *p; FPTR_IO(p, seg, off, 4, 0, mmio_ld); sreg32(r, fm32(p)); }
 	NEXT; }
@@ -2747,7 +2786,7 @@ fault:	/* an exception in this instruction (cpu->ip at it, cpu->excno set) */
 slow:	/* the current instruction goes to tiny386 */
 	eip = EIP_OF(ins);
 slow_eip:
-	if (FAST_ITER() == nofold_it) {
+	if (NOFOLD_IS()) {
 		/* the first instruction in a page fast_window() cached: tiny386
 		   is to find its fetch cache as it was, and fill it itself as it
 		   fetches the instruction (the slow way: no fusion) */

@@ -65,13 +65,19 @@
 #define QW_C16 0        /* relative jumps test pfx0 for 16-bit code, not code16 on the stack */
 #endif
 #ifndef QW_EAP
-#define QW_EAP 0        /* the hot handlers' common memory form in one test of the prefixes */
+#define QW_EAP 0        /* the hot handlers' common memory form in one test of the prefixes (2: fewer) */
 #endif
 #ifndef QW_JCCV
 #define QW_JCCV 0       /* Jcc near with a handler for each condition */
 #endif
 #ifndef QW_OPS0F
 #define QW_OPS0F 0      /* ops0f[] right after ops[], at a constant offset from it */
+#endif
+#ifndef QW_EAS
+#define QW_EAS 0        /* with QW_EAP: the lookup in two copies, DS and SS as constants */
+#endif
+#ifndef QW_NOFOLD
+#define QW_NOFOLD 0     /* the fusion rule's instruction kept as a value of steps */
 #endif
 #ifndef QW_GRPTAB
 #define QW_GRPTAB 0     /* the group tables just before ops[] (with QW_OPS0F and QW_GRP5) */
