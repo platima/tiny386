@@ -326,6 +326,18 @@ void tiny386_fatal(const char *fmt, ...) __attribute__((noreturn));
 #define pcmalloc malloc
 #endif
 
+#ifdef IDE_ENABLE_WRITE_GATHER
+#ifdef BUILD_ESP32
+/* the gathering buffer in PSRAM: on the S31 boards malloc() gives
+   internal RAM only (CONFIG_SPIRAM_USE_CAPS_ALLOC), which has about 64 KB
+   to spare */
+#include "esp_heap_caps.h"
+#define ide_buf_malloc(size) heap_caps_malloc((size), MALLOC_CAP_SPIRAM)
+#else
+#define ide_buf_malloc(size) malloc(size)
+#endif
+#endif
+
 typedef void BlockDeviceCompletionFunc(void *opaque, int ret);
 
 struct BlockDevice {
@@ -676,7 +688,7 @@ static void ide_sector_write_cb1(IDEState *s)
        the buffer is full): many small writes take an SD card much longer than one
        big one. The command still completes only once they are written. */
     if (!s->wbuf)
-        s->wbuf = malloc(WRITE_GATHER_SECTORS * 512); /* (not pcmalloc: little room there) */
+        s->wbuf = ide_buf_malloc(WRITE_GATHER_SECTORS * 512); /* (not pcmalloc: little room there) */
     if (s->wbuf) {
         gathered = 1;
         if (!s->wcount)
@@ -762,11 +774,42 @@ static void ide_identify_cb(IDEState *s)
     s->status = READY_STAT;
 }
 
+#ifdef IDE_ENABLE_WRITE_GATHER
+static void ide_write_gathered_cb(void *opaque, int ret)
+{
+}
+
+/* The blocks a write command has gathered, written now: the guest has left
+   the command before its end (a new command, a reset), or has changed the
+   registers that say where its next block goes.  Written one at a time they
+   would be on the image already.  If this write fails, nobody is told: the
+   guest has gone on as if the blocks were written. */
+static void ide_write_gathered(IDEState *s)
+{
+    int n = s->wcount;
+    if (n) {
+        s->wcount = 0;
+        s->bs->write_async(s->bs, s->wsector, s->wbuf, n,
+                           ide_write_gathered_cb, s);
+    }
+}
+#endif
+
+/* a new command, or a reset: what the last command gathered is not its
+   business */
+static void ide_new_command(IDEState *s)
+{
+#ifdef IDE_ENABLE_WRITE_GATHER
+    ide_write_gathered(s);
+#endif
+}
+
 static void ide_exec_cmd(IDEState *s, int val)
 {
 #if defined(DEBUG_IDE)
     printf("ide: exec_cmd=0x%02x\n", val);
 #endif
+    ide_new_command(s);
     switch(val) {
     case WIN_IDENTIFY:
         ide_identify(s);
@@ -1617,6 +1660,14 @@ void ide_ioport_write(void *opaque, uint32_t addr, uint32_t val)
 #ifdef DEBUG_IDE
     printf("ide: write addr=0x%02x val=0x%02x\n", addr, val);
 #endif
+#ifdef IDE_ENABLE_WRITE_GATHER
+    /* the count and the sector registers, while a write command gathers */
+    if (addr >= 2 && addr <= 6) {
+        IDEState *d = addr == 6 ? s1->drives[(val >> 4) & 1] : s;
+        if (d)
+            ide_write_gathered(d);
+    }
+#endif
     switch(addr) {
     case 0:
         break;
@@ -1735,6 +1786,13 @@ void ide_cmd_write(void *opaque, uint32_t val)
 #ifdef DEBUG_IDE
     printf("ide: cmd write=0x%02x\n", val);
 #endif
+    if ((s1->cmd ^ val) & IDE_CMD_RESET) {
+        for(i = 0; i < 2; i++) {
+            s = s1->drives[i];
+            if (s)
+                ide_new_command(s);
+        }
+    }
     if (!(s1->cmd & IDE_CMD_RESET) && (val & IDE_CMD_RESET)) {
         /* low to high */
         for(i = 0; i < 2; i++) {
