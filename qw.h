@@ -70,6 +70,9 @@
 #ifndef QW_OPS0F
 #define QW_OPS0F 0      /* ops0f[] right after ops[], at a constant offset from it */
 #endif
+#ifndef QW_EAP16
+#define QW_EAP16 0      /* with QW_EAP: 16-bit code's common memory form in one test too */
+#endif
 #ifndef QW_EAS
 #define QW_EAS 0        /* with QW_EAP: the lookup in two copies, DS and SS as constants */
 #endif
