@@ -82,6 +82,9 @@
 #ifndef QW_FOLD2
 #define QW_FOLD2 0      /* a JZ or JNZ after CMP or TEST that is not fused done without its dispatch */
 #endif
+#ifndef QW_DECJ
+#define QW_DECJ 0       /* a JZ or JNZ right after DEC r done without its dispatch */
+#endif
 #ifndef QW_NOFOLD
 #define QW_NOFOLD 0     /* the fusion rule's instruction kept as a value of steps */
 #endif

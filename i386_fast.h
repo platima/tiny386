@@ -1781,6 +1781,23 @@ op_inc_r: { int r = pc[-1] & 7;
 	NEXT; }
 op_dec_r: { int r = pc[-1] & 7;
 	if (QH_O16(opsz16)) { FDECw(r, lreg16, sreg16) } else { FDECd(r, lreg32, sreg32) }
+#if QW_DECJ
+	/* after v5.2 (fastx): a JZ or JNZ right after DEC (a loop's count) done here as the next
+	   instruction without its dispatch, as QW_FOLD2 does it after CMP (no fusion here: tiny386
+	   fuses after CMP and TEST only); DEC leaves ZF in the lazy flags */
+	{
+		u8 _op = pc[0];
+		if ((_op & ~1) == 0x74) {
+			int _t = (cpu->cc.dst == 0) ^ (_op & 1);
+			sword _d = (s8) pc[1];
+			if (unlikely(--steps < 0)) goto out;
+			if (unlikely((uintptr_t) pc >= win_hi)) goto refill;
+			ins = pc;
+			pc += 2;
+			if (_t) JUMP_REL(_d);
+		}
+	}
+#endif
 	NEXT; }
 op_push_r: { int r = pc[-1] & 7;
 	FX_STK(
