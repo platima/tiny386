@@ -45,7 +45,8 @@
 uint32_t get_uticks();
 
 #define SDP_CYL (SD_PART_HEADS * SD_PART_SPT)   /* sectors a cylinder */
-#define SDP_BUF_SECTORS 4                       /* ide.c's MAX_MULT_SECTORS */
+#define SDP_BUF_SECTORS 16                      /* v5.2: 8 KiB, for ide.c's read ahead and
+                                                   gathering (4, MAX_MULT_SECTORS, before) */
 #define SDP_MAX 4                               /* four IDE drives */
 
 struct sd_part {

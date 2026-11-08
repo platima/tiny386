@@ -326,13 +326,19 @@ void tiny386_fatal(const char *fmt, ...) __attribute__((noreturn));
 #define pcmalloc malloc
 #endif
 
+#ifdef BUILD_ESP32
+/* [esp] ide_buffer = 0 (esp_main.c): no gathering or read-ahead buffer, so
+   every drive goes block by block as before, as it does when PSRAM has no
+   room for one */
+int ide_buffers = 1;
+#endif
 #if defined(IDE_ENABLE_WRITE_GATHER) || defined(IDE_ENABLE_READ_AHEAD)
 #ifdef BUILD_ESP32
 /* the gathering and read-ahead buffer in PSRAM: on the S31 boards malloc()
    gives internal RAM only (CONFIG_SPIRAM_USE_CAPS_ALLOC), which has about
    64 KB to spare */
 #include "esp_heap_caps.h"
-#define ide_buf_malloc(size) heap_caps_malloc((size), MALLOC_CAP_SPIRAM)
+#define ide_buf_malloc(size) (ide_buffers ? heap_caps_malloc((size), MALLOC_CAP_SPIRAM) : NULL)
 #else
 #define ide_buf_malloc(size) malloc(size)
 #endif
@@ -756,6 +762,10 @@ static void ide_sector_read_cb_end(IDEState *s)
     ide_transfer_stop(s);
 }
 
+#ifdef IDE_ENABLE_WRITE_GATHER
+static void ide_write_gathered(IDEState *s);
+#endif
+
 static void ide_sector_write_cb1(IDEState *s)
 {
     int64_t sector_num;
@@ -778,6 +788,10 @@ static void ide_sector_write_cb1(IDEState *s)
         s->wbuf = ide_buf_malloc(WRITE_GATHER_SECTORS * 512); /* (not pcmalloc: little room there) */
     if (s->wbuf) {
         gathered = 1;
+        /* (here) a block that does not follow on from those gathered, however
+           the registers came to move: those gathered written first */
+        if (s->wcount && sector_num != s->wsector + s->wcount)
+            ide_write_gathered(s);
         if (!s->wcount)
             s->wsector = sector_num;
         memcpy(s->wbuf + s->wcount * 512, s->io_buffer, n * 512);

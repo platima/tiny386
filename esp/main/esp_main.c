@@ -323,6 +323,7 @@ struct esp_ini_config {
 	int uart_log;           /* the log to the UART too while the PC runs */
 	int verbose_log;        /* every line while the PC runs, none held back */
 	int fast_seek;          /* the disk images' clusters mapped (disk_image.c) */
+	int ide_buffer;         /* v5.2: ide.c gathers and reads ahead a command's blocks */
 	int timer_catchup;      /* i8254_max_owed: timer ticks owed at once */
 	int memtest;            /* passes of the PSRAM test before the PC is built */
 	int vbe_blocks;         /* vga_dirty_blocks: VBE pictures from the blocks written */
@@ -385,6 +386,7 @@ static struct esp_ini_config config = {
 	.uart_log = 0,          /* the log is on the panel (Ctrl+Alt+F12) */
 	.verbose_log = 0,       /* lines that repeat held back after 5 in 5 s */
 	.fast_seek = 1,
+	.ide_buffer = 1,        /* v5.2: as the board headers build ide.c */
 	.timer_catchup = 1,     /* as a real 8254 and 8259 (i8254.c) */
 	.vbe_blocks = 1,        /* v4.0: only what the guest wrote is drawn again */
 	.pace_quiet = 0,        /* v4.4: pictures when they are due (BUILD-NOTES 29) */
@@ -721,6 +723,9 @@ static void i386_task(void *arg)
 	vTaskDelete(NULL);
 }
 
+/* ide.c: 0, no gathering or read-ahead buffer ([esp] ide_buffer) */
+extern int ide_buffers;
+
 /* ==== the ini file ==== */
 
 static const char *const known_keys[] = {
@@ -729,7 +734,7 @@ static const char *const known_keys[] = {
 	"esp:uart_log", "esp:fast_seek", "esp:timer_catchup", "esp:memtest",
 	"esp:verbose_log", "esp:vbe_blocks", "esp:pace_quiet", "esp:pace_wait_ms",
 	"esp:double_buffer", "esp:fast_cpu", "esp:profile",
-	"esp:sd_clock_fix", "esp:membench",
+	"esp:sd_clock_fix", "esp:membench", "esp:ide_buffer",
 #ifdef TINY386_CRASH_TEST
 	"esp:crash_test",
 #endif
@@ -834,6 +839,8 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		ini_whole(name, value, 0, 1, &conf->verbose_log);
 	} else if (NAME("fast_seek")) {
 		ini_whole(name, value, 0, 1, &conf->fast_seek);
+	} else if (NAME("ide_buffer")) {
+		ini_whole(name, value, 0, 1, &conf->ide_buffer);
 	} else if (NAME("timer_catchup")) {
 		ini_whole(name, value, 0, 1000, &conf->timer_catchup);
 	} else if (NAME("memtest")) {
@@ -1696,6 +1703,7 @@ void app_main(void)
 	/* the disk images and the guest's timer as the ini has them, and the
 	   lines an emulator abort adds to the log (v3.8) */
 	disk_image_fast_seek = config.fast_seek;
+	ide_buffers = config.ide_buffer;
 	disk_image_say = disk_image_line;
 	i8254_max_owed = config.timer_catchup;
 	cpu_abort_note = abort_note;

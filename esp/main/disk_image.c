@@ -45,7 +45,7 @@ int disk_image_fast_seek = 1;
 void (*disk_image_say)(bool warn, const char *line);
 
 #define DI_MAX 6                        /* four IDE drives and two to spare */
-#define DI_BUF_SECTORS 8                /* the internal buffer: 4 KiB */
+#define DI_BUF_SECTORS 16               /* the internal buffer: 8 KiB (v5.2; 4 before) */
 #define DI_MAP_FIRST 256                /* map words tried first: 127 pieces */
 #define DI_MANY_PIECES 64               /* more than this: said in yellow */
 #define DI_MAP_INTERNAL_MAX 4096        /* bytes: a bigger map goes to PSRAM */
