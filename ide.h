@@ -37,6 +37,8 @@ void ide_change_cd(IDEIFState *sif, int drive, const char *filename);
    returns when all of them are on the medium */
 unsigned ide_write_count(void);
 void ide_flush(void);
+/* v5.2: the blocks a write command left part way has gathered, written (ide.c) */
+void ide_write_pending(IDEIFState *sif);
 #ifdef BUILD_ESP32
 /* reads, writes and flushes of the disk images that failed */
 unsigned ide_error_count(void);

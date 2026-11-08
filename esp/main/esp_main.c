@@ -441,6 +441,9 @@ static uint32_t disk_activity(void)
 
 static void disk_flush(PC *pc)
 {
+	/* v5.2: the blocks of a write command the guest left part way first */
+	ide_write_pending(pc->ide);
+	ide_write_pending(pc->ide2);
 	ide_flush();
 	emulink_flush(pc->emulink);
 }
@@ -595,7 +598,7 @@ static void run_pc(PC *pc)
 		disk_errors(now);
 	}
 	/* v5.2: always, as ide.c may hold the blocks of a write command the
-	   guest left part way, which only ide_flush() writes now */
+	   guest left part way, which disk_flush() writes */
 	disk_flush(pc);
 	unsigned saves = speed_take_saves();
 	if (saves)

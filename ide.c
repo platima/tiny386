@@ -876,11 +876,6 @@ static void ide_identify_cb(IDEState *s)
 }
 
 #ifdef IDE_ENABLE_WRITE_GATHER
-/* (here) every interface, so that ide_flush() can write what each drive has
-   gathered */
-static IDEIFState *ide_gather_ifs[4];
-static int ide_gather_nifs;
-
 static void ide_write_gathered_cb(void *opaque, int ret)
 {
 }
@@ -911,6 +906,25 @@ static void ide_new_command(IDEState *s)
 #ifdef IDE_ENABLE_READ_AHEAD
     s->rcount = 0;
     s->rfailed = 0;
+#endif
+}
+
+/* (here) what the drives of interface sif have gathered, written now: the
+   blocks of a write command the guest left part way, which would otherwise
+   wait for that drive's next command.  For the front end's flush (esp_main.c's
+   disk_flush(), before ide_flush()); the next block of a command still going
+   starts a new gather where it belongs. */
+void ide_write_pending(IDEIFState *sif)
+{
+#ifdef IDE_ENABLE_WRITE_GATHER
+    int i;
+    if (!sif)
+        return;
+    for (i = 0; i < 2; i++)
+        if (sif->drives[i])
+            ide_write_gathered(sif->drives[i]);
+#else
+    (void) sif;
 #endif
 }
 
@@ -2221,17 +2235,6 @@ unsigned ide_write_count(void)
 void ide_flush(void)
 {
     int i;
-#ifdef IDE_ENABLE_WRITE_GATHER
-    /* (here) the blocks of a write command the guest left part way, which
-       would otherwise wait for that drive's next command: the next block
-       of a command still going starts a new gather where it belongs */
-    for (i = 0; i < ide_gather_nifs; i++) {
-        int j;
-        for (j = 0; j < 2; j++)
-            if (ide_gather_ifs[i]->drives[j])
-                ide_write_gathered(ide_gather_ifs[i]->drives[j]);
-    }
-#endif
     for (i = 0; i < bf_rw_count; i++) {
         FILE *f = bf_rw[i]->f;
 #ifdef BUILD_ESP32
@@ -2844,10 +2847,6 @@ IDEIFState *ide_allocate(int irq, void *pic, void (*set_irq)(void *pic, int irq,
     s->set_irq = set_irq;
 
     s->cur_drive = s->drives[0];
-#ifdef IDE_ENABLE_WRITE_GATHER
-    if (ide_gather_nifs < 4)
-        ide_gather_ifs[ide_gather_nifs++] = s;
-#endif
     return s;
 }
 
