@@ -7884,3 +7884,84 @@ same four as 35.2); b1 588,301,033, `restart` 1,304,341,904, `msdos` 1,337,723,3
 host tests 122 passed, 0 failed, none skipped; `test_fast_cpu` 1,240, 0 failed, in both builds; RV32
 BENCH 54.90 and the boot's first 300 M 56.46, guest output as v5.1's. Korvo-1 dual boot: DIRAM left
 122,615, image 1,070,645; the DOS board 124,795 left.
+
+### 35.8 After the second test build: two CPU fixes, the fast interpreter again, and the disk's commands (2026-11-08)
+
+Not yet on a board. The third test build (package `tiny386-idf\v52-test3`) holds all of it.
+
+| Commit | What |
+|-|-|
+| f567cbc | merge of upstream a080c5d (nuked OPL3 in `mixer_callback`, under `USE_NUKED_OPL3`, which no build here sets) |
+| 61b3172, 2e2a0d8, 8f6eb26 | REP STOS, MOVS, INS and OUTS with 16-bit addresses wrap SI and DI at 64 KiB: a run ends where either would wrap, and an element going up across the wrap sends the rest of the REP down the element-at-a-time path; host test 24b (a real-mode guest, each segment off a page boundary, against QEMU 7.2 `-cpu 486`, at `fast_cpu` 0 and 1, with a copy that has the fix taken out) |
+| bd091f7 | CMPXCHG's flags as CMP accumulator, destination (they were destination less accumulator); host test 24c, the same way |
+| 21f7c78 | `build.sh` and README on upstream's a080c5d |
+| f7c92c0 to c88a07a | eleven more switches in `qw.h` for `fast_exec()`'s host instructions, all on in `qw-config.h` (below) |
+| 1363b51 to 3bae7ea | `ide.c`: upstream PR 70 (yejun, open) behind `IDE_ENABLE_WRITE_GATHER`, its buffer in PSRAM and gathered blocks written when the guest leaves a command; a read command's sectors read ahead, up to 64 at a time, behind `IDE_ENABLE_READ_AHEAD`; both on in the two board headers; host test 14c (`tests/host/ide`) |
+| 7860592 | `[esp] ide_buffer = 0` turns both off without a new image; `sd_part.c`'s bounce buffer from 4 sectors to 16, `disk_image.c`'s from 8 to 16; a block that does not follow on from those gathered has them written first |
+
+Both CPU bugs were in upstream's `i386.c` and `fast/` too, and the lockstep test against `i386.c` could
+not see them because both sides shared them. Neither changes the three Windows runs.
+
+**The fast interpreter (fastx).** Counted on RV32 under qemu with the board's compiler, host instructions a
+guest instruction:
+
+| | v5.2 (bd091f7) | with the eleven | fewer |
+|-|-|-|-|
+| BENCH without A4 | 54.90 | 51.40 | 6.4% |
+| Windows' boot, first 300 M | 56.46 | 51.81 | 8.2% |
+| W1 desktop | 63.24 | 59.30 | 6.2% |
+| W1 text | 63.62 | 61.23 | 3.8% |
+| W1 eight tests | 93.12 | 90.75 | 2.5% |
+| `fast_exec` bytes | 113,044 | 124,676 | +11,632 |
+
+| Switch | What it does | BENCH | boot (W2) | bytes |
+|-|-|-|-|-|
+| `QW_OPSREG` | `ops[]`'s address in s4 (a local register variable), not a stack slot | 1.06 | 1.46 | -1,290 |
+| `QW_OPS0F` | `ops0f[]` right after `ops[]`, a constant offset from the register | 0.15 | 0.49 | -236 |
+| `QW_GRPTAB` | the 23 group tables just before `ops[]` | 0.14 | 0.36 | -230 |
+| `QW_NULLI` | a constant segment's null bit by one `bexti` | 0.27 | 0.14 | -562 |
+| `QW_JCCV` | near Jcc with a handler for each condition | 0.00 | 0.60 | +2,040 |
+| `QW_STK 2` | the hot stack handlers in two copies, `sp_mask` a constant in each | 0.87 | 0.57 | +3,128 |
+| `QW_NOFOLD` | the fusion rule's instruction kept as a value of `steps` | 0.07 | 0.41 | -726 |
+| `QW_EAP 2` | the hot memory forms: 32-bit operands and addresses, no override, in one prefix test | 0.22 | 0.55 | +5,098 |
+| `QW_SEGL` | a memory operand's segment a variable of each handler's block | 0.53 | 0.48 | +406 |
+| `QW_FOLD2` | a JZ or JNZ after CMP or TEST that is not fused, run inline without its dispatch | 0.47 | 0.64 | +1,576 |
+| `QW_DECJ` | the same right after DEC r | 0.31 | 0.05 | +130 |
+
+(Each figure is what the set loses with that switch taken out, so they do not add up to the total.)
+Measured and left off: `QW_STK 1`, `QW_EAP 1`, `QW_EAS` (about 0.2 to 0.36 more for 8 KB, kept on the
+list), `QW_C16`, `QW_EAM1`, `QW_EAP16`, `QW_ALUJ` (each more host instructions or not worth its bytes).
+`QW_STK` relies on `sp_mask` being 0xFFFF or 0xFFFFFFFF, which every assignment in `i386.c` and
+`i386_fast.h` gives [verified: read]. `QW_OPSREG` relies on GCC keeping a local register variable,
+which esp-16.1.0 does; another compiler could lose the gain but not the result.
+
+**The disk's commands.** `ide.c` read and wrote one block per call: one sector for READ and WRITE SECTORS,
+up to four for READ and WRITE MULTIPLE, each at least one card command. `tests/host/ide/ide_count.c`
+counts them through `disk_image.c` on ESP-IDF's own FatFs, for FreeDOS's traffic (boot, then XCOPY and
+COPY /B of files up to 4.78 MB: 1,212 reads of 22,037 sectors and 1,184 writes of 21,567, all a sector
+a block, through SeaBIOS) and a made-up mix:
+
+| Card commands, reads + writes | before | after, buffers as they were | after, 16 sectors |
+|-|-|-|-|
+| FreeDOS, `hda = sd:3` (`sd_part.c`) | 43,604 | 12,212 | 4,176 |
+| FreeDOS, an image, FAT32 with 4 KiB clusters | 43,606 | 10,502 | 8,594 |
+| FreeDOS, an image, FAT16 with 8 KiB clusters | 43,606 | 8,688 | 6,404 |
+| Mix, an image, FAT32 with 4 KiB clusters | 87,086 | 27,681 | 21,758 |
+
+(The `sd:3` figures follow from the calls and `sd_part.c`'s run of at most `SDP_BUF_SECTORS` a card
+command; they were worked out, not run through `sd_part.c`.) Windows 95's traffic was not measured; its
+driver probably uses READ and WRITE MULTIPLE, which on `sd:3` gained nothing until the bounce buffer
+grew. Both bounce buffers are internal DMA RAM, 6 and 4 KiB more, each taken when a disk of its kind
+opens. Skipping the bounce buffer for a 64-byte-aligned PSRAM buffer (the S31's SD host can DMA there,
+`SOC_SDMMC_PSRAM_DMA_CAPABLE`) would give more with no internal RAM, and needs a board round of its own.
+
+What the guest can see: nothing, in tests/host/ide's differential run (two copies of `ide.c` side by
+side through the ports: 200 sequences of 300 steps, 63,067 data commands, every value read, every change
+of the interrupt line and both disks after every command; four planted faults caught), but for a write
+that fails while gathering: the error comes at the end of the gather (up to 128 sectors), with the
+registers at its first sector. A write command the guest leaves part way is written at that drive's
+next command, reset or register write. A power cut in a write command can lose up to 128 sectors the old
+code had written already; the guest had not been told they were. Each hard disk takes 64 KiB of PSRAM, out
+of `PSRAM_KEEP_FREE`, on its first read or write; without room, it goes on block by block.
+
+On 7860592: the lockstep gate 14 of 14 against v4.6 with upstream's three lines and 10 of 14 against plain v4.6 (the same four), with the host's disk counters (`dk`) left out of the compare (`IGNORE=dk`). With the read ahead the harness reads its image fewer times, and a few sectors more where a command is left early, which the full compare shows as its only difference; the disk image after each run is still compared, and is the same. b1 588,301,033, `restart` 1,304,341,904, `msdos` 1,337,723,352; host tests 129 passed, 0 failed, none skipped; `test_fast_cpu` 0 failed in both builds and under qemu; RV32 BENCH 51.40 and the boot's first 300 M 51.81, guest output as v5.1's. Korvo-1 DIRAM left 110,551 (10,888 bytes less than 2e2a0d8: `fast_exec()`'s 11.6 KB, and 300 bytes of `ide_sector_read()` in internal RAM), the DOS board 112,715. From v5.1's 92 KiB least free at 124,303 left, about 78 KiB now, and about 72 with the `sd:N` bounce buffer's 6 KiB more, above the 64 KiB rule [inferred]; the board's figure decides. If it falls short, the fallbacks of 34.11 still hold, and `QW_EAP` 2 gives back 5.1 KB for 0.55 on the boot.
