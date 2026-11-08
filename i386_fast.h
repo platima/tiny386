@@ -697,7 +697,32 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   -Werror=override-init) */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Woverride-init"
+#define FAST_GRP1_TAB(P) { &&P##0, &&P##1, &&P##2, &&P##3, &&P##4, &&P##5, &&P##6, &&P##7 }
+#define FAST_GRP2_TAB(P) { &&P##0, &&P##1, &&P##2, &&P##3, &&P##4, &&P##5, &&P##4, &&P##7 }
+#define FAST_GRP3_TAB(P) { &&P##0, &&P##0, &&P##2, &&P##3, &&P##4, &&P##5, &&P##6, &&P##7 }
+#if QW_OPS0F
+	/* after v5.2 (fastx): the two tables side by side, so that 0Fh's dispatch finds its table
+	   at a constant offset from ops[] (in a register with QW_OPSREG), not by lui and addi;
+	   with QW_GRPTAB the group tables (below) just before them, at negative offsets */
+	static const DRAM_ATTR struct {
+#if QW_GRPTAB
+		const void *g[23][8];
+#endif
+		const void *t[256]; const void *t0f[256]; } fx_tabs = {
+#if QW_GRPTAB
+	{ FAST_GRP1_TAB(g80r_), FAST_GRP1_TAB(g80m_), FAST_GRP1_TAB(g81wr_), FAST_GRP1_TAB(g81dr_),
+	  FAST_GRP1_TAB(g81wm_), FAST_GRP1_TAB(g81dm_), FAST_GRP1_TAB(g83wr_), FAST_GRP1_TAB(g83dr_),
+	  FAST_GRP1_TAB(g83wm_), FAST_GRP1_TAB(g83dm_),
+	  FAST_GRP2_TAB(g2br_), FAST_GRP2_TAB(g2bm_), FAST_GRP2_TAB(g2wr_), FAST_GRP2_TAB(g2dr_),
+	  FAST_GRP2_TAB(g2wm_), FAST_GRP2_TAB(g2dm_),
+	  FAST_GRP3_TAB(g3br_), FAST_GRP3_TAB(g3bm_), FAST_GRP3_TAB(g3wr_), FAST_GRP3_TAB(g3dr_),
+	  FAST_GRP3_TAB(g3wm_), FAST_GRP3_TAB(g3dm_),
+	  { &&g5_inc, &&g5_dec, &&g5_call, &&g5_far, &&g5_jmp, &&g5_far, &&g5_push, &&slow } },
+#endif
+	{
+#else
 	static const DRAM_ATTR void *const ops[256] = {
+#endif
 		[0 ... 255] = &&slow,
 		[0x00] = &&op_00, [0x01] = &&op_01, [0x02] = &&op_02, [0x03] = &&op_03, [0x04] = &&op_04, [0x05] = &&op_05,
 		[0x06] = &&op_push_seg, [0x07] = &&op_pop_seg,
@@ -754,16 +779,33 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 		/* v5.1 (F): the shifts by 1 and by CL have handlers of their own
 		   (C0h and C1h, by an immediate, keep op_grp2_b and op_grp2_v) */
 		[0xd0] = &&op_grp2_b1, [0xd1] = &&op_grp2_v1, [0xd2] = &&op_grp2_bcl, [0xd3] = &&op_grp2_vcl,
+#if QW_OPS0F
+	}, {
+#else
 	};
 	static const DRAM_ATTR void *const ops0f[256] = {
+#endif
 		[0 ... 255] = &&slow,
 		[0x80 ... 0x8f] = &&op_jcc_v, [0x90 ... 0x9f] = &&op_setcc,
+#if QW_JCCV
+		/* after v5.2 (fastx): Jcc near with a handler for each condition, as Jcc short */
+		[0x80] = &&op_jcc_v_0, [0x81] = &&op_jcc_v_1, [0x82] = &&op_jcc_v_2, [0x83] = &&op_jcc_v_3,
+		[0x84] = &&op_jcc_v_4, [0x85] = &&op_jcc_v_5, [0x86] = &&op_jcc_v_6, [0x87] = &&op_jcc_v_7,
+		[0x88] = &&op_jcc_v_8, [0x89] = &&op_jcc_v_9, [0x8a] = &&op_jcc_v_10, [0x8b] = &&op_jcc_v_11,
+		[0x8c] = &&op_jcc_v_12, [0x8d] = &&op_jcc_v_13, [0x8e] = &&op_jcc_v_14, [0x8f] = &&op_jcc_v_15,
+#endif
 		[0xa0] = &&op_push_seg, [0xa1] = &&op_pop_seg, [0xa3] = &&op_bt, [0xa4] = &&op_shld, [0xa5] = &&op_shld,
 		[0xa8] = &&op_push_seg, [0xa9] = &&op_pop_seg, [0xab] = &&op_bt, [0xac] = &&op_shrd, [0xad] = &&op_shrd,
 		[0xaf] = &&op_imul_r, [0xb3] = &&op_bt, [0xb6] = &&op_movzx_b, [0xb7] = &&op_movzx_w,
 		[0xba] = &&op_bt_ib, [0xbb] = &&op_bt, [0xbc] = &&op_bsf, [0xbd] = &&op_bsr,
 		[0xbe] = &&op_movsx_b, [0xbf] = &&op_movsx_w,
+#if QW_OPS0F
+	} };
+#define ops (fx_tabs.t)
+#define ops0f (fx_tabs.t0f)
+#else
 	};
+#endif
 #pragma GCC diagnostic pop
 	/* v5.1 (F): the group opcodes' operations by modrm's reg field, a
 	   table for each form of the operand: a byte register, byte memory,
@@ -771,9 +813,33 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   81h, 83h; 2: C0h, C1h, D0h to D3h, where /6 is /4; 3: F6h, F7h,
 	   where /1 is /0).  In internal RAM, as ops[] is (DRAM_ATTR: not
 	   .rodata, which ESP-IDF puts in flash). */
-#define FAST_GRP1_TAB(P) { &&P##0, &&P##1, &&P##2, &&P##3, &&P##4, &&P##5, &&P##6, &&P##7 }
-#define FAST_GRP2_TAB(P) { &&P##0, &&P##1, &&P##2, &&P##3, &&P##4, &&P##5, &&P##4, &&P##7 }
-#define FAST_GRP3_TAB(P) { &&P##0, &&P##0, &&P##2, &&P##3, &&P##4, &&P##5, &&P##6, &&P##7 }
+#if QW_GRPTAB && QW_OPS0F && QW_GRP5
+	/* after v5.2 (fastx): in fx_tabs, at a constant offset from FX_OPS */
+#define FX_GTAB(k) ((const void *const *) ((const char *) FX_OPS - sizeof(fx_tabs.g) + (k) * sizeof(fx_tabs.g[0])))
+#define g80r FX_GTAB(0)
+#define g80m FX_GTAB(1)
+#define g81wr FX_GTAB(2)
+#define g81dr FX_GTAB(3)
+#define g81wm FX_GTAB(4)
+#define g81dm FX_GTAB(5)
+#define g83wr FX_GTAB(6)
+#define g83dr FX_GTAB(7)
+#define g83wm FX_GTAB(8)
+#define g83dm FX_GTAB(9)
+#define g2br FX_GTAB(10)
+#define g2bm FX_GTAB(11)
+#define g2wr FX_GTAB(12)
+#define g2dr FX_GTAB(13)
+#define g2wm FX_GTAB(14)
+#define g2dm FX_GTAB(15)
+#define g3br FX_GTAB(16)
+#define g3bm FX_GTAB(17)
+#define g3wr FX_GTAB(18)
+#define g3dr FX_GTAB(19)
+#define g3wm FX_GTAB(20)
+#define g3dm FX_GTAB(21)
+#define g5 FX_GTAB(22)
+#else
 	static const DRAM_ATTR void *const g80r[8] = FAST_GRP1_TAB(g80r_);
 	static const DRAM_ATTR void *const g80m[8] = FAST_GRP1_TAB(g80m_);
 	static const DRAM_ATTR void *const g81wr[8] = FAST_GRP1_TAB(g81wr_);
@@ -798,6 +864,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	static const DRAM_ATTR void *const g3dm[8] = FAST_GRP3_TAB(g3dm_);
 #if QW_GRP5
 	static const DRAM_ATTR void *const g5[8] = { &&g5_inc, &&g5_dec, &&g5_call, &&g5_far, &&g5_jmp, &&g5_far, &&g5_push, &&slow };
+#endif
 #endif
 #if QW_OPSREG && defined(__riscv)
 	/* after v5.2 (fastx): GCC kept ops[]'s address in a stack slot and loaded it at every
@@ -1141,8 +1208,8 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   form takes the handler's own code after it, as before. */
 #define EAP_D(...) else if (likely(!(pfx & 0x73))) { __VA_ARGS__ }
 #define EAP_B(...) else if (likely(!(pfx & 0x72))) { __VA_ARGS__ }
-#define EAP_IF_D(...) if (likely(!(pfx & 0x73))) { __VA_ARGS__ }
-#define EAP_IF_B(...) if (likely(!(pfx & 0x72))) { __VA_ARGS__ }
+#define EAP_IF_D(...) if (likely(!(pfx & 0x73))) { __VA_ARGS__; }
+#define EAP_IF_B(...) if (likely(!(pfx & 0x72))) { __VA_ARGS__; }
 #define EA_OFF32(off, m) \
 	uword off = fast_ea2(cpu, &pc, m, 0, 0, &seg);
 #define EA_PTR32(p, m, size, wr) \
@@ -1174,10 +1241,18 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	   each with sp_mask a constant that shadows the variable: a 32-bit stack's slot is ESP + d and
 	   its move a store of ESP; a 16-bit stack's slot is zero-extended and its move stores SP
 	   alone, as set_sp() leaves ESP's top half */
+#if QW_STK == 2
+	/* (2: each copy ends with a NEXT of its own, so that neither jumps to a shared one) */
+#define FX_STK(...) do { \
+		if ((sword) sp_mask < 0) { const uword sp_mask = 0xffffffff; __VA_ARGS__ NEXT; } \
+		else { const uword sp_mask = 0xffff; __VA_ARGS__ NEXT; } \
+	} while (0)
+#else
 #define FX_STK(...) do { \
 		if ((sword) sp_mask < 0) { const uword sp_mask = 0xffffffff; __VA_ARGS__ } \
 		else { const uword sp_mask = 0xffff; __VA_ARGS__ } \
 	} while (0)
+#endif
 #define FX_SETSP(v) do { \
 		if (__builtin_constant_p(sp_mask) && sp_mask == 0xffff) sreg16(4, (v)); \
 		else set_sp((v), sp_mask); \
@@ -1334,7 +1409,12 @@ pfx_adsz: pfx = (pfx & ~2u) | ((pfx0 & 2) ^ 2); goto *FX_OPS[*pc++];
 pfx_rep: pfx = (pfx & ~0xcu) | (1 << 2); goto *FX_OPS[*pc++];
 pfx_repne: pfx = (pfx & ~0xcu) | (2 << 2); goto *FX_OPS[*pc++];
 pfx_lock: goto *FX_OPS[*pc++];
+#if QW_OPS0F
+	/* ops0f[] is the 256 entries after ops[] (fx_tabs) */
+op_0f: goto **(const void *const *) ((const char *) FX_OPS + sizeof(fx_tabs.t) + sizeof(void *) * *pc++);
+#else
 op_0f: goto *ops0f[*pc++];
+#endif
 
 	/* == ALU: op Eb,Gb / Ev,Gv / Gb,Eb / Gv,Ev / AL,Ib / eAX,Iv
 	   (POST: CMP's fusion with a JZ or JNZ after it) */
@@ -1817,6 +1897,14 @@ op_xlat: {
 #define JCC_B(c) op_jcc_b_##c: { s8 d = *pc++; if (fast_cond(cpu, c)) JUMP_REL(d); NEXT; }
 	JCC_B(0) JCC_B(1) JCC_B(2) JCC_B(3) JCC_B(4) JCC_B(5) JCC_B(6) JCC_B(7)
 	JCC_B(8) JCC_B(9) JCC_B(10) JCC_B(11) JCC_B(12) JCC_B(13) JCC_B(14) JCC_B(15)
+#if QW_JCCV
+#define JCC_V(c) op_jcc_v_##c: { sword d; \
+	if (QH_O16(opsz16)) { d = (s16) fm16(pc); pc += 2; } else { d = (s32) fm32(pc); pc += 4; } \
+	if (fast_cond(cpu, c)) JUMP_REL(d); \
+	NEXT; }
+	JCC_V(0) JCC_V(1) JCC_V(2) JCC_V(3) JCC_V(4) JCC_V(5) JCC_V(6) JCC_V(7)
+	JCC_V(8) JCC_V(9) JCC_V(10) JCC_V(11) JCC_V(12) JCC_V(13) JCC_V(14) JCC_V(15)
+#endif
 op_jcc_v: {   /* rel16/32 by the operand size (tiny386's Jv) */
 	int c = pc[-1] & 15;
 	sword d;
@@ -1846,8 +1934,8 @@ op_call: {
 		u8 *s; STACK_PTR(s, -4, 4, 1);
 		SP_ADD(-4); fs32(s, EIP_OF(pc));
 	}
-	);
 	JUMP_REL(d);
+	);
 	NEXT; }
 op_ret: {
 	FX_STK(
@@ -2181,8 +2269,8 @@ g5_call: { u8 m = pc[-1]; int rm = m & 7;
 	FX_STK(
 	if (QH_O16(opsz16)) { u8 *s; STACK_PTR2(s, -2, 2, 1, p); SP_ADD(-2); fs16(s, EIP_OF(pc)); }
 	else { u8 *s; STACK_PTR2(s, -4, 4, 1, p); SP_ADD(-4); fs32(s, EIP_OF(pc)); }
-	);
 	JUMP_ABS(v);
+	);
 	NEXT; }
 g5_jmp: { u8 m = pc[-1]; int rm = m & 7;
 	G5_READ()
@@ -2696,6 +2784,35 @@ slow_eip:
 #undef adsz16
 #undef rep
 #undef SEG_OVERRIDE
+#if QW_OPS0F
+#undef ops
+#undef ops0f
+#endif
+#if QW_GRPTAB && QW_OPS0F && QW_GRP5
+#undef g80r
+#undef g80m
+#undef g81wr
+#undef g81dr
+#undef g81wm
+#undef g81dm
+#undef g83wr
+#undef g83dr
+#undef g83wm
+#undef g83dm
+#undef g2br
+#undef g2bm
+#undef g2wr
+#undef g2dr
+#undef g2wm
+#undef g2dm
+#undef g3br
+#undef g3bm
+#undef g3wr
+#undef g3dr
+#undef g3wm
+#undef g3dm
+#undef g5
+#endif
 }
 
 #pragma pop_macro("THROW0")

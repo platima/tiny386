@@ -67,4 +67,13 @@
 #ifndef QW_EAP
 #define QW_EAP 0        /* the hot handlers' common memory form in one test of the prefixes */
 #endif
+#ifndef QW_JCCV
+#define QW_JCCV 0       /* Jcc near with a handler for each condition */
+#endif
+#ifndef QW_OPS0F
+#define QW_OPS0F 0      /* ops0f[] right after ops[], at a constant offset from it */
+#endif
+#ifndef QW_GRPTAB
+#define QW_GRPTAB 0     /* the group tables just before ops[] (with QW_OPS0F and QW_GRP5) */
+#endif
 #endif
