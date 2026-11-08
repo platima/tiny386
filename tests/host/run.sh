@@ -910,7 +910,7 @@ fcbuild plain "$TREE" -DI386_ALIGNED_ONLY -DI386_ENABLE_FPU
 st=$?
 grep "FAIL\|^test_fast_cpu" "$OUT/fast-cpu-plain.log"
 result $st "the fast interpreter without the board header: the same"
-for m in fold:'s/!NOFOLD_IS() \&\& \\/1 \&\& \\/' sync:'s/^\tSYNC_IN();$/\t(void) 0;/' \
+for m in fold:'s/!NOFOLD_IS() \&\& \\/1 \&\& \\/;s/if (_t \&\& !NOFOLD_IS()) { \\/if (_t) { \\/' sync:'s/^\tSYNC_IN();$/\t(void) 0;/' \
          cpl:'s/cpu->cpl == 3\];/cpu->cpl > 0];/' \
          lfbmark:'/^lfb_st: {/,/NEXT; }/s/^\tlfb_marked(cpu, .*$/\t(void) 0;/;s/^\(lfb_st[124]: [^;]*;\) lfb_marked([^;]*);/\1/' \
          lfbwtag:'s/^\t\t\te->wtag = pg | FAST_TAG_LFB;$/\t\t\te->wtag = pg;/' \

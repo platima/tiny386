@@ -73,11 +73,11 @@
 #ifndef QW_EAS
 #define QW_EAS 0        /* with QW_EAP: the lookup in two copies, DS and SS as constants */
 #endif
-#ifndef QW_EAM1
-#define QW_EAM1 0       /* fast_ea2(): mod 1 hinted as the likely form with 32-bit addresses */
-#endif
 #ifndef QW_SEGL
 #define QW_SEGL 0       /* a memory operand's segment a variable of each handler's block */
+#endif
+#ifndef QW_FOLD2
+#define QW_FOLD2 0      /* a JZ or JNZ after CMP or TEST that is not fused done without its dispatch */
 #endif
 #ifndef QW_NOFOLD
 #define QW_NOFOLD 0     /* the fusion rule's instruction kept as a value of steps */

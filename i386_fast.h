@@ -553,12 +553,7 @@ static inline __attribute__((always_inline)) uword fast_ea2(CPUI386 *cpu, const 
 			a = REGi(rm);
 			dseg = SEG_DS - (rm == 5);
 		}
-#if QW_EAM1
-		/* after v5.2 (fastx): mod 1, the commonest form, in line */
-		if (likely(mod == 1))
-#else
 		if (mod == 1)
-#endif
 			a += (s8) *pc++;
 		else if (unlikely(mod == 2)) {
 			a += fm32(pc);
@@ -1012,6 +1007,30 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	/* tiny386's try_jcc8() after a CMP or TEST: a JZ or JNZ right after it,
 	   if taken, in the same step, unless tiny386 fetched the CMP the slow
 	   way (the first instruction in a newly cached page) */
+#if QW_FOLD2
+	/* after v5.2 (fastx): a JZ or JNZ right after a CMP or TEST that is not fused (not taken, or
+	   the CMP fetched the slow way) is done here as the next instruction, without its dispatch:
+	   the CMP's end as NEXT makes it (the step's count, the window's bound), the JZ's start as
+	   DISPATCH makes it (ins), its condition from the CMP's result (the lazy flags hold ZF
+	   after CMP and TEST), and then the handler's NEXT ends the JZ */
+#define FOLD_JCC() do { \
+		u8 _op = pc[0]; \
+		if ((_op & ~1) == 0x74) { \
+			int _t = (cpu->cc.dst == 0) ^ (_op & 1); \
+			sword _d = (s8) pc[1]; \
+			if (_t && !NOFOLD_IS()) { \
+				pc += 2; \
+				JUMP_REL(_d); \
+			} else { \
+				if (unlikely(--steps < 0)) goto out; \
+				if (unlikely((uintptr_t) pc >= win_hi)) goto refill; \
+				ins = pc; \
+				pc += 2; \
+				if (unlikely(_t)) JUMP_REL(_d); \
+			} \
+		} \
+	} while (0)
+#else
 #define FOLD_JCC() do { \
 		u8 _op = pc[0]; \
 		if ((_op & ~1) == 0x74 && !NOFOLD_IS() && \
@@ -1021,6 +1040,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 			JUMP_REL(_d); \
 		} \
 	} while (0)
+#endif
 	/* a memory operand's host address, or the instruction goes to tiny386;
 	   a store sets the page's dirty bit as translate_lpgno() does.  v5.1:
 	   the hit is one compare, of the tag with FAST_PL(), the linear page of
