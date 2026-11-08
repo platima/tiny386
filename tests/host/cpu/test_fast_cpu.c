@@ -3778,6 +3778,8 @@ static int step_or_stop(CPUI386 *c, int n)
 	return 0;
 }
 
+#include "gen_y.inc"     /* v5.2 (the fastx review): mode y */
+
 /* one scenario: mode 0 real, 1 protected at level 0, 2 at level 3;
    since the v5.0 reviews: 3 virtual-8086, 4 16-bit protected with paging, 5
    level 1, 6 16-bit protected without paging, 7 level 1 reading a
@@ -3786,7 +3788,8 @@ static int step_or_stop(CPUI386 *c, int n)
    read-only page (hand-written); v5.1 (WI-1): 20 (k) jumps, calls and
    returns across code pages, 21 (l) a page read, then written; v5.1, from
    the work items' checks: 25 to 28 (p to s) the group opcodes, DIV's #DE
-   and segment loads, 29 (t) code fetches */
+   and segment loads, 29 (t) code fetches; v5.2 (the fastx review): 34 (y)
+   the switches after v5.2 at their edges */
 static long total_insns, total_steps;
 static int verbose_runs = 1;
 static void setup_mode(int mode, u8 *mem, CPUI386 *cpu)
@@ -3865,6 +3868,10 @@ static void setup_mode(int mode, u8 *mem, CPUI386 *cpu)
 	case 27: setup_cpl1(mem, cpu); gd_handlers(mem); break;
 	case 28: setup_prot(mem, cpu, 1); gd_handlers(mem); break;
 	case 29: setup_cp(mem, cpu); break;   /* v5.1 (t, WI-1's check): code fetches */
+	/* v5.2 (the fastx review): y, one of the modes above by its setting
+	   (real mode, level 0, 32-bit code with a 16-bit stack, V86 mode, 16-bit
+	   protected mode with a 32-bit stack, 16-bit protected mode with paging) */
+	case 34: setup_mode((const int[]) { 0, 1, 12, 3, 11, 4 }[ysub], mem, cpu); break;
 	default: setup_pm16(mem, cpu, 0); break;
 	}
 	if (mode == 7 || mode == 13 || mode == 17)     /* interrupts on, so that the IRQ's handler (level 0) runs first */
@@ -3897,6 +3904,7 @@ static int run(int mode, int seed)
 					      [28] = "groups, DIV's #DE, segment loads, level 3 (s)",
 					      [29] = "code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t)",
 					      [33] = "two memory operands at random",
+					      [34] = "the switches after v5.2 at their edges (hand, y)",
 	};
 	if (mode == 23 && refill_probes(seed))   /* v5.1 (n): fast_miss() itself first */
 		return 1;
@@ -3905,6 +3913,7 @@ static int run(int mode, int seed)
 	lsub = (seed >> 1) & 3;   /* (mode l) */
 	lrights(seed);
 	cp_sub = seed % 5;   /* (mode t) */
+	ysub = seed % 6;   /* (mode y) */
 	fz_level = (const int[]) { 0, 1, 3 }[seed % 3];
 	for (int i = 0; i < 2; i++)
 		mach_new(&M[i], i == 0);
@@ -3967,6 +3976,13 @@ static int run(int mode, int seed)
 		gpm16 = 0;
 		gcpl1 = gnopriv = 0;
 		gcs_far = cp_sub == 0 ? 0x1b : cp_sub == 1 || cp_sub == 4 ? 0x08 : cp_sub == 2 ? 0x40 : 0x1080;
+	}
+	if (mode == 34) {   /* y: by its setting (ysub), as setup_mode() takes it */
+		g32 = ysub == 1 || ysub == 2;
+		guser = glfbuser = gcpl1 = gnopriv = 0;
+		gv86 = ysub == 3;
+		gpm16 = ysub == 4 || ysub == 5;
+		gcs_far = g32 ? 0x08 : R_CS;
 	}
 	setup_mode(mode, M[0].mem, M[0].cpu);
 	if (!g32) {
@@ -4054,6 +4070,8 @@ static int run(int mode, int seed)
 			gd_one();
 	} else if (mode == 29) {
 		gen_cp();   /* v5.1 (t) */
+	} else if (mode == 34) {
+		gen_y();   /* v5.2 (y) */
 	} else {
 		uword limit = gcode_phys + 0xf000;
 		while (gp < limit)
@@ -4069,7 +4087,7 @@ static int run(int mode, int seed)
 	CPUI386 *a = M[0].cpu, *b = M[1].cpu;
 	setup_mode(mode, M[1].mem, b);
 	for (int i = 0; i < 2; i++) {
-		M[i].vec = (mode == 0 || mode == 8 || mode == 18) ? 8 : 0x20;
+		M[i].vec = (mode == 0 || mode == 8 || mode == 18 || (mode == 34 && ysub == 0)) ? 8 : 0x20;
 		M[i].cpu->cycle = 0;
 	}
 	uword end_ip = g32 ? end - gcode_phys + P_CODE : end - gcode_phys;
@@ -4088,6 +4106,7 @@ static int run(int mode, int seed)
 	long steps_max = mode == 29 ? 8000 : mode == 21 ? 4000 : mode == 19 ? 800 : hand ? 200 : 50000;
 	if (mode == 23) { hand = 1; steps_max = 4000; }   /* v5.1 (n): about 450 instructions, 14 page faults */
 	if (mode == 24) steps_max = 5000;   /* (o: about 330 instructions with its handlers) */
+	if (mode == 34) { hand = 1; steps_max = 2000; }   /* (y: about 900 instructions, by 500 steps) */
 	crash_name = names[mode];
 	crash_seed = seed;
 	while (step < steps_max) {
@@ -4255,6 +4274,7 @@ int main(int argc, char **argv)
 		"x"     /* v5.1 (WI-2's check): two memory operands at random */
 		"pqrs"  /* v5.1 (WI-3's check): the group opcodes, DIV's #DE, segment loads */
 		"t"     /* v5.1 (WI-1's check): code fetches */
+		"y"     /* v5.2 (the fastx review): the switches after v5.2 at their edges */
 		;
 	int bad = 0, nsc = 0;
 	setvbuf(stdout, NULL, _IOLBF, 0);

@@ -910,6 +910,15 @@ fi
 # (fwcpl, st4cpl), DIV without its return address for #DE (divip), and the
 # inline refill caching RAM's last page (st4end).  A guest shutdown now
 # ends its scenario, not the run.
+# v5.2 (the fastx review of the switches after v5.2 in qw.h): mode y, those
+# switches at their edges by hand (tests/host/cpu/gen_y.inc: the stack with
+# SP at 64 KiB's ends and ESP's top half set, memory operands after mixed
+# prefixes, a JZ or JNZ after DEC, CMP and TEST up to a page's end and across
+# it, MOV SS or STI first in a page newly cached before a CMP and a JZ that
+# tiny386 fuses); and four more faults, which the other modes miss: DEC's
+# inline JZ without its start (decjins), QW_STK's 16-bit copy storing all of
+# ESP (stk16), and the fusion rule's instruction not moved by a load of SS
+# (nofoldss) or by STI (nofoldsti).
 echo
 FCSEEDS=${FCSEEDS:-40}
 fcbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_fast_cpu-name
@@ -952,7 +961,11 @@ for m in fold:'s/!NOFOLD_IS() \&\& \\/1 \&\& \\/;s/if (_t \&\& !NOFOLD_IS()) { \
          fwcpl:'s/int _r = fast_window(cpu, ftlb, eip, &_w);/int _r = fast_window(cpu, cpu->fast->tab[0], eip, \&_w);/' \
          st4cpl:'/^refill:/,/^\tWINDOW();$/s/^\t\tstruct fast_tlb_entry \*e = &ftlb\[(lin >> 12) % tlb_size\];$/\t\tstruct fast_tlb_entry *e = \&cpu->fast->tab[0][(lin >> 12) % tlb_size];/' \
          divip:'s/^P##6: { cpu->ip = EIP_OF(ins); DIV/P##6: { DIV/' \
-         st4end:'s/if (po < (uintptr_t) cpu->phys_mem_size - 4096 && !in_iomem((uword) po)/if (po < (uintptr_t) cpu->phys_mem_size \&\& !in_iomem((uword) po)/'; do
+         st4end:'s/if (po < (uintptr_t) cpu->phys_mem_size - 4096 && !in_iomem((uword) po)/if (po < (uintptr_t) cpu->phys_mem_size \&\& !in_iomem((uword) po)/' \
+         decjins:'/^#define JZNZ_INLINE() do {/,/} while (0)/s/^\t\t\tins = pc; \\$/\t\t\t(void) 0; \\/' \
+         stk16:'s/sp_mask == 0xffff) sreg16(4, (v)); \\$/sp_mask == 0xffff) sreg32(4, (v)); \\/' \
+         nofoldss:'s/^#define STEPS_SS() do { steps++; sadj++; nofold_st++; } while (0)$/#define STEPS_SS() do { steps++; sadj++; } while (0)/' \
+         nofoldsti:'s/ sadj += steps - _o; nofold_st += steps - _o; }/ sadj += steps - _o; }/'; do
     mname=${m%%:*}
     mfile=i386_fast.h       # (v5.1: lpgno's fault is in i386.c)
     [ "$mname" = lpgno ] && mfile=i386.c
