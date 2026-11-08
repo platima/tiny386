@@ -326,15 +326,28 @@ void tiny386_fatal(const char *fmt, ...) __attribute__((noreturn));
 #define pcmalloc malloc
 #endif
 
-#ifdef IDE_ENABLE_WRITE_GATHER
+#if defined(IDE_ENABLE_WRITE_GATHER) || defined(IDE_ENABLE_READ_AHEAD)
 #ifdef BUILD_ESP32
-/* the gathering buffer in PSRAM: on the S31 boards malloc() gives
-   internal RAM only (CONFIG_SPIRAM_USE_CAPS_ALLOC), which has about 64 KB
-   to spare */
+/* the gathering and read-ahead buffer in PSRAM: on the S31 boards malloc()
+   gives internal RAM only (CONFIG_SPIRAM_USE_CAPS_ALLOC), which has about
+   64 KB to spare */
 #include "esp_heap_caps.h"
 #define ide_buf_malloc(size) heap_caps_malloc((size), MALLOC_CAP_SPIRAM)
 #else
 #define ide_buf_malloc(size) malloc(size)
+#endif
+#endif
+#ifdef IDE_ENABLE_READ_AHEAD
+/* A read command's sectors are read ahead, up to this many at a time, and
+   its blocks given from them: at its first block, and again when they are
+   used up.  With IDE_ENABLE_WRITE_GATHER they go in the gathering buffer,
+   which a read command does not use; without it, in a buffer of this many
+   sectors, allocated on the first read. */
+#ifndef READ_AHEAD_SECTORS
+#define READ_AHEAD_SECTORS 64
+#endif
+#if defined(IDE_ENABLE_WRITE_GATHER) && READ_AHEAD_SECTORS > WRITE_GATHER_SECTORS
+#error "READ_AHEAD_SECTORS is more than the gathering buffer holds"
 #endif
 #endif
 
@@ -388,6 +401,13 @@ struct IDEState {
 
     int io_nb_sectors;
     int req_nb_sectors;
+#ifdef IDE_ENABLE_READ_AHEAD
+    uint8_t *rbuf; /* READ_AHEAD_SECTORS or more, allocated on the first read */
+    int64_t rsector; /* the next sector read ahead, at rbuf + 512 * rpos */
+    int rpos, rcount; /* where in rbuf, and how many from there */
+    int rfailed; /* a read ahead failed in this command: block by block to its end */
+    int roff; /* the block device answered later: no reading ahead */
+#endif
     EndTransferFunc *end_transfer_func;
     
     int data_index;
@@ -611,6 +631,67 @@ static void ide_set_sector(IDEState *s, int64_t sector_num)
     }
 }
 
+#ifdef IDE_ENABLE_READ_AHEAD
+static void ide_read_ahead_cb(void *opaque, int ret)
+{
+}
+
+/* The next block of a read command, n sectors at sector_num, into io_buffer
+   from what was read ahead: 1 if it is there, 0 if it is to be read on its
+   own, as without IDE_ENABLE_READ_AHEAD.  If what was read ahead does not
+   hold it, the rest of the command, up to READ_AHEAD_SECTORS, is read ahead
+   first.  If that fails (sectors past the image's end, the card refusing),
+   the command goes on block by block, so that the guest sees an error at
+   the same block, with the same registers, as before. */
+static int ide_read_ahead(IDEState *s, int64_t sector_num, int n)
+{
+    if (s->rcount < n || s->rsector != sector_num) {
+        int m = s->nsector ? s->nsector : 256; /* what the command has left */
+        int ret;
+        s->rcount = 0;
+        if (m <= n || s->rfailed || s->roff)
+            return 0;
+        if (!s->rbuf) {
+#ifdef IDE_ENABLE_WRITE_GATHER
+            if (!s->wbuf)
+                s->wbuf = ide_buf_malloc(WRITE_GATHER_SECTORS * 512);
+            s->rbuf = s->wbuf;
+#else
+            s->rbuf = ide_buf_malloc(READ_AHEAD_SECTORS * 512);
+#endif
+            if (!s->rbuf)
+                return 0;
+        }
+        if (m > READ_AHEAD_SECTORS)
+            m = READ_AHEAD_SECTORS;
+        ret = s->bs->read_async(s->bs, sector_num, s->rbuf, m,
+                                ide_read_ahead_cb, s);
+        if (ret != 0) {
+            s->rfailed = 1;
+            if (ret > 0) {
+                /* a block device that answers later (none here does):
+                   nothing more read ahead, and the buffer, which it may
+                   still fill, not used again */
+                s->roff = 1;
+                s->rbuf = NULL;
+#ifdef IDE_ENABLE_WRITE_GATHER
+                s->wbuf = NULL;
+#endif
+            }
+            return 0;
+        }
+        s->rsector = sector_num;
+        s->rpos = 0;
+        s->rcount = m;
+    }
+    memcpy(s->io_buffer, s->rbuf + s->rpos * 512, n * 512);
+    s->rsector += n;
+    s->rpos += n;
+    s->rcount -= n;
+    return 1;
+}
+#endif
+
 static void ide_sector_read(IDEState *s)
 {
     int64_t sector_num;
@@ -626,6 +707,12 @@ static void ide_sector_read(IDEState *s)
     printf("read sector=%" PRId64 " count=%d\n", sector_num, n);
 #endif
     s->io_nb_sectors = n;
+#ifdef IDE_ENABLE_READ_AHEAD
+    if (ide_read_ahead(s, sector_num, n)) {
+        ide_sector_read_cb(s, 0);
+        return;
+    }
+#endif
     ret = s->bs->read_async(s->bs, sector_num, s->io_buffer, n, 
                             ide_sector_read_cb, s);
     if (ret < 0) {
@@ -795,12 +882,16 @@ static void ide_write_gathered(IDEState *s)
 }
 #endif
 
-/* a new command, or a reset: what the last command gathered is not its
-   business */
+/* a new command, or a reset: what the last command gathered or read ahead
+   is not its business */
 static void ide_new_command(IDEState *s)
 {
 #ifdef IDE_ENABLE_WRITE_GATHER
     ide_write_gathered(s);
+#endif
+#ifdef IDE_ENABLE_READ_AHEAD
+    s->rcount = 0;
+    s->rfailed = 0;
 #endif
 }
 
