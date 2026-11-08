@@ -7965,3 +7965,18 @@ code had written already; the guest had not been told they were. Each hard disk 
 of `PSRAM_KEEP_FREE`, on its first read or write; without room, it goes on block by block.
 
 On 7860592: the lockstep gate 14 of 14 against v4.6 with upstream's three lines and 10 of 14 against plain v4.6 (the same four), with the host's disk counters (`dk`) left out of the compare (`IGNORE=dk`). With the read ahead the harness reads its image fewer times, and a few sectors more where a command is left early, which the full compare shows as its only difference; the disk image after each run is still compared, and is the same. b1 588,301,033, `restart` 1,304,341,904, `msdos` 1,337,723,352; host tests 129 passed, 0 failed, none skipped; `test_fast_cpu` 0 failed in both builds and under qemu; RV32 BENCH 51.40 and the boot's first 300 M 51.81, guest output as v5.1's. Korvo-1 DIRAM left 110,551 (10,888 bytes less than 2e2a0d8: `fast_exec()`'s 11.6 KB, and 300 bytes of `ide_sector_read()` in internal RAM), the DOS board 112,715. From v5.1's 92 KiB least free at 124,303 left, about 78 KiB now, and about 72 with the `sd:N` bounce buffer's 6 KiB more, above the 64 KiB rule [inferred]; the board's figure decides. If it falls short, the fallbacks of 34.11 still hold, and `QW_EAP` 2 gives back 5.1 KB for 0.55 on the boot.
+
+**Windows 95's own disk traffic** (measured after the package was built; the images are unchanged). The gate's
+b1 (the boot to the desktop and two minutes on) traced by `tests/host/ide/ide_trace.c` in the lockstep
+harness's board build, and replayed through `ide_count.c`: 2,790 commands, 1,977 READ SECTORS and 806 WRITE
+SECTORS, so a sector a block, not READ or WRITE MULTIPLE; 27,568 sectors read and 10,043 written. The same data
+read and the same image after, with the gathering and read ahead and without.
+
+| Card commands, reads + writes | before | after |
+|-|-|-|
+| `hda = sd:3`, 16-sector bounce buffer | 37,611 | 3,785 |
+| `sd:3` with 4 (as before) or 64 | 37,611 | 10,063, 2,817 |
+| an image on FAT32 with 4 KiB clusters | 37,613 | 5,548 |
+| an image on FAT16 with 32 KiB clusters | 37,613 | 3,882 |
+
+The trace holds the disk's bytes: it stays in WSL `~/org2/v52/w95trace`.
