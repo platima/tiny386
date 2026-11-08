@@ -7980,3 +7980,30 @@ read and the same image after, with the gathering and read ahead and without.
 | an image on FAT16 with 32 KiB clusters | 37,613 | 3,882 |
 
 The trace holds the disk's bytes: it stays in WSL `~/org2/v52/w95trace`.
+
+### 35.9 Two reviews of 35.8 (2026-11-08)
+
+Each by a fresh agent from the code alone, before the third test build went to the board.
+
+**The gathering and the read ahead.** Nothing lost or changed in a command the guest completes: the last block
+of every write command is on the block device before the command's last interrupt, as before, so FLUSH CACHE
+and the 2 s quiet flush work as they did. The differential test again, 8 new seeds of 400 sequences of 600
+steps, about four times the shipped run: no difference. What it found, all low, and what came of it:
+
+| Finding | Since |
+|-|-|
+| A write command the guest leaves part way keeps its gathered blocks until that drive's next command, register write or reset; no flush or power-off wrote them | 545aa1d: `ide_write_pending()` for both of the PC's interfaces in `esp_main.c`'s `disk_flush()` (the 2 s quiet flush, before the settings are saved), and leaving the PC always flushes. (18dfc7c did it with a list of every interface ever made, which held pointers to freed ones: the IDE test crashed on it, and a new PC from the boot menu would have too) |
+| A gathered write that fails after the guest has left the command is never reported to it | kept: only with a card error and an abandoned command together; the panel still counts it |
+| `sd_part.c` without room for its 8 KiB bounce buffer refuses the partition, so the PC would not start | 18dfc7c: 2 KiB as before then; its header comment fixed |
+| A CHS address with sector 0 comes from `ide_get_sector()` as sector -1, and `sector_num + n` wraps past the range checks (before v5.2 too; upstream as well) | 18dfc7c: `bf_in_range()` and `sd_part.c`'s checks in a form that cannot wrap; upstream, #73's second commit b6cdd13 (a guest test showed sector 1 overwritten on master and on #73 as sent, and the write refused with it) |
+
+**The eleven fastx switches.** No guest-visible difference: every changed handler read against tiny386's and
+the code it replaces, the RV32 disassembly of `fast_exec()` for `QW_OPSREG` (s4 set once, saved and restored,
+written nowhere else), and the lockstep test on x86 and as RV32 under qemu, with a new hand-written mode (16-bit
+stacks at their edges, prefixed forms, the inline JZ at page ends, step budgets of 1 to 3) and seventeen planted
+faults. All runs 0 failed. Found, all low: four of the faults the default modes miss (now in the host tests
+with the new mode, 4d5aded), a signed overflow in `nofold_st`'s moves
+that GCC wrapped harmlessly (fb7542f: it starts at -0x40000000), and `QW_GRPTAB` without `QW_GRP5` not
+compiling (fb7542f: an `#error`).
+
+On 545aa1d: the lockstep gate (`IGNORE=dk`) 14 of 14 against v4.6 with upstream's three lines and 10 of 14 against plain v4.6 (the same four); b1, `restart` and `msdos` as before; host tests 129 passed, 0 failed; RV32 BENCH 51.40; Korvo-1 DIRAM left 110,457, the DOS board 112,621. 4d5aded adds the review's mode y and four planted faults to section 24 (`tests/host/cpu/gen_y.inc`: 1,280 scenarios a build instead of 1,240, 0 failed; `decjins`, `stk16`, `nofoldss` and `nofoldsti` each caught); host tests on it 133 passed, 0 failed, none skipped. The package (`v52-test3`, built again from 4d5aded) has the same `tiny386.bin` as 545aa1d's gated build, byte for byte.
