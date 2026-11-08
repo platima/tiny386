@@ -76,6 +76,9 @@
 #ifndef QW_EAM1
 #define QW_EAM1 0       /* fast_ea2(): mod 1 hinted as the likely form with 32-bit addresses */
 #endif
+#ifndef QW_SEGL
+#define QW_SEGL 0       /* a memory operand's segment a variable of each handler's block */
+#endif
 #ifndef QW_NOFOLD
 #define QW_NOFOLD 0     /* the fusion rule's instruction kept as a value of steps */
 #endif

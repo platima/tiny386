@@ -1200,7 +1200,15 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 		if (_sp > sp_mask - ((size) - 1)) goto slow; \
 		FPTR2(p, SEG_SS, _sp, size, wr, H1); \
 	} while (0)
-#if QW_EA
+#if QW_EA && QW_SEGL
+	/* after v5.2 (fastx): the segment a variable of the handler's own block (it shadows seg), so
+	   that GCC need not give one variable for every handler a callee-saved register */
+#define EA_OFF(off, m) \
+	int seg; uword off = fast_ea2(cpu, &pc, m, adsz16, (unsigned) (pfx >> 4), &seg);
+#define EA_PTR(p, m, size, wr) \
+	int seg; uword _off = fast_ea2(cpu, &pc, m, adsz16, (unsigned) (pfx >> 4), &seg); \
+	FPTR(p, seg, _off, size, wr)
+#elif QW_EA
 #define EA_OFF(off, m) \
 	uword off = fast_ea2(cpu, &pc, m, adsz16, (unsigned) (pfx >> 4), &seg);
 #define EA_PTR(p, m, size, wr) \
@@ -1234,8 +1242,13 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 #define EAP_D2(...)
 #define EAP_B2(...)
 #endif
+#if QW_SEGL
+#define FX_SEGL int seg;
+#else
+#define FX_SEGL
+#endif
 #define EA_OFF32(off, m) \
-	uword off = fast_ea2(cpu, &pc, m, 0, 0, &seg);
+	FX_SEGL uword off = fast_ea2(cpu, &pc, m, 0, 0, &seg);
 #if QW_EAS
 	/* after v5.2 (fastx), QW_EAS: with no override the segment is DS or SS, so the lookup is made
 	   in two copies, each with its segment a constant (shadowing seg): the base is one load at a
@@ -1248,7 +1261,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 #define EAS(...) do { __VA_ARGS__ } while (0)
 #endif
 #define EA_PTR32(p, m, size, wr) \
-	uword _off = fast_ea2(cpu, &pc, m, 0, 0, &seg); \
+	FX_SEGL uword _off = fast_ea2(cpu, &pc, m, 0, 0, &seg); \
 	EAS(FPTR(p, seg, _off, size, wr);)
 #else
 #define EAP_D(...)
