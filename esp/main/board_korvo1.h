@@ -69,6 +69,19 @@
 // The slot's power switch, active low.
 #define SD_PWR_EN_GPIO 39
 
+// v5.2: ide.c gathers the blocks of a write command and writes them
+// together (IDE_ENABLE_WRITE_GATHER, upstream's PR 70), and reads a read
+// command's sectors ahead and gives its blocks from them
+// (IDE_ENABLE_READ_AHEAD), so that a command costs the card a few big
+// reads or writes rather than one or more for each block.  The guest sees
+// the same (tests/host/ide), but for a write that fails: the error comes at
+// the end of the gather (at most 128 sectors) rather than at the block that
+// failed.  Each hard disk takes a buffer of 64 KiB from PSRAM, out of
+// PSRAM_KEEP_FREE below, on its first read or write; without room, it goes
+// on block by block as before.
+#define IDE_ENABLE_WRITE_GATHER
+#define IDE_ENABLE_READ_AHEAD
+
 // The emulator takes the largest PSRAM block but this much, which is left
 // for ESP-IDF (FatFs buffers, the console's text).  The panel's frame
 // buffer (750 KiB) is not in it: lcd_init() has taken that before the

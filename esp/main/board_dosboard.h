@@ -129,6 +129,10 @@
 // lcd_init() has taken that before the pool is sized (app_main), as on the
 // Korvo-1.
 #define PSRAM_KEEP_FREE (256 * 1024)
+// v5.2: a command's blocks gathered and read ahead, as on the Korvo-1
+// (board_korvo1.h says what they do and cost)
+#define IDE_ENABLE_WRITE_GATHER
+#define IDE_ENABLE_READ_AHEAD
 
 // From the Linux route's patch, as on the Korvo-1 (board_korvo1.h says why).
 #define I386_ALIGNED_ONLY
