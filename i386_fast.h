@@ -1007,6 +1007,27 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	/* tiny386's try_jcc8() after a CMP or TEST: a JZ or JNZ right after it,
 	   if taken, in the same step, unless tiny386 fetched the CMP the slow
 	   way (the first instruction in a newly cached page) */
+	/* after v5.2 (fastx), QW_DECJ and QW_ALUJ: a JZ or JNZ right after DEC r (a loop's count) or
+	   an ALU operation done here as the next instruction without its dispatch, as QW_FOLD2 does
+	   after CMP (no fusion here: tiny386 fuses after CMP and TEST only).  Each leaves ZF in the
+	   lazy flags (cc.dst). */
+#define JZNZ_INLINE() do { \
+		u8 _op = pc[0]; \
+		if ((_op & ~1) == 0x74) { \
+			int _t = (cpu->cc.dst == 0) ^ (_op & 1); \
+			sword _d = (s8) pc[1]; \
+			if (unlikely(--steps < 0)) goto out; \
+			if (unlikely((uintptr_t) pc >= win_hi)) goto refill; \
+			ins = pc; \
+			pc += 2; \
+			if (_t) JUMP_REL(_d); \
+		} \
+	} while (0)
+#if QW_ALUJ
+#define ALUJ JZNZ_INLINE();
+#else
+#define ALUJ
+#endif
 #if QW_FOLD2
 	/* after v5.2 (fastx): a JZ or JNZ right after a CMP or TEST that is not fused (not taken, or
 	   the CMP fetched the slow way) is done here as the next instruction, without its dispatch:
@@ -1557,13 +1578,13 @@ L5: { int r = 0; \
 	else { u32 i = fm32(pc); pc += 4; OPd(r, i, lreg32, sreg32, limm, 0) } \
 	POST NEXT; }
 
-	ALU6(op_00, op_01, op_02, op_03, op_04, op_05, ADD, ADDb, ADDw, ADDd, 1, , EAP_D, EAP_B2)
-	ALU6(op_08, op_09, op_0a, op_0b, op_0c, op_0d, OR, ORb, ORw, ORd, 1, , EAP_D, EAP_B2)
+	ALU6(op_00, op_01, op_02, op_03, op_04, op_05, ADD, ADDb, ADDw, ADDd, 1, ALUJ, EAP_D, EAP_B2)
+	ALU6(op_08, op_09, op_0a, op_0b, op_0c, op_0d, OR, ORb, ORw, ORd, 1, ALUJ, EAP_D, EAP_B2)
 	ALU6(op_10, op_11, op_12, op_13, op_14, op_15, ADC, ADCb, ADCw, ADCd, 1, , EAP_D2, EAP_B2)
 	ALU6(op_18, op_19, op_1a, op_1b, op_1c, op_1d, SBB, SBBb, SBBw, SBBd, 1, , EAP_D2, EAP_B2)
-	ALU6(op_20, op_21, op_22, op_23, op_24, op_25, AND, ANDb, ANDw, ANDd, 1, , EAP_D, EAP_B2)
-	ALU6(op_28, op_29, op_2a, op_2b, op_2c, op_2d, SUB, SUBb, SUBw, SUBd, 1, , EAP_D, EAP_B2)
-	ALU6(op_30, op_31, op_32, op_33, op_34, op_35, XOR, XORb, XORw, XORd, 1, , EAP_D, EAP_B2)
+	ALU6(op_20, op_21, op_22, op_23, op_24, op_25, AND, ANDb, ANDw, ANDd, 1, ALUJ, EAP_D, EAP_B2)
+	ALU6(op_28, op_29, op_2a, op_2b, op_2c, op_2d, SUB, SUBb, SUBw, SUBd, 1, ALUJ, EAP_D, EAP_B2)
+	ALU6(op_30, op_31, op_32, op_33, op_34, op_35, XOR, XORb, XORw, XORd, 1, ALUJ, EAP_D, EAP_B2)
 	ALU6(op_38, op_39, op_3a, op_3b, op_3c, op_3d, CMP, FCMPb, FCMPw, FCMPd, 0, FOLD_JCC();, EAP_D, EAP_B)
 
 	/* TEST, XCHG, MOV with modrm */
@@ -1782,21 +1803,7 @@ op_inc_r: { int r = pc[-1] & 7;
 op_dec_r: { int r = pc[-1] & 7;
 	if (QH_O16(opsz16)) { FDECw(r, lreg16, sreg16) } else { FDECd(r, lreg32, sreg32) }
 #if QW_DECJ
-	/* after v5.2 (fastx): a JZ or JNZ right after DEC (a loop's count) done here as the next
-	   instruction without its dispatch, as QW_FOLD2 does it after CMP (no fusion here: tiny386
-	   fuses after CMP and TEST only); DEC leaves ZF in the lazy flags */
-	{
-		u8 _op = pc[0];
-		if ((_op & ~1) == 0x74) {
-			int _t = (cpu->cc.dst == 0) ^ (_op & 1);
-			sword _d = (s8) pc[1];
-			if (unlikely(--steps < 0)) goto out;
-			if (unlikely((uintptr_t) pc >= win_hi)) goto refill;
-			ins = pc;
-			pc += 2;
-			if (_t) JUMP_REL(_d);
-		}
-	}
+	JZNZ_INLINE();
 #endif
 	NEXT; }
 op_push_r: { int r = pc[-1] & 7;

@@ -85,6 +85,9 @@
 #ifndef QW_DECJ
 #define QW_DECJ 0       /* a JZ or JNZ right after DEC r done without its dispatch */
 #endif
+#ifndef QW_ALUJ
+#define QW_ALUJ 0       /* ... and right after ADD, OR, AND, SUB and XOR */
+#endif
 #ifndef QW_NOFOLD
 #define QW_NOFOLD 0     /* the fusion rule's instruction kept as a value of steps */
 #endif
