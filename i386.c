@@ -3381,10 +3381,6 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 	sreg ## ABIT(6, lreg ## ABIT(6) + dir); \
 	sreg ## ABIT(7, lreg ## ABIT(7) + dir);
 
-#define xdir8 int dir = (cpu->flags & DF) ? -1 : 1;
-#define xdir16 int dir = (cpu->flags & DF) ? -2 : 2;
-#define xdir32 int dir = (cpu->flags & DF) ? -4 : 4;
-
 /* Elements of BIT bits from the 16-bit offset off, going in direction dir,
    before the offset wraps at 64 KiB (0: the first one goes across). */
 #define wrap16(off, BIT) (dir > 0 ? (0x10000 - (off)) / (BIT / 8) : (off) / (BIT / 8) + 1)
@@ -3408,6 +3404,10 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 			if (countw < count) \
 				count = countw; \
 		}
+
+#define xdir8 int dir = (cpu->flags & DF) ? -1 : 1;
+#define xdir16 int dir = (cpu->flags & DF) ? -2 : 2;
+#define xdir32 int dir = (cpu->flags & DF) ? -4 : 4;
 
 #define STOS_helper2(BIT, ABIT) \
 	OptAddr memld; \
