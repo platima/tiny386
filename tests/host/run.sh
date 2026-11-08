@@ -1078,6 +1078,50 @@ else
     echo "    | (no ESP_GCC and RV32_GCC, or no qemu-riscv32-static: the board compiler's run is skipped)"
 fi
 
+# ==== 24b. REP string instructions across a 16-bit wrap (v5.2) ====
+# tests/host/cpu/test_rep_wrap.c with the guest in guest_rep_wrap.S: REP
+# STOS, MOVS, INS and OUTS with 16-bit addresses, each segment's base off a
+# page boundary, wrap SI and DI at 64 KiB as QEMU does, forwards and
+# backwards, with tiny386's interpreter and the fast one, as the Korvo-1
+# builds i386.c and without the board header.  Then a copy of i386.c with
+# the fix taken out (wrap16_cap() never ending a run), which has to run on
+# past FFFFh as v5.1 did.
+echo
+if command -v as > /dev/null && command -v ld > /dev/null &&
+        as --32 -o "$OUT/guest_rep_wrap.o" "$HERE/cpu/guest_rep_wrap.S" 2> "$OUT/rep-wrap-as.log" &&
+        ld -m elf_i386 -Ttext=0x1000 -e _start --oformat binary \
+            -o "$OUT/guest_rep_wrap.bin" "$OUT/guest_rep_wrap.o"; then
+    rwbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_rep_wrap-name
+        local name=$1 dir=$2
+        shift 2
+        $CC -O2 -g -w -I"$dir" -I"$TREE" "$@" -o "$OUT/test_rep_wrap-$name" \
+            "$HERE/cpu/test_rep_wrap.c" "$TREE/fpu.c" -lm || exit 1
+    }
+    rwbuild korvo1 "$TREE" $PCBOARD
+    "$OUT/test_rep_wrap-korvo1" "$OUT/guest_rep_wrap.bin" > "$OUT/rep-wrap-korvo1.log" 2>&1
+    st=$?
+    grep "FAIL\|^test_rep_wrap" "$OUT/rep-wrap-korvo1.log"
+    result $st "REP STOS, MOVS, INS and OUTS with 16-bit addresses wrap at 64 KiB as QEMU does, in both interpreters as the Korvo-1 builds them"
+    rwbuild plain "$TREE" -DI386_ALIGNED_ONLY -DI386_ENABLE_FPU
+    "$OUT/test_rep_wrap-plain" "$OUT/guest_rep_wrap.bin" > "$OUT/rep-wrap-plain.log" 2>&1
+    st=$?
+    tail -1 "$OUT/rep-wrap-plain.log" | sed 's/^/    | /'
+    result $st "the same without the board header"
+    mkdir -p "$OUT/rep-wrap-off"
+    sed 's/^\t\tif (ABIT == 16) { \\$/\t\tif (0) { \\/' "$TREE/i386.c" > "$OUT/rep-wrap-off/i386.c"
+    cp "$TREE/i386_fast.h" "$OUT/rep-wrap-off/"
+    nl=$(diff "$TREE/i386.c" "$OUT/rep-wrap-off/i386.c" | grep -c '^>')
+    rwbuild off "$OUT/rep-wrap-off" $PCBOARD
+    "$OUT/test_rep_wrap-off" "$OUT/guest_rep_wrap.bin" before > "$OUT/rep-wrap-off.log" 2>&1
+    st=$?
+    grep "FAIL\|^test_rep_wrap" "$OUT/rep-wrap-off.log" | sed 's/^/    | /'
+    [ "$nl" = 1 ] && [ $st = 0 ]
+    result $? "the wrap test sees runs that go on past FFFFh (i386.c with the fix taken out: $nl line)"
+else
+    sed 's/^/    | /' "$OUT/rep-wrap-as.log" 2> /dev/null
+    echo "    | (no 32-bit as and ld: the wrap test is skipped)"
+fi
+
 # ==== 25. the profiler's counts and PROFILE.TXT (v5.1, s31/PROFILE.md) ====
 # esp/main/prof_hist.c (the tables, the instruction key, the file) and
 # prof_cpu.h (the guest's state read from a CPU's fields) as the board

@@ -3385,6 +3385,30 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 #define xdir16 int dir = (cpu->flags & DF) ? -2 : 2;
 #define xdir32 int dir = (cpu->flags & DF) ? -4 : 4;
 
+/* Elements of BIT bits from the 16-bit offset off, going in direction dir,
+   before the offset wraps at 64 KiB (0: the first one goes across). */
+#define wrap16(off, BIT) (dir > 0 ? (0x10000 - (off)) / (BIT / 8) : (off) / (BIT / 8) + 1)
+
+/* A REP run stops at the end of a page.  With the segment's base off a page
+   boundary, a 16-bit SI or DI (registers r1 and r2) wraps inside a page, so
+   the run stops there as well.  An element that goes across the wrap is
+   done by itself, by one(). */
+#define wrap16_cap(r1, r2, one, BIT, ABIT) \
+		if (ABIT == 16) { \
+			uword countw = wrap16(lreg16(r1), BIT); \
+			uword countw2 = wrap16(lreg16(r2), BIT); \
+			if (countw2 < countw) \
+				countw = countw2; \
+			if (countw == 0) { \
+				one(BIT, ABIT) \
+				sreg ## ABIT(1, cx - 1); \
+				cx = lreg ## ABIT(1); \
+				continue; \
+			} \
+			if (countw < count) \
+				count = countw; \
+		}
+
 #define STOS_helper2(BIT, ABIT) \
 	OptAddr memld; \
 	uword cx = lreg ## ABIT(1); \
@@ -3404,6 +3428,7 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 		else countd = 1 + (memld.addr1 & 4095) / (BIT / 8); \
 		if (countd < count) \
 			count = countd; \
+		wrap16_cap(7, 7, stdi, BIT, ABIT) \
 		if (in_high_iomem(memld.addr1) && \
 		    lfb_stos(cpu, memld.addr1, ax, BIT / 8, dir, count)) { \
 			sreg ## ABIT(7, lreg ## ABIT(7) + count * dir); \
@@ -3530,6 +3555,7 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 			count = counts; \
 		if (countd < count) \
 			count = countd; \
+		wrap16_cap(6, 7, ldsistdi, BIT, ABIT) \
 		if ((in_high_iomem(memld.addr1) || in_high_iomem(memls.addr1)) && \
 		    lfb_movs(cpu, memls.addr1, memld.addr1, BIT / 8, dir, count)) { \
 			sreg ## ABIT(6, lreg ## ABIT(6) + count * dir); \
@@ -3659,6 +3685,7 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 		else countd = 1 + (memld.addr1 & 4095) / (BIT / 8); \
 		if (countd < count) \
 			count = countd; \
+		wrap16_cap(7, 7, indxstdi, BIT, ABIT) \
 		if (cpu->cb.io_read_string && dir > 0 && \
 		    (memld.addr1 | 4095) < cpu->phys_mem_size && \
 		    !in_iomem(memld.addr1) && !in_iomem(memld.addr1 | 4095)) { \
@@ -3722,6 +3749,7 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 		else counts = 1 + (memls.addr1 & 4095) / (BIT / 8); \
 		if (counts < count) \
 			count = counts; \
+		wrap16_cap(6, 6, ldsioutdx, BIT, ABIT) \
 		if (cpu->cb.io_write_string && dir > 0 && \
 		    (memls.addr1 | 4095) < cpu->phys_mem_size && \
 		    !in_iomem(memls.addr1) && !in_iomem(memls.addr1 | 4095)) { \
