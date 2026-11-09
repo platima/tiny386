@@ -26,12 +26,12 @@
 #include "common.h"
 #include "../../i8042.h"
 
-/* v5.2 net: the ESP32-S31 boards (the Korvo-1; the DOS board is built
-   without Wi-Fi).  They build with ESP-IDF as it is, without
+/* v5.2 net: the ESP32-S31 boards (the Korvo-1's network build, the only
+   S31 one with Wi-Fi).  They build with ESP-IDF as it is, without
    esp-idf-6.0.patch, so wlanif.c never calls wlanif_l2_input_hook(): the
    station's frames come here first instead (sta_rx()).  They also write
    nothing to flash (the Korvo-1's dual-boot table has Linux's nvs and
-   phy_init partitions: sdkconfig.korvo1 turns Wi-Fi's NVS and the PHY's
+   phy_init partitions: sdkconfig.korvo1-wifi turns Wi-Fi's NVS and the PHY's
    stored calibration off), wait for the access point a few seconds at most,
    and say on the boot console how it went.  The other boards are as
    before. */
