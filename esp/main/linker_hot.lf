@@ -40,6 +40,8 @@ entries:
     display:display_pace_step (noflash)
     disk_image:disk_image_count (noflash)
     sdmmc_clk_wrap:__wrap_sd_host_slot_get_real_freq (noflash)
+    # v5.3: every card command goes through it (sdmmc_timeout_wrap.c)
+    sdmmc_timeout_wrap:__wrap_sdmmc_host_do_transaction (noflash)
 
 [mapping:tiny386_hot_sdmmc_driver]
 archive: libesp_driver_sdmmc.a

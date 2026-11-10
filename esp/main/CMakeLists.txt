@@ -64,6 +64,7 @@ set(srcs "esp_main.c"
 "lcd_korvo1.c"
 "sdmmc_crc_wrap.c"
 "sdmmc_clk_wrap.c"
+"sdmmc_timeout_wrap.c"
 "i2s.c"
 "audio_mix.c"
 "storage.c"
@@ -141,12 +142,16 @@ if(CRASH_TEST)
 endif()
 
 # v5.2, the S31 boards: the SD clock kept between commands (sdmmc_clk_wrap.c,
-# [esp] sd_clock_fix), and the memory benchmark ([esp] membench, membench.c)
+# [esp] sd_clock_fix), and the memory benchmark ([esp] membench, membench.c).
+# v5.3: a card command that timed out reported as one, which this ESP-IDF
+# reports as done when its buffer is in PSRAM (sdmmc_timeout_wrap.c).
 if(IDF_TARGET STREQUAL "esp32s31")
     target_sources(${COMPONENT_LIB} PRIVATE "membench.c" "membench_pie.S")
     target_link_options(${COMPONENT_LIB} INTERFACE
         -Wl,--wrap=sd_host_slot_get_real_freq
-        -Wl,--undefined=__wrap_sd_host_slot_get_real_freq)
+        -Wl,--undefined=__wrap_sd_host_slot_get_real_freq
+        -Wl,--wrap=sdmmc_host_do_transaction
+        -Wl,--undefined=__wrap_sdmmc_host_do_transaction)
 endif()
 
 # Linker wrap for SPI SD CMD59 workaround (elecrow7s3 only)

@@ -605,6 +605,40 @@ grep "^SKIP" "$OUT/ide.log"
 grep -E "FAILED|^ide:" "$OUT/ide.log"
 result $st "ide.c: a command's blocks gathered and read ahead, the guest sees the same; fewer card commands"
 
+# ==== 14d. a card command that timed out reported as one (v5.3): tests/host/sdmmc ====
+# esp/main/sdmmc_timeout_wrap.c as the S31 boards build it, around a
+# stand-in for ESP-IDF's sdmmc_host_do_transaction() on a pretend clock, at
+# the boards' tick of 100 Hz and at 1000 Hz: a command whose event never
+# came, which the board's ESP-IDF gives back as done when its buffer is in
+# PSRAM, comes back as a timeout; good commands, data errors and buffers in
+# internal RAM as the driver gave them.
+echo
+for hz in 100 1000; do
+    $CC $CFLAGS -DconfigTICK_RATE_HZ=$hz -I"$HERE/sdmmc/stubs" -o "$OUT/test_sdmmc_timeout-$hz" \
+        "$HERE/sdmmc/test_sdmmc_timeout.c" "$TREE/esp/main/sdmmc_timeout_wrap.c" || exit 1
+    "$OUT/test_sdmmc_timeout-$hz" > "$OUT/sdmmc_timeout-$hz.log" 2>&1
+    st=$?
+    grep -E "FAIL|caught|test_sdmmc_timeout" "$OUT/sdmmc_timeout-$hz.log" | sed 's/^/    | /'
+    result $st "sdmmc_timeout_wrap.c at $hz Hz: a card command whose event never came reported as a timeout; the rest as the driver gave them"
+done
+# faults planted in copies of the wrap, which the test has to see: the wrap
+# that gives the driver's result back always (the board's ESP-IDF alone),
+# and one that waits for all the ticks rather than all but one
+planted_wrap() {
+    sed -e "$2" "$TREE/esp/main/sdmmc_timeout_wrap.c" > "$OUT/sdmmc_timeout_wrap-$1.c"
+    $CC $CFLAGS -w -I"$HERE/sdmmc/stubs" -o "$OUT/test_sdmmc_timeout-$1" \
+        "$HERE/sdmmc/test_sdmmc_timeout.c" "$OUT/sdmmc_timeout_wrap-$1.c" || exit 1
+    "$OUT/test_sdmmc_timeout-$1" > "$OUT/sdmmc_timeout-$1.log" 2>&1
+    local st=$?
+    grep -m1 "FAIL" "$OUT/sdmmc_timeout-$1.log" | cut -c1-150 | sed 's/^ */    | /'
+    ! cmp -s "$TREE/esp/main/sdmmc_timeout_wrap.c" "$OUT/sdmmc_timeout_wrap-$1.c" && [ $st != 0 ]
+    result $? "the sdmmc_timeout_wrap.c test sees it: $3"
+}
+planted_wrap none 's/return said_timeout(cmdinfo, us);/return ESP_OK;/' \
+    "every result given back as the driver gave it"
+planted_wrap late 's/(ticks - 1) \* portTICK_PERIOD_MS/ticks * portTICK_PERIOD_MS/' \
+    "a lost event taken only after all its ticks"
+
 # ==== 15. the status LED (v3.3; the brightness v3.7; the disk light v3.8) ====
 # status_code.c as the firmware has it, and status_bb.h (the panic handler's
 # bit-bang) with a pretend cycle counter: the RMT frame and every bit-banged
