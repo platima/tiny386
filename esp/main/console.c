@@ -561,6 +561,26 @@ static void uq_task(void *arg)
 		ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 	}
 }
+
+#if CONFIG_IDF_TARGET_ESP32S31 && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
+#include "freertos/idf_additions.h"
+#define UQ_STACK_PSRAM 1
+#endif
+
+/* v5.3: on the S31 boards the task's 3 KiB stack in PSRAM, not internal
+   RAM.  The task only moves bytes from the queue to the UART's FIFO, and
+   never writes or erases flash, which is what turns the cache off while
+   a task runs; so it never runs with the cache off (as wifi.c's remote
+   keyboard task).  Internal RAM if PSRAM has no room. */
+static bool uq_task_start(void)
+{
+#ifdef UQ_STACK_PSRAM
+	if (xTaskCreatePinnedToCoreWithCaps(uq_task, "uart_log", 3072, NULL, 1, &s_uq_task, 0,
+					    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) == pdPASS)
+		return true;
+#endif
+	return xTaskCreatePinnedToCore(uq_task, "uart_log", 3072, NULL, 1, &s_uq_task, 0) == pdPASS;
+}
 #endif
 
 void console_uart_async(bool on)
@@ -571,8 +591,7 @@ void console_uart_async(bool on)
 		if (!s_uq)
 			s_uq = con_alloc(UQ_SIZE);
 #ifdef UQ_UART
-		if (s_uq && !s_uq_task &&
-		    xTaskCreatePinnedToCore(uq_task, "uart_log", 3072, NULL, 1, &s_uq_task, 0) != pdPASS)
+		if (s_uq && !s_uq_task && !uq_task_start())
 			s_uq_task = NULL;
 		s_uq_on = s_uq && s_uq_task;
 #else
