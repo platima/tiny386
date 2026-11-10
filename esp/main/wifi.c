@@ -40,6 +40,7 @@
 #include "freertos/idf_additions.h"
 #include "esp_heap_caps.h"
 #include "esp_netif.h"
+#include "esp_private/wifi_os_adapter.h"
 #include "console.h"
 /* how long the boot waits for an address before the PC is built */
 #define WIFI_WAIT_MS 10000
@@ -146,6 +147,41 @@ sys_thread_t __wrap_sys_thread_new(const char *name, lwip_thread_fn thread,
 		return t;
 	return __real_sys_thread_new(name, thread, arg, stacksize, prio);
 }
+
+/* v5.3: the Wi-Fi task (the driver's ppTask, 6.5 KiB of stack with WPA3)
+   with its stack in PSRAM rather than internal RAM.  esp_wifi_init()
+   makes it through g_wifi_osi_funcs._task_create_pinned_to_core, which
+   only libpp's pp_create_task() calls; wifi_init_sta() points that here
+   for the one call.  Nothing the task runs writes flash in this build (no
+   NVS, no stored calibration, no init data partition), so it never runs
+   with the cache off, and the crypto drivers it calls copy or sync PSRAM
+   buffers themselves.  ESP-IDF's FREERTOS_PLACE_TASK_STACKS_IN_EXT_RAM
+   would put this same stack in PSRAM.  Its TCB stays in internal RAM, and
+   without room in PSRAM the task is made as before.  (esp_wifi_deinit()
+   would not give a stack made this way back; this firmware never calls
+   it.) */
+static int32_t (*s_wifi_task_create)(void *task_func, const char *name,
+				     uint32_t stack_depth, void *param,
+				     uint32_t prio, void *task_handle,
+				     uint32_t core_id);
+
+static int32_t wifi_task_create_psram(void *task_func, const char *name,
+				      uint32_t stack_depth, void *param,
+				      uint32_t prio, void *task_handle,
+				      uint32_t core_id)
+{
+	/* once: anything else made through the table is made as before */
+	g_wifi_osi_funcs._task_create_pinned_to_core = s_wifi_task_create;
+	if (xTaskCreatePinnedToCoreWithCaps((TaskFunction_t) task_func, name,
+					    stack_depth, param, prio,
+					    (TaskHandle_t *) task_handle,
+					    core_id < portNUM_PROCESSORS ?
+					    (BaseType_t) core_id : tskNO_AFFINITY,
+					    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) == pdPASS)
+		return pdPASS;
+	return s_wifi_task_create(task_func, name, stack_depth, param, prio,
+				  task_handle, core_id);
+}
 #endif
 
 static void event_handler(void* arg, esp_event_base_t event_base,
@@ -248,6 +284,10 @@ bool wifi_init_sta(const char *ssid, const char *pass)
 #endif
 
 	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+#if WIFI_S31
+	s_wifi_task_create = g_wifi_osi_funcs._task_create_pinned_to_core;
+	g_wifi_osi_funcs._task_create_pinned_to_core = wifi_task_create_psram;
+#endif
 	WIFI_TRY(esp_wifi_init(&cfg));
 
 	esp_event_handler_instance_t instance_any_id;
