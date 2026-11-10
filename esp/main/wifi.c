@@ -231,20 +231,26 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 		ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
 #if WIFI_S31
 		/* with the least internal RAM free so far, which by now has
-		   Wi-Fi's start and the joining in it */
+		   Wi-Fi's start and the joining in it.  v5.3: and the least of
+		   the part DMA reaches (all but the LP RAM), which the driver's
+		   static TX and RX buffers must come from */
 		unsigned least = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024;
+		unsigned dma_least = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL |
+								     MALLOC_CAP_DMA) / 1024;
 		if (s_lost) {
 			console_printf(CON_GOOD, "Wi-Fi: back on \"%s\", address " IPSTR
 				       ", gateway " IPSTR ". Internal RAM least free since "
-				       "start %u KiB.", s_ssid, IP2STR(&event->ip_info.ip),
-				       IP2STR(&event->ip_info.gw), least);
+				       "start %u KiB, DMA-capable %u KiB.", s_ssid,
+				       IP2STR(&event->ip_info.ip), IP2STR(&event->ip_info.gw),
+				       least, dma_least);
 			s_lost = false;
 		} else {
 			console_printf(CON_GOOD, "Wi-Fi: address " IPSTR ", netmask " IPSTR
 				       ", gateway " IPSTR " (from the access point's DHCP). "
-				       "Internal RAM least free since start %u KiB.",
+				       "Internal RAM least free since start %u KiB, "
+				       "DMA-capable %u KiB.",
 				       IP2STR(&event->ip_info.ip), IP2STR(&event->ip_info.netmask),
-				       IP2STR(&event->ip_info.gw), least);
+				       IP2STR(&event->ip_info.gw), least, dma_least);
 		}
 		net_stacks_line();
 #endif

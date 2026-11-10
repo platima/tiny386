@@ -129,6 +129,7 @@ notice. The figures are from where each allocation is made, not yet measured on 
 | no events posted from interrupts, so the loop's queue and each event's data in PSRAM, with room for 16 events rather than 32 | about 0.3 KB while Wi-Fi runs | nothing |
 | no IEEE 802.15.4, so no software coexistence | 678 bytes for good; 7.5 KB of flash | nothing |
 | with each address, the network tasks' least stack free | none | `Wi-Fi: least stack free so far (bytes): wifi N, tcpip N, sys_evt N, esp_timer N.` on the boot console |
+| the address line's least free with the DMA-capable part beside it | none | `Internal RAM least free since start N KiB, DMA-capable M KiB.` at the end of the address and `back on` lines |
 
 That is about 19 KB while Wi-Fi runs and 0.7 KB for good, beside v5.3's changes to both builds (the status
 LED's and key repeat's stacks in PSRAM, 6 KiB, and for `hda = sd:N` the card's DMA straight into the disk
