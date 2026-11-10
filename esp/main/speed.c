@@ -249,6 +249,12 @@ static void perf_fill(void *opaque, uint32_t *v, uint32_t *ok)
 		     heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024);
 	PERFPORT_PUT(v, ok, PP_I_IRAM_MIN_FREE_KB,
 		     heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024);
+	/* v5.3: the part DMA reaches; IRAM_FREE_KB counts the LP RAM too
+	   (about 23 KiB on the S31, used last, which no DMA reaches) */
+	PERFPORT_PUT(v, ok, PP_I_DMA_FREE_KB,
+		     heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA) / 1024);
+	PERFPORT_PUT(v, ok, PP_I_DMA_MIN_FREE_KB,
+		     heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA) / 1024);
 
 	struct disk_image_stats d;
 	disk_image_get_stats(&d, false);

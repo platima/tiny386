@@ -70,8 +70,9 @@
 
 #define PP_MAGIC                0x36383354UL    /* "T386" as four bytes */
 #define PP_VERSION_MAJOR        1
-#define PP_VERSION_MINOR        1       /* 1.1: CHANGED, CHANGED_1S */
-#define PP_VERSION              0x00010001UL    /* major << 16 | minor */
+#define PP_VERSION_MINOR        2       /* 1.1: CHANGED, CHANGED_1S; 1.2: DMA_FREE_KB,
+                                           DMA_MIN_FREE_KB */
+#define PP_VERSION              0x00010002UL    /* major << 16 | minor */
 
 /* COMMAND */
 #define PP_CMD_NONE             0       /* nothing */
@@ -152,6 +153,9 @@
 #define PP_I_IRAM_FREE_KB       0x44    /* the board's internal RAM free now */
 #define PP_I_IRAM_LARGEST_KB    0x45    /*   its largest free block */
 #define PP_I_IRAM_MIN_FREE_KB   0x46    /*   the least free since the board started */
+#define PP_I_DMA_FREE_KB        0x47    /* 1.2: of the internal RAM, what DMA reaches,
+                                           free now (all but the S31's LP RAM) */
+#define PP_I_DMA_MIN_FREE_KB    0x48    /* 1.2:   the least free since the board started */
 
 /* the disks: the hard disk and CD images (floppies only in DISK_ACTIVITY
    and DISK_REFUSED) */
