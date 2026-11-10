@@ -55,3 +55,7 @@ CONFIG_ESP_EVENT_LOOP_IN_EXT_RAM=y
 # v5.3: room for 16 events in that queue rather than 32 (16 bytes each,
 # internal): a join, a loss or an address brings a few at a time.
 CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE=16
+# v5.3: no IEEE 802.15.4 (ESP-IDF turns it on for this chip by default),
+# and with it no software coexistence, which Wi-Fi alone does not need:
+# 678 bytes of internal RAM and 7.5 KB of flash back.
+# CONFIG_IEEE802154_ENABLED is not set
