@@ -49,12 +49,15 @@ CONFIG_ESP_TIMER_TASK_STACK_SIZE=3584
 # the loop and its handlers' records, about 2.5 KB of internal RAM back.
 # It carries Wi-Fi's and the address's events, and nothing it runs writes
 # flash (no NVS, no stored calibration, no saved DHCP address), so it never
-# runs with the cache off.  Its queue stays internal, as ESP-IDF keeps it
-# with ESP_EVENT_POST_FROM_IRAM_ISR on.
+# runs with the cache off.
 CONFIG_ESP_EVENT_LOOP_IN_EXT_RAM=y
-# v5.3: room for 16 events in that queue rather than 32 (16 bytes each,
-# internal): a join, a loss or an address brings a few at a time.
+# v5.3: room for 16 events in the loop's queue rather than 32: a join, a
+# loss or an address brings a few at a time.
 CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE=16
+# v5.3: no events posted from interrupts (nothing in this firmware posts
+# any), so with the loop in PSRAM its queue and each event's data go there
+# too, rather than internal RAM: about 0.3 KB more back.
+# CONFIG_ESP_EVENT_POST_FROM_ISR is not set
 # v5.3: no IEEE 802.15.4 (ESP-IDF turns it on for this chip by default),
 # and with it no software coexistence, which Wi-Fi alone does not need:
 # 678 bytes of internal RAM and 7.5 KB of flash back.
