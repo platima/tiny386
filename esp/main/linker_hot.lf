@@ -13,79 +13,88 @@
 # sd_host_set_delay_phase() are back in flash, as they now run only when the
 # slot's settings change (sdmmc_setup_wrap.c).
 #
+# v5.3: noflash_text, not noflash: the code in internal RAM, its read-only
+# data left in flash.  With noflash ldgen moved each function's .rodata too,
+# and for these that is only their strings (the build has -fno-jump-tables
+# and -fno-tree-switch-conversion, so no function has a table of its own
+# there): i386_task()'s console lines, the SD driver's and FreeRTOS's error
+# and assert lines, all said once or on a failure.  The tables the
+# interpreter and the disk path read are DRAM_ATTR data, which no scheme
+# here moves.  About 2.5 KB of internal RAM back.
+#
 # The S31 boards only (esp/main/CMakeLists.txt); -DNO_HOT_IRAM=1 leaves it out.
 
 [mapping:tiny386_hot_main]
 archive: libmain.a
 entries:
-    esp_main:i386_task (noflash)
-    esp_main:get_uticks (noflash)
+    esp_main:i386_task (noflash_text)
+    esp_main:get_uticks (noflash_text)
     # v5.3: no disk_errors(): the run loop's every step reads the counts
     # itself, and the line is said from flash
-    pc:pc_io_read (noflash)
-    pc:pc_step (noflash)
-    pc:pc_io_read_string (noflash)
-    i8042:kbd_step (noflash)
-    sd_part:sd_part_read (noflash)
-    i8259:pic_get_irq (noflash)
-    i8259:i8259_set_irq (noflash)
-    i8259:i8259_read_irq (noflash)
-    i8259:pic_update_irq (noflash)
-    i8259:pic_ioport_write (noflash)
-    i386:cpui386_step (noflash)
-    speed:speed_step (noflash)
-    speed:speed_run_step_at (noflash)
-    i8254:i8254_update_irq (noflash)
-    ide:ide_sector_read_cb (noflash)
-    ide:ide_sector_read (noflash)
-    ide:ide_ioport_read (noflash)
-    ne2000:ne2000_step (noflash)
-    vga:vga_ioport_read (noflash)
-    display:display_pace_step (noflash)
-    disk_image:disk_image_count (noflash)
-    sdmmc_clk_wrap:__wrap_sd_host_slot_get_real_freq (noflash)
+    pc:pc_io_read (noflash_text)
+    pc:pc_step (noflash_text)
+    pc:pc_io_read_string (noflash_text)
+    i8042:kbd_step (noflash_text)
+    sd_part:sd_part_read (noflash_text)
+    i8259:pic_get_irq (noflash_text)
+    i8259:i8259_set_irq (noflash_text)
+    i8259:i8259_read_irq (noflash_text)
+    i8259:pic_update_irq (noflash_text)
+    i8259:pic_ioport_write (noflash_text)
+    i386:cpui386_step (noflash_text)
+    speed:speed_step (noflash_text)
+    speed:speed_run_step_at (noflash_text)
+    i8254:i8254_update_irq (noflash_text)
+    ide:ide_sector_read_cb (noflash_text)
+    ide:ide_sector_read (noflash_text)
+    ide:ide_ioport_read (noflash_text)
+    ne2000:ne2000_step (noflash_text)
+    vga:vga_ioport_read (noflash_text)
+    display:display_pace_step (noflash_text)
+    disk_image:disk_image_count (noflash_text)
+    sdmmc_clk_wrap:__wrap_sd_host_slot_get_real_freq (noflash_text)
     # v5.3: every card command goes through it (sdmmc_timeout_wrap.c)
-    sdmmc_timeout_wrap:__wrap_sdmmc_host_do_transaction (noflash)
+    sdmmc_timeout_wrap:__wrap_sdmmc_host_do_transaction (noflash_text)
     # v5.3: and through these, which keep the slot's settings
     # (sdmmc_setup_wrap.c); the functions they skip are in flash now
-    sdmmc_setup_wrap:__wrap_sd_host_slot_set_bus_width (noflash)
-    sdmmc_setup_wrap:__wrap_sd_host_slot_set_bus_sampling_mode (noflash)
-    sdmmc_setup_wrap:__wrap_sd_host_set_delay_phase (noflash)
-    sdmmc_setup_wrap:__wrap_sd_host_set_delay_line (noflash)
+    sdmmc_setup_wrap:__wrap_sd_host_slot_set_bus_width (noflash_text)
+    sdmmc_setup_wrap:__wrap_sd_host_slot_set_bus_sampling_mode (noflash_text)
+    sdmmc_setup_wrap:__wrap_sd_host_set_delay_phase (noflash_text)
+    sdmmc_setup_wrap:__wrap_sd_host_set_delay_line (noflash_text)
     # v5.3: every card read the guest's disk makes (sdmmc_read_wrap.c), in
     # place of sdmmc_read_sectors() and sdmmc_read_sectors_dma()
-    sdmmc_read_wrap:__wrap_sdmmc_read_sectors (noflash)
+    sdmmc_read_wrap:__wrap_sdmmc_read_sectors (noflash_text)
 
 [mapping:tiny386_hot_sdmmc_driver]
 archive: libesp_driver_sdmmc.a
 entries:
-    sd_host_sdmmc:sd_host_slot_start_command (noflash)
-    sd_host_sdmmc:sd_host_calc_freq (noflash)
-    sd_host_sdmmc:sd_host_check_buffer_alignment (noflash)
-    sd_host_sdmmc:sd_host_slot_get_real_freq (noflash)
-    sd_trans_sdmmc:sd_host_slot_sdmmc_do_transaction (noflash)
-    sdmmc_transaction:sdmmc_host_do_transaction (noflash)
+    sd_host_sdmmc:sd_host_slot_start_command (noflash_text)
+    sd_host_sdmmc:sd_host_calc_freq (noflash_text)
+    sd_host_sdmmc:sd_host_check_buffer_alignment (noflash_text)
+    sd_host_sdmmc:sd_host_slot_get_real_freq (noflash_text)
+    sd_trans_sdmmc:sd_host_slot_sdmmc_do_transaction (noflash_text)
+    sdmmc_transaction:sdmmc_host_do_transaction (noflash_text)
 
 [mapping:tiny386_hot_sdmmc]
 archive: libsdmmc.a
 entries:
-    sdmmc_cmd:sdmmc_send_cmd (noflash)
+    sdmmc_cmd:sdmmc_send_cmd (noflash_text)
 
 [mapping:tiny386_hot_fatfs]
 archive: libfatfs.a
 entries:
-    diskio_sdmmc:ff_sdmmc_read (noflash)
+    diskio_sdmmc:ff_sdmmc_read (noflash_text)
 
 [mapping:tiny386_hot_clk]
 archive: libesp_hw_support.a
 entries:
-    esp_clk_tree:esp_clk_tree_src_get_freq_hz (noflash)
+    esp_clk_tree:esp_clk_tree_src_get_freq_hz (noflash_text)
 
 [mapping:tiny386_hot_freertos]
 archive: libfreertos.a
 entries:
-    queue:xQueueSemaphoreTake (noflash)
-    queue:xQueueReceive (noflash)
-    queue:xQueueGenericSend (noflash)
-    tasks:xTaskCheckForTimeOut (noflash)
-    tasks:pvTaskIncrementMutexHeldCount (noflash)
+    queue:xQueueSemaphoreTake (noflash_text)
+    queue:xQueueReceive (noflash_text)
+    queue:xQueueGenericSend (noflash_text)
+    tasks:xTaskCheckForTimeOut (noflash_text)
+    tasks:pvTaskIncrementMutexHeldCount (noflash_text)
