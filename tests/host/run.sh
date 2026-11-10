@@ -629,7 +629,7 @@ done
 # ticks rather than all but one, and a failed write's error left to the count
 planted_wrap() {
     sed -e "$2" "$TREE/esp/main/sdmmc_timeout_wrap.c" > "$OUT/sdmmc_timeout_wrap-$1.c"
-    $CC $CFLAGS -w -I"$HERE/sdmmc/stubs" -o "$OUT/test_sdmmc_timeout-$1" \
+    $CC $CFLAGS -w -I"$HERE/sdmmc/stubs" -I"$TREE/esp/main" -o "$OUT/test_sdmmc_timeout-$1" \
         "$HERE/sdmmc/test_sdmmc_timeout.c" "$OUT/sdmmc_timeout_wrap-$1.c" || exit 1
     "$OUT/test_sdmmc_timeout-$1" > "$OUT/sdmmc_timeout-$1.log" 2>&1
     local st=$?
@@ -643,6 +643,37 @@ planted_wrap late 's/(ticks - 1) \* portTICK_PERIOD_MS/ticks * portTICK_PERIOD_M
     "a lost event taken only after all its ticks"
 planted_wrap count 's/ret = written_count(ret, ok);/(void) ok;/' \
     "a failed multi-block write given the result of the card's count"
+
+# v5.3: esp/main/sdmmc_setup_wrap.c, the slot's width, sampling mode and
+# delays kept between commands, around stand-ins for ESP-IDF's five that
+# write a pretend controller, and a model of the start of its
+# sd_host_slot_sdmmc_do_transaction(): before every command the controller
+# must hold what ESP-IDF's own four would leave there, through the card's
+# start, each setting changed, clock sets, failed commands, one of the four
+# failing and the host set up again; and the four are skipped when nothing
+# changed.  Three planted faults, which the test has to see.
+$CC $CFLAGS -I"$HERE/sdmmc/stubs" -o "$OUT/test_sdmmc_setup" "$HERE/sdmmc/test_sdmmc_setup.c" \
+    "$TREE/esp/main/sdmmc_setup_wrap.c" || exit 1
+"$OUT/test_sdmmc_setup" > "$OUT/sdmmc_setup.log" 2>&1
+st=$?
+grep -E "FAIL|set .* times|test_sdmmc_setup" "$OUT/sdmmc_setup.log" | sed 's/^/    | /'
+result $st "sdmmc_setup_wrap.c: the slot's settings as ESP-IDF would leave them before every command, set only when something changed"
+planted_setup() {
+    sed -e "$2" "$TREE/esp/main/sdmmc_setup_wrap.c" > "$OUT/sdmmc_setup_wrap-$1.c"
+    $CC $CFLAGS -w -I"$HERE/sdmmc/stubs" -I"$TREE/esp/main" -o "$OUT/test_sdmmc_setup-$1" \
+        "$HERE/sdmmc/test_sdmmc_setup.c" "$OUT/sdmmc_setup_wrap-$1.c" || exit 1
+    "$OUT/test_sdmmc_setup-$1" > "$OUT/sdmmc_setup-$1.log" 2>&1
+    local st=$?
+    grep -m1 "FAIL" "$OUT/sdmmc_setup-$1.log" | cut -c1-150 | sed 's/^ */    | /'
+    ! cmp -s "$TREE/esp/main/sdmmc_setup_wrap.c" "$OUT/sdmmc_setup_wrap-$1.c" && [ $st != 0 ]
+    result $? "the sdmmc_setup_wrap.c test sees it: $3"
+}
+planted_setup nokey 's/s_skip = sd_clock_fix \&\& s_right_era == s_era \&\& setup_same(slot, \&s_set);/s_skip = sd_clock_fix \&\& s_right_era == s_era;/' \
+    "the four skipped although a setting changed"
+planted_setup noclk '/^esp_err_t __wrap_sd_host_slot_set_card_clk/,/^}/s/\ts_era++;//' \
+    "the four skipped after a clock set"
+planted_setup noforget '/^void sd_setup_forget/,/^}/s/\ts_era++;//' \
+    "the four skipped after a failed command"
 
 # ==== 15. the status LED (v3.3; the brightness v3.7; the disk light v3.8) ====
 # status_code.c as the firmware has it, and status_bb.h (the panic handler's

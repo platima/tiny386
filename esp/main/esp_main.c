@@ -332,7 +332,8 @@ struct esp_ini_config {
 	int double_buffer;      /* v4.4: a second frame buffer, swapped at the panel's frame */
 	int fast_cpu;           /* v5.0: the fast interpreter (i386_fast.h); 0 tiny386's own */
 	int profile;            /* v5.1: the profiler (profile.c, s31/PROFILE.md); 0 off */
-	int sd_clock_fix;       /* v5.2: the SD clock kept between commands (sdmmc_clk_wrap.c) */
+	int sd_clock_fix;       /* v5.2: the SD clock kept between commands (sdmmc_clk_wrap.c);
+				   v5.3: the slot's settings too (sdmmc_setup_wrap.c) */
 	int membench;           /* v5.2: the memory benchmark instead of the PC (membench.c) */
 };
 
@@ -1768,8 +1769,9 @@ void app_main(void)
 		membench_board();
 	sd_clock_fix = config.sd_clock_fix;
 	if (!config.sd_clock_fix)
-		console_puts(CON_INFO, "sd_clock_fix = 0: the SD clock is set again before every "
-			     "command, as before v5.2.");
+		console_puts(CON_INFO, "sd_clock_fix = 0: the SD clock and the slot's width, "
+			     "sampling and delays are set again before every command, as "
+			     "before v5.2.");
 #else
 	if (config.membench || !config.sd_clock_fix)
 		console_puts(CON_INFO, "membench and sd_clock_fix are ignored: not in this build.");

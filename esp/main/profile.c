@@ -51,6 +51,7 @@
 #include "profile.h"
 #if CONFIG_IDF_TARGET_ESP32S31
 #include "sdmmc_clk_wrap.h"
+#include "sdmmc_setup_wrap.h"
 #endif
 
 #if CONFIG_IDF_TARGET_ESP32S31
@@ -439,6 +440,9 @@ void profile_write(const char *why)
 	/* v5.2: what sd_clock_fix did since the start */
 	console_printf(CON_INFO, "Profile: SD commands that kept the clock %" PRIu32 ", that set it "
 		       "%" PRIu32 " (sd_clock_fix = %d).", sd_clock_kept, sd_clock_set, sd_clock_fix);
+	/* v5.3: and the slot's other settings (sdmmc_setup_wrap.c) */
+	console_printf(CON_INFO, "Profile: SD commands that kept the slot's width, sampling and "
+		       "delays %" PRIu32 ", that set them %" PRIu32 ".", sd_setup_kept, sd_setup_set);
 #endif
 	/* the PC record moving, and pointing at code: else the host half of
 	   the file says nothing (the guest half still holds) */

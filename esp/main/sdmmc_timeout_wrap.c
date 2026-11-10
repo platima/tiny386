@@ -60,6 +60,7 @@
 #include "esp_cache.h"
 #include "sd_protocol_defs.h"
 #include "sd_protocol_types.h"
+#include "sdmmc_setup_wrap.h"
 
 #define TAG "sdmmc_timeout_wrap"
 
@@ -142,6 +143,10 @@ esp_err_t __wrap_sdmmc_host_do_transaction(int slot, sdmmc_command_t *cmdinfo)
 			ok = false;
 		}
 	}
+	/* v5.3: after a failed command the next one sets the slot's settings
+	   again (sdmmc_setup_wrap.c) */
+	if (!ok)
+		sd_setup_forget();
 	if (cmdinfo->opcode == MMC_WRITE_BLOCK_MULTIPLE && !ok)
 		write_failed(ret != ESP_OK ? ret : cmdinfo->error);
 	else if (cmdinfo->opcode == SD_APP_SEND_NUM_WR_BLOCKS)

@@ -38,6 +38,12 @@
 esp_err_t __wrap_sdmmc_host_do_transaction(int slot, sdmmc_command_t *cmdinfo);
 
 int host_log_lines, host_crit;
+/* v5.3: sdmmc_setup_wrap.c's, which the wrap calls after a failed command */
+static int s_forgets;
+void sd_setup_forget(void)
+{
+	s_forgets++;
+}
 static int checks, fails;
 #define CHECK(c, ...) do { \
 	checks++; \
@@ -122,10 +128,12 @@ static esp_err_t run(enum where w, uint32_t timeout_ms, int64_t takes, esp_err_t
 	cmd.timeout_ms = timeout_ms;
 	s_step = (struct step) { takes, gives, error };
 	s_script_n = s_script_i = 0;
-	int calls = s_calls, reads = s_clock_reads;
+	int calls = s_calls, reads = s_clock_reads, forgets = s_forgets;
 	esp_err_t r = __wrap_sdmmc_host_do_transaction(1, &cmd);
 	CHECK(s_calls == calls + 1 && s_slot == 1, "the driver called once, for slot 1");
 	CHECK(cmd.error == error, "cmd->error left as the driver left it");
+	CHECK((s_forgets != forgets) == (r != ESP_OK || cmd.error != ESP_OK), "the slot's "
+	      "settings forgotten after a failed command, and only then (%#x, %#x)", r, cmd.error);
 	*clock_reads = s_clock_reads - reads;
 	return r;
 }

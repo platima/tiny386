@@ -64,6 +64,7 @@ set(srcs "esp_main.c"
 "lcd_korvo1.c"
 "sdmmc_crc_wrap.c"
 "sdmmc_clk_wrap.c"
+"sdmmc_setup_wrap.c"
 "sdmmc_timeout_wrap.c"
 "i2s.c"
 "audio_mix.c"
@@ -144,14 +145,25 @@ endif()
 # v5.2, the S31 boards: the SD clock kept between commands (sdmmc_clk_wrap.c,
 # [esp] sd_clock_fix), and the memory benchmark ([esp] membench, membench.c).
 # v5.3: a card command that timed out reported as one, which this ESP-IDF
-# reports as done when its buffer is in PSRAM (sdmmc_timeout_wrap.c).
+# reports as done when its buffer is in PSRAM (sdmmc_timeout_wrap.c); the
+# slot's other settings kept between commands too (sdmmc_setup_wrap.c).
 if(IDF_TARGET STREQUAL "esp32s31")
     target_sources(${COMPONENT_LIB} PRIVATE "membench.c" "membench_pie.S")
     target_link_options(${COMPONENT_LIB} INTERFACE
         -Wl,--wrap=sd_host_slot_get_real_freq
         -Wl,--undefined=__wrap_sd_host_slot_get_real_freq
         -Wl,--wrap=sdmmc_host_do_transaction
-        -Wl,--undefined=__wrap_sdmmc_host_do_transaction)
+        -Wl,--undefined=__wrap_sdmmc_host_do_transaction
+        -Wl,--wrap=sd_host_slot_set_card_clk
+        -Wl,--undefined=__wrap_sd_host_slot_set_card_clk
+        -Wl,--wrap=sd_host_slot_set_bus_width
+        -Wl,--undefined=__wrap_sd_host_slot_set_bus_width
+        -Wl,--wrap=sd_host_slot_set_bus_sampling_mode
+        -Wl,--undefined=__wrap_sd_host_slot_set_bus_sampling_mode
+        -Wl,--wrap=sd_host_set_delay_phase
+        -Wl,--undefined=__wrap_sd_host_set_delay_phase
+        -Wl,--wrap=sd_host_set_delay_line
+        -Wl,--undefined=__wrap_sd_host_set_delay_line)
 endif()
 
 # Linker wrap for SPI SD CMD59 workaround (elecrow7s3 only)
