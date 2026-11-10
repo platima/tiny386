@@ -96,3 +96,10 @@ CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH=y
 # RAM (CONFIG_GPTIMER_ISR_CACHE_SAFE is off), so it waits while the cache
 # is off.
 # CONFIG_GPTIMER_ISR_HANDLER_IN_IRAM is not set
+
+# v5.3: the esp_timer task's stack at Kconfig's least, 2048 bytes rather
+# than 3584, which gives 1.5 KiB of internal RAM back.  It runs the
+# callbacks of esp_timer and ets_timer timers, and in this build the only
+# such timer is the coexistence code's (made at start-up), which only the
+# radio arms; tiny386 makes none, and there is no Wi-Fi.
+CONFIG_ESP_TIMER_TASK_STACK_SIZE=2048

@@ -35,3 +35,6 @@ CONFIG_ESP_WIFI_RX_BA_WIN=6
 # Core 1 runs the emulator and never yields: the network's tasks on core 0.
 CONFIG_ESP_WIFI_TASK_PINNED_TO_CORE_0=y
 CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y
+# Wi-Fi's timers and the PHY's run their callbacks in the esp_timer task:
+# its stack at ESP-IDF's default, not sdkconfig.korvo1's 2048.
+CONFIG_ESP_TIMER_TASK_STACK_SIZE=3584
