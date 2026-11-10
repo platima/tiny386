@@ -2209,7 +2209,7 @@ static int bf_get_chs(BlockDevice *bs, int *cylinders, int *heads, int *sectors)
 #define BF_MAX_RW 4
 static BlockDeviceFile *bf_rw[BF_MAX_RW];
 static int bf_rw_count;
-static unsigned bf_writes;
+unsigned bf_writes; /* v5.3: not static, for esp_main.c's run loop's every step */
 #ifdef BUILD_ESP32
 /* v4.4: the card partitions the guest has whole (hda = sd:3) */
 #define BF_MAX_SDP 4
@@ -2219,7 +2219,7 @@ static int bf_sdp_count;
 #ifdef BUILD_ESP32
 /* reads, writes and flushes the card refused (a card pulled out, or
    failing): the guest's IDE driver is told of a failed write or read */
-static unsigned bf_errors;
+unsigned bf_errors; /* v5.3: not static (esp_main.c) */
 
 unsigned ide_error_count(void)
 {

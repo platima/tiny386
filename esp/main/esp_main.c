@@ -425,10 +425,20 @@ void *fbmalloc(long size)
 	return fb;
 }
 
-/* everything the guest writes to: the IDE disks and the floppies */
-static unsigned disk_writes(void)
+/* v5.3: the counts behind ide_write_count(), ide_error_count(),
+   emulink_write_count() and emulink_error_count(), in ide.c and misc.c,
+   for the run loop to read every step without a call.  Declared here, not
+   in ide.h and misc.h, which older copies of ide.c and misc.c in the host
+   tests include with their own static counts. */
+extern unsigned bf_writes, bf_errors, fdd_writes, fdd_errors;
+
+/* everything the guest writes to: the IDE disks and the floppies.  v5.3:
+   their counts read as they are rather than through ide_write_count() and
+   emulink_write_count(), two calls into flash that the run loop made every
+   step */
+static inline unsigned disk_writes(void)
 {
-	return ide_write_count() + emulink_write_count();
+	return bf_writes + fdd_writes;
 }
 
 /* the status LED's disk light (v3.8): every read and write the guest asks
@@ -474,20 +484,30 @@ static void abort_note(void)
 
 /* The card refusing a read or a write (pulled out, or failing): said once,
    then again every 10 s while it goes on.  The guest is told of each one
-   by its IDE driver, or by the floppy BIOS's status. */
-static void disk_errors(uint32_t now)
+   by its IDE driver, or by the floppy BIOS's status.  v5.3: the run loop
+   looks at the counts every step (bf_errors and fdd_errors, a load each,
+   no call), and this runs, in flash, only while there is something not
+   yet said. */
+static unsigned s_errors_said;
+static uint32_t s_errors_said_at;
+
+static void __attribute__((noinline)) disk_errors_say(uint32_t now, unsigned e)
 {
-	static unsigned seen;
-	static uint32_t said_at;
-	unsigned e = ide_error_count() + emulink_error_count();
-	if (e != seen && (!seen || now - said_at >= 10000000)) {
-		console_printf(CON_ERROR, "The card refused %u read%s or write%s of the "
-			       "disk images. Is it still in? Shut the guest down and "
-			       "check the card on a PC.", e - seen, e - seen == 1 ? "" : "s",
-			       e - seen == 1 ? "" : "s");
-		seen = e;
-		said_at = now;
-	}
+	if (s_errors_said && now - s_errors_said_at < 10000000)
+		return;
+	unsigned n = e - s_errors_said;
+	console_printf(CON_ERROR, "The card refused %u read%s or write%s of the "
+		       "disk images. Is it still in? Shut the guest down and "
+		       "check the card on a PC.", n, n == 1 ? "" : "s", n == 1 ? "" : "s");
+	s_errors_said = e;
+	s_errors_said_at = now;
+}
+
+static inline void disk_errors(uint32_t now)
+{
+	unsigned e = bf_errors + fdd_errors;
+	if (e != s_errors_said)
+		disk_errors_say(now, e);
 }
 
 /* v4.4: a setting a Ctrl+Alt key changed (F11: vbe_blocks, F10:
@@ -584,7 +604,8 @@ static void run_pc(PC *pc)
 			unflushed = false;
 			speed_run_aside(get_uticks());
 		}
-		unsigned saves = speed_take_saves();
+		/* v5.3: a load, and the call only when something was asked */
+		unsigned saves = speed_saves_asked() ? speed_take_saves() : 0;
 		if (saves) {
 			/* the guest's writes first, as at a quiet moment */
 			if (unflushed) {

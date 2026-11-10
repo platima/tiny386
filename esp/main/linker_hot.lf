@@ -17,7 +17,8 @@ archive: libmain.a
 entries:
     esp_main:i386_task (noflash)
     esp_main:get_uticks (noflash)
-    esp_main:disk_errors (noflash)
+    # v5.3: no disk_errors(): the run loop's every step reads the counts
+    # itself, and the line is said from flash
     pc:pc_io_read (noflash)
     pc:pc_step (noflash)
     pc:pc_io_read_string (noflash)

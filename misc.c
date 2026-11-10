@@ -460,7 +460,7 @@ int emulink_floppy_size_ok(long size)
 
 /* How many writes there have been to the floppies, and a call that returns
    when they are on the medium: as ide_write_count() and ide_flush(). */
-static unsigned fdd_writes;
+unsigned fdd_writes; /* v5.3: not static, for esp_main.c's run loop's every step */
 
 unsigned emulink_write_count(void)
 {
@@ -470,7 +470,7 @@ unsigned emulink_write_count(void)
 #ifdef EMULINK_CHECKED
 /* reads, writes and flushes of the floppy images that the card refused,
    as ide_error_count() for the disks */
-static unsigned fdd_errors;
+unsigned fdd_errors; /* v5.3: not static (esp_main.c) */
 
 unsigned emulink_error_count(void)
 {

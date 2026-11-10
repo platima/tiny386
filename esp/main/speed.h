@@ -105,6 +105,13 @@ void speed_set_pace_on(uint32_t quiet);
    and on Ctrl+Alt+F8, written by the emulator's core at the same place */
 #define SPEED_SAVE_PROFILE 8
 unsigned speed_take_saves(void);
+/* v5.3: what speed_take_saves() would take, without the call: a plain
+   load, for the run loop to make every step */
+extern unsigned speed_save_req;
+static inline unsigned speed_saves_asked(void)
+{
+	return __atomic_load_n(&speed_save_req, __ATOMIC_RELAXED);
+}
 /* v5.1: what to do at the next step's end (SPEED_SAVE_*), from any task or
    from core 0's interrupt */
 void speed_ask_save(unsigned what);

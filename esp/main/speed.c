@@ -205,8 +205,9 @@ static int s_db_value;
 static bool s_db_refused;               /* v4.6: asked for, not made */
 static uint32_t s_pace_on = 10000;      /* what F10 turns it on with */
 /* v4.4: settings to be saved in the ini (SPEED_SAVE_*), on the emulator's
-   core */
-static unsigned s_save_req;
+   core; v5.3: not static, so that the run loop's every step can look
+   without a call (speed_saves_asked(), speed.h) */
+unsigned speed_save_req;
 static bool s_shown;            /* core 0 only, as below */
 static const char *s_normal_title = "";
 static uint32_t s_last_title_s, s_last_log_s;
@@ -307,14 +308,14 @@ void speed_forget_requests(void)
 	   Ctrl+Alt+F11 */
 	__atomic_store_n(&s_req, 0, __ATOMIC_RELEASE);
 	__atomic_store_n(&s_blocks_req, 0, __ATOMIC_RELEASE);
-	__atomic_store_n(&s_save_req, 0, __ATOMIC_RELEASE);
+	__atomic_store_n(&speed_save_req, 0, __ATOMIC_RELEASE);
 	__atomic_store_n(&s_pace_req, 0, __ATOMIC_RELEASE);
 	__atomic_store_n(&s_db_req, 0, __ATOMIC_RELEASE);
 }
 
 void speed_ask_save(unsigned what)
 {
-	__atomic_or_fetch(&s_save_req, what, __ATOMIC_RELEASE);
+	__atomic_or_fetch(&speed_save_req, what, __ATOMIC_RELEASE);
 }
 
 void speed_totals(uint64_t *insns, uint64_t *run_us, uint64_t *halt_us)
@@ -327,9 +328,9 @@ void speed_totals(uint64_t *insns, uint64_t *run_us, uint64_t *halt_us)
 unsigned speed_take_saves(void)
 {
 	/* a plain load first: a step pays one load when nothing is asked */
-	if (!__atomic_load_n(&s_save_req, __ATOMIC_RELAXED))
+	if (!__atomic_load_n(&speed_save_req, __ATOMIC_RELAXED))
 		return 0;
-	return __atomic_exchange_n(&s_save_req, 0, __ATOMIC_ACQ_REL);
+	return __atomic_exchange_n(&speed_save_req, 0, __ATOMIC_ACQ_REL);
 }
 
 void speed_set_pace_on(uint32_t quiet)
@@ -598,7 +599,7 @@ void speed_screen_poll(void *opaque, uint32_t pps)
 		blocks_line(true);
 		/* v4.4: saved by the emulator's core (run_pc()), which sees the
 		   new setting: stored before this release */
-		__atomic_or_fetch(&s_save_req, SPEED_SAVE_BLOCKS, __ATOMIC_RELEASE);
+		__atomic_or_fetch(&speed_save_req, SPEED_SAVE_BLOCKS, __ATOMIC_RELEASE);
 	}
 	/* v4.4, Ctrl+Alt+F9: double buffering the other way, at once if both
 	   frame buffers were made, else for the next start */
@@ -616,14 +617,14 @@ void speed_screen_poll(void *opaque, uint32_t pps)
 			s_db_value = !s_db_value;
 		}
 		double_line(true);
-		__atomic_or_fetch(&s_save_req, SPEED_SAVE_DOUBLE, __ATOMIC_RELEASE);
+		__atomic_or_fetch(&speed_save_req, SPEED_SAVE_DOUBLE, __ATOMIC_RELEASE);
 #endif
 	}
 	/* v4.4, Ctrl+Alt+F10: the pacing the other way */
 	if (__atomic_exchange_n(&s_pace_req, 0, __ATOMIC_ACQ_REL)) {
 		__atomic_store_n(&vga_pace_quiet, vga_pace_quiet ? 0 : s_pace_on, __ATOMIC_RELAXED);
 		pace_line(true);
-		__atomic_or_fetch(&s_save_req, SPEED_SAVE_PACE, __ATOMIC_RELEASE);
+		__atomic_or_fetch(&speed_save_req, SPEED_SAVE_PACE, __ATOMIC_RELEASE);
 	}
 	bool want = s_shown;
 	if (req == REQ_TOGGLE)
