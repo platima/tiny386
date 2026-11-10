@@ -117,6 +117,9 @@ if(BOARD IN_LIST TINY386_NO_WIFI_BOARDS)
 endif()
 if(TINY386_WIFI)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE I386_EXEC1_SMALL)
+    # v5.3: lwIP's tcpip task with its stack in PSRAM (wifi.c)
+    target_link_options(${COMPONENT_LIB} INTERFACE
+        -Wl,--wrap=sys_thread_new)
 endif()
 
 # Every panic, abort and watchdog goes through the crash screen first

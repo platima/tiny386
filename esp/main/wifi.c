@@ -123,6 +123,29 @@ static void sta_connected_rx(void *arg, esp_event_base_t event_base,
 			       "be set up (%s): the guest will not receive.",
 			       esp_err_to_name(err));
 }
+
+/* v5.3: lwIP's tcpip task with its stack (3 KiB) in PSRAM rather than
+   internal RAM.  The network build wraps sys_thread_new()
+   (esp/main/CMakeLists.txt), which tcpip_init() calls for it.  The task
+   runs lwIP for the board's own address (ARP, DHCP, the remote
+   keyboard's port); the guest's frames do not pass through it.  Nothing
+   it runs writes flash, so it never runs with the cache off.  Its TCB
+   stays in internal RAM, and without room in PSRAM the task is made as
+   before. */
+sys_thread_t __real_sys_thread_new(const char *name, lwip_thread_fn thread,
+				   void *arg, int stacksize, int prio);
+sys_thread_t __wrap_sys_thread_new(const char *name, lwip_thread_fn thread,
+				   void *arg, int stacksize, int prio)
+{
+	TaskHandle_t t;
+
+	if (strcmp(name, TCPIP_THREAD_NAME) == 0 &&
+	    xTaskCreatePinnedToCoreWithCaps(thread, name, stacksize, arg, prio, &t,
+					    CONFIG_LWIP_TCPIP_TASK_AFFINITY,
+					    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) == pdPASS)
+		return t;
+	return __real_sys_thread_new(name, thread, arg, stacksize, prio);
+}
 #endif
 
 static void event_handler(void* arg, esp_event_base_t event_base,
