@@ -92,19 +92,25 @@ If this saved you some time, or you just like seeing Windows 95 on odd hardware,
 
 ## Acknowledgements 🙏
 
-- [tiny386](https://github.com/hchunhui/tiny386) by hchunhui - the emulator itself, and the reason a 386 PC fits on an ESP32 at all.
-- [Espressif's ESP-IDF](https://github.com/espressif/esp-idf) - the framework it all runs on.
+- [tiny386](https://github.com/hchunhui/tiny386) by hchunhui (Chunhui He) - the emulator itself, and the reason a 386 PC fits on an ESP32 at all. Its contributors' work comes with it, among them Yejun Yang, UKTailwind, cmeyer and CopperBucket, and so do the device models from QEMU and TinyEMU by Fabrice Bellard, Vassili Karpov and Joachim Henke.
+- [tab5-pc](https://github.com/yejun/tab5-pc) by Yejun Yang - the fast interpreter in front of tiny386's own (v5.0, `i386_fast.h`, `s31/FAST-CPU.md`). Also his tiny386 PR #70, the IDE write gathering in v5.2, and his PR #49, which the page-crossing accesses follow.
+- [esp32-s31-linux](https://github.com/annoyedmilk/esp32-s31-linux) by Marco Müller (annoyedmilk) - the Linux the dual boot keeps, the Korvo-1's panel timings and pins, and the bootloader configuration and partition table the dual boot is built from.
+- [Espressif's ESP-IDF](https://github.com/espressif/esp-idf) - the framework it all runs on, with its USB host and HID class components.
+- [esp_mem_benchmark](https://github.com/huming2207/esp_mem_benchmark) by Jackson Hu (huming2207) - the ESP32-S31 memory figures and the method membench follows (no code copied).
 - [SeaBIOS](https://www.seabios.org/) - the BIOS and VGA BIOS the PC boots from.
+- [inih](https://github.com/benhoyt/inih) by Ben Hoyt - the ini file parser.
+- `fmopl.c` by Tatsuyuki Satoh and MAME's developers - the AdLib's synthesiser, as tiny386 and QEMU carry it.
 - [VMDisp9x](https://github.com/JHRobotics/vmdisp9x) by JHRobotics - the display driver that gets Windows 95 to 800x480.
-- [tab5-pc](https://github.com/yejun/tab5-pc) by Yejun Yang - the fast interpreter in front of tiny386's own (v5.0, `i386_fast.h`, `s31/FAST-CPU.md`).
-- [annoyedmilk's esp32-s31-linux](https://github.com/annoyedmilk/esp32-s31-linux) - the Linux the dual boot keeps.
+- Everyone else whose code, figures or tools this used, with every licence and notice: [`s31/THIRD_PARTY.md`](THIRD_PARTY.md).
 
 ## Licence 📄
 
 - tiny386 is under the BSD 3-clause licence - see [LICENSE](../LICENSE) at the top of the tree. My changes to it are offered under the same licence, so they can go back upstream, and so are the notes and scripts in `s31/`.
 - `i386_fast.h` (v5.0) is Yejun Yang's fast interpreter from tab5-pc, under the MIT licence (Copyright (c) 2026 Yejun Yang), with its parts built on tiny386 under tiny386's BSD 3-clause; both notices and the MIT text are in the file, and the changes made to it here are under the same terms. [`s31/THIRD_PARTY.md`](THIRD_PARTY.md) has the notice and what was changed.
-- The VGA BIOS in the releases is SeaBIOS's, under the GNU LGPL version 3, and its source goes with it.
+- `fmopl.c`, the AdLib's synthesiser, is under the GNU LGPL 2.1 or later. The images link it, so a package carries the LGPL text and says where the source is.
+- The BIOS and VGA BIOS in the releases are SeaBIOS's, under the GNU LGPL version 3, and their source goes with them.
 - Windows 95 and its display driver aren't part of this branch or its releases - bring your own. `TEST-PLAN.md` says where to get the driver.
+- Every other notice, and what a package carries beside the images: [`s31/THIRD_PARTY.md`](THIRD_PARTY.md).
 
 ## Author 👨‍💻
 
