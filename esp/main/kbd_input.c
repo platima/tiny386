@@ -482,12 +482,35 @@ static void wake_repeat(void)
 		xTaskNotifyGive(s_repeat_task);
 }
 
+#include "sdkconfig.h"
+#if CONFIG_IDF_TARGET_ESP32S31 && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
+#include "freertos/idf_additions.h"
+#include "esp_heap_caps.h"
+#define REPEAT_STACK_PSRAM 1
+#endif
+
+/* v5.3: the task's 2 KiB stack in PSRAM on the S31 boards, not internal
+   RAM.  It only hands key codes to the emulated keyboard, and never
+   writes or erases flash, which is what turns the cache off while a task
+   runs; so its stack is never in use with the cache off.  Internal RAM
+   if PSRAM has no room. */
+static bool repeat_task_start(void)
+{
+#ifdef REPEAT_STACK_PSRAM
+	if (xTaskCreatePinnedToCoreWithCaps(repeat_task, "kbd_repeat", 2048, NULL, 4,
+					    &s_repeat_task, 0,
+					    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) == pdPASS)
+		return true;
+#endif
+	return xTaskCreatePinnedToCore(repeat_task, "kbd_repeat", 2048, NULL, 4,
+				       &s_repeat_task, 0) == pdPASS;
+}
+
 void kbd_input_start(void)
 {
 	if (s_repeat_task)
 		return;
-	if (xTaskCreatePinnedToCore(repeat_task, "kbd_repeat", 2048, NULL, 4,
-				    &s_repeat_task, 0) != pdPASS)
+	if (!repeat_task_start())
 		console_fatal("The task kbd_repeat could not be started (no memory).");
 	kbd_input_set_wake(wake_repeat);
 }

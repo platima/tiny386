@@ -243,6 +243,28 @@ static void led_task(void *arg)
 
 /* ==== start-up ==== */
 
+#if CONFIG_IDF_TARGET_ESP32S31 && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
+#include "freertos/idf_additions.h"
+#include "esp_heap_caps.h"
+#define LED_STACK_PSRAM 1
+#endif
+
+/* 4096 bytes, as the project's other tasks: this one calls
+   console_printf() (vsnprintf) and the RMT driver.  v5.3: in PSRAM on the
+   S31 boards, 4 KiB of internal RAM back.  The task never writes or
+   erases flash, which is what turns the cache off while a task runs, so
+   its stack is never in use with the cache off; the panic path uses none
+   of it.  Internal RAM if PSRAM has no room. */
+static bool led_task_start(void)
+{
+#ifdef LED_STACK_PSRAM
+	if (xTaskCreatePinnedToCoreWithCaps(led_task, "status_led", 4096, NULL, 1, NULL, 0,
+					    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) == pdPASS)
+		return true;
+#endif
+	return xTaskCreatePinnedToCore(led_task, "status_led", 4096, NULL, 1, NULL, 0) == pdPASS;
+}
+
 static int cause_of(esp_reset_reason_t r)
 {
 	switch (r) {
@@ -290,9 +312,7 @@ void status_led_init(void)
 	if (s_rmt_err != ESP_OK)
 		return;         /* said on the console by status_led_report() */
 	send_rgb(status_pattern(&s_state, 0));
-	/* 4096 bytes, as the project's other tasks: this one calls
-	   console_uart_printf() (newlib's vsnprintf) and the RMT driver */
-	if (xTaskCreatePinnedToCore(led_task, "status_led", 4096, NULL, 1, NULL, 0) != pdPASS) {
+	if (!led_task_start()) {
 		/* no task to change it: dark, as status_led_report() says, not
 		   the first colour for good */
 		send_rgb(0);
