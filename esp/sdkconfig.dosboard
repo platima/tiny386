@@ -99,7 +99,13 @@ CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH=y
 
 # v5.3: the esp_timer task's stack at Kconfig's least, 2048 bytes rather
 # than 3584, which gives 1.5 KiB of internal RAM back.  It runs the
-# callbacks of esp_timer and ets_timer timers, and in this build the only
-# such timer is the coexistence code's (made at start-up), which only the
-# radio arms; tiny386 makes none, and there is no Wi-Fi.
+# callbacks of esp_timer and ets_timer timers, and this build has none:
+# tiny386 makes none, there is no Wi-Fi, and the coexistence code's, made
+# at start-up and armed only by a radio, is gone with 802.15.4 (below).
 CONFIG_ESP_TIMER_TASK_STACK_SIZE=2048
+
+# v5.3: no IEEE 802.15.4 (ESP-IDF turns it on for this chip by default),
+# and with it no software coexistence (ESP_COEX_SW_COEXIST_ENABLE), which
+# was set up at every start although nothing in this firmware uses
+# 802.15.4, Bluetooth or Wi-Fi.
+# CONFIG_IEEE802154_ENABLED is not set
