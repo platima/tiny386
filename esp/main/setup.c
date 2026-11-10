@@ -15,11 +15,20 @@
 #include "setup.h"
 
 #ifdef ESP_PLATFORM
-/* the ini's two copies in PSRAM, not internal RAM */
+/* the ini's two copies in PSRAM, not internal RAM.  v5.3: aligned as
+   ESP-IDF's FatFs takes its own sector buffers, so that the whole sectors
+   of a read or a write go between the card and PSRAM by DMA.  At the
+   heap's 4-byte alignment the SD driver copied them through a buffer of
+   internal RAM that it took for each (2.5 KiB for a 2.5 KiB ini). */
 #include "esp_heap_caps.h"
+#ifdef MALLOC_CAP_CACHE_ALIGNED
+#define SETUP_CAPS (MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_CACHE_ALIGNED)
+#else
+#define SETUP_CAPS MALLOC_CAP_SPIRAM
+#endif
 static void *setup_malloc(size_t n)
 {
-	void *p = heap_caps_malloc(n, MALLOC_CAP_SPIRAM);
+	void *p = heap_caps_malloc(n, SETUP_CAPS);
 	return p ? p : malloc(n);
 }
 #else
