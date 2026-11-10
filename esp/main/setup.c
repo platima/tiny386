@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "ini_edit.h"
@@ -19,7 +20,10 @@
    ESP-IDF's FatFs takes its own sector buffers, so that the whole sectors
    of a read or a write go between the card and PSRAM by DMA.  At the
    heap's 4-byte alignment the SD driver copied them through a buffer of
-   internal RAM that it took for each (2.5 KiB for a 2.5 KiB ini). */
+   internal RAM that it took for each (2.5 KiB for a 2.5 KiB ini).  And
+   PSRAM only: without room there the save fails and says so, rather
+   than take what the emulator needs of internal RAM (malloc() gives
+   internal RAM alone on these boards, CONFIG_SPIRAM_USE_CAPS_ALLOC). */
 #include "esp_heap_caps.h"
 #ifdef MALLOC_CAP_CACHE_ALIGNED
 #define SETUP_CAPS (MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_CACHE_ALIGNED)
@@ -28,8 +32,7 @@
 #endif
 static void *setup_malloc(size_t n)
 {
-	void *p = heap_caps_malloc(n, SETUP_CAPS);
-	return p ? p : malloc(n);
+	return heap_caps_malloc(n, SETUP_CAPS);
 }
 #else
 #define setup_malloc malloc
@@ -243,8 +246,10 @@ static bool exists(const char *path)
 	return true;
 }
 
-/* the whole file into a new buffer of at least max + 1 bytes; its length in
-   *len.  NULL (why set) if it cannot be read or is larger than max. */
+/* the whole file into a new buffer of at least its length + 1 bytes; its
+   length in *len.  NULL (why set) if it cannot be read or is larger than
+   max.  v5.3: the buffer is as big as fstat() says the file is, not max +
+   1 (32 KiB for an ini, whatever its size). */
 static char *read_whole(const char *path, size_t max, size_t *len, char *why, size_t whylen)
 {
 	FILE *f = fopen(path, "rb");
@@ -252,23 +257,32 @@ static char *read_whole(const char *path, size_t max, size_t *len, char *why, si
 		snprintf(why, whylen, "%s cannot be opened (%s)", path, strerror(errno));
 		return NULL;
 	}
-	char *buf = setup_malloc(max + 1);
-	if (!buf) {
+	struct stat st;
+	if (fstat(fileno(f), &st) != 0 || st.st_size < 0) {
 		fclose(f);
-		snprintf(why, whylen, "no memory for %u bytes", (unsigned) max);
-		return NULL;
-	}
-	size_t n = fread(buf, 1, max + 1, f);
-	bool err = ferror(f);
-	fclose(f);
-	if (err) {
-		free(buf);
 		snprintf(why, whylen, "%s could not be read", path);
 		return NULL;
 	}
-	if (n > max) {
-		free(buf);
+	if ((unsigned long long) st.st_size > max) {
+		fclose(f);
 		snprintf(why, whylen, "%s is larger than %u bytes", path, (unsigned) max);
+		return NULL;
+	}
+	size_t size = (size_t) st.st_size;
+	char *buf = setup_malloc(size + 1);
+	if (!buf) {
+		fclose(f);
+		snprintf(why, whylen, "no memory for %u bytes", (unsigned) size);
+		return NULL;
+	}
+	/* a byte more than it has: a file that grew meanwhile is not taken
+	   cut short */
+	size_t n = fread(buf, 1, size + 1, f);
+	bool err = ferror(f);
+	fclose(f);
+	if (err || n != size) {
+		free(buf);
+		snprintf(why, whylen, "%s could not be read", path);
 		return NULL;
 	}
 	*len = n;
