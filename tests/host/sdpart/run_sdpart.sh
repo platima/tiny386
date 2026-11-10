@@ -25,7 +25,10 @@
 #    the same operations with sd_part.c at 3e386ff (v5.2's, which copies
 #    every transfer through 16 sectors of internal RAM), when this tree
 #    has that commit: the guest must see the same, and the card end the
-#    same, every byte.
+#    same, every byte.  The test holds the card against its own copy of p3
+#    as well, so a write that changes a sector it was not given is seen
+#    without v5.2's sd_part.c; then faults planted in copies of sd_part.c,
+#    which it has to see.
 #
 #   bash tests/host/sdpart/run_sdpart.sh [OUT]
 #
@@ -249,6 +252,8 @@ planted unasked "every buffer straight to the card, the driver's check not asked
     's/if (storage_card_dma_ok(buf, (size_t) n \* 512)) {/if (1) {/'
 planted stride "a read through the internal buffer copied to the start of the guest's each time" \
     's/memcpy(b, s_buf, k \* 512);/memcpy(buf, s_buf, k * 512);/'
+planted wide "a direct write of 3 sectors that writes a 4th as well" \
+    's/ret = rw_twice(p, sector, buf, n, write, retried)/ret = rw_twice(p, sector, buf, write \&\& n == 3 ? 4 : n, write, retried)/'
 rm -f "$OUT"/card-dma-*.img
 
 echo "== Plat's card as it is: p1 FAT32, p2 ext4, p3 FAT32 WIN9X at 532480"

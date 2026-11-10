@@ -31,10 +31,11 @@
  *    sectors) and the gathering (128) fill, are used up and fill again, and
  *    write commands left part way (written at the next command); then the
  *    same with the check refusing ide.c's buffer.
- * Every read is held against the card image (or the record made for LBA 0,
- * or zeros), every write read back from it, and every buffer the card's
- * reads and writes were handed against the check: not one went to the SD
- * driver for it to copy.  Exit status 0 when every check passes.
+ * Every read is held against the test's own copy of p3 (or the record made
+ * for LBA 0, or zeros), every write read back from the card, the whole of
+ * p3 on the card against that copy after each part, and every buffer the
+ * card's reads and writes were handed against the check: not one went to
+ * the SD driver for it to copy.  Exit status 0 when every check passes.
  */
 #define _GNU_SOURCE
 #include <fcntl.h>
@@ -157,13 +158,47 @@ static void card_get(uint64_t s, uint8_t *out, unsigned n)
 		memset(out, 0xEE, (size_t) n * 512);
 }
 
+/* p3 as it should be: as it was at the start, with each write the test
+   expects to have gone to the card put in.  What reads are held against,
+   and what the whole of p3 on the card is held against after each part, so
+   that a write that also changes a sector it was not given is seen here,
+   and not only against v5.2's sd_part.c */
+static uint8_t *s_shadow;
+
+static void shadow_put(uint64_t lba, const uint8_t *b, unsigned n)
+{
+	for (unsigned k = 0; k < n; k++)
+		if (lba + k >= s_p3 && lba + k < s_pe)
+			memcpy(s_shadow + (size_t) (lba + k - s_p3) * 512, b + (size_t) k * 512, 512);
+}
+
+/* every sector of p3 on the card against the shadow */
+static void shadow_check(const char *what)
+{
+	enum { CHUNK = 2048 };
+	uint8_t *got = malloc((size_t) CHUNK * 512);
+	unsigned bad = 0;
+	uint64_t first = 0;
+	for (uint64_t s = s_p3; s < s_pe; s += CHUNK) {
+		unsigned n = s_pe - s < CHUNK ? (unsigned) (s_pe - s) : CHUNK;
+		card_get(s, got, n);
+		for (unsigned k = 0; k < n; k++)
+			if (memcmp(got + (size_t) k * 512, s_shadow + (size_t) (s + k - s_p3) * 512, 512) &&
+			    !bad++)
+				first = s + k;
+	}
+	CHECK(!bad, "%s: p3 on the card as the test's own copy, every sector (%u differ, the "
+	      "first at %llu)", what, bad, (unsigned long long) first);
+	free(got);
+}
+
 /* what the guest reads at LBA s */
 static void expect_sector(uint64_t s, uint8_t *out)
 {
 	if (s == 0)
 		memcpy(out, s_mbr, 512);
 	else if (s >= s_p3 && s < s_pe)
-		card_get(s, out, 1);
+		memcpy(out, s_shadow + (size_t) (s - s_p3) * 512, 512);
 	else
 		memset(out, 0, 512);
 }
@@ -319,6 +354,8 @@ static void part1(struct sd_part *sp, int ops)
 				CHECK(ret == 0 && !memcmp(after, b, (size_t) n * 512), "op %d: write %u "
 				      "at %llu (%s): %d, %s on the card", i, n, (unsigned long long) lba,
 				      kinds[kind], ret, memcmp(after, b, (size_t) n * 512) ? "not" : "all");
+			if (ret == 0)
+				shadow_put(lba, b, n);
 		}
 		if (ret == SD_PART_REFUSED)
 			refused++;
@@ -347,6 +384,7 @@ static void part1(struct sd_part *sp, int ops)
 	printf("%d operations: %u on the card, %u refused, %u got over a refusing card, "
 	       "%u failed on one\n", ops, cards, refused, retries, failed);
 	CHECK(host_card.dma_copied == copied0, "no buffer handed to the driver to copy");
+	shadow_check("part 1");
 	host_card.ndma_refused = 0;
 	heap_caps_free(a);
 	heap_caps_free(c);
@@ -470,6 +508,7 @@ static void part2(IDEIFState *ifs, IDEState *d, int ops, const char *what)
 			      "%s %d: WRITE %02x of %u at %llu left after %u: those on the card "
 			      "at the next command, the rest as it was", what, i, cmd, total,
 			      (unsigned long long) lba, done);
+			shadow_put(lba, buf, done);
 			left++;
 			continue;
 		}
@@ -479,6 +518,8 @@ static void part2(IDEIFState *ifs, IDEState *d, int ops, const char *what)
 			      "%s %d: WRITE %02x of %u at %llu: status %02x, %u moved, %s on the card",
 			      what, i, cmd, total, (unsigned long long) lba, st, done,
 			      memcmp(after, buf, (size_t) total * 512) ? "not all" : "all");
+			if (!(st & 0x01))
+				shadow_put(lba, buf, done);
 		} else {
 			/* across p3's ends: an error, and each sector of p3 either
 			   written or as it was */
@@ -488,7 +529,9 @@ static void part2(IDEIFState *ifs, IDEState *d, int ops, const char *what)
 				if (x < s_p3 || x >= s_pe)
 					continue;
 				const uint8_t *o = after + (size_t) s * 512;
-				if (memcmp(o, buf + (size_t) s * 512, 512) && memcmp(o, before + (size_t) s * 512, 512))
+				if (!memcmp(o, buf + (size_t) s * 512, 512))
+					shadow_put(x, o, 1);
+				else if (memcmp(o, before + (size_t) s * 512, 512))
 					odd++;
 			}
 			CHECK((st & 0x01) && !odd, "%s %d: WRITE %02x of %u at %llu, across p3's end: "
@@ -501,6 +544,7 @@ static void part2(IDEIFState *ifs, IDEState *d, int ops, const char *what)
 	       "%u errors, %u left part way); %u card reads and %u card writes\n", what, ops,
 	       n_cmd[0], n_sec[0], n_err[0], n_cmd[1], n_sec[1], n_err[1], left, cr, cw);
 	CHECK(host_card.dma_copied == c0, "%s: no buffer handed to the driver to copy", what);
+	shadow_check(what);
 	(void) d;
 	free(buf);
 	free(before);
@@ -550,6 +594,12 @@ int main(int argc, char **argv)
 	uint8_t card0[512];
 	card_get(0, card0, 1);
 	sd_part_make_mbr(sd_part_get_plan(sp), card0, s_mbr);
+	s_shadow = malloc((size_t) (s_pe - s_p3) * 512);
+	if (!s_shadow)
+		return 2;
+	for (uint64_t s = s_p3; s < s_pe; s += 2048)
+		card_get(s, s_shadow + (size_t) (s - s_p3) * 512,
+			 s_pe - s < 2048 ? (unsigned) (s_pe - s) : 2048);
 	printf("sd:3: p3 at %llu, %llu sectors; the guest's disk %llu sectors; COPY %u, MORE "
 	       "%u, DMA %d\n", (unsigned long long) s_p3, (unsigned long long) (s_pe - s_p3),
 	       (unsigned long long) s_ds, s_copy, s_more, s_dma);
@@ -576,6 +626,7 @@ int main(int argc, char **argv)
 	ide_flush();
 
 	printf("== what the guest saw, and the card\n");
+	shadow_check("at the end");
 	CHECK(host_card.outside == 0, "nothing written on the card outside p3 (%u sectors, the "
 	      "first %zu)", host_card.outside, host_card.first_outside);
 	CHECK(host_card.dma_copied == 0, "every buffer the card's reads and writes were handed, "
