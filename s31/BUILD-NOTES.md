@@ -8007,3 +8007,46 @@ that GCC wrapped harmlessly (fb7542f: it starts at -0x40000000), and `QW_GRPTAB`
 compiling (fb7542f: an `#error`).
 
 On 545aa1d: the lockstep gate (`IGNORE=dk`) 14 of 14 against v4.6 with upstream's three lines and 10 of 14 against plain v4.6 (the same four); b1, `restart` and `msdos` as before; host tests 129 passed, 0 failed; RV32 BENCH 51.40; Korvo-1 DIRAM left 110,457, the DOS board 112,621. 4d5aded adds the review's mode y and four planted faults to section 24 (`tests/host/cpu/gen_y.inc`: 1,280 scenarios a build instead of 1,240, 0 failed; `decjins`, `stk16`, `nofoldss` and `nofoldsti` each caught); host tests on it 133 passed, 0 failed, none skipped. The package (`v52-test3`, built again from 4d5aded) has the same `tiny386.bin` as 545aa1d's gated build, byte for byte.
+
+### 35.10 A network build of the Korvo-1 (2026-11-10)
+
+Branch `v52-net` from 0eadb1a, not pushed. Plat wanted Windows 95 to ping through a phone hotspot. The Korvo-1
+had always been built without Wi-Fi to keep internal RAM, so first the cost, then a build of its own:
+`idf.py -DTINY386_WIFI=1` (`TINY386_NET=1` for `build.sh`), version `v5.2-net`. `s31/NET.md` has the design
+and the full table; in short:
+
+| Korvo-1 dual boot | DIRAM left |
+|-|-|
+| v52-test3 | 110,457 |
+| `wifi.c` in, ESP-IDF's Wi-Fi defaults | 61,657 |
+| and PSRAM first, IRAM paths off, no NVS, station only, fewer buffers | 77,803 |
+| and the `.bss` of lwIP, net80211 and pp in PSRAM | 95,427 |
+| and `I386_EXEC1_SMALL` and no `linker_hot.lf`: the network build | 139,855 |
+
+The board's least free on v52-test3 was 73 KiB (Plat's photo, `fast_cpu = 0`, `profile = 1`). With Wi-Fi alone
+at 95,427 that would be about 58 KiB before Wi-Fi even starts, under the 64 KiB rule. With both savers about
+102 KiB not started, and about 72 to 82 KiB with a station running if it takes the 20 to 30 KB estimated
+[inferred]. The cost of the savers: `fast_cpu = 0` about 6 per cent more host instructions, and the hot
+code's estimated 2 to 4 per cent for both interpreters; never measured on the board.
+
+Checks on 7459a5f:
+
+* The ordinary builds, `korvo1`, `korvo1-standalone` and `dosboard`, on the branch and on 0eadb1a: each
+  `tiny386.bin` and `tiny386.elf` the same, and each `tiny386.bin` the same as v52-test3's.
+* `test_fast_cpu` with `I386_EXEC1_SMALL`, the host's gcc and the board's compiler under qemu-riscv32:
+  1,280 scenarios each, 0 failed (`cpu_exec1()` 97,668 bytes at `-Os` in the RV32 object). The lockstep gate
+  was not run again for it; the v5.1 board review ran it with `I386_EXEC1_SMALL` and found no difference.
+* Host tests (`tests/host/run.sh` in a worktree of 7459a5f, with the board's compilers and qemu): 133 passed,
+  0 failed, none skipped, 2,197 s. They build no ESP-IDF code, so they say only that nothing else moved.
+* The network build: no warning but `i2s.c`'s old one; `nvs_flash_init()` not linked (NVS cannot be opened
+  without it, so nothing of Wi-Fi's reaches the flash); `sta_rx()` and `wlanif_l2_input_hook()` linked.
+* The package, `tiny386-idf\v52-net1`: `TINY386_NET=1 bash build.sh` from upstream's a080c5d and the patch of
+  7459a5f. Its `tiny386.bin` (1,640,832 bytes, SHA-256 b085d0677d162312...) is the branch's own build of
+  7459a5f byte for byte, and of 732b1bb (a comment in `wifi.c`, on the same lines) too.
+
+PSRAM: Wi-Fi's buffers come from the 256 KiB the emulator's pool leaves (the pool is taken before Wi-Fi
+starts), and the 17.6 KB of `.bss` moved there makes the pool that much smaller; with `vga_mem_size = 768K`
+`mem_size = max` should still give 13M on Plat's board. Plat's photo had 329 KiB of PSRAM free with
+`profile = 1` (its tables 178 KiB).
+
+Not done here: anything on a board. What only the board can say is in `NET.md` 5.

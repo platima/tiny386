@@ -29,6 +29,26 @@ if(DEFINED PARTITION_CSV AND EXISTS "${BOARD_SDKCONFIG}")
         "${CMAKE_BINARY_DIR}/sdkconfig.${BOARD}.table" ONLY_IF_DIFFERENT)
     set(BOARD_SDKCONFIG "${CMAKE_BINARY_DIR}/sdkconfig.${BOARD}.table")
 endif()
+# v5.2 net: -DTINY386_WIFI=1 (the Korvo-1 only): the board's sdkconfig with
+# sdkconfig.${BOARD}-wifi after it, for the network build, whose version
+# reads v5.2-net (main/CMakeLists.txt has the rest).  Without it, nothing
+# here changes.
+if(TINY386_WIFI)
+    set(_tiny386_wifi_cfg "${CMAKE_CURRENT_SOURCE_DIR}/sdkconfig.${BOARD}-wifi")
+    if(NOT EXISTS "${_tiny386_wifi_cfg}" OR NOT EXISTS "${BOARD_SDKCONFIG}")
+        message(FATAL_ERROR "TINY386_WIFI: there is no sdkconfig.${BOARD}-wifi; "
+            "the network build is for BOARD=korvo1")
+    endif()
+    file(READ "${BOARD_SDKCONFIG}" _tiny386_cfg)
+    file(READ "${_tiny386_wifi_cfg}" _tiny386_wifi)
+    file(WRITE "${CMAKE_BINARY_DIR}/sdkconfig.${BOARD}.wifi.tmp" "${_tiny386_cfg}\n${_tiny386_wifi}")
+    file(COPY_FILE "${CMAKE_BINARY_DIR}/sdkconfig.${BOARD}.wifi.tmp"
+        "${CMAKE_BINARY_DIR}/sdkconfig.${BOARD}.wifi" ONLY_IF_DIFFERENT)
+    set(BOARD_SDKCONFIG "${CMAKE_BINARY_DIR}/sdkconfig.${BOARD}.wifi")
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/version.txt" _tiny386_ver)
+    string(STRIP "${_tiny386_ver}" _tiny386_ver)
+    set(PROJECT_VER "${_tiny386_ver}-net")
+endif()
 if(EXISTS "${BOARD_SDKCONFIG}")
     file(COPY_FILE "${BOARD_SDKCONFIG}" "${CMAKE_CURRENT_SOURCE_DIR}/sdkconfig" ONLY_IF_DIFFERENT)
 endif()

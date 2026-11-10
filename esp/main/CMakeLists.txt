@@ -9,6 +9,22 @@ endif()
 set(TINY386_CONSOLE_BOARDS korvo1 dosboard)
 set(TINY386_NO_WIFI_BOARDS korvo1 dosboard)
 
+# v5.2 net: idf.py -DTINY386_WIFI=1, the Korvo-1's network build: wifi.c in
+# (started only by [esp] ssid), sdkconfig.korvo1-wifi after the board's own
+# (esp/CMakeLists.txt), which puts most of Wi-Fi's memory in PSRAM, and two
+# of the board's RAM savers to make room for what is left: cpu_exec1()
+# compiled for size (I386_EXEC1_SMALL, board_korvo1.h) and linker_hot.lf
+# left out.  Even trimmed, Wi-Fi takes about 15 KB of internal RAM when it
+# never starts, and more once it has (s31/NET.md).  Without TINY386_WIFI the
+# Korvo-1's build is as before.
+if(TINY386_WIFI)
+    if(NOT BOARD STREQUAL "korvo1")
+        message(FATAL_ERROR "TINY386_WIFI: the network build is for BOARD=korvo1")
+    endif()
+    list(REMOVE_ITEM TINY386_NO_WIFI_BOARDS korvo1)
+    set(NO_HOT_IRAM 1)
+endif()
+
 set(srcs "esp_main.c"
 "../../adlib.c"
 "../../fmopl.c"
@@ -98,6 +114,9 @@ target_compile_options(${COMPONENT_LIB} PRIVATE "-ffile-prefix-map=${TINY386_ROO
 
 if(BOARD IN_LIST TINY386_NO_WIFI_BOARDS)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE NO_WIFI)
+endif()
+if(TINY386_WIFI)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE I386_EXEC1_SMALL)
 endif()
 
 # Every panic, abort and watchdog goes through the crash screen first

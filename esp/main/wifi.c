@@ -17,6 +17,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
+#include "sdkconfig.h"
 
 #include "lwip/err.h"
 #include "lwip/sys.h"
@@ -24,6 +25,27 @@
 
 #include "common.h"
 #include "../../i8042.h"
+
+/* v5.2 net: the ESP32-S31 boards (the Korvo-1's network build, the only
+   S31 one with Wi-Fi).  They build with ESP-IDF as it is, without
+   esp-idf-6.0.patch, so wlanif.c never calls wlanif_l2_input_hook(): the
+   station's frames come here first instead (sta_rx()).  They also write
+   nothing to flash (the Korvo-1's dual-boot table has Linux's nvs and
+   phy_init partitions: sdkconfig.korvo1-wifi turns Wi-Fi's NVS and the PHY's
+   stored calibration off), wait for the access point a few seconds at most,
+   and say on the boot console how it went.  The other boards are as
+   before. */
+#if CONFIG_IDF_TARGET_ESP32S31
+#define WIFI_S31 1
+#include "freertos/idf_additions.h"
+#include "esp_heap_caps.h"
+#include "esp_netif.h"
+#include "console.h"
+/* how long the boot waits for an address before the PC is built */
+#define WIFI_WAIT_MS 10000
+#else
+#define WIFI_S31 0
+#endif
 
 /* The examples use simple WiFi configuration that you can set via
    'make menuconfig'.
@@ -42,7 +64,13 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA_WPA2_PSK
+#if WIFI_S31
+/* hunting and pecking, and hash to element: an access point that takes
+   only one of them (a WPA3 phone hotspot may want H2E) */
+#define ESP_WIFI_SAE_MODE WPA3_SAE_PWE_BOTH
+#else
 #define ESP_WIFI_SAE_MODE WPA3_SAE_PWE_HUNT_AND_PECK
+#endif
 #define EXAMPLE_H2E_IDENTIFIER ""
 
 static const char *TAG = "simple wifi";
@@ -57,17 +85,84 @@ static void send_packet(uint8_t *buf, int size)
 	esp_wifi_internal_tx(ESP_IF_WIFI_STA, buf, size);
 }
 
+#if WIFI_S31
+static esp_netif_t *s_sta_netif;
+static char s_ssid[33];
+/* the station is associated, and has lost the access point since (each
+   said once on the console, not at every retry) */
+static bool s_associated, s_lost;
+
+/* ne2000.c: the guest's share of a frame (ARP and DHCP to both, other IPv4
+   to the guest, TCP to port 9999 to the firmware); nonzero when the
+   firmware's stack is not to see it */
+int wlanif_l2_input_hook(uint8_t *buf, int size);
+
+/* The station's receive callback, in the Wi-Fi task: the guest's frames to
+   the NE2000, the rest to lwIP through esp_netif_receive(), which is what
+   ESP-IDF registers here itself (wifi_netif.c's wifi_sta_receive()).  The
+   NE2000 copies what it takes, so the driver's buffer is freed at once. */
+static esp_err_t sta_rx(void *buffer, uint16_t len, void *eb)
+{
+	if (buffer && wlanif_l2_input_hook(buffer, len)) {
+		esp_wifi_internal_free_rx_buffer(eb);
+		return ESP_OK;
+	}
+	return esp_netif_receive(s_sta_netif, buffer, len, eb);
+}
+
+/* Registered for WIFI_EVENT_STA_CONNECTED after esp_netif's default
+   handlers, so it runs after the one that registers wifi_sta_receive() at
+   each connection (handlers for one event run in the order registered),
+   and replaces it with sta_rx(). */
+static void sta_connected_rx(void *arg, esp_event_base_t event_base,
+			     int32_t event_id, void *event_data)
+{
+	esp_err_t err = esp_wifi_internal_reg_rxcb(WIFI_IF_STA, sta_rx);
+	if (err != ESP_OK)
+		console_printf(CON_ERROR, "Wi-Fi: the guest's receive path could not "
+			       "be set up (%s): the guest will not receive.",
+			       esp_err_to_name(err));
+}
+#endif
+
 static void event_handler(void* arg, esp_event_base_t event_base,
 			  int32_t event_id, void* event_data)
 {
 	if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
 		esp_wifi_connect();
 	} else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+#if WIFI_S31
+		wifi_event_sta_disconnected_t *d = event_data;
+		if (s_associated && !s_lost) {
+			console_printf(CON_WARN, "Wi-Fi: lost \"%s\" (reason %d); trying "
+				       "again.", s_ssid, d ? d->reason : -1);
+			s_lost = true;
+		}
+		s_associated = false;
+#endif
 		esp_wifi_connect();
 		ESP_LOGI(TAG, "retry to connect to the AP");
 	} else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
 		ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
 		ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
+#if WIFI_S31
+		/* with the least internal RAM free so far, which by now has
+		   Wi-Fi's start and the joining in it */
+		unsigned least = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024;
+		if (s_lost) {
+			console_printf(CON_GOOD, "Wi-Fi: back on \"%s\", address " IPSTR
+				       ", gateway " IPSTR ". Internal RAM least free since "
+				       "start %u KiB.", s_ssid, IP2STR(&event->ip_info.ip),
+				       IP2STR(&event->ip_info.gw), least);
+			s_lost = false;
+		} else {
+			console_printf(CON_GOOD, "Wi-Fi: address " IPSTR ", netmask " IPSTR
+				       ", gateway " IPSTR " (from the access point's DHCP). "
+				       "Internal RAM least free since start %u KiB.",
+				       IP2STR(&event->ip_info.ip), IP2STR(&event->ip_info.netmask),
+				       IP2STR(&event->ip_info.gw), least);
+		}
+#endif
 		xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
 	}
 
@@ -75,6 +170,9 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 		atomic_store_explicit(&esp32_send_packet, NULL,
 				      memory_order_relaxed);
 	} else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {
+#if WIFI_S31
+		s_associated = true;
+#endif
 		atomic_store_explicit(&esp32_send_packet, send_packet,
 				      memory_order_relaxed);
 	}
@@ -84,11 +182,29 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 #include "esp_hosted.h"
 #endif
 
-void wifi_init_sta(const char *ssid, const char *pass)
+/* On the S31 boards a step that fails is said on the console, and the PC
+   then starts without a network; elsewhere it stops the firmware, as
+   before. */
+#if WIFI_S31
+#define WIFI_TRY(x) do {						\
+		esp_err_t err_ = (x);					\
+		if (err_ != ESP_OK) {					\
+			console_printf(CON_ERROR, "Wi-Fi could not start: %s "	\
+				       "gave %s. The PC starts without a "	\
+				       "network.", #x, esp_err_to_name(err_)); \
+			return false;					\
+		}							\
+	} while (0)
+#else
+#define WIFI_TRY(x) ESP_ERROR_CHECK(x)
+#endif
+
+/* true: Wi-Fi is started (connected or still trying) */
+bool wifi_init_sta(const char *ssid, const char *pass)
 {
 	s_wifi_event_group = xEventGroupCreate();
 
-	ESP_ERROR_CHECK(esp_netif_init());
+	WIFI_TRY(esp_netif_init());
 
 #ifdef USE_HOSTED_WIFI
 	ESP_LOGI(TAG, "init ESP-Hosted");
@@ -96,24 +212,41 @@ void wifi_init_sta(const char *ssid, const char *pass)
 	esp_hosted_connect_to_slave();
 #endif
 
-	ESP_ERROR_CHECK(esp_event_loop_create_default());
+	WIFI_TRY(esp_event_loop_create_default());
+#if WIFI_S31
+	s_sta_netif = esp_netif_create_default_wifi_sta();
+	if (!s_sta_netif) {
+		console_puts(CON_ERROR, "Wi-Fi could not start: no memory for its "
+			     "network interface. The PC starts without a network.");
+		return false;
+	}
+#else
 	esp_netif_create_default_wifi_sta();
+#endif
 
 	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-	ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+	WIFI_TRY(esp_wifi_init(&cfg));
 
 	esp_event_handler_instance_t instance_any_id;
 	esp_event_handler_instance_t instance_got_ip;
-	ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
-							    ESP_EVENT_ANY_ID,
-							    &event_handler,
-							    NULL,
-							    &instance_any_id));
-	ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
-							    IP_EVENT_STA_GOT_IP,
-							    &event_handler,
-							    NULL,
-							    &instance_got_ip));
+	WIFI_TRY(esp_event_handler_instance_register(WIFI_EVENT,
+						     ESP_EVENT_ANY_ID,
+						     &event_handler,
+						     NULL,
+						     &instance_any_id));
+	WIFI_TRY(esp_event_handler_instance_register(IP_EVENT,
+						     IP_EVENT_STA_GOT_IP,
+						     &event_handler,
+						     NULL,
+						     &instance_got_ip));
+#if WIFI_S31
+	esp_event_handler_instance_t instance_rx;
+	WIFI_TRY(esp_event_handler_instance_register(WIFI_EVENT,
+						     WIFI_EVENT_STA_CONNECTED,
+						     &sta_connected_rx,
+						     NULL,
+						     &instance_rx));
+#endif
 
 	wifi_config_t wifi_config = {
 		.sta = {
@@ -132,11 +265,24 @@ void wifi_init_sta(const char *ssid, const char *pass)
 		strcpy((char *) wifi_config.sta.password, pass);
 	} else {
 		ESP_LOGE(TAG, "ssid or password is too long");
-		return;
+		return false;
 	}
-	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
-	ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
-	ESP_ERROR_CHECK(esp_wifi_start() );
+	/* no password: an open access point (the threshold above would
+	   refuse one, and no other could be joined without a password) */
+	if (!pass[0])
+		wifi_config.sta.threshold.authmode = WIFI_AUTH_OPEN;
+	WIFI_TRY(esp_wifi_set_mode(WIFI_MODE_STA) );
+	WIFI_TRY(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
+#if WIFI_S31
+	/* the radio stays awake: without this the station sleeps between the
+	   access point's beacons, and every frame to the guest can wait a
+	   beacon interval or more */
+	esp_wifi_set_ps(WIFI_PS_NONE);
+	strcpy(s_ssid, ssid);
+	console_printf(CON_INFO, "Wi-Fi: joining \"%s\" (2.4 GHz). Waiting up to "
+		       "%d s for an address.", ssid, WIFI_WAIT_MS / 1000);
+#endif
+	WIFI_TRY(esp_wifi_start() );
 
 	ESP_LOGI(TAG, "wifi_init_sta finished.");
 
@@ -146,7 +292,12 @@ void wifi_init_sta(const char *ssid, const char *pass)
 					       WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
 					       pdFALSE,
 					       pdFALSE,
-					       portMAX_DELAY);
+#if WIFI_S31
+					       pdMS_TO_TICKS(WIFI_WAIT_MS)
+#else
+					       portMAX_DELAY
+#endif
+					       );
 
 	/* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
 	 * happened. */
@@ -155,8 +306,24 @@ void wifi_init_sta(const char *ssid, const char *pass)
 	} else if (bits & WIFI_FAIL_BIT) {
 		ESP_LOGI(TAG, "Failed to connect to SSID:%s", ssid);
 	} else {
+#if WIFI_S31
+		console_printf(CON_WARN, "Wi-Fi: no address from \"%s\" in %d s (out of "
+			       "range, a 5 GHz-only hotspot, or the wrong password?). The "
+			       "PC starts anyway, and Wi-Fi keeps trying.",
+			       ssid, WIFI_WAIT_MS / 1000);
+#else
 		ESP_LOGE(TAG, "UNEXPECTED EVENT");
+#endif
 	}
+#if WIFI_S31
+	uint8_t mac[6];
+	if (esp_wifi_get_mac(WIFI_IF_STA, mac) == ESP_OK)
+		console_printf(CON_INFO, "Wi-Fi: the guest's NE2000 (I/O 300h, IRQ 9) "
+			       "has this board's MAC, %02x:%02x:%02x:%02x:%02x:%02x, "
+			       "and gets the same address from DHCP.",
+			       mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+#endif
+	return true;
 }
 
 static void __attribute__((noreturn)) task_fatal_error()
@@ -176,7 +343,8 @@ static void server_thread(void *pvParameter)
 	int sfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (sfd == -1) {
 		ESP_LOGE(TAG, "Create socket failed!");
-		return;
+		/* a FreeRTOS task must not return */
+		task_fatal_error();
 	}
 
 	memset(&sock_info, 0, sizeof(struct sockaddr_in));
@@ -244,12 +412,25 @@ static void server_thread(void *pvParameter)
 
 void wifi_main(const char *ssid, const char *pass)
 {
+	/* without Wi-Fi's NVS (the S31 boards) nothing here reads or writes
+	   flash */
+#if CONFIG_ESP_WIFI_NVS_ENABLED
 	esp_err_t ret = nvs_flash_init();
 	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
 		ESP_ERROR_CHECK(nvs_flash_erase());
 		ret = nvs_flash_init();
 	}
 	ESP_ERROR_CHECK(ret);
-	wifi_init_sta(ssid, pass);
+#endif
+	if (!wifi_init_sta(ssid, pass))
+		return;
+#if WIFI_S31
+	/* the remote keyboard's task with its stack in PSRAM, so that it takes
+	   4 KiB less internal RAM: it never touches flash, so it never runs
+	   with the cache off */
+	if (xTaskCreatePinnedToCoreWithCaps(server_thread, "wifi", 4096, NULL, 1,
+					    NULL, 0, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) == pdPASS)
+		return;
+#endif
 	xTaskCreatePinnedToCore(server_thread, "wifi", 4096, NULL, 1, NULL, 0);
 }

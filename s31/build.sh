@@ -52,6 +52,11 @@
 # there too (but in korvo1-dualboot-tiny386-default), to turn the addresses on a
 # crash screen into function names.
 #
+# v5.2 net: with TINY386_NET=1 in the environment, the Korvo-1's network
+# build alone (idf.py -DTINY386_WIFI=1: Wi-Fi in, started by [esp] ssid,
+# s31/NET.md), as build-korvo1, and only the two dual-boot image sets from
+# it: the standalone and DOS board builds are left out.
+#
 # Each image is checked with esptool image-info, and each tiny386.elf for
 # the layout of the status LED's panic bit-bang (esp/main/status_bb.h):
 # WORKDIR/bb-layout-*.txt has the waits and what follows each.
@@ -128,9 +133,16 @@ build() {       # name, board, more idf.py arguments
     grep -E "warning:" "$W/build-$name.log" | grep -v "/managed_components/\|/esp-idf/" || true
     grep -E "Total image size|DIRAM  " "$W/size-$name.txt" || true
 }
-build korvo1 korvo1
-build korvo1-standalone korvo1 -DPARTITION_CSV=partitions.csv
-build dosboard dosboard
+NET=${TINY386_NET:-}
+if [ -n "$NET" ]; then
+    build korvo1 korvo1 -DTINY386_WIFI=1
+    SETS="korvo1-dualboot"
+else
+    build korvo1 korvo1
+    build korvo1-standalone korvo1 -DPARTITION_CSV=partitions.csv
+    build dosboard dosboard
+    SETS="korvo1-dualboot korvo1-standalone dosboard"
+fi
 
 echo "== images"
 I=$W/images
@@ -161,9 +173,11 @@ printf '%s\n' "-fm keep -ff keep -fs keep" \
     "0x2000 bootloader.bin" "0x8000 partition-table.bin" "0xe20000 tiny386.bin" \
     > "$I/korvo1-dualboot/flash_args"
 fits "$I/korvo1-dualboot/tiny386.bin" $TEST_PART
-own_set korvo1-standalone korvo1-standalone
-own_set dosboard dosboard
-for d in korvo1-dualboot korvo1-standalone dosboard; do
+if [ -z "$NET" ]; then
+    own_set korvo1-standalone korvo1-standalone
+    own_set dosboard dosboard
+fi
+for d in $SETS; do
     (cd "$I/$d" && sha256sum flash_args bootloader.bin partition-table.bin \
         tiny386.bin tiny386.elf > SHA256SUMS)
     for f in bootloader.bin tiny386.bin; do
@@ -230,7 +244,7 @@ bb_layout() {   # ELF, function
             exit !ok
         }'
 }
-for d in korvo1-dualboot korvo1-standalone dosboard; do
+for d in $SETS; do
     for fn in status_led_panic status_led_halt; do
         bb_layout "$I/$d/tiny386.elf" $fn >> "$W/bb-layout-$d.txt" ||
             { cat "$W/bb-layout-$d.txt"; echo "$d/tiny386.elf: the LED's bit-bang is not laid out as status_bb.h wants"; exit 1; }
@@ -239,7 +253,7 @@ for d in korvo1-dualboot korvo1-standalone dosboard; do
 done
 
 echo "== built, and not flashed"
-for d in korvo1-dualboot korvo1-dualboot-tiny386-default korvo1-standalone dosboard; do
+for d in korvo1-dualboot korvo1-dualboot-tiny386-default ${SETS#korvo1-dualboot}; do
     echo "== images/$d (esptool write-flash offsets: flash_args)"
     sed 's/^/   /' "$I/$d/flash_args"
     sed 's/^/   /' "$I/$d/SHA256SUMS"

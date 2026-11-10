@@ -1,0 +1,37 @@
+# The Korvo-1's network build (idf.py -DTINY386_WIFI=1): esp/CMakeLists.txt
+# puts this after sdkconfig.korvo1.  Wi-Fi as a station, started only by
+# [esp] ssid (main/wifi.c), at the least internal RAM it takes (s31/NET.md).
+#
+# Its buffers, lwIP's and mbedTLS's come from PSRAM first, and the .bss of
+# lwIP, net80211 and pp is in PSRAM: 17.6 KB of internal RAM.
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
+# Wi-Fi's and lwIP's hot paths stay in flash: slower Wi-Fi, and with the
+# other trims below 16.1 KB of internal RAM.
+# CONFIG_ESP_WIFI_IRAM_OPT is not set
+# CONFIG_ESP_WIFI_EXTRA_IRAM_OPT is not set
+# CONFIG_ESP_WIFI_RX_IRAM_OPT is not set
+# CONFIG_LWIP_IRAM_OPTIMIZATION is not set
+# CONFIG_LWIP_EXTRA_IRAM_OPTIMIZATION is not set
+# Nothing is written to flash: the dual-boot table's nvs and phy_init
+# partitions are Linux's.  Wi-Fi keeps no settings, and the radio is
+# calibrated in full at each start (about 100 ms).
+# CONFIG_ESP_WIFI_NVS_ENABLED is not set
+# CONFIG_ESP_PHY_CALIBRATION_AND_DATA_STORAGE is not set
+# A station and nothing more.
+# CONFIG_ESP_WIFI_SOFTAP_SUPPORT is not set
+# CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT is not set
+# CONFIG_LWIP_DHCPS is not set
+# CONFIG_LWIP_IPV6 is not set
+CONFIG_LWIP_MAX_SOCKETS=4
+# Fewer buffers than ESP-IDF gives with PSRAM: the guest's NE2000 is a
+# 10 Mbit/s card.
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=6
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=8
+CONFIG_ESP_WIFI_CACHE_TX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_RX_BA_WIN=6
+# Core 1 runs the emulator and never yields: the network's tasks on core 0.
+CONFIG_ESP_WIFI_TASK_PINNED_TO_CORE_0=y
+CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y
