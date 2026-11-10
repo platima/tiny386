@@ -27,8 +27,8 @@ access point.
 | Where | What |
 |-|-|
 | `esp/CMakeLists.txt` | `sdkconfig.korvo1-wifi` after `sdkconfig.korvo1`, in the build folder; version `v5.2-net` |
-| `esp/sdkconfig.korvo1-wifi` | Wi-Fi's, lwIP's and mbedTLS's memory from PSRAM first, the `.bss` of lwIP, net80211 and pp in PSRAM, Wi-Fi's and lwIP's IRAM paths off, no NVS and no stored PHY calibration, a station only (no SoftAP, enterprise, DHCP server or IPv6), fewer buffers, the network's tasks on core 0 |
-| `esp/main/CMakeLists.txt` | `wifi.c` in (no `NO_WIFI`), `I386_EXEC1_SMALL`, `linker_hot.lf` left out |
+| `esp/sdkconfig.korvo1-wifi` | Wi-Fi's, lwIP's and mbedTLS's memory from PSRAM first, the `.bss` of lwIP, net80211 and pp in PSRAM, Wi-Fi's and lwIP's IRAM paths off, no NVS and no stored PHY calibration, a station only (no SoftAP, enterprise, DHCP server or IPv6), fewer buffers, the network's tasks on core 0; v5.3 (section 6): 4 static TX buffers, the default event loop and its queue in PSRAM, no 802.15.4 |
+| `esp/main/CMakeLists.txt` | `wifi.c` in (no `NO_WIFI`), `I386_EXEC1_SMALL`, `linker_hot.lf` left out; v5.3: `sys_thread_new` wrapped, for lwIP's task in PSRAM |
 | `esp/main/wifi.c` | the S31 parts below, behind `CONFIG_IDF_TARGET_ESP32S31`; the other boards' Wi-Fi is as it was |
 
 `wifi.c` on the S31:
@@ -49,7 +49,8 @@ access point.
   A step of the start that fails is said on the console and the PC starts without a network, rather than
   the firmware stopping.
 * The radio does not sleep between beacons (`WIFI_PS_NONE`), so frames to the guest do not wait for one.
-  WPA3 is joined by either SAE method. The remote keyboard's task has its stack in PSRAM.
+  WPA3 is joined by either SAE method. The remote keyboard's task has its stack in PSRAM, and since v5.3 so
+  have the Wi-Fi driver's task and lwIP's (section 6).
 
 ## 2. The ordinary builds
 
@@ -69,6 +70,7 @@ Static, from `idf.py size` (DIRAM left; the Korvo-1 dual boot):
 | and `I386_EXEC1_SMALL` | 120,511 | +10,054 |
 | and `linker_hot.lf` out instead | 114,771 | +4,314 |
 | both: the network build | 139,855 | +29,398 |
+| v5.3: and 802.15.4 off (section 6) | 140,517 | +30,060 |
 
 What Wi-Fi still holds in internal RAM when it never starts: libphy 4.2 KB (3 KB of it code the radio needs
 in internal RAM), libpp 3.4 KB, libnet80211 1.7 KB, esp_hw_support 1.9 KB, the rest under 1 KB each.
@@ -109,3 +111,33 @@ figure, one of the two may be enough.
 * Whether Windows 95 gets an address and pings. The guest shares the board's MAC: the hotspot's DHCP server
   sees two clients with one MAC, and normally gives both the same address; ARP and DHCP replies go to both
   stacks. lwIP takes no ARP from its own MAC as a conflict; Windows 95's own check is untested.
+
+## 6. v5.3: less internal RAM while Wi-Fi runs
+
+A read of ESP-IDF and of the S31's Wi-Fi libraries (v5.3) puts what Wi-Fi holds in internal RAM once it runs at
+about 45 KB rather than section 3's 20 to 30: the driver's static TX and RX buffers alone are about 24 KB of
+internal DMA RAM. v52-net1 on the board, Wi-Fi joined, in Windows: 58 KiB free, 29 KiB largest block, 56 KiB
+least, under the 64 KiB the firmware is meant to keep. v5.3 takes back what costs the guest nothing it would
+notice. The figures are from where each allocation is made, not yet measured on the board:
+
+| Change | Internal RAM back | What can be seen |
+|-|-|-|
+| 4 static TX buffers rather than 8 | 6.8 KB while Wi-Fi runs | every frame sent waits in one of the 16 cache buffers in PSRAM for one of the 4, as before for one of the 8; an aggregate the board sends holds at most 4 frames |
+| the Wi-Fi driver's task with its stack in PSRAM (`wifi.c`) | 6.5 KiB while Wi-Fi runs | nothing, if it works; this is its first run |
+| lwIP's tcpip task with its stack in PSRAM (`wifi.c`, `sys_thread_new` wrapped) | 3 KiB while Wi-Fi runs | nothing |
+| the default event loop in PSRAM: its task's stack, the loop, the handlers' records | about 2.5 KB while Wi-Fi runs | nothing, if it works: its spinlock is in PSRAM too |
+| no events posted from interrupts, so the loop's queue and each event's data in PSRAM, with room for 16 events rather than 32 | about 0.3 KB while Wi-Fi runs | nothing |
+| no IEEE 802.15.4, so no software coexistence | 678 bytes for good; 7.5 KB of flash | nothing |
+| with each address, the network tasks' least stack free | none | `Wi-Fi: least stack free so far (bytes): wifi N, tcpip N, sys_evt N, esp_timer N.` on the boot console |
+
+That is about 19 KB while Wi-Fi runs and 0.7 KB for good, beside v5.3's changes to both builds (the status
+LED's and key repeat's stacks in PSRAM, 6 KiB, and for `hda = sd:N` the card's DMA straight into the disk
+buffers, 6 KiB). Together, the 56 KiB least would be about 87 KiB [inferred]. The `PC built.` line now gives the
+DMA-capable part of internal RAM too; the TX buffers, which these trims shrink most, are DMA-capable RAM.
+
+Left out, as each costs the guest something or needs the board's figures first: 4 static RX buffers rather than
+6, which needs A-MPDU receive off (about 3.3 KB; slower downloads in bursts); 2 static TX buffers (a further
+3.4 KB); the esp_timer task's stack at 2048 as in the standard builds (1.5 KiB), until the line above shows its
+margin; WPA3 off, which with the driver's stack in PSRAM would save flash only; and the remote keyboard on TCP
+port 9999 only when asked for (about 0.5 KB, and a port that takes keys from anyone on the hotspot), which needs
+an ini key in `esp_main.c`, shared with the standard builds.
