@@ -1769,7 +1769,12 @@ Start `win95-sd.ini`. **Photo 1**: the whole console, with three lines in it:
     Internal RAM free ... KiB (largest block ... KiB); PSRAM free ... KiB ...
     PC built. Device memory (the 0xA0000 window): ... Internal RAM free ... KiB (largest block ... KiB); PSRAM free ... KiB (largest block ... KiB). Internal RAM least free since start ... KiB.
 
-The last figure is new in v5.1: the least internal RAM the board has had free since it started.
+From v5.3 the `PC built.` line goes on: `Of it, DMA-capable free ... KiB, least since start ...
+KiB.` Those two leave out the S31's LP RAM (about 23 KiB, used last), which no DMA reaches, so
+they are what the SD card's and Wi-Fi's buffers can come from; T386MON can read them from the
+information port (47h and 48h) once it knows those indexes.
+
+The last internal RAM figure is new in v5.1: the least internal RAM the board has had free since it started.
 v5.1's build leaves 124,303 bytes of internal RAM after code and static data, 117,141
 bytes (about 114 KiB) less than v5.0's 241,444 [verified: the build's size report,
 `BUILD-NOTES.md` 34.8]. Your v5.0 console said 240 KiB free at the start and 208 KiB after `PC
