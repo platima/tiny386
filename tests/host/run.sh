@@ -675,7 +675,7 @@ planted_setup noclk '/^esp_err_t __wrap_sd_host_slot_set_card_clk/,/^}/s/\ts_era
 planted_setup noforget '/^void sd_setup_forget/,/^}/s/\ts_era++;//' \
     "the four skipped after a failed command"
 
-# ==== 14e. after a write, the card asked again as D0 goes free (v5.3): tests/host/sdmmc ====
+# ==== 14e. after a write, the card asked again as D0 goes free; no status after a read (v5.3): tests/host/sdmmc ====
 # ESP-IDF's own sdmmc_cmd.c and sdmmc_common.c (IDF_PATH, read only), built
 # with their real headers and the stand-ins of tests/host/sdmmc/idf_stubs,
 # linked as the S31 boards link them, around idf_card.c's pretend card and
@@ -721,6 +721,40 @@ if [ -f "$IC/sdmmc/sdmmc_cmd.c" ] && [ -f "$IC/sdmmc/sdmmc_common.c" ]; then
         "no 5 s limit"
     planted_wait late 's/^\t\t\tsd_wait_early++;$/\t\t\tsd_wait_early++; due = 0;/' \
         "after a CMD13 at D0's release, the next on a schedule of its own"
+
+    # v5.3: esp/main/sdmmc_read_wrap.c, no CMD13 after a read, against
+    # ESP-IDF's own sdmmc_read_sectors(): every read made through both, from
+    # buffers the host takes and ones it refuses, 0 to 130 sectors, at the
+    # card's ends and past them, reads that fail; then reads and writes
+    # mixed with the wait after writes linked too.  Four planted faults.
+    $CC $CFLAGS -ffunction-sections $SI -c -o "$OUT/sdmmc_wait_wrap.o" "$TREE/esp/main/sdmmc_wait_wrap.c" || exit 1
+    read_test() {
+        $CC $CFLAGS -w -ffunction-sections $SI -o "$OUT/test_sdmmc_read-$1" "$HERE/sdmmc/test_sdmmc_read.c" \
+            "$2" "$OUT/sdmmc_wait_wrap.o" "$OUT/idf_card.o" "$OUT/idf_sdmmc_cmd.o" "$OUT/idf_sdmmc_common.o" \
+            -Wl,--gc-sections -Wl,--wrap=sdmmc_wait_for_idle -Wl,--wrap=sdmmc_read_sectors || exit 1
+        "$OUT/test_sdmmc_read-$1" > "$OUT/sdmmc_read-$1.log" 2>&1
+    }
+    $CC $CFLAGS -Werror -ffunction-sections $SI -fsyntax-only "$TREE/esp/main/sdmmc_read_wrap.c" || exit 1
+    read_test tree "$TREE/esp/main/sdmmc_read_wrap.c"
+    st=$?
+    grep -E "FAIL|made twice|no CMD13|test_sdmmc_read" "$OUT/sdmmc_read-tree.log" | sed 's/^/    | /'
+    result $st "sdmmc_read_wrap.c with ESP-IDF's own sdmmc_cmd.c: every read as ESP-IDF's, with no CMD13 after a good one into a buffer the host takes"
+    planted_read() {
+        sed -e "$2" "$TREE/esp/main/sdmmc_read_wrap.c" > "$OUT/sdmmc_read_wrap-$1.c"
+        read_test $1 "$OUT/sdmmc_read_wrap-$1.c"
+        local st=$?
+        grep -m1 "FAIL" "$OUT/sdmmc_read-$1.log" | cut -c1-150 | sed 's/^ */    | /'
+        ! cmp -s "$TREE/esp/main/sdmmc_read_wrap.c" "$OUT/sdmmc_read_wrap-$1.c" && [ $st != 0 ]
+        result $? "the sdmmc_read_wrap.c test sees it: $3"
+    }
+    planted_read nocheck 's/!card->host.check_buffer_alignment(card->host.slot, dst, block_size \* block_count))/0)/' \
+        "every buffer sent to the card as it is, the host's check not asked"
+    planted_read bytes 's/cmd.arg = (card->ocr \& SD_OCR_SDHC_CAP) ? start_block : start_block \* block_size;/cmd.arg = start_block * block_size;/' \
+        "a byte address for an SDHC card"
+    planted_read short 's/\.datalen = block_count \* block_size,/.datalen = block_count * block_size \/ 2,/' \
+        "half the sectors asked for"
+    planted_read nolimit 's/return ESP_ERR_INVALID_SIZE;/(void) 0;/' \
+        "no check against the card's size"
 else
     echo "SKIP sdmmc_wait_wrap.c: no ESP-IDF sdmmc sources at $IC/sdmmc"
 fi

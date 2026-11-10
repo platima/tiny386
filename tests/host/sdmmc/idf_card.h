@@ -29,6 +29,10 @@ struct idf_card {
 	unsigned reads_while_busy;      /* reads or writes sent while the card programmed */
 	bool app;                       /* the last command was CMD55 */
 	uint32_t written;               /* blocks of the last write, for ACMD22 */
+	unsigned refused;               /* buffers the host refused for its DMA */
+	/* the pretend PSRAM, where the host takes a buffer only on a cache
+	   line at both ends (kept by idf_card_start()) */
+	const uint8_t *psram_lo, *psram_hi;
 };
 extern struct idf_card idf_card;
 extern int64_t idf_now;                 /* ns */

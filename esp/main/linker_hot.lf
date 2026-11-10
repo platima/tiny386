@@ -52,6 +52,9 @@ entries:
     sdmmc_setup_wrap:__wrap_sd_host_slot_set_bus_sampling_mode (noflash)
     sdmmc_setup_wrap:__wrap_sd_host_set_delay_phase (noflash)
     sdmmc_setup_wrap:__wrap_sd_host_set_delay_line (noflash)
+    # v5.3: every card read the guest's disk makes (sdmmc_read_wrap.c), in
+    # place of sdmmc_read_sectors() and sdmmc_read_sectors_dma()
+    sdmmc_read_wrap:__wrap_sdmmc_read_sectors (noflash)
 
 [mapping:tiny386_hot_sdmmc_driver]
 archive: libesp_driver_sdmmc.a
@@ -66,8 +69,7 @@ entries:
 [mapping:tiny386_hot_sdmmc]
 archive: libsdmmc.a
 entries:
-    sdmmc_cmd:sdmmc_read_sectors_dma (noflash)
-    sdmmc_cmd:sdmmc_read_sectors (noflash)
+    sdmmc_cmd:sdmmc_send_cmd (noflash)
 
 [mapping:tiny386_hot_fatfs]
 archive: libfatfs.a

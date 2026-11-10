@@ -336,7 +336,8 @@ struct esp_ini_config {
 	int sd_clock_fix;       /* v5.2: the SD clock kept between commands (sdmmc_clk_wrap.c);
 				   v5.3: the slot's settings too (sdmmc_setup_wrap.c) */
 	int sd_wait_fix;        /* v5.3: after a write, the card asked again as it lets go
-				   of D0 (sdmmc_wait_wrap.c) */
+				   of D0 (sdmmc_wait_wrap.c); not at all after a read
+				   (sdmmc_read_wrap.c) */
 	int membench;           /* v5.2: the memory benchmark instead of the PC (membench.c) */
 };
 
@@ -1785,8 +1786,9 @@ void app_main(void)
 			     "before v5.2.");
 	sd_wait_fix = config.sd_wait_fix;
 	if (!config.sd_wait_fix)
-		console_puts(CON_INFO, "sd_wait_fix = 0: after a write the card is asked on "
-			     "ESP-IDF's own schedule, as before v5.3.");
+		console_puts(CON_INFO, "sd_wait_fix = 0: the card's status is asked after a "
+			     "write on ESP-IDF's own schedule, and after every read, as "
+			     "before v5.3.");
 #else
 	if (config.membench || !config.sd_clock_fix || !config.sd_wait_fix)
 		console_puts(CON_INFO, "membench, sd_clock_fix and sd_wait_fix are ignored: not "

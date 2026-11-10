@@ -448,6 +448,9 @@ void profile_write(const char *why)
 	console_printf(CON_INFO, "Profile: SD waits after writes %" PRIu32 ", with %" PRIu32 " status "
 		       "commands, %" PRIu32 " of them as D0 went free (sd_wait_fix = %d).",
 		       sd_wait_waits, sd_wait_polls, sd_wait_early, sd_wait_fix);
+	/* v5.3: and the reads (sdmmc_read_wrap.c) */
+	console_printf(CON_INFO, "Profile: SD reads with no status command after them %" PRIu32 ".",
+		       sd_read_direct);
 #endif
 	/* the PC record moving, and pointing at code: else the host half of
 	   the file says nothing (the guest half still holds) */

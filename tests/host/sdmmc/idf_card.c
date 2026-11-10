@@ -116,10 +116,17 @@ static uint32_t r1(void)
 	return (state << 9) | (busy ? 0 : MMC_R1_READY_FOR_DATA) | (idf_card.app ? MMC_R1_APP_CMD : 0);
 }
 
+static bool aligned(int slot, const void *buf, size_t size);
+
 static esp_err_t transaction(int slot, sdmmc_command_t *cmd)
 {
-	(void) slot;
 	unsigned op = cmd->opcode & 63;
+	/* as the S31's host refuses a buffer its DMA cannot take as it is
+	   (sd_host_slot_sdmmc_do_transaction()) */
+	if (cmd->data && !aligned(slot, cmd->data, cmd->buflen)) {
+		idf_card.refused++;
+		return ESP_ERR_INVALID_ARG;
+	}
 	idf_card.cmds[op]++;
 	idf_now += CMD_NS;
 	cmd->error = ESP_OK;
@@ -185,16 +192,23 @@ static esp_err_t transaction(int slot, sdmmc_command_t *cmd)
 	return ESP_OK;
 }
 
+/* the S31's check: a cache line at both ends in the pretend PSRAM, else
+   4 bytes (internal RAM, which no cache is in front of) */
 static bool aligned(int slot, const void *buf, size_t size)
 {
 	(void) slot;
-	return buf && size && (uintptr_t) buf % 64 == 0 && size % 64 == 0;
+	const uint8_t *p = buf;
+	unsigned a = p >= idf_card.psram_lo && p < idf_card.psram_hi ? 64 : 4;
+	return buf && size && (uintptr_t) buf % a == 0 && size % a == 0;
 }
 
 void idf_card_start(sdmmc_card_t *card, unsigned n)
 {
 	free(idf_card.mem);
+	const uint8_t *lo = idf_card.psram_lo, *hi = idf_card.psram_hi;
 	memset(&idf_card, 0, sizeof(idf_card));
+	idf_card.psram_lo = lo;
+	idf_card.psram_hi = hi;
 	idf_card.mem = calloc(n, 512);
 	idf_card.sectors = n;
 	idf_card.least13_gap = INT64_MAX;

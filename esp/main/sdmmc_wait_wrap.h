@@ -16,5 +16,7 @@ extern void *sd_wait_spin_task;
 /* since the start: waits for a card still programming, the CMD13s sent in
    them, and of those the ones sent as D0 went free */
 extern uint32_t sd_wait_waits, sd_wait_polls, sd_wait_early;
+/* v5.3: card reads sent with no CMD13 after them (sdmmc_read_wrap.c) */
+extern uint32_t sd_read_direct;
 
 #endif
