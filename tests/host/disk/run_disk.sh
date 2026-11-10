@@ -116,6 +116,83 @@ for v in "32 1" "16 4"; do
     result $other "FAT$1, stdio: another file on the volume intact"
 done
 
+# ==== v5.3: the card's DMA straight into and out of the guest's disk buffers ====
+# test_image_dma.c: esp/main/disk_image.c with the SD driver's buffer check
+# (host_glue.c's stand-in), on a 300 MiB FAT32 volume with 4 KiB clusters
+# and a 16 MiB image in it:
+# disk_image_read() and _write() from buffers the check takes and ones it
+# refuses, and IDE commands through the ports; then with no internal RAM
+# for v5.2's 16 sectors; then v5.2's disk_image.c (3e386ff), which must
+# give the same log and the same image, every byte; then three faults.
+echo "== v5.3: an image's runs straight between the card and the guest's buffers"
+dma_build() {   # NAME disk_image.o
+    $CC -O1 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -w \
+        -DIDE_C="\"$TREE/ide.c\"" $INC -o "$OUT/test_image_dma-$1" "$HERE/test_image_dma.c" \
+        "$OUT/host_glue.o" "$2" "$OUT/sd_part.o" "$OUT"/idf_ff.o "$OUT"/idf_ffunicode.o \
+        "$OUT"/idf_diskio.o "$OUT"/idf_diskio_sdmmc.o -Wl,--wrap=f_read,--wrap=f_write || exit 1
+}
+dma_volume() {
+    rm -f "$1"
+    truncate -s $((614400 * 512)) "$1"
+    mkfs.fat -F 32 -s 8 -n KORVO_SD "$1" > /dev/null || exit 1
+    python3 -I -c "import sys; sys.stdout.buffer.write(bytes((i * 131 + (i >> 9) * 7 + 3) & 255 for i in range(16 << 20)))" > "$OUT/dma-image.img"
+    mcopy -o -i "$1" "$OUT/dma-image.img" ::/IMAGE.IMG || exit 1
+    rm -f "$OUT/dma-image.img"
+}
+dma_run() {     # NAME COPY,MORE DMA [short]: OUT/dma-NAME.out, OUT/dma-NAME.log
+    dma_volume "$OUT/dma-vol-$1.img"
+    "$OUT/test_image_dma-$1" "$OUT/dma-vol-$1.img" 614400 0x7a11 "$OUT/dma-$1.log" $2 $3 ${4:-} \
+        > "$OUT/dma-$1.out" 2>&1
+    local st=$?
+    fsck.fat -n "$OUT/dma-vol-$1.img" > "$OUT/dma-$1-fsck.log" 2>&1 || st=1
+    rm -f "$OUT/dma-vol-$1.img"
+    return $st
+}
+cp "$OUT/disk_image.o" "$OUT/disk_image-tree.o"
+dma_build tree "$OUT/disk_image-tree.o"
+dma_run tree 4,16 1
+st=$?
+grep -E "said|reads:|operations|commands|FAIL|test_image_dma" "$OUT/dma-tree.out" | cut -c1-170 | sed 's/^/    | /'
+result $st "disk_image.c: an image's reads and writes right with every kind of buffer; a buffer the driver takes in one FatFs call, one it refuses through internal RAM (4 sectors a call, 16 once a big one is refused); none handed to the driver to copy; fsck.fat clean"
+dma_build lowram "$OUT/disk_image-tree.o"
+dma_run lowram 4,4 1 short
+st=$?
+grep -E "FAIL|test_image_dma" "$OUT/dma-lowram.out" | sed 's/^/    | low RAM: /'
+result $st "disk_image.c with no internal RAM for v5.2's 16 sectors when a big buffer is refused: right, 4 sectors a call"
+cmp -s "$OUT/dma-tree.log" "$OUT/dma-lowram.log"
+result $? "  the guest saw the same as with 16, and the image ended the same"
+if git -C "$TREE" rev-parse -q --verify "3e386ff^{commit}" > /dev/null 2>&1; then
+    git -C "$TREE" show 3e386ff:esp/main/disk_image.c > "$OUT/disk_image-v52.c"
+    $CC -O1 -g -w $INC -c -o "$OUT/disk_image-v52.o" "$OUT/disk_image-v52.c" || exit 1
+    dma_build v52 "$OUT/disk_image-v52.o"
+    dma_run v52 16,16 0
+    st=$?
+    grep -E "FAIL|test_image_dma|reads:|card commands" "$OUT/dma-v52.out" | cut -c1-170 | sed 's/^/    | v5.2: /'
+    result $st "v5.2's disk_image.c (3e386ff), the same operations: right, 16 sectors a call"
+    cmp -s "$OUT/dma-tree.log" "$OUT/dma-v52.log"
+    result $? "the guest saw the same with both, every read, status and error, and the image ended the same, every byte ($(wc -l < "$OUT/dma-tree.log") operations)"
+else
+    echo "    | (no 3e386ff in this tree: not held against v5.2's disk_image.c)"
+fi
+dma_planted() {         # NAME WHAT SED
+    sed -e "$3" "$TREE/esp/main/disk_image.c" > "$OUT/disk_image-$1.c"
+    local nl st
+    nl=$(diff "$TREE/esp/main/disk_image.c" "$OUT/disk_image-$1.c" | grep -c '^<')
+    $CC -O1 -g -w $INC -c -o "$OUT/disk_image-$1.o" "$OUT/disk_image-$1.c" || exit 1
+    dma_build $1 "$OUT/disk_image-$1.o"
+    dma_run $1 4,16 1
+    st=$?
+    grep -m1 "FAIL" "$OUT/dma-$1.out" | cut -c1-150 | sed 's/^ */    | /'
+    [ "$nl" -gt 0 ] && [ $st != 0 ]
+    result $? "the test sees it: $2 ($nl line$([ "$nl" = 1 ] || echo s) of disk_image.c changed)"
+}
+dma_planted unasked "every buffer straight to FatFs, the driver's check not asked" \
+    's/bool direct = !s_buf || storage_card_dma_ok(buf, n);/bool direct = true;/'
+dma_planted stride "an access through the internal buffer, each piece at the start of the guest's" \
+    's/^\t\tbuf += len;$/\t\t(void) 0;/'
+dma_planted nomore "v5.2's 16 sectors not taken when a big buffer is refused" \
+    's/^\tuint8_t \*more = heap_caps_aligned_alloc(64, DI_BUF_MORE \* 512,$/\tuint8_t *more = NULL; (void) heap_caps_aligned_alloc(64, DI_BUF_MORE * 512,/'
+
 if git -C "$TREE" rev-parse -q --verify v3.1 >/dev/null; then
     git -C "$TREE" show v3.1:ide.c > "$OUT/ide-v3.1.c"
     build v3.1 "$OUT/ide-v3.1.c"

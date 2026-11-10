@@ -23,6 +23,13 @@
  *   64-byte alignment the SD host's DMA wants in PSRAM, so ESP-IDF's driver
  *   took and freed a bounce buffer for every sector.  Here one buffer in
  *   internal RAM, taken once, is used for every access.
+ * - v5.3: an access whose buffer the SD driver can take as it is (ide.c's
+ *   read-ahead and gathering buffer: PSRAM, aligned to the cache line) goes
+ *   between the card and that buffer by DMA, one f_read() or f_write(), as
+ *   sd_part.c's do since d582cf7.  Any other goes through the internal
+ *   buffer, DI_BUF_SECTORS a call, as before; and if the driver will not
+ *   take ide.c's big buffer either, v5.2's 16 sectors are taken then.  The
+ *   console says once which way the card goes.
  *
  * Plain C over FatFs's API, so that the host tests (tests/host/disk) and
  * the PC harness run this very file on ESP-IDF's own ff.c.
@@ -40,12 +47,19 @@
 uint32_t get_uticks();
 /* storage.c: a VFS path on a mounted card volume as FatFs's own ("1:/x") */
 bool storage_fatfs_path(const char *path, char *out, size_t size);
+/* storage.c (v5.3): whether the SD driver takes buf as it is for its DMA */
+bool storage_card_dma_ok(const void *buf, size_t size);
 
 int disk_image_fast_seek = 1;
 void (*disk_image_say)(bool warn, const char *line);
 
 #define DI_MAX 6                        /* four IDE drives and two to spare */
-#define DI_BUF_SECTORS 16               /* the internal buffer: 8 KiB (v5.2; 4 before) */
+#define DI_BUF_SECTORS 4                /* the internal buffer: v5.3, 2 KiB, ide.c's
+                                           block at most (MAX_MULT_SECTORS); 16 in v5.2,
+                                           for the read ahead and gathering, which now go
+                                           to the card by DMA (4 before v5.2) */
+#define DI_BUF_MORE 16                  /* v5.2's 8 KiB, taken only if the SD driver
+                                           will not take one of those */
 #define DI_MAP_FIRST 256                /* map words tried first: 127 pieces */
 #define DI_MANY_PIECES 64               /* more than this: said in yellow */
 #define DI_MAP_INTERNAL_MAX 4096        /* bytes: a bigger map goes to PSRAM */
@@ -69,7 +83,9 @@ struct disk_image {
 };
 
 static struct disk_image s_img[DI_MAX];
-static uint8_t *s_buf;                  /* DI_BUF_SECTORS sectors, internal RAM */
+static uint8_t *s_buf;                  /* s_buf_sectors sectors, internal RAM */
+static unsigned s_buf_sectors;          /* DI_BUF_SECTORS, or DI_BUF_MORE (said_copy()) */
+static bool s_said_dma, s_said_copy;    /* the console says each way once */
 static struct disk_image_stats s_stats;
 static char s_error[96];
 
@@ -220,9 +236,11 @@ int disk_image_open(const char *path, bool writable, struct disk_image **out,
 	}
 	d->size = f_size(&d->fil);
 	d->used = true;
-	if (!s_buf)     /* if there is no room, the guest's buffer goes as before */
+	if (!s_buf) {   /* if there is no room, the guest's buffer goes as before */
 		s_buf = heap_caps_aligned_alloc(64, DI_BUF_SECTORS * 512,
 						MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+		s_buf_sectors = DI_BUF_SECTORS;
+	}
 	if (!DI_FASTSEEK) {
 		say(false, "%s: not mapped (this build's FatFs has no fast seek): every "
 		    "seek back reads the FAT from the image's start.", d->name);
@@ -254,16 +272,53 @@ int disk_image_open(const char *path, bool writable, struct disk_image **out,
 	return DISK_IMAGE_OPENED;
 }
 
-/* one try: n bytes at offset, through the internal buffer */
+/* v5.3: the first access straight between the card and the guest's buffer
+   (out of line: the line is said once) */
+static void __attribute__((noinline)) said_dma(struct disk_image *d, size_t n)
+{
+	s_said_dma = true;
+	say(false, "%s: the card's DMA reads and writes the guest's disk buffers in PSRAM as "
+	    "they are, a run in one call (the first %u sectors).", d->name, (unsigned) (n / 512));
+}
+
+/* v5.3: the first access of more than s_buf_sectors whose buffer the SD
+   driver will not take: if it is ide.c's read-ahead and gathering buffer,
+   v5.2's 8 KiB then, if there is room, so that its runs take no more calls
+   than they did */
+static void __attribute__((noinline)) said_copy(struct disk_image *d, const uint8_t *buf,
+						size_t n)
+{
+	s_said_copy = true;
+	uint8_t *more = heap_caps_aligned_alloc(64, DI_BUF_MORE * 512,
+						MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+	if (more) {
+		heap_caps_free(s_buf);
+		s_buf = more;
+		s_buf_sectors = DI_BUF_MORE;
+	}
+	say(true, "%s: the SD driver cannot take a buffer of %u sectors (at %p) for DMA as it "
+	    "is: such accesses go through %u sectors of internal RAM a call.", d->name,
+	    (unsigned) (n / 512), (const void *) buf, s_buf_sectors);
+}
+
+/* one try: n bytes at offset.  v5.3: straight between the card and buf, if
+   the SD driver can take buf as it is for its DMA (or there is no internal
+   buffer, as before); else through the internal buffer, s_buf_sectors a
+   call */
 static FRESULT rw_once(struct disk_image *d, uint64_t off, uint8_t *buf, size_t n,
 		       bool write)
 {
+	bool direct = !s_buf || storage_card_dma_ok(buf, n);
+	if (s_buf && direct && !s_said_dma)
+		said_dma(d, n);
+	else if (!direct && n > s_buf_sectors * 512 && !s_said_copy)
+		said_copy(d, buf, n);
 	while (n > 0) {
 		size_t len = n;
 		uint8_t *p = buf;
-		if (s_buf) {
-			if (len > DI_BUF_SECTORS * 512)
-				len = DI_BUF_SECTORS * 512;
+		if (!direct) {
+			if (len > s_buf_sectors * 512)
+				len = s_buf_sectors * 512;
 			p = s_buf;
 		}
 		FRESULT r = FR_OK;
