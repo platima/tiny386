@@ -52,3 +52,6 @@ CONFIG_ESP_TIMER_TASK_STACK_SIZE=3584
 # runs with the cache off.  Its queue stays internal, as ESP-IDF keeps it
 # with ESP_EVENT_POST_FROM_IRAM_ISR on.
 CONFIG_ESP_EVENT_LOOP_IN_EXT_RAM=y
+# v5.3: room for 16 events in that queue rather than 32 (16 bytes each,
+# internal): a join, a loss or an address brings a few at a time.
+CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE=16
