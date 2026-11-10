@@ -164,12 +164,17 @@ static int32_t (*s_wifi_task_create)(void *task_func, const char *name,
 				     uint32_t stack_depth, void *param,
 				     uint32_t prio, void *task_handle,
 				     uint32_t core_id);
+/* the task made, for net_stacks_line() (the remote keyboard's task has the
+   same name) */
+static TaskHandle_t s_wifi_task;
 
 static int32_t wifi_task_create_psram(void *task_func, const char *name,
 				      uint32_t stack_depth, void *param,
 				      uint32_t prio, void *task_handle,
 				      uint32_t core_id)
 {
+	int32_t r = pdPASS;
+
 	/* once: anything else made through the table is made as before */
 	g_wifi_osi_funcs._task_create_pinned_to_core = s_wifi_task_create;
 	if (xTaskCreatePinnedToCoreWithCaps((TaskFunction_t) task_func, name,
@@ -177,10 +182,30 @@ static int32_t wifi_task_create_psram(void *task_func, const char *name,
 					    (TaskHandle_t *) task_handle,
 					    core_id < portNUM_PROCESSORS ?
 					    (BaseType_t) core_id : tskNO_AFFINITY,
-					    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) == pdPASS)
-		return pdPASS;
-	return s_wifi_task_create(task_func, name, stack_depth, param, prio,
-				  task_handle, core_id);
+					    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) != pdPASS)
+		r = s_wifi_task_create(task_func, name, stack_depth, param, prio,
+				       task_handle, core_id);
+	if (r == pdPASS && task_handle)
+		s_wifi_task = *(TaskHandle_t *) task_handle;
+	return r;
+}
+
+/* v5.3: the least stack the network's tasks have had free since each
+   started, in bytes, said with each address, so after a join, the
+   supplicant's work and DHCP (the esp_timer task runs the driver's and
+   the PHY's timers).  0 for a task not made. */
+static unsigned stack_least(TaskHandle_t t)
+{
+	return t ? (unsigned) uxTaskGetStackHighWaterMark(t) : 0;
+}
+
+static void net_stacks_line(void)
+{
+	console_printf(CON_INFO, "Wi-Fi: least stack free so far (bytes): wifi %u, "
+		       "tcpip %u, sys_evt %u, esp_timer %u.", stack_least(s_wifi_task),
+		       stack_least(xTaskGetHandle(TCPIP_THREAD_NAME)),
+		       stack_least(xTaskGetHandle("sys_evt")),
+		       stack_least(xTaskGetHandle("esp_timer")));
 }
 #endif
 
@@ -221,6 +246,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 				       IP2STR(&event->ip_info.ip), IP2STR(&event->ip_info.netmask),
 				       IP2STR(&event->ip_info.gw), least);
 		}
+		net_stacks_line();
 #endif
 		xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
 	}
