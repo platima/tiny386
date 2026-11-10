@@ -675,6 +675,56 @@ planted_setup noclk '/^esp_err_t __wrap_sd_host_slot_set_card_clk/,/^}/s/\ts_era
 planted_setup noforget '/^void sd_setup_forget/,/^}/s/\ts_era++;//' \
     "the four skipped after a failed command"
 
+# ==== 14e. after a write, the card asked again as D0 goes free (v5.3): tests/host/sdmmc ====
+# ESP-IDF's own sdmmc_cmd.c and sdmmc_common.c (IDF_PATH, read only), built
+# with their real headers and the stand-ins of tests/host/sdmmc/idf_stubs,
+# linked as the S31 boards link them, around idf_card.c's pretend card and
+# clock.  esp/main/sdmmc_wait_wrap.c against ESP-IDF's own wait after
+# writes of 1 and 64 sectors, the card programming for 0 to 6 s, with D0
+# working, stuck busy and stuck free, for the emulator's task and another:
+# the same results, never later, at most one CMD13 more, and with D0
+# working done within 60 us of the card.  Four planted faults.
+echo
+IDF=${IDF_PATH:-$HOME/esp/esp-idf}
+IC=$IDF/components
+SI="-I$HERE/sdmmc/idf_stubs -I$HERE/sdmmc -I$IC/sdmmc/include -I$IC/esp_hal_sd/include -I$IC/esp_common/include -I$IC/esp_blockdev/include -I$TREE/esp/main"
+if [ -f "$IC/sdmmc/sdmmc_cmd.c" ] && [ -f "$IC/sdmmc/sdmmc_common.c" ]; then
+    for f in sdmmc_cmd sdmmc_common; do
+        $CC -O1 -g -w -ffunction-sections $SI -c -o "$OUT/idf_$f.o" "$IC/sdmmc/$f.c" || exit 1
+    done
+    $CC $CFLAGS -ffunction-sections $SI -c -o "$OUT/idf_card.o" "$HERE/sdmmc/idf_card.c" || exit 1
+    # wait_test NAME WRAP.c: test_sdmmc_wait with that wrap, OUT/sdmmc_wait-NAME.log
+    wait_test() {
+        $CC $CFLAGS -w -ffunction-sections $SI -o "$OUT/test_sdmmc_wait-$1" "$HERE/sdmmc/test_sdmmc_wait.c" \
+            "$2" "$OUT/idf_card.o" "$OUT/idf_sdmmc_cmd.o" "$OUT/idf_sdmmc_common.o" \
+            -Wl,--gc-sections -Wl,--wrap=sdmmc_wait_for_idle || exit 1
+        "$OUT/test_sdmmc_wait-$1" > "$OUT/sdmmc_wait-$1.log" 2>&1
+    }
+    $CC $CFLAGS -Werror -ffunction-sections $SI -fsyntax-only "$TREE/esp/main/sdmmc_wait_wrap.c" || exit 1
+    wait_test tree "$TREE/esp/main/sdmmc_wait_wrap.c"
+    st=$?
+    grep -E "FAIL|cases|1600 \||test_sdmmc_wait" "$OUT/sdmmc_wait-tree.log" | sed 's/^/    | /'
+    result $st "sdmmc_wait_wrap.c with ESP-IDF's own sdmmc_cmd.c: after a write, done as the card lets go of D0, never later than ESP-IDF's wait, the same results"
+    planted_wait() {
+        sed -e "$2" "$TREE/esp/main/sdmmc_wait_wrap.c" > "$OUT/sdmmc_wait_wrap-$1.c"
+        wait_test $1 "$OUT/sdmmc_wait_wrap-$1.c"
+        local st=$?
+        grep -m1 "FAIL" "$OUT/sdmmc_wait-$1.log" | cut -c1-150 | sed 's/^ */    | /'
+        ! cmp -s "$TREE/esp/main/sdmmc_wait_wrap.c" "$OUT/sdmmc_wait_wrap-$1.c" && [ $st != 0 ]
+        result $? "the sdmmc_wait_wrap.c test sees it: $3"
+    }
+    planted_wait noarm 's/else if (\*armed)/else/' \
+        "a CMD13 whenever D0 is free, not only as it goes free"
+    planted_wait d0ready 's/^\t\t\tsd_wait_early++;$/\t\t\treturn ESP_OK;/' \
+        "the card taken as ready on D0 alone"
+    planted_wait nolimit 's/return ESP_ERR_TIMEOUT;/(void) 0;/' \
+        "no 5 s limit"
+    planted_wait late 's/^\t\t\tsd_wait_early++;$/\t\t\tsd_wait_early++; due = 0;/' \
+        "after a CMD13 at D0's release, the next on a schedule of its own"
+else
+    echo "SKIP sdmmc_wait_wrap.c: no ESP-IDF sdmmc sources at $IC/sdmmc"
+fi
+
 # ==== 15. the status LED (v3.3; the brightness v3.7; the disk light v3.8) ====
 # status_code.c as the firmware has it, and status_bb.h (the panic handler's
 # bit-bang) with a pretend cycle counter: the RMT frame and every bit-banged

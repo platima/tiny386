@@ -48,6 +48,7 @@
 #include "profile.h"
 #if CONFIG_IDF_TARGET_ESP32S31
 #include "sdmmc_clk_wrap.h"
+#include "sdmmc_wait_wrap.h"
 #include "membench.h"
 #endif
 #include "status_led.h"
@@ -334,6 +335,8 @@ struct esp_ini_config {
 	int profile;            /* v5.1: the profiler (profile.c, s31/PROFILE.md); 0 off */
 	int sd_clock_fix;       /* v5.2: the SD clock kept between commands (sdmmc_clk_wrap.c);
 				   v5.3: the slot's settings too (sdmmc_setup_wrap.c) */
+	int sd_wait_fix;        /* v5.3: after a write, the card asked again as it lets go
+				   of D0 (sdmmc_wait_wrap.c) */
 	int membench;           /* v5.2: the memory benchmark instead of the PC (membench.c) */
 };
 
@@ -396,6 +399,7 @@ static struct esp_ini_config config = {
 	.fast_cpu = 1,          /* v5.0: the fast interpreter, where the board header has it */
 	.profile = 0,           /* v5.1: no profiler: nothing of it set up */
 	.sd_clock_fix = 1,      /* v5.2: the clock set only when it is not already right */
+	.sd_wait_fix = 1,       /* v5.3: as soon as the card is ready */
 	.membench = 0,          /* v5.2: only when an ini asks for it */
 };
 static PCConfig conf;
@@ -633,6 +637,11 @@ static void run_pc(PC *pc)
 static void i386_task(void *arg)
 {
 	PCConfig *conf = arg;
+#if CONFIG_IDF_TARGET_ESP32S31
+	/* v5.3: this task never yields core 1, so after a write it watches the
+	   card's D0 for as long as the card programs (sdmmc_wait_wrap.c) */
+	sd_wait_spin_task = xTaskGetCurrentTaskHandle();
+#endif
 #ifndef LCD_ZERO_COPY
 	/* Wait for LCD panel (and panel_fb) to be ready before starting the
 	 * PC emulator.  screen_init() uses globals.panel_fb if set. */
@@ -767,7 +776,7 @@ static const char *const known_keys[] = {
 	"esp:uart_log", "esp:fast_seek", "esp:timer_catchup", "esp:memtest",
 	"esp:verbose_log", "esp:vbe_blocks", "esp:pace_quiet", "esp:pace_wait_ms",
 	"esp:double_buffer", "esp:fast_cpu", "esp:profile",
-	"esp:sd_clock_fix", "esp:membench", "esp:ide_buffer",
+	"esp:sd_clock_fix", "esp:sd_wait_fix", "esp:membench", "esp:ide_buffer",
 #ifdef TINY386_CRASH_TEST
 	"esp:crash_test",
 #endif
@@ -892,6 +901,8 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		ini_whole(name, value, 0, 1, &conf->profile);
 	} else if (NAME("sd_clock_fix")) {
 		ini_whole(name, value, 0, 1, &conf->sd_clock_fix);
+	} else if (NAME("sd_wait_fix")) {
+		ini_whole(name, value, 0, 1, &conf->sd_wait_fix);
 	} else if (NAME("membench")) {
 		ini_whole(name, value, 0, 1, &conf->membench);
 	} else if (NAME("crash_test")) {
@@ -1772,9 +1783,14 @@ void app_main(void)
 		console_puts(CON_INFO, "sd_clock_fix = 0: the SD clock and the slot's width, "
 			     "sampling and delays are set again before every command, as "
 			     "before v5.2.");
+	sd_wait_fix = config.sd_wait_fix;
+	if (!config.sd_wait_fix)
+		console_puts(CON_INFO, "sd_wait_fix = 0: after a write the card is asked on "
+			     "ESP-IDF's own schedule, as before v5.3.");
 #else
-	if (config.membench || !config.sd_clock_fix)
-		console_puts(CON_INFO, "membench and sd_clock_fix are ignored: not in this build.");
+	if (config.membench || !config.sd_clock_fix || !config.sd_wait_fix)
+		console_puts(CON_INFO, "membench, sd_clock_fix and sd_wait_fix are ignored: not "
+			     "in this build.");
 #endif
 
 	if (config.enable_usb) {

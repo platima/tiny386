@@ -1,0 +1,6 @@
+Host stand-ins for building ESP-IDF's own components/sdmmc/sdmmc_cmd.c and
+sdmmc_common.c (188e3e55bb) on the PC, with their real headers
+(components/sdmmc/include, esp_hal_sd/include, esp_common/include,
+esp_blockdev/include): the log, the checks, the heap, FreeRTOS's delay and
+task handle, the ROM's delay, esp_timer and the S31 host's D0 line.  The
+clock, the delays and the D0 line are idf_card.c's pretend ones.

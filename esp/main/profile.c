@@ -52,6 +52,7 @@
 #if CONFIG_IDF_TARGET_ESP32S31
 #include "sdmmc_clk_wrap.h"
 #include "sdmmc_setup_wrap.h"
+#include "sdmmc_wait_wrap.h"
 #endif
 
 #if CONFIG_IDF_TARGET_ESP32S31
@@ -443,6 +444,10 @@ void profile_write(const char *why)
 	/* v5.3: and the slot's other settings (sdmmc_setup_wrap.c) */
 	console_printf(CON_INFO, "Profile: SD commands that kept the slot's width, sampling and "
 		       "delays %" PRIu32 ", that set them %" PRIu32 ".", sd_setup_kept, sd_setup_set);
+	/* v5.3: the waits after writes (sdmmc_wait_wrap.c) */
+	console_printf(CON_INFO, "Profile: SD waits after writes %" PRIu32 ", with %" PRIu32 " status "
+		       "commands, %" PRIu32 " of them as D0 went free (sd_wait_fix = %d).",
+		       sd_wait_waits, sd_wait_polls, sd_wait_early, sd_wait_fix);
 #endif
 	/* the PC record moving, and pointing at code: else the host half of
 	   the file says nothing (the guest half still holds) */

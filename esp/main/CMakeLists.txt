@@ -66,6 +66,7 @@ set(srcs "esp_main.c"
 "sdmmc_clk_wrap.c"
 "sdmmc_setup_wrap.c"
 "sdmmc_timeout_wrap.c"
+"sdmmc_wait_wrap.c"
 "i2s.c"
 "audio_mix.c"
 "storage.c"
@@ -146,7 +147,8 @@ endif()
 # [esp] sd_clock_fix), and the memory benchmark ([esp] membench, membench.c).
 # v5.3: a card command that timed out reported as one, which this ESP-IDF
 # reports as done when its buffer is in PSRAM (sdmmc_timeout_wrap.c); the
-# slot's other settings kept between commands too (sdmmc_setup_wrap.c).
+# slot's other settings kept between commands too (sdmmc_setup_wrap.c), and
+# after a write the card asked again as it lets go of D0 (sdmmc_wait_wrap.c).
 if(IDF_TARGET STREQUAL "esp32s31")
     target_sources(${COMPONENT_LIB} PRIVATE "membench.c" "membench_pie.S")
     target_link_options(${COMPONENT_LIB} INTERFACE
@@ -163,7 +165,9 @@ if(IDF_TARGET STREQUAL "esp32s31")
         -Wl,--wrap=sd_host_set_delay_phase
         -Wl,--undefined=__wrap_sd_host_set_delay_phase
         -Wl,--wrap=sd_host_set_delay_line
-        -Wl,--undefined=__wrap_sd_host_set_delay_line)
+        -Wl,--undefined=__wrap_sd_host_set_delay_line
+        -Wl,--wrap=sdmmc_wait_for_idle
+        -Wl,--undefined=__wrap_sdmmc_wait_for_idle)
 endif()
 
 # Linker wrap for SPI SD CMD59 workaround (elecrow7s3 only)
