@@ -1138,9 +1138,17 @@ static long own_screen_bytes(void)
 }
 
 /* The guest's memory: what the ini asks for if it fits; "mem_size = max",
-   0 or no line at all gives the most that fits (14M on the Korvo-1 with
-   vga_mem_size 256K or 320K); more than fits is lowered to that, with a
-   warning, rather than stopping. */
+   0 or no line at all gives the most that fits; more than fits is lowered
+   to that, with a warning, rather than stopping.  v5.3: the most that
+   fits in whole 64 KiB (MEM_STEP), not whole megabytes, which left up to
+   1M of the pool unused (14M on the Korvo-1 where 14,784K fit with
+   vga_mem_size 256K).  Nothing on the guest's side wants megabytes: the
+   CMOS gives the memory above 1M in KiB below 64M and in 64 KiB above
+   (misc.c's cmos_init()), SeaBIOS sizes RAM and its e820 map from those,
+   and the emulator's own checks want the end of RAM on a 4 KiB page
+   (i386.c's page-crossing test, i386_fast.h), which 64 KiB steps keep. */
+#define MEM_STEP (64 * 1024)
+
 static void settle_memory(void)
 {
 	/* The guest is told the size of video memory in 64 KiB (VBE's
@@ -1163,17 +1171,17 @@ static void settle_memory(void)
 	if (own)
 		console_printf(CON_INFO, "No panel: %ld KiB of the emulator's memory go to the "
 			       "PC's own picture buffer (%ld KiB left).", own / 1024, room / 1024);
-	long fit = (room - vga) / (1024 * 1024) * (1024 * 1024);
+	long fit = (room - vga) / MEM_STEP * MEM_STEP;
 	if (conf.mem_size <= 0) {
 		conf.mem_size = fit;
-		console_printf(CON_INFO, "mem_size: %ldM, the most there is room for "
-			       "(no mem_size line, or max).", fit / (1024 * 1024));
+		console_printf(CON_INFO, "mem_size: %ldK, the most there is room for "
+			       "(no mem_size line, or max).", fit / 1024);
 	} else if (round4k(conf.mem_size) + vga > room && fit >= 1024 * 1024) {
 		console_printf(CON_WARN, "mem_size %ldK with vga_mem_size %ldK needs "
 			       "%ldK, and the emulator has %ldK: mem_size lowered to "
-			       "%ldM, the most that fits.", conf.mem_size / 1024,
+			       "%ldK, the most that fits.", conf.mem_size / 1024,
 			       conf.vga_mem_size / 1024, (round4k(conf.mem_size) + vga) / 1024,
-			       room / 1024, fit / (1024 * 1024));
+			       room / 1024, fit / 1024);
 		conf.mem_size = fit;
 	}
 }
@@ -1692,8 +1700,8 @@ void app_main(void)
 	{
 		long vga = round4k(256 * 1024 + VGA_MEM_SLACK);
 		console_printf(CON_INFO, "Emulator memory: %ld KiB, room for mem_size "
-			       "up to %ldM with vga_mem_size 256K.", psram_len / 1024,
-			       (psram_len - vga) / (1024 * 1024));
+			       "up to %ldK with vga_mem_size 256K.", psram_len / 1024,
+			       (psram_len - vga) / MEM_STEP * (MEM_STEP / 1024));
 	}
 
 	bool usb_started = choose_ini();
