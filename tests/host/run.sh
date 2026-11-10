@@ -1285,6 +1285,29 @@ else
     echo "    | (no python3 here: profile_report.py is not tried)"
 fi
 
+# ==== 26. the NE2000's receive ring and the ESP32 filter (v5.3): tests/host/ne2000 ====
+# ne2000.c driven through its ports as a guest's driver drives it, built as
+# the headless build has it and with BUILD_ESP32, under AddressSanitizer and
+# UBSan: frames read back whole whether the guest keeps up or falls behind;
+# no endless loop and nothing written past the card's memory for any ring
+# registers, nor for one written while a frame is copied in; the ESP32
+# filter's port read after the IP options, and only from a first fragment.
+# Then upstream's ne2000.c at a080c5d, where the test has to see the loops,
+# the writes, the frames lost and the frames sent the wrong way.  Needs
+# AddressSanitizer and setarch; without them it says SKIP.
+echo
+if bash "$HERE/ne2000/run_ne2000.sh" "$OUT/ne2000" > "$OUT/ne2000.log" 2>&1; then
+    st=0
+else
+    st=1
+fi
+if grep -q "^SKIP" "$OUT/ne2000.log"; then
+    grep "^SKIP" "$OUT/ne2000.log"
+else
+    grep -E "FAILED|^ne2000:|^  ok:" "$OUT/ne2000.log"
+    result $st "ne2000.c: the receive ring with any registers, frames whole when the guest falls behind, the ESP32 filter after IP options"
+fi
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]
