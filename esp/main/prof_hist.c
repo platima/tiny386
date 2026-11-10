@@ -2,6 +2,7 @@
  * The profiler's counts: see prof_hist.h and s31/PROFILE.md.
  */
 #include <string.h>
+#include <unistd.h>
 
 #include "prof_hist.h"
 
@@ -240,20 +241,32 @@ void PROF_IRAM prof_cost_add(struct prof *p, uint32_t cycles)
 
 /* ==== the file ==== */
 
-/* text into buf, out to f (and f2, if there is one) a buffer at a time */
+/* text into buf, out to fd (and fd2, if there is one) a buffer at a time */
 struct out {
-	FILE *f, *f2;
+	int fd, fd2;
 	char *buf;
 	size_t size, n;
 	long total;
 	bool err;
 };
 
+/* all n bytes of p to fd, however many write() takes at once */
+static bool put_all(int fd, const char *p, size_t n)
+{
+	while (n) {
+		ssize_t w = write(fd, p, n);
+		if (w <= 0)
+			return false;
+		p += w;
+		n -= (size_t) w;
+	}
+	return true;
+}
+
 static void out_flush(struct out *o)
 {
 	if (o->n && !o->err) {
-		if (fwrite(o->buf, 1, o->n, o->f) != o->n ||
-		    (o->f2 && fwrite(o->buf, 1, o->n, o->f2) != o->n))
+		if (!put_all(o->fd, o->buf, o->n) || (o->fd2 >= 0 && !put_all(o->fd2, o->buf, o->n)))
 			o->err = true;
 		else
 			o->total += (long) o->n;
@@ -329,17 +342,17 @@ static void out_table_line(struct out *o, const char *name, const struct prof_ta
 	out_ch(o, '\n');
 }
 
-long prof_write(const struct prof *p, const struct prof_meta *m, FILE *f, char *buf,
+long prof_write(const struct prof *p, const struct prof_meta *m, int fd, char *buf,
 		size_t size)
 {
-	return prof_write2(p, m, f, NULL, buf, size);
+	return prof_write2(p, m, fd, -1, buf, size);
 }
 
-long prof_write2(const struct prof *p, const struct prof_meta *m, FILE *f, FILE *f2,
+long prof_write2(const struct prof *p, const struct prof_meta *m, int fd, int fd2,
 		 char *buf, size_t size)
 {
-	struct out o = { f, f2, buf, size, 0, 0, false };
-	if (!f || !buf || size < 256)
+	struct out o = { fd, fd2, buf, size, 0, 0, false };
+	if (fd < 0 || !buf || size < 256)
 		return -1;
 
 	out_s(&o, "tiny386 profile ");
@@ -514,7 +527,5 @@ long prof_write2(const struct prof *p, const struct prof_meta *m, FILE *f, FILE 
 	}
 	out_s(&o, "end\n");
 	out_flush(&o);
-	if (!o.err && (fflush(f) != 0 || (f2 && fflush(f2) != 0)))
-		o.err = true;
 	return o.err ? -1 : o.total;
 }

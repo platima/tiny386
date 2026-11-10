@@ -165,12 +165,14 @@ void prof_cache_add(struct prof *p, int u, const uint32_t v[PROF_CACHE_COUNTERS]
 /* the sampler's cost: cycles one sample took */
 void prof_cost_add(struct prof *p, uint32_t cycles);
 
-/* PROFILE.TXT (format 1, s31/PROFILE.md 4) to f, through buf (size bytes,
-   at least 256).  Returns the bytes written, or -1 if f refused any. */
-long prof_write(const struct prof *p, const struct prof_meta *m, FILE *f, char *buf,
+/* PROFILE.TXT (format 1, s31/PROFILE.md 4) to the file open as fd,
+   through buf (size bytes, at least 256), with write(): no stdio, whose
+   FILE would take internal RAM on the board (v5.3).  Returns the bytes
+   written, or -1 if the file refused any. */
+long prof_write(const struct prof *p, const struct prof_meta *m, int fd, char *buf,
 		size_t size);
-/* the same text to f and to f2 as well (NULL: none), made once */
-long prof_write2(const struct prof *p, const struct prof_meta *m, FILE *f, FILE *f2,
+/* the same text to fd and to fd2 as well (-1: none), made once */
+long prof_write2(const struct prof *p, const struct prof_meta *m, int fd, int fd2,
 		 char *buf, size_t size);
 
 #endif /* PROF_HIST_H */

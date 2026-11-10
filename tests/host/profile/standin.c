@@ -155,7 +155,7 @@ static void write_file(const char *why)
 		.run_us = us_since(&t0), .halt_us = 0,
 	};
 	FILE *f = fopen(path, "w");
-	long r = f ? prof_write(&P, &m, f, buf, 4096) : -1;
+	long r = f ? prof_write(&P, &m, fileno(f), buf, 4096) : -1;
 	if (f)
 		fclose(f);
 	last_write_us = (uint32_t) us_since(&w0);

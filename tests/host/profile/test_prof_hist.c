@@ -278,7 +278,7 @@ static void test_file(void)
 
 	char buf[300];
 	FILE *f = tmpfile();
-	long r = prof_write(&P, &META, f, buf, sizeof(buf));
+	long r = prof_write(&P, &META, fileno(f), buf, sizeof(buf));
 	long len;
 	char *s = slurp(f, &len);
 	fclose(f);
@@ -316,18 +316,18 @@ static void test_file(void)
 	/* refused: a full disk, and a buffer too small */
 	f = fopen("/dev/full", "w");
 	if (f) {
-		r = prof_write(&P, &META, f, buf, sizeof(buf));
+		r = prof_write(&P, &META, fileno(f), buf, sizeof(buf));
 		CHECK(r == -1, "a refused write gives -1 (%ld)", r);
 		fclose(f);
 	}
 	f = tmpfile();
-	CHECK(prof_write(&P, &META, f, buf, 100) == -1, "a buffer under 256 bytes is refused");
+	CHECK(prof_write(&P, &META, fileno(f), buf, 100) == -1, "a buffer under 256 bytes is refused");
 	fclose(f);
 	/* two files at once (Ctrl+Alt+F8: PROFILE.TXT and PROFnn.TXT): the same
 	   bytes in both; and the second refusing is said */
 	{
 		FILE *a = tmpfile(), *b = tmpfile();
-		long ra = prof_write2(&P, &META, a, b, buf, sizeof(buf)), la, lb;
+		long ra = prof_write2(&P, &META, fileno(a), fileno(b), buf, sizeof(buf)), la, lb;
 		char *sa = slurp(a, &la), *sb = slurp(b, &lb);
 		CHECK(ra > 0 && la == ra && lb == ra && !memcmp(sa, sb, (size_t) la),
 		      "prof_write2(): the same %ld bytes in both files (%ld, %ld)", ra, la, lb);
@@ -338,7 +338,7 @@ static void test_file(void)
 		a = tmpfile();
 		b = fopen("/dev/full", "w");
 		if (b) {
-			CHECK(prof_write2(&P, &META, a, b, buf, sizeof(buf)) == -1,
+			CHECK(prof_write2(&P, &META, fileno(a), fileno(b), buf, sizeof(buf)) == -1,
 			      "prof_write2(): the second file refused gives -1");
 			fclose(b);
 		}
@@ -348,7 +348,7 @@ static void test_file(void)
 	for (int i = 0; i < 3; i++)
 		prof_sample(&P, 0x2f000100, &g);
 	f = tmpfile();
-	prof_write(&P, &META, f, buf, sizeof(buf));
+	prof_write(&P, &META, fileno(f), buf, sizeof(buf));
 	s = slurp(f, &len);
 	fclose(f);
 	CHECK(strstr(s, "\nsamples 11\n") && strstr(s, "\n2f000100 1 3\n"), "counts go on adding up");
@@ -455,7 +455,7 @@ static void timing(void)
 	char *buf = malloc(4096);
 	FILE *f = fopen("/dev/null", "w");
 	t0 = now_s();
-	long r = prof_write(&P, &META, f, buf, 4096);
+	long r = prof_write(&P, &META, fileno(f), buf, 4096);
 	t1 = now_s();
 	fclose(f);
 	printf("    prof_write() of those full tables: %ld bytes in %.2f ms (to /dev/null)\n", r,
@@ -502,7 +502,7 @@ static int demo(const char *path, const char *sha)
 			m.why = "key";
 			m.file_no = 2;
 			FILE *f = fopen(early, "w");
-			if (!f || prof_write(&P, &m, f, buf, sizeof(buf)) < 0 || fclose(f) != 0)
+			if (!f || prof_write(&P, &m, fileno(f), buf, sizeof(buf)) < 0 || fclose(f) != 0)
 				return 1;
 		}
 	}
@@ -514,7 +514,7 @@ static int demo(const char *path, const char *sha)
 	m.why = "end";
 	m.file_no = 3;
 	FILE *f = fopen(path, "w");
-	if (!f || prof_write(&P, &m, f, buf, sizeof(buf)) < 0)
+	if (!f || prof_write(&P, &m, fileno(f), buf, sizeof(buf)) < 0)
 		return 1;
 	return fclose(f) != 0;
 }

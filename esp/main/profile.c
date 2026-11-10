@@ -29,9 +29,11 @@
  * With profile = 0 (the default) profile_setup() returns at once: no table,
  * no timer, no interrupt, no key, and core 1's loop is v5.0's.
  */
+#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
+#include <unistd.h>
 
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
@@ -191,7 +193,13 @@ bool profile_setup(int on, const char *ini_path, const char *ini_dir, int fast_c
 
 	/* the tables, in PSRAM, smaller if there is not room for them and
 	   PROFILE_KEEP_PSRAM besides (the VGA's 16-colour cache comes from
-	   there at a mode change: 150 KB at 640x480) */
+	   there at a mode change: 150 KB at 640x480).  v5.3: the file's buffer
+	   first, and the whole block aligned as ESP-IDF's FatFs takes its own
+	   sector buffers (MALLOC_CAP_DMA | MALLOC_CAP_CACHE_ALIGNED): FatFs
+	   hands each 4 KiB of the file to the SD driver as it is, and the
+	   driver now sends it from PSRAM by DMA.  At the heap's 4-byte
+	   alignment the driver copied every 4 KiB through a buffer of internal
+	   RAM that it took for the write and let go after. */
 	static const struct prof_sizes sizes[2] = {
 		{ 8192, 2048, 4096, 512 },
 		{ 4096, 1024, 2048, 256 },
@@ -200,9 +208,10 @@ bool profile_setup(int on, const char *ini_path, const char *ini_dir, int fast_c
 	void *mem = NULL;
 	const struct prof_sizes *sz = NULL;
 	for (int i = 0; i < 2 && !mem; i++) {
-		size_t need = prof_mem_bytes(&sizes[i]) + PROFILE_BUF;
+		size_t need = PROFILE_BUF + prof_mem_bytes(&sizes[i]);
 		if (big >= need + PROFILE_KEEP_PSRAM) {
-			mem = heap_caps_malloc(need, MALLOC_CAP_SPIRAM);
+			mem = heap_caps_malloc(need, MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA |
+					       MALLOC_CAP_CACHE_ALIGNED);
 			sz = &sizes[i];
 			s_kib = (unsigned) ((need + 1023) / 1024);
 		}
@@ -212,8 +221,8 @@ bool profile_setup(int on, const char *ini_path, const char *ini_dir, int fast_c
 			       "(largest free block %u KiB).", (unsigned) (big / 1024));
 		return false;
 	}
-	prof_init(&s_prof, mem, sz);
-	s_buf = (char *) mem + prof_mem_bytes(sz);
+	s_buf = mem;
+	prof_init(&s_prof, (char *) mem + PROFILE_BUF, sz);
 	prof_set_range(&s_prof, PROF_REGION_IRAM, (uint32_t) (uintptr_t) _iram_start,
 		       (uint32_t) (uintptr_t) _iram_text_end);
 	s_run = esp_random();
@@ -366,21 +375,23 @@ void profile_write(const char *why)
 	   its number, and the file its file number, only when it was written
 	   whole, and a file that failed is taken away (the v5.1 sampler
 	   review's R2).  FatFs renames onto no name that is there, so the old
-	   PROFILE.TXT goes first. */
+	   PROFILE.TXT goes first.  v5.3: open(), write() and close(), not
+	   stdio: a FILE and its lock are about 300 bytes of internal RAM for
+	   each file while it is written, and s_buf is written whole anyway. */
 	char tmp[112], path2[128] = "";
 	unsigned keyno = s_keys < 99 ? s_keys + 1 : 99;
 	snprintf(tmp, sizeof(tmp), "%s/PROFILE.NEW", s_dir);
-	FILE *f = fopen(tmp, "w"), *f2 = NULL;
+	int f = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0666), f2 = -1;
 	if (key) {
 		snprintf(path2, sizeof(path2), "%s/PROF%02u.TXT", s_dir, keyno);
-		if (f)
-			f2 = fopen(path2, "w");
+		if (f >= 0)
+			f2 = open(path2, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 	}
-	bool opened = f && (f2 || !key);
+	bool opened = f >= 0 && (f2 >= 0 || !key);
 	long bytes = opened ? prof_write2(&s_prof, &m, f, f2, s_buf, PROFILE_BUF) : -1;
-	if (f && fclose(f) != 0)
+	if (f >= 0 && close(f) != 0)
 		bytes = -1;
-	if (f2 && fclose(f2) != 0)
+	if (f2 >= 0 && close(f2) != 0)
 		bytes = -1;
 	bool renamed = false;
 	if (bytes >= 0) {
@@ -389,9 +400,9 @@ void profile_write(const char *why)
 		if (key)
 			s_keys = keyno;
 	} else {
-		if (f)
+		if (f >= 0)
 			remove(tmp);
-		if (f2)
+		if (f2 >= 0)
 			remove(path2);
 		s_files--;
 	}
