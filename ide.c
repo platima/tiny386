@@ -425,6 +425,12 @@ struct IDEState {
     
     int data_index;
     int data_end;
+#if defined(IDE_ENABLE_WRITE_GATHER) || defined(IDE_ENABLE_READ_AHEAD)
+    /* v5.3: where data_index and data_end count from: io_buffer, or for a
+       disk's read or write block the read-ahead or gathering buffer itself,
+       so that the block is not copied through io_buffer as well */
+    uint8_t *data_buf;
+#endif
     uint8_t io_buffer[MAX_MULT_SECTORS*512 + 4];
 #ifdef IDE_ENABLE_WRITE_GATHER
     uint8_t *wbuf; /* WRITE_GATHER_SECTORS, allocated on the first write */
@@ -443,6 +449,14 @@ struct IDEIFState {
     /* 0x3f6 command */
     uint8_t cmd;
 };
+
+#if defined(IDE_ENABLE_WRITE_GATHER) || defined(IDE_ENABLE_READ_AHEAD)
+#define IDE_DATA_BUF(s) ((s)->data_buf)
+#define IDE_DATA_AT(s, p) ((s)->data_buf = (p))
+#else
+#define IDE_DATA_BUF(s) ((s)->io_buffer)
+#define IDE_DATA_AT(s, p) ((void) (p))
+#endif
 
 static void ide_sector_read_cb(void *opaque, int ret);
 static void ide_sector_read_cb_end(IDEState *s);
@@ -584,6 +598,7 @@ static void ide_transfer_start(IDEState *s, int size,
     s->end_transfer_func = end_transfer_func;
     s->data_index = 0;
     s->data_end = size;
+    IDE_DATA_AT(s, s->io_buffer);
 }
 
 static void ide_transfer_stop(IDEState *s)
@@ -591,6 +606,7 @@ static void ide_transfer_stop(IDEState *s)
     s->end_transfer_func = ide_transfer_stop;
     s->data_index = 0;
     s->data_end = 0;
+    IDE_DATA_AT(s, s->io_buffer);
 }
 
 static void ide_transfer_start2(IDEState *s, int off, int size,
@@ -599,6 +615,7 @@ static void ide_transfer_start2(IDEState *s, int off, int size,
     s->end_transfer_func = end_transfer_func;
     s->data_index = off;
     s->data_end = off + size;
+    IDE_DATA_AT(s, s->io_buffer);
     if (!(s->status & ERR_STAT))
         s->status |= DRQ_STAT;
 }
@@ -608,6 +625,7 @@ static void ide_transfer_stop2(IDEState *s)
     s->end_transfer_func = ide_transfer_stop2;
     s->data_index = 0;
     s->data_end = 0;
+    IDE_DATA_AT(s, s->io_buffer);
     s->status &= ~DRQ_STAT;
 }
 
@@ -649,21 +667,23 @@ static void ide_read_ahead_cb(void *opaque, int ret)
 {
 }
 
-/* The next block of a read command, n sectors at sector_num, into io_buffer
-   from what was read ahead: 1 if it is there, 0 if it is to be read on its
-   own, as without IDE_ENABLE_READ_AHEAD.  If what was read ahead does not
-   hold it, the rest of the command, up to READ_AHEAD_SECTORS, is read ahead
-   first.  If that fails (sectors past the image's end, the card refusing),
-   the command goes on block by block, so that the guest sees an error at
-   the same block, with the same registers, as before. */
-static int ide_read_ahead(IDEState *s, int64_t sector_num, int n)
+/* The next block of a read command, n sectors at sector_num, from what was
+   read ahead: where it is in the read-ahead buffer, or NULL if it is to be
+   read on its own, as without IDE_ENABLE_READ_AHEAD.  (v5.3: the guest's
+   data port reads it there, IDE_DATA_AT(), rather than from a copy in
+   io_buffer.)  If what was read ahead does not hold it, the rest of the
+   command, up to READ_AHEAD_SECTORS, is read ahead first.  If that fails
+   (sectors past the image's end, the card refusing), the command goes on
+   block by block, so that the guest sees an error at the same block, with
+   the same registers, as before. */
+static uint8_t *ide_read_ahead(IDEState *s, int64_t sector_num, int n)
 {
     if (s->rcount < n || s->rsector != sector_num) {
         int m = s->nsector ? s->nsector : 256; /* what the command has left */
         int ret;
         s->rcount = 0;
         if (m <= n || s->rfailed || s->roff)
-            return 0;
+            return NULL;
         if (!s->rbuf) {
 #ifdef IDE_ENABLE_WRITE_GATHER
             if (!s->wbuf)
@@ -673,7 +693,7 @@ static int ide_read_ahead(IDEState *s, int64_t sector_num, int n)
             s->rbuf = ide_buf_malloc(READ_AHEAD_SECTORS * 512);
 #endif
             if (!s->rbuf)
-                return 0;
+                return NULL;
         }
         if (m > READ_AHEAD_SECTORS)
             m = READ_AHEAD_SECTORS;
@@ -691,17 +711,17 @@ static int ide_read_ahead(IDEState *s, int64_t sector_num, int n)
                 s->wbuf = NULL;
 #endif
             }
-            return 0;
+            return NULL;
         }
         s->rsector = sector_num;
         s->rpos = 0;
         s->rcount = m;
     }
-    memcpy(s->io_buffer, s->rbuf + s->rpos * 512, n * 512);
+    uint8_t *p = s->rbuf + s->rpos * 512;
     s->rsector += n;
     s->rpos += n;
     s->rcount -= n;
-    return 1;
+    return p;
 }
 #endif
 
@@ -721,8 +741,10 @@ static void ide_sector_read(IDEState *s)
 #endif
     s->io_nb_sectors = n;
 #ifdef IDE_ENABLE_READ_AHEAD
-    if (ide_read_ahead(s, sector_num, n)) {
+    uint8_t *ahead = ide_read_ahead(s, sector_num, n);
+    if (ahead) {
         ide_sector_read_cb(s, 0);
+        IDE_DATA_AT(s, ahead); /* v5.3: the block where it was read ahead */
         return;
     }
 #endif
@@ -771,12 +793,24 @@ static void ide_sector_read_cb_end(IDEState *s)
 
 #ifdef IDE_ENABLE_WRITE_GATHER
 static void ide_write_gathered(IDEState *s);
+
+/* v5.3: the next block of a write command, n sectors, written by the guest
+   straight into the gathering buffer, where ide_sector_write_cb1() would
+   copy it (the buffer taken now if it is not yet) */
+static void ide_write_into_gather(IDEState *s, int n)
+{
+    if (!s->wbuf)
+        s->wbuf = ide_buf_malloc(WRITE_GATHER_SECTORS * 512); /* (not pcmalloc: little room there) */
+    if (s->wbuf && s->wcount + n <= WRITE_GATHER_SECTORS)
+        IDE_DATA_AT(s, s->wbuf + s->wcount * 512);
+}
 #endif
 
 static void ide_sector_write_cb1(IDEState *s)
 {
     int64_t sector_num;
     int ret;
+    uint8_t *blk = IDE_DATA_BUF(s); /* where the guest wrote the block */
 #ifdef IDE_ENABLE_WRITE_GATHER
     int n = s->io_nb_sectors, gathered = 0;
 #endif
@@ -801,7 +835,12 @@ static void ide_sector_write_cb1(IDEState *s)
             ide_write_gathered(s);
         if (!s->wcount)
             s->wsector = sector_num;
-        memcpy(s->wbuf + s->wcount * 512, s->io_buffer, n * 512);
+        /* v5.3: the guest wrote it in place unless it was in io_buffer,
+           or those gathered before it were written meanwhile (above, or
+           the front end's ide_write_pending()), which leaves it further
+           on in the buffer than it now goes */
+        if (blk != s->wbuf + s->wcount * 512)
+            memmove(s->wbuf + s->wcount * 512, blk, n * 512);
         s->wcount += n;
         if (((s->nsector - n) & 0xff) &&
             s->wcount + s->req_nb_sectors <= WRITE_GATHER_SECTORS) {
@@ -814,7 +853,7 @@ static void ide_sector_write_cb1(IDEState *s)
                                  ide_sector_write_cb2, s);
     } else
 #endif
-    ret = s->bs->write_async(s->bs, sector_num, s->io_buffer, s->io_nb_sectors, 
+    ret = s->bs->write_async(s->bs, sector_num, blk, s->io_nb_sectors, 
                              ide_sector_write_cb2, s);
     if (ret < 0) {
         /* error */
@@ -855,6 +894,9 @@ static void ide_sector_write_cb2(void *opaque, int ret)
             n = s->req_nb_sectors;
         s->io_nb_sectors = n;
         ide_transfer_start(s, 512 * n, ide_sector_write_cb1);
+#ifdef IDE_ENABLE_WRITE_GATHER
+        ide_write_into_gather(s, n);
+#endif
         s->status = READY_STAT | SEEK_STAT | DRQ_STAT;
     }
     ide_set_irq(s);
@@ -873,6 +915,9 @@ static void ide_sector_write(IDEState *s)
         n = s->req_nb_sectors;
     s->io_nb_sectors = n;
     ide_transfer_start(s, 512 * n, ide_sector_write_cb1);
+#ifdef IDE_ENABLE_WRITE_GATHER
+    ide_write_into_gather(s, n);
+#endif
     s->status = READY_STAT | SEEK_STAT | DRQ_STAT;
 }
 
@@ -1958,7 +2003,7 @@ void ide_data_writew(void *opaque, uint32_t val)
     p = s->data_index;
     if (p + 2 > s->data_end)
         return;
-    tab = s->io_buffer;
+    tab = IDE_DATA_BUF(s);
     tab[p] = val & 0xff;
     tab[p + 1] = (val >> 8) & 0xff;
     p += 2;
@@ -1980,7 +2025,7 @@ uint32_t ide_data_readw(void *opaque)
         p = s->data_index;
         if (p + 2 > s->data_end)
             return 0;
-        tab = s->io_buffer;
+        tab = IDE_DATA_BUF(s);
         ret = tab[p] | (tab[p + 1] << 8);
         p += 2;
         s->data_index = p;
@@ -2002,7 +2047,7 @@ void ide_data_writel(void *opaque, uint32_t val)
     p = s->data_index;
     if (p + 4 > s->data_end)
         return;
-    tab = s->io_buffer;
+    tab = IDE_DATA_BUF(s);
     tab[p] = val & 0xff;
     tab[p + 1] = (val >> 8) & 0xff;
     tab[p + 2] = (val >> 16) & 0xff;
@@ -2026,7 +2071,7 @@ uint32_t ide_data_readl(void *opaque)
         p = s->data_index;
         if (p + 4 > s->data_end)
             return 0;
-        tab = s->io_buffer;
+        tab = IDE_DATA_BUF(s);
         ret = tab[p] | (tab[p + 1] << 8) | (tab[p + 2] << 16) | (tab[p + 3] << 24);
         p += 4;
         s->data_index = p;
@@ -2048,7 +2093,7 @@ int ide_data_write_string(void *opaque, uint8_t *buf, int size, int count)
         len1 = s->data_end - s->data_index;
     len1 -= len1 % size;
     if (len1 >= 0) {
-        memcpy(s->io_buffer + s->data_index, buf, len1);
+        memcpy(IDE_DATA_BUF(s) + s->data_index, buf, len1);
     }
     s->data_index += len1;
     if (s->data_index >= s->data_end)
@@ -2068,7 +2113,7 @@ int ide_data_read_string(void *opaque, uint8_t *buf, int size, int count)
         len1 = s->data_end - s->data_index;
     len1 -= len1 % size;
     if (len1 >= 0) {
-        memcpy(buf, s->io_buffer + s->data_index, len1);
+        memcpy(buf, IDE_DATA_BUF(s) + s->data_index, len1);
     }
     s->data_index += len1;
     if (s->data_index >= s->data_end)
@@ -2117,6 +2162,7 @@ static IDEState *ide_hddrive_init(IDEIFState *ide_if, BlockDevice *bs)
     s->data_index = 0;
     s->data_end = 0;
     s->end_transfer_func = ide_transfer_stop;
+    IDE_DATA_AT(s, s->io_buffer);
 
     s->req_nb_sectors = 0; /* temp for read/write */
     s->io_nb_sectors = 0; /* temp for read/write */
@@ -2150,6 +2196,7 @@ static IDEState *ide_cddrive_init(IDEIFState *ide_if, BlockDevice *bs)
     s->data_index = 0;
     s->data_end = 0;
     s->end_transfer_func = ide_transfer_stop2;
+    IDE_DATA_AT(s, s->io_buffer);
 
     s->req_nb_sectors = 0; /* temp for read/write */
     s->io_nb_sectors = 0; /* temp for read/write */

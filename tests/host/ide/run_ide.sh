@@ -7,7 +7,9 @@
 # 1. test_ide_gather.c: ide.c with them (side B) against ide.c without (side
 #    A), driven side by side by a pretend guest: every value read at the
 #    ports, every change of the interrupt line and both disks after every
-#    command must be the same.  The one difference allowed is PR 70's own,
+#    command must be the same.  (v5.3) The front end's flush,
+#    ide_write_pending(), comes between commands and in the middle of them,
+#    after which both disks must be the same at once.  The one difference allowed is PR 70's own,
 #    a gathered write that fails, which is checked against a model of it.
 #    Side A is ide.c at bd091f7 (v5.2 before this work) when the tree has
 #    that commit, else this tree's ide.c without the two defines.  Side B:
@@ -49,9 +51,11 @@ result() {
 side() {
     local name=$1 ab=$2 c=$3 what=$4
     shift 4
-    local sym=ide_side_$(echo "$ab" | tr AB ab)
+    local sym=ide_side_$(echo "$ab" | tr AB ab) wp=
+    # (v5.3) the front end's flush, for an ide.c that has it
+    grep -q "^void ide_write_pending" "$c" && wp=-DSIDE_WRITE_PENDING
     $CC -O1 -g -w -I"$HERE" -I"$TREE" -I"$TREE/tests/host/shim" -DIDE_C="\"$c\"" -DSIDE=$sym \
-        -DSIDE_WHAT="\"$what\"" "$@" -c -o "$OUT/side-$ab-$name.o" "$HERE/ide_side.c" || exit 1
+        -DSIDE_WHAT="\"$what\"" $wp "$@" -c -o "$OUT/side-$ab-$name.o" "$HERE/ide_side.c" || exit 1
     objcopy -G $sym "$OUT/side-$ab-$name.o" || exit 1
 }
 $CC -O1 -g $W -Werror -I"$HERE" -c -o "$OUT/test_ide_gather.o" "$HERE/test_ide_gather.c" || exit 1
@@ -113,6 +117,15 @@ planted regs "a failed gathered write's registers left at its last block" \
     '/^            ide_set_sector(s, s->wsector);$/d'
 planted left "a write command left before its end losing what it gathered (PR 70 as upstream has it)" \
     's/ide_write_gathered([sd]);/;/'
+# v5.3: the data port straight at the read-ahead and gathering buffers
+planted flushlost "the front end's flush writing nothing of a command left part way" \
+    '/^void ide_write_pending/,/^}/s/ide_write_gathered(sif->drives\[i\]);/;/'
+planted stale "the data port left at the read-ahead buffer when a transfer starts" \
+    '/^static void ide_transfer_start(IDEState \*s, int size,/,/^}/{/IDE_DATA_AT/d}'
+planted notmoved "a block the guest wrote at the gathering buffer's old end left there" \
+    '/^        if (blk != s->wbuf + s->wcount \* 512)$/,/memmove/d'
+planted aheadoff "a block read ahead given from one block on" \
+    's/^    uint8_t \*p = s->rbuf + s->rpos \* 512;$/    uint8_t *p = s->rbuf + (s->rpos + 1) * 512;/'
 
 # ==== 2. what it costs the card ====
 IDF=${IDF_PATH:-$HOME/esp/esp-idf}

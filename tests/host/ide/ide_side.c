@@ -74,6 +74,13 @@ static void side_destroy(void *p)
     free(s);
 }
 
+#ifdef SIDE_WRITE_PENDING
+static void side_write_pending(void *p)
+{
+    ide_write_pending(p);
+}
+#endif
+
 struct ide_side SIDE = {
     .what = SIDE_WHAT,
 #ifdef IDE_ENABLE_WRITE_GATHER
@@ -94,4 +101,7 @@ struct ide_side SIDE = {
     .data_readl = ide_data_readl,
     .data_write_string = ide_data_write_string,
     .data_read_string = ide_data_read_string,
+#ifdef SIDE_WRITE_PENDING
+    .write_pending = side_write_pending,
+#endif
 };

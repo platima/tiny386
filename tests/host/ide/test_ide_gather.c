@@ -15,6 +15,9 @@
  * moves data by words, double words and strings of any length.  Every
  * value read from a port and every change of the interrupt line must be
  * the same on both sides, and so must both disks after every command.
+ * (v5.3) Between commands and in the middle of them the front end flushes
+ * (ide_write_pending(), esp_main.c's disk_flush()): then both disks must be
+ * the same at once, a write command left part way included.
  *
  * The one place the two may differ is a write command that fails while B
  * gathers (PR 70's own behaviour): there each side runs the command alone
@@ -371,7 +374,7 @@ static struct {
 
 static struct {
     long cmds, reads, writes, mults, failed_reads, failed_writes, divergent, abandoned,
-        pokes, resets, other, patterns, sectors, nested;
+        pokes, resets, other, patterns, sectors, nested, flushes;
     /* the writes that failed with B gathering: the error at a later block
        on B, in a gather after the command's first, other registers after
        it, another disk after it */
@@ -527,6 +530,19 @@ static void poke(int d, bool write)
         out(6, r.select);
         return;
     }
+}
+
+/* v5.3: the front end's flush (esp_main.c's disk_flush()), between commands
+   or in the middle of one: what B gathered is on its disks then, a write
+   command left part way included, so both sides' disks are the same */
+static void flush(void)
+{
+    stats.flushes++;
+    for (int s = 0; s < 2; s++)
+        if (side[s].ops->write_pending)
+            side[s].ops->write_pending(side[s].ifs);
+    pend[0] = pend[1] = false;
+    check_disks();
 }
 
 static void reset(void)
@@ -733,6 +749,8 @@ static int rw(int d, bool write, bool multiple, int64_t start, int count, int le
         }
         if (chance(3))
             poke(d, write);
+        if (chance(2))
+            flush();
         if (chance(2)) {
             /* a look at the other drive, and back */
             uint32_t sel = in(6);
@@ -870,6 +888,9 @@ static void step(void)
         doing = "drive select";
         select_drive(d, below(256));
         look();
+    } else if (k < 98) {
+        doing = "the front end's flush";
+        flush();
     } else {
         /* (no data: that could end the block of a write command the guest
            left, at a place where the reference's write fails and the
@@ -980,10 +1001,12 @@ int main(int argc, char **argv)
            "them MULTIPLE), %ld sectors moved; %ld other commands; %ld read, write, read; %ld "
            "reads and %ld writes on a sector that fails or past the end, %ld of the writes run "
            "on each side alone; %ld commands left before their end, %ld register changes in "
-           "the middle of one, %ld reads of the other drive in the middle of one, %ld resets\n",
+           "the middle of one, %ld reads of the other drive in the middle of one, %ld resets, "
+           "%ld flushes\n",
            seqs, steps_per, stats.cmds, stats.reads, stats.writes, stats.mults, stats.sectors,
            stats.other, stats.patterns, stats.failed_reads, stats.failed_writes,
-           stats.divergent, stats.abandoned, stats.pokes, stats.nested, stats.resets);
+           stats.divergent, stats.abandoned, stats.pokes, stats.nested, stats.resets,
+           stats.flushes);
     if (stats.divergent)
         printf("of the %ld writes that failed with B gathering, as PR 70 has it: on B the "
                "error at a later block %ld times, in a gather after the command's first %ld, "

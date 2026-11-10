@@ -30,5 +30,8 @@ struct ide_side {
     uint32_t (*data_readl)(void *ifs);
     int (*data_write_string)(void *ifs, uint8_t *buf, int size, int count);
     int (*data_read_string)(void *ifs, uint8_t *buf, int size, int count);
+    /* v5.3: the front end's flush (ide_write_pending()); NULL for an ide.c
+       without it */
+    void (*write_pending)(void *ifs);
 };
 #endif
