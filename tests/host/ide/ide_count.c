@@ -107,6 +107,13 @@ uint64_t storage_card_sectors(void)
     return 0;
 }
 
+bool storage_card_dma_ok(const void *buf, size_t size)
+{
+    (void) buf;
+    (void) size;
+    return false;
+}
+
 bool storage_part_mounted(int part)
 {
     return false;

@@ -26,6 +26,16 @@
  * the partition's sectors the card's, everything else zeros.  A card error is tried once more, as
  * disk_image.c does, and counted in disk_image.c's figures (the speed
  * screen's Disk line, the information port).
+ *
+ * v5.3: a transfer whose buffer the SD driver can take as it is (ide.c's
+ * read-ahead and gathering buffer: PSRAM, aligned to the cache line) goes
+ * between the card and that buffer by DMA, the partition's part of it in
+ * one card command.  Any other (ide.c's own sector buffer, which sits
+ * inside its state) goes through s_buf, SDP_BUF_SECTORS a command, as
+ * every transfer did before; and if the driver will not take ide.c's big
+ * buffer either, v5.2's 16 sectors are taken then, so that its runs take
+ * no more card commands than in v5.2.  The console says once which way
+ * the card goes.
  */
 #include <stdarg.h>
 #include <stdbool.h>
@@ -45,8 +55,12 @@
 uint32_t get_uticks();
 
 #define SDP_CYL (SD_PART_HEADS * SD_PART_SPT)   /* sectors a cylinder */
-#define SDP_BUF_SECTORS 16                      /* v5.2: 8 KiB, for ide.c's read ahead and
-                                                   gathering (4, MAX_MULT_SECTORS, before) */
+#define SDP_BUF_SECTORS 4                       /* v5.3: 2 KiB, ide.c's block at most
+                                                   (MAX_MULT_SECTORS); 16 in v5.2, for the
+                                                   read ahead and gathering, which now go
+                                                   to the card by DMA */
+#define SDP_BUF_MORE 16                         /* v5.2's 8 KiB, taken only if the SD driver
+                                                   will not take one of those */
 #define SDP_MAX 4                               /* four IDE drives */
 
 struct sd_part {
@@ -373,7 +387,8 @@ uint64_t sd_part_sectors(const struct sd_part *p)
 	return p->plan.disk_sectors;
 }
 
-static unsigned s_buf_sectors;          /* SDP_BUF_SECTORS, or 4 if internal RAM was short */
+static unsigned s_buf_sectors;          /* SDP_BUF_SECTORS, 1 if internal RAM was short, or
+                                           SDP_BUF_MORE (card_rw()) */
 
 static bool buf_ready(void)
 {
@@ -383,11 +398,10 @@ static bool buf_ready(void)
 		s_buf_sectors = SDP_BUF_SECTORS;
 	}
 	if (!s_buf) {
-		/* v5.2: without room for that, 2 KiB as before: more card
-		   commands, but the PC still starts */
-		s_buf = heap_caps_aligned_alloc(64, 4 * 512,
-						MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-		s_buf_sectors = 4;
+		/* without room for that, one sector: more card commands, but
+		   the PC still starts (v5.2's rule) */
+		s_buf = heap_caps_aligned_alloc(64, 512, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+		s_buf_sectors = 1;
 	}
 	return s_buf != NULL;
 }
@@ -405,7 +419,7 @@ static int load_plan(int part, int *pdrv, uint8_t *mbr, uint8_t *vbr,
 		return refuse(why, size, "card partition %d is mounted by tiny386's own FatFs, "
 			      "so the guest cannot have it whole as well", part);
 	if (!buf_ready())
-		return refuse(why, size, "no internal RAM for a 2 KiB sector buffer");
+		return refuse(why, size, "no internal RAM for a 512-byte sector buffer");
 	BYTE d = (BYTE) *pdrv;
 	if (disk_read(d, s_buf, 0, 1) != RES_OK && disk_read(d, s_buf, 0, 1) != RES_OK)
 		return refuse(why, size, "the card's first sector could not be read");
@@ -463,43 +477,104 @@ int sd_part_open(int part, struct sd_part **out, char *why, size_t size)
 	return r;
 }
 
-/* one run of whole sectors of the card, through the internal buffer, tried
-   twice; 0, or -1 if the card refused it both times */
-static int card_rw(struct sd_part *p, uint32_t sector, uint8_t *buf, unsigned n,
-		   bool write, bool *retried)
+/* a line for the console, said twice a boot at most: on the stack, as
+   sd_part_write()'s line is, rather than 200 bytes of internal RAM for
+   good */
+static void say(bool warn, const char *fmt, ...)
+{
+	char line[200];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(line, sizeof(line), fmt, ap);
+	va_end(ap);
+	if (disk_image_say)
+		disk_image_say(warn, line);
+	else
+		fprintf(stderr, "%s\n", line);
+}
+
+/* k sectors of the card at s, to or from b, tried twice */
+static inline __attribute__((always_inline)) DRESULT rw_twice(struct sd_part *p, uint32_t s,
+							      uint8_t *b, unsigned k, bool write,
+							      bool *retried)
+{
+	DRESULT r = write ? disk_write((BYTE) p->pdrv, b, s, k) : disk_read((BYTE) p->pdrv, b, s, k);
+	if (r != RES_OK) {
+		*retried = true;
+		r = write ? disk_write((BYTE) p->pdrv, b, s, k) : disk_read((BYTE) p->pdrv, b, s, k);
+	}
+	return r;
+}
+
+static bool s_said_dma, s_said_copy;    /* the board's log says each way once */
+
+/* the first run straight between the card and the guest's buffer (out of
+   line, so that card_rw() stays small in sd_part_read(), which is in
+   internal RAM, linker_hot.lf) */
+static void __attribute__((noinline)) said_dma(struct sd_part *p, unsigned n)
+{
+	s_said_dma = true;
+	say(false, "sd:%d: the card's DMA reads and writes the guest's disk buffers in PSRAM "
+	    "as they are, a run in one card command (the first %u sectors).", p->plan.part, n);
+}
+
+/* the first run of more than s_buf_sectors whose buffer the SD driver will
+   not take: if it is ide.c's read-ahead and gathering buffer, v5.2's 8 KiB
+   then, if there is room, so that its runs take no more card commands than
+   they did */
+static void __attribute__((noinline)) said_copy(struct sd_part *p, const uint8_t *buf,
+						unsigned n)
+{
+	s_said_copy = true;
+	uint8_t *more = n > SDP_BUF_SECTORS ?
+		heap_caps_aligned_alloc(64, SDP_BUF_MORE * 512, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL) :
+		NULL;
+	if (more) {
+		heap_caps_free(s_buf);
+		s_buf = more;
+		s_buf_sectors = SDP_BUF_MORE;
+	}
+	say(true, "sd:%d: the SD driver cannot take a buffer of %u sectors (at %p) for DMA as "
+	    "it is: such runs go through %u sectors of internal RAM a card command.",
+	    p->plan.part, n, (const void *) buf, s_buf_sectors);
+}
+
+/* one run of whole sectors of the card, tried twice; 0, or -1 if the card
+   refused it both times.  v5.3: straight between the card and buf, one
+   card command, if the SD driver can take buf as it is for its DMA; else
+   through the internal buffer, s_buf_sectors a command.  Inlined, as
+   before v5.3, so that the read path stays in internal RAM. */
+static inline __attribute__((always_inline)) int card_rw(struct sd_part *p, uint32_t sector,
+							 uint8_t *buf, unsigned n, bool write,
+							 bool *retried)
 {
 	uint32_t t0 = get_uticks();
 	*retried = false;
 	int ret = 0;
-	unsigned left = n;
-	uint32_t s = sector;
-	uint8_t *b = buf;
-	while (left > 0) {
-		unsigned k = left < s_buf_sectors ? left : s_buf_sectors;
-		DRESULT r;
-		if (write) {
-			memcpy(s_buf, b, k * 512);
-			r = disk_write((BYTE) p->pdrv, s_buf, s, k);
-			if (r != RES_OK) {
-				*retried = true;
-				r = disk_write((BYTE) p->pdrv, s_buf, s, k);
+	if (storage_card_dma_ok(buf, (size_t) n * 512)) {
+		if (!s_said_dma)
+			said_dma(p, n);
+		ret = rw_twice(p, sector, buf, n, write, retried) == RES_OK ? 0 : -1;
+	} else {
+		if (n > s_buf_sectors && !s_said_copy)
+			said_copy(p, buf, n);
+		unsigned left = n;
+		uint32_t s = sector;
+		uint8_t *b = buf;
+		while (left > 0) {
+			unsigned k = left < s_buf_sectors ? left : s_buf_sectors;
+			if (write)
+				memcpy(s_buf, b, k * 512);
+			if (rw_twice(p, s, s_buf, k, write, retried) != RES_OK) {
+				ret = -1;
+				break;
 			}
-		} else {
-			r = disk_read((BYTE) p->pdrv, s_buf, s, k);
-			if (r != RES_OK) {
-				*retried = true;
-				r = disk_read((BYTE) p->pdrv, s_buf, s, k);
-			}
-			if (r == RES_OK)
+			if (!write)
 				memcpy(b, s_buf, k * 512);
+			left -= k;
+			s += k;
+			b += k * 512;
 		}
-		if (r != RES_OK) {
-			ret = -1;
-			break;
-		}
-		left -= k;
-		s += k;
-		b += k * 512;
 	}
 	disk_image_count(write, n, get_uticks() - t0, *retried, *retried && !ret);
 	return ret;

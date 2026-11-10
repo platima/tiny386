@@ -18,6 +18,14 @@
 #    On "new" the guest's own view of its disk writes two files on p3;
 #    then mtools reads them back, fsck.fat -n finds p1 and p3 clean, and
 #    the card's sector 0, p1 and p2 are as they were, every sector.
+# 3. v5.3, test_sd_dma.c on a copy of the "new" card: the card's DMA
+#    straight into and out of the guest's disk buffers, a run in one card
+#    command, and through sd_part.c's internal buffer for a buffer the SD
+#    driver would not take (host_glue.c stands in for its check); then
+#    the same operations with sd_part.c at 3e386ff (v5.2's, which copies
+#    every transfer through 16 sectors of internal RAM), when this tree
+#    has that commit: the guest must see the same, and the card end the
+#    same, every byte.
 #
 #   bash tests/host/sdpart/run_sdpart.sh [OUT]
 #
@@ -186,6 +194,62 @@ mcopy -n -o -i "$IMG@@$((P3 * 512))" ::/BIG.BIN "$OUT/big.bin" 2>/dev/null &&
 python3 -I -c "import sys; sys.exit(0 if open(sys.argv[1],'rb').read() == bytes((k * 13 + 5) & 255 for k in range(65536)) else 1)" "$OUT/big.bin"
 result $? "new card: BIG.BIN on p3 as mtools reads it, every byte"
 rm -f "$OUT/big.bin"
+
+echo "== v5.3: the card's DMA into and out of the guest's disk buffers, on a copy of the new card"
+cp "$IMG" "$OUT/card-dma-start.img"
+# dma NAME OBJECT COPY,MORE DMA [short]: test_sd_dma with the sd_part.c of
+# OBJECT, on a copy of the card as the new card's checks left it;
+# OUT/dma-NAME.out, OUT/dma-NAME.log and OUT/card-dma-NAME.img
+dma() {
+    $CC -O1 -g $W -w -DIDE_C="\"$TREE/ide.c\"" $INC -o "$OUT/test_sd_dma-$1" "$HERE/test_sd_dma.c" \
+        "$2" "$OUT/disk_image.o" "$OUT/storage_host.o" "$OUT/host_glue.o" \
+        "$OUT"/idf_ff.o "$OUT"/idf_ffunicode.o "$OUT"/idf_diskio.o "$OUT"/idf_diskio_sdmmc.o || exit 1
+    cp "$OUT/card-dma-start.img" "$OUT/card-dma-$1.img"
+    "$OUT/test_sd_dma-$1" "$OUT/card-dma-$1.img" $TOT $P3 $P3N 0x5d3a "$OUT/dma-$1.log" $3 $4 \
+        ${5:-} > "$OUT/dma-$1.out" 2>&1
+}
+dma tree "$OUT/sd_part.o" 4,16 1
+st=$?
+grep -v "^E diskio_sdmmc" "$OUT/dma-tree.out" | sed 's/^/    | /'
+result $st "this sd_part.c: reads and writes right with every kind of buffer; a buffer the driver takes in one card command, one it refuses through internal RAM (4 sectors a command, 16 once a big one is refused); none handed to the driver to copy"
+dma lowram "$OUT/sd_part.o" 4,4 1 short
+st=$?
+grep -E "card commands|commands:|operations:|FAIL|test_sd_dma" "$OUT/dma-lowram.out" | sed 's/^/    | low RAM: /'
+result $st "this sd_part.c with no internal RAM for v5.2's 16 sectors when a big buffer is refused: right, 4 sectors a command"
+cmp -s "$OUT/dma-tree.log" "$OUT/dma-lowram.log" && cmp -s "$OUT/card-dma-tree.img" "$OUT/card-dma-lowram.img"
+result $? "  the guest saw the same as with 16, and the card ended the same"
+if git -C "$TREE" rev-parse -q --verify "3e386ff^{commit}" > /dev/null 2>&1; then
+    git -C "$TREE" show 3e386ff:esp/main/sd_part.c > "$OUT/sd_part-v52.c"
+    $CC -O1 -g $W -Werror $INC -c -o "$OUT/sd_part-v52.o" "$OUT/sd_part-v52.c" || exit 1
+    dma v52 "$OUT/sd_part-v52.o" 16,16 0
+    st=$?
+    grep -E "card commands|commands:|operations:|FAIL|test_sd_dma" "$OUT/dma-v52.out" | sed 's/^/    | v5.2: /'
+    result $st "v5.2's sd_part.c (3e386ff), the same operations: right, 16 sectors a card command"
+    cmp -s "$OUT/dma-tree.log" "$OUT/dma-v52.log" && cmp -s "$OUT/card-dma-tree.img" "$OUT/card-dma-v52.img"
+    result $? "the guest saw the same with both, every read, status and error, and the card ended the same, every byte ($(wc -l < "$OUT/dma-tree.log") operations)"
+else
+    echo "    | (no 3e386ff in this tree: not held against v5.2's sd_part.c)"
+fi
+# planted NAME WHAT SED: a copy of sd_part.c with SED's fault in it, which
+# the test must see
+planted() {
+    sed -e "$3" "$M/sd_part.c" > "$OUT/sd_part-$1.c"
+    local nl st
+    nl=$(diff "$M/sd_part.c" "$OUT/sd_part-$1.c" | grep -c '^<')
+    $CC -O1 -g $W -w $INC -c -o "$OUT/sd_part-$1.o" "$OUT/sd_part-$1.c" || exit 1
+    dma $1 "$OUT/sd_part-$1.o" 4,16 1
+    st=$?
+    grep -m1 "FAIL" "$OUT/dma-$1.out" | cut -c1-150 | sed 's/^ */    | /'
+    [ "$nl" -gt 0 ] && [ $st != 0 ]
+    result $? "the test sees it: $2 ($nl line$([ "$nl" = 1 ] || echo s) of sd_part.c changed)"
+}
+planted short "a run straight to or from the card one sector short" \
+    's/ret = rw_twice(p, sector, buf, n, write, retried)/ret = rw_twice(p, sector, buf, n > 1 ? n - 1 : n, write, retried)/'
+planted unasked "every buffer straight to the card, the driver's check not asked" \
+    's/if (storage_card_dma_ok(buf, (size_t) n \* 512)) {/if (1) {/'
+planted stride "a read through the internal buffer copied to the start of the guest's each time" \
+    's/memcpy(b, s_buf, k \* 512);/memcpy(buf, s_buf, k * 512);/'
+rm -f "$OUT"/card-dma-*.img
 
 echo "== Plat's card as it is: p1 FAT32, p2 ext4, p3 FAT32 WIN9X at 532480"
 IMG=$OUT/card-old.img

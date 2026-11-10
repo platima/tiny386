@@ -320,6 +320,17 @@ uint64_t storage_card_sectors(void)
 	return (uint64_t) card->csd.capacity * card->csd.sector_size / 512;
 }
 
+/* v5.3: the host driver's own check, the one sdmmc_read_sectors() and
+   sdmmc_write_sectors() make (on the SDMMC host
+   sdmmc_host_check_buffer_alignment(): memory its DMA reaches, PSRAM too
+   on the S31, from a cache line's start to a cache line's end) */
+bool storage_card_dma_ok(const void *buf, size_t size)
+{
+	sdmmc_card_t *card = rawsd;
+	return card && card->host.check_buffer_alignment &&
+		card->host.check_buffer_alignment(card->host.slot, buf, size);
+}
+
 bool storage_part_mounted(int part)
 {
 	for (int i = 0; i < s_nvols; i++)
@@ -375,6 +386,12 @@ int storage_card_pdrv(void)
 uint64_t storage_card_sectors(void)
 {
 	return 0;
+}
+
+bool storage_card_dma_ok(const void *buf, size_t size)
+{
+	(void) buf; (void) size;
+	return false;
 }
 
 bool storage_part_mounted(int part)

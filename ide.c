@@ -336,9 +336,16 @@ int ide_buffers = 1;
 #ifdef BUILD_ESP32
 /* the gathering and read-ahead buffer in PSRAM: on the S31 boards malloc()
    gives internal RAM only (CONFIG_SPIRAM_USE_CAPS_ALLOC), which has about
-   64 KB to spare */
+   64 KB to spare.  v5.3: aligned as ESP-IDF's FatFs takes its own sector
+   buffers, so that for hda = sd:N the card's DMA reads and writes it as it
+   is, a whole run in one command (esp/main/sd_part.c). */
 #include "esp_heap_caps.h"
-#define ide_buf_malloc(size) (ide_buffers ? heap_caps_malloc((size), MALLOC_CAP_SPIRAM) : NULL)
+#ifdef MALLOC_CAP_CACHE_ALIGNED
+#define IDE_BUF_CAPS (MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_CACHE_ALIGNED)
+#else
+#define IDE_BUF_CAPS MALLOC_CAP_SPIRAM
+#endif
+#define ide_buf_malloc(size) (ide_buffers ? heap_caps_malloc((size), IDE_BUF_CAPS) : NULL)
 #else
 #define ide_buf_malloc(size) malloc(size)
 #endif

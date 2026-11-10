@@ -4,6 +4,7 @@
  * and lock functions (ffsystem.c's job on the board), and the VFS
  * registration (which here only notes which FatFs drive a path is).
  */
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +19,7 @@
 /* ==== the card ==== */
 
 struct host_card_stats host_card;
+int host_heap_no_internal;
 
 static void note_write(size_t start, size_t n)
 {
@@ -46,11 +48,37 @@ static bool refuse(unsigned n, unsigned at)
 	return false;
 }
 
+bool host_dma_check(int slot, const void *buf, size_t size)
+{
+	(void) slot;
+	uintptr_t a = (uintptr_t) buf;
+	if (!buf || !size || a % 64 || size % 64)
+		return false;
+	for (int i = 0; i < host_card.ndma_refused; i++) {
+		uintptr_t s = (uintptr_t) host_card.dma_refused[i].start;
+		if (a < s + host_card.dma_refused[i].size && s < a + size)
+			return false;
+	}
+	return true;
+}
+
+/* what sdmmc_read_sectors() and sdmmc_write_sectors() would do with buf */
+static void note_buffer(sdmmc_card_t *card, const void *buf, size_t n)
+{
+	if (!card->host.check_buffer_alignment)
+		return;
+	if (card->host.check_buffer_alignment(card->host.slot, buf, n * 512))
+		host_card.dma_direct++;
+	else
+		host_card.dma_copied++;
+}
+
 esp_err_t sdmmc_read_sectors(sdmmc_card_t *card, void *dst, size_t start, size_t n)
 {
 	if (start + n > (size_t) card->csd.capacity)
 		return ESP_ERR_INVALID_SIZE;
 	host_card.reads++;
+	note_buffer(card, dst, n);
 	if (host_card.watch_n && start < host_card.watch_start + host_card.watch_n &&
 	    start + n > host_card.watch_start)
 		host_card.watch_reads++;
@@ -64,6 +92,7 @@ esp_err_t sdmmc_write_sectors(sdmmc_card_t *card, const void *src, size_t start,
 {
 	if (start + n > (size_t) card->csd.capacity)
 		return ESP_ERR_INVALID_SIZE;
+	note_buffer(card, src, n);
 	if (refuse(host_card.writes + 1, host_card.fail_write_at)) {
 		host_card.writes++;
 		return ESP_ERR_TIMEOUT;
@@ -86,9 +115,13 @@ const char *esp_err_to_name(esp_err_t err)
 
 /* ==== FatFs's system functions (ffsystem.c on the board) ==== */
 
+/* on a cache line, as ESP-IDF's ffsystem.c takes them
+   (CONFIG_FATFS_ALLOC_PREFER_ALIGNED_WORK_BUFFERS), so that the card's
+   DMA takes FatFs's own sector buffers as they are (v5.3's
+   host_dma_check()) */
 void *ff_memalloc(UINT msize)
 {
-	return malloc(msize);
+	return aligned_alloc(64, ((size_t) msize + 63) / 64 * 64);
 }
 
 void ff_memfree(void *mblock)

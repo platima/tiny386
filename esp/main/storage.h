@@ -44,6 +44,10 @@ bool storage_fatfs_path(const char *path, char *out, size_t size);
    size in 512-byte sectors */
 int storage_card_pdrv(void);
 uint64_t storage_card_sectors(void);
+/* v5.3: whether the SD driver can take buf (size bytes) as it is for the
+   card's DMA, by its own check; without, it copies the sectors through a
+   buffer of internal RAM it takes for each read or write */
+bool storage_card_dma_ok(const void *buf, size_t size);
 /* whether tiny386's own FatFs has partition part (1 to 4) of the card's MBR
    mounted */
 bool storage_part_mounted(int part);
