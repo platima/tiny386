@@ -74,8 +74,17 @@
 
 //
 #include "esp_private/system_internal.h"
+#if QW_UCLK && CONFIG_IDF_TARGET_ESP32S31
+#include "uclock.h"
+#endif
 uint32_t get_uticks()
 {
+#if QW_UCLK && CONFIG_IDF_TARGET_ESP32S31
+	/* v5.3: on core 1, the emulator's, from its cycle counter between
+	   true reads (uclock.h); core 0 reads the systimer as before */
+	if (esp_cpu_get_core_id() == 1)
+		return uclock_get(&uclock_c1);
+#endif
 	return esp_system_get_time();
 }
 
@@ -623,6 +632,10 @@ static void run_pc(PC *pc)
 			speed_run_pause(get_uticks());
 		}
 		disk_errors(now);
+#if QW_UCLK && CONFIG_IDF_TARGET_ESP32S31
+		if (__builtin_expect(uclock_c1.off, 0))
+			uclock_say();
+#endif
 	}
 	/* v5.2: always, as ide.c may hold the blocks of a write command the
 	   guest left part way, which disk_flush() writes */
@@ -633,6 +646,9 @@ static void run_pc(PC *pc)
 	/* v5.1: the profiler's last file, whether or not one was asked for */
 	profile_write("end");
 	disk_errors(get_uticks());
+#if QW_UCLK && CONFIG_IDF_TARGET_ESP32S31
+	uclock_totals((get_uticks() - pc->boot_start_time) / 1000000);
+#endif
 }
 
 static void i386_task(void *arg)
@@ -747,6 +763,11 @@ static void i386_task(void *arg)
 	   keyboard reset */
 	kbd_input_set_target(pc->kbd, pc->mouse);
 
+#if QW_UCLK && CONFIG_IDF_TARGET_ESP32S31
+	/* v5.3: core 1's clock from its cycle counter, once checked against
+	   the systimer (40 ms) */
+	uclock_start();
+#endif
 	pc->boot_start_time = get_uticks();
 	/* v5.1: [esp] profile = 1: the samples count from here (profile.c) */
 	profile_start(pc->cpu);

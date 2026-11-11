@@ -1617,6 +1617,29 @@ else
     result $st "ne2000.c: the receive ring with any registers, frames whole when the guest falls behind, the ESP32 filter after IP options"
 fi
 
+# ==== 27. core 1's clock from its cycle counter (v5.3, QW_UCLK): esp/main/uclock.h ====
+# uclock.h against a pretend core (test_uclock.c): a cycle counter, a
+# systimer whose read latches part way through, waits in which the counter
+# runs or stops, interrupts that read the clock or set the pair between
+# any two of a read's loads, a tick every 10 ms, long stretches with no
+# read, both counters across their wraps, and counters that run fast or
+# slow.  No value below one read before it, none ahead of the true clock
+# or more than 4 us behind it, the reciprocal exact over the span, and the
+# true read for good with a counter that does not keep time.  Then each
+# planted fault has to fail.
+echo
+$CC $CFLAGS -I"$TREE/esp/main" -o "$OUT/test_uclock" "$HERE/test_uclock.c" || exit 1
+"$OUT/test_uclock"
+result $? "uclock.h: core 1's clock never back, never ahead, under 4 us behind, through waits, interrupts and wraps"
+for f in NOGEN ORDER NOIDLE NOTICK NORATE SPAN; do
+    $CC $CFLAGS -DUCLK_FAULT_$f -I"$TREE/esp/main" -o "$OUT/test_uclock_$f" "$HERE/test_uclock.c" || exit 1
+    "$OUT/test_uclock_$f" > "$OUT/uclock-$f.log" 2>&1
+    st=$?
+    echo "    | planted fault $f: exit status $st, $(grep -c 'FAIL' "$OUT/uclock-$f.log") failure lines"
+    [ $st != 0 ]
+    result $? "the clock test sees planted fault $f"
+done
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]
