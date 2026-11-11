@@ -12,7 +12,11 @@
  * keeps time), and behind it by no more than LAG us.  With a counter that
  * does not keep time the clock has to go back to the true read, and still
  * never go back.  The reciprocal is checked for every difference below
- * UCLK_SPAN at several frequencies.
+ * UCLK_SPAN at several frequencies.  v5.3 (the review of batch 4): a wait
+ * at times comes with a read between the idle hook and the wait, as when
+ * an interrupt there wakes a task that reads the clock; uclock_start()'s
+ * test (uclock_refuse()) on the pretend core has to keep the clock off
+ * where the counter stops in waits, and let it on where it runs.
  *
  *   test_uclock [seed]      exit status 0 when every check holds
  *
@@ -20,7 +24,8 @@
  * at gen), UCLK_FAULT_ORDER (the cycles before the true read),
  * UCLK_FAULT_NOIDLE (no idle hook), UCLK_FAULT_NOTICK (no tick hook),
  * UCLK_FAULT_NORATE (no check of the counter's rate), UCLK_FAULT_SPAN
- * with UCLK_SPAN 2^28 (the reciprocal not exact over the span).
+ * with UCLK_SPAN 2^28 (the reciprocal not exact over the span),
+ * UCLK_FAULT_IDLEOK (the start's test does not look at the idle part).
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -219,13 +224,19 @@ static void sim_hook(int n)
 	(void) n;
 }
 
-/* a wait for an interrupt: the idle hook once or more, then the wait */
-static int stops_in_wait;
+/* a wait for an interrupt: the idle hook once or more, then the wait;
+   with preempt, 1 time in 8 a read between the last hook and the wait (an
+   interrupt there woke a task that read the clock, and it blocked again) */
+static int stops_in_wait, preempt;
 static void wait_for(uint64_t d)
 {
 	int n = rnd_in(1, 3);
 	for (int i = 0; i < n; i++) {
 		uclock_idle(&k);
+		advance(rnd_in(10, 100));
+	}
+	if (preempt && rnd() % 8 == 0) {
+		checked_get();
 		advance(rnd_in(10, 100));
 	}
 	if (stops_in_wait)
@@ -247,6 +258,35 @@ static uint64_t gap(void)
 }
 
 static uint32_t off_at;         /* the sync at which the clock went off */
+
+/* uclock_start()'s test on the pretend core: 20 ms busy, then 20 ms in a
+   wait, the time gone by less the cycles' time for each (the counter's
+   rate as set); and its verdict.  When it refuses, the clock is left off
+   (recip 0), as uclock_start() leaves it. */
+static const char *start_test(int32_t *busy, int32_t *idle)
+{
+	for (int i = 0; i < 2; i++) {
+		uint32_t s = sim_lock();
+		uint32_t t0 = sim_true_us(), c0 = sim_cycles();
+		sim_unlock(s);
+		if (i && stops_in_wait)
+			running = 0;
+		advance(20000ull * MHZ);
+		running = 1;
+		s = sim_lock();
+		uint32_t t1 = sim_true_us(), c1 = sim_cycles();
+		sim_unlock(s);
+		*(i ? idle : busy) = (int32_t) ((t1 - t0) - (c1 - c0) / MHZ);
+	}
+	const char *why = uclock_refuse(*busy, *idle);
+	if (why) {
+		uint32_t f = k.floor;
+		memset(&k, 0, sizeof(k));
+		k.gen = 1;
+		k.floor = f;
+	}
+	return why;
+}
 
 static void start(const char *name, uint32_t n_, uint32_t d_, int stops)
 {
@@ -317,7 +357,20 @@ int main(int argc, char **argv)
 	printf("  ok: the reciprocal, every difference below %u cycles at 7 frequencies\n", UCLK_SPAN);
 
 	unsigned long f0 = fails, s0;
+	int32_t busy, idle;
+	const char *why;
+	/* v5.3 (the review of batch 4): with reads between the idle hook and
+	   the wait.  Where the counter runs in waits the start lets the clock
+	   on and every check holds; where it stops, the start keeps it off. */
 	start("keeps time, runs in waits", 1, 1, 0);
+	why = start_test(&busy, &idle);
+	printf("  %s: the start's test busy %+d us, idle %+d us: %s\n", scen, busy, idle,
+	       why ? why : "the clock on");
+	if (why) {
+		printf("  FAIL: the start's test refused a counter that runs in waits\n");
+		fails++;
+	}
+	preempt = 1;
 	run(3000000, 1);
 	printf("  %s: %lu reads (%lu in interrupts, %lu forced syncs), %u syncs, %u waits; %lu failed\n",
 	       scen, reads, nested, forced, k.syncs, k.waits, fails - f0);
@@ -328,6 +381,23 @@ int main(int argc, char **argv)
 	s0 = fails;
 	start("keeps time, stops in waits", 1, 1, 1);
 	reads = nested = forced = 0;
+	why = start_test(&busy, &idle);
+	printf("  %s: the start's test busy %+d us, idle %+d us: %s\n", scen, busy, idle,
+	       why ? why : "the clock on");
+	if (!why) {
+		printf("  FAIL: the start's test let on a counter that stops in waits\n");
+		fails++;
+	}
+	run(3000000, 1);
+	printf("  %s: %lu reads (%lu in interrupts, %lu forced syncs), %u syncs, %u waits; %lu failed\n",
+	       scen, reads, nested, forced, k.syncs, k.waits, fails - s0);
+	/* the idle hook itself, where it matters (a counter that stops), with
+	   nothing read between it and the wait: the clock on, as if the start
+	   had let it on */
+	s0 = fails;
+	start("stops in waits, nothing between the hook and the wait", 1, 1, 1);
+	reads = nested = forced = 0;
+	preempt = 0;
 	run(3000000, 1);
 	printf("  %s: %lu reads (%lu in interrupts, %lu forced syncs), %u syncs, %u waits; %lu failed\n",
 	       scen, reads, nested, forced, k.syncs, k.waits, fails - s0);
@@ -335,6 +405,7 @@ int main(int argc, char **argv)
 		printf("  FAIL: the clock went off (%d, %d us)\n", k.off, k.err);
 		fails++;
 	}
+	preempt = 1;
 
 	/* over two hours of steps of 100 us or so: no drift */
 	s0 = fails;

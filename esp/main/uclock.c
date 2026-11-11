@@ -67,9 +67,11 @@ void uclock_start(void)
 	if (!why) {
 		busy = uclock_try(mhz, false);
 		idle = uclock_try(mhz, true);
-		if (busy < -(int32_t) UCLK_SLACK || busy > (int32_t) UCLK_SLACK)
-			why = "the cycle counter does not keep time with the clock";
-		else if (esp_register_freertos_idle_hook_for_cpu(uclock_idle_hook, 1) != ESP_OK)
+		/* (the review of batch 4: the idle part too, uclock.h) */
+		why = uclock_refuse(busy, idle);
+	}
+	if (!why) {
+		if (esp_register_freertos_idle_hook_for_cpu(uclock_idle_hook, 1) != ESP_OK)
 			why = "no room for its idle hook";
 		else if (esp_register_freertos_tick_hook_for_cpu(uclock_tick_hook, 1) != ESP_OK) {
 			esp_deregister_freertos_idle_hook_for_cpu(uclock_idle_hook, 1);
@@ -78,7 +80,8 @@ void uclock_start(void)
 	}
 	if (why) {
 		console_printf(CON_WARN, "Clock: the true read each time (QW_UCLK off: %s; "
-			       "%lu MHz, 20 ms busy %+ld us).", why, (unsigned long) mhz, (long) busy);
+			       "%lu MHz, against the clock over 20 ms: busy %+ld us, idle %+ld us).",
+			       why, (unsigned long) mhz, (long) busy, (long) idle);
 		return;
 	}
 	k.floor = UCLK_TRUE_US();
@@ -91,10 +94,8 @@ void uclock_start(void)
 	uclock_c1.gen = 1;      /* odd: the next read syncs */
 	UCLK_UNLOCK(s);
 	console_printf(CON_INFO, "Clock: core 1's cycle counter (%lu MHz) between true reads; "
-		       "against the clock over 20 ms: busy %+ld us, idle %+ld us (%s).",
-		       (unsigned long) mhz, (long) busy, (long) idle,
-		       idle >= -(int32_t) UCLK_SLACK && idle <= (int32_t) UCLK_SLACK ?
-		       "it counts through waits" : "it stops in waits; read again after each");
+		       "against the clock over 20 ms: busy %+ld us, idle %+ld us (it counts "
+		       "through waits).", (unsigned long) mhz, (long) busy, (long) idle);
 }
 
 /* the run loop's line when the clock has gone back to the true read */

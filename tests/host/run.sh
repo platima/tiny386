@@ -1674,13 +1674,15 @@ fi
 # read, both counters across their wraps, and counters that run fast or
 # slow.  No value below one read before it, none ahead of the true clock
 # or more than 4 us behind it, the reciprocal exact over the span, and the
-# true read for good with a counter that does not keep time.  Then each
-# planted fault has to fail.
+# true read for good with a counter that does not keep time.  v5.3 (the
+# review of batch 4): reads between the idle hook and the wait, and the
+# start's test, which has to keep the clock off where the counter stops in
+# waits.  Then each planted fault has to fail.
 echo
 $CC $CFLAGS -I"$TREE/esp/main" -o "$OUT/test_uclock" "$HERE/test_uclock.c" || exit 1
 "$OUT/test_uclock"
 result $? "uclock.h: core 1's clock never back, never ahead, under 4 us behind, through waits, interrupts and wraps"
-for f in NOGEN ORDER NOIDLE NOTICK NORATE SPAN; do
+for f in NOGEN ORDER NOIDLE NOTICK NORATE SPAN IDLEOK; do
     $CC $CFLAGS -DUCLK_FAULT_$f -I"$TREE/esp/main" -o "$OUT/test_uclock_$f" "$HERE/test_uclock.c" || exit 1
     "$OUT/test_uclock_$f" > "$OUT/uclock-$f.log" 2>&1
     st=$?

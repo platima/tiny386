@@ -24,6 +24,14 @@
  * so that a pair is never used again after the counter's wrap (13.4 s),
  * however long core 1 goes without reading the clock.
  *
+ * The idle hook and the wait are not one step: ESP-IDF's idle loop runs
+ * the hooks, then more code, then the wait, and an interrupt in between
+ * can wake a task that reads the clock and sets the pair again, with the
+ * wait still to come.  Where the counter stops in waits, that wait would
+ * go uncounted (the review of batch 4).  So the clock is used only where
+ * uclock_start()'s test finds that the counter keeps counting through a
+ * wait (uclock_refuse()), and there the hook only guards.
+ *
  * Why the guest's time stays right:
  * - It never runs ahead of the true clock.  us is read before cyc, so us
  *   is no later than the true time at cyc; the floor of the cycles since
@@ -32,8 +40,9 @@
  *   have given at that moment (want, below), and so at least every value
  *   given before it.
  * - It cannot drift: each sync puts it back on the true clock, and while
- *   the counter runs at mhz it is behind by under 3 us (the 1 us of each
- *   reading, and the time from the systimer's latch to the cycle read).
+ *   the counter runs at mhz, waits included, it is behind by under 3 us
+ *   (the 1 us of each reading, and the time from the systimer's latch to
+ *   the cycle read).
  * - At each sync that ends a whole span with no wait in it, the cycles
  *   counted are held against the time gone by.  More than UCLK_SLACK us
  *   apart either way (a counter stopped, or a frequency changed) and the
@@ -89,6 +98,22 @@ struct uclock {
 	int32_t err;            /* off: the time gone by less the cycles' (us) */
 	uint8_t off;            /* 1: the counter ran ahead, 2: behind */
 };
+
+/* uclock_start()'s verdict on its test, the time gone by less the
+   cycles' time over about 20 ms busy and 20 ms idle (us): NULL when the
+   clock can be used, or why not */
+static inline const char *uclock_refuse(int32_t busy, int32_t idle)
+{
+	if (busy < -(int32_t) UCLK_SLACK || busy > (int32_t) UCLK_SLACK)
+		return "the cycle counter does not keep time with the clock";
+#ifndef UCLK_FAULT_IDLEOK
+	if (idle < -(int32_t) UCLK_SLACK || idle > (int32_t) UCLK_SLACK)
+		return "the cycle counter does not count through a wait for an interrupt";
+#else
+	(void) idle;
+#endif
+	return NULL;
+}
 
 /* the pair for mhz, or false when that frequency is no good here */
 static inline bool uclock_setup(struct uclock *k, uint32_t mhz)
@@ -194,8 +219,9 @@ uint32_t __attribute__((noinline)) uclock_sync(struct uclock *k)
 #endif
 
 /* FreeRTOS's idle hook on the clock's core, before each wait for an
-   interrupt: the pair is stale after it, as the counter may stop in the
-   wait.  What the pair gives now is kept as the floor for the next sync. */
+   interrupt: the pair is stale after it, in case the counter stops in the
+   wait after all.  What the pair gives now is kept as the floor for the
+   next sync. */
 static inline void uclock_idle(struct uclock *k)
 {
 #ifndef UCLK_FAULT_NOIDLE
