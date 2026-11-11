@@ -114,6 +114,9 @@
 #ifndef QW_UCLK
 #define QW_UCLK 0       /* the S31 boards: core 1's clock from its cycle counter (esp/main/uclock.h) */
 #endif
+#ifndef QW_PITX
+#define QW_PITX 0       /* i8254.c's conversions by 32-bit multiplies, exactly as the 64-bit division */
+#endif
 #if QW_GRPTAB && !(QW_OPS0F && QW_GRP5)
 #error "QW_GRPTAB needs QW_OPS0F and QW_GRP5"
 #endif

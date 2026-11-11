@@ -968,6 +968,39 @@ if [ -n "$T_V3_9" ]; then
     result $? "the PIT test sees v3.9's i8254.c stop at mode 0"
 fi
 
+# ==== 19b. the PIT's conversions by 32-bit multiplies (v5.3, QW_PITX) ====
+# i8254.c's pit_ticks() and pit_us_up() against the 64-bit multiply and
+# division each stands for, at every one of the 2^32 inputs
+# (test_pit_conv.c, in 16 processes).  Then four planted faults, each in a
+# copy of i8254.c, have to differ somewhere: no correction step, the
+# multiplier one too big, the rounding up at its boundary, and the
+# multiply alone as yejun/tab5-pc's patch 0007 has it (us * 2562338834 >>
+# 31), which is a tick short for some inputs.
+echo
+$CC -O2 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -I"$TREE" \
+    -DPIT_C="\"$TREE/i8254.c\"" -o "$OUT/test_pit_conv" "$HERE/test_pit_conv.c" || exit 1
+"$OUT/test_pit_conv" 16
+result $? "i8254.c: the count and the plan's time by 32-bit multiplies, the same as the 64-bit division for all 2^32 inputs"
+sed 's/if (t \* 193182u - q \* 1000000u >= 1000000u)/if (0)/' "$TREE/i8254.c" > "$OUT/i8254-pitx-nofix.c"
+sed 's/829710372u/829710373u/' "$TREE/i8254.c" > "$OUT/i8254-pitx-mul.c"
+sed 's/return u + 1 + (r > 193182u);/return u + 1 + (r >= 193182u);/' "$TREE/i8254.c" > "$OUT/i8254-pitx-up.c"
+awk '/uint32_t q = \(uint32_t\) \(\(\(uint64_t\) t \* 829710372u\) >> 32\);/ {
+        print "\treturn (uint32_t) (((uint64_t) t * 2562338834u) >> 31);"; skip = 3; next }
+     skip > 0 { skip--; next } { print }' "$TREE/i8254.c" > "$OUT/i8254-pitx-0007.c"
+for f in nofix mul up 0007; do
+    if cmp -s "$OUT/i8254-pitx-$f.c" "$TREE/i8254.c"; then
+        result 1 "planted fault pitx-$f put in i8254.c's copy"
+        continue
+    fi
+    $CC -O2 -g -w -I"$TREE" -DPIT_C="\"$OUT/i8254-pitx-$f.c\"" \
+        -o "$OUT/test_pit_conv_$f" "$HERE/test_pit_conv.c" || exit 1
+    "$OUT/test_pit_conv_$f" 16 > "$OUT/pit-conv-$f.log" 2>&1
+    st=$?
+    grep FAIL "$OUT/pit-conv-$f.log" | sed 's/^ */    | /'
+    [ $st != 0 ]
+    result $? "the conversion test sees planted fault pitx-$f"
+done
+
 # ==== 20. faults while an exception or interrupt is delivered (v3.8) ====
 # i386.c with a small protected-mode guest (tests/host/cpu): the double
 # fault through a task gate, as Windows 95's VMM has it, with its error

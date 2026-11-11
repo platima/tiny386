@@ -68,6 +68,48 @@ struct PITState {
 
 uint32_t get_uticks();
 
+#if QW_PITX
+/* v5.3: the PIT's two conversions with 32-bit multiplies, each the same
+   as the 64-bit multiply and division it stands for, for every 32-bit
+   input (tests/host/test_pit_conv.c tries them all).  The idea of a
+   multiply in place of the division is from yejun/tab5-pc's patch 0007;
+   this is an exact form of it.
+
+   pit_ticks(t): the PIT's count in t us, floor(t * PIT_FREQ / 10^6) to 32
+   bits.  As PIT_FREQ is 10^6 + 193182, that is t + q mod 2^32 with
+   q = floor(t * 193182 / 10^6), below 2^32.  q comes from a multiply by
+   floor(2^32 * 0.193182), which is at most 1 short, and then the
+   remainder t * 193182 - q * 10^6, which is below 2 * 10^6 and so exact in
+   32 bits, says whether it was. */
+static inline uint32_t pit_ticks(uint32_t t)
+{
+	uint32_t q = (uint32_t) (((uint64_t) t * 829710372u) >> 32);
+	if (t * 193182u - q * 1000000u >= 1000000u)
+		q++;
+	return t + q;
+}
+
+/* pit_us_up(y): the first us count in which the PIT counts y + 1,
+   ceil((y + 1) * 10^6 / PIT_FREQ), for every 32-bit y (so up to a count of
+   2^32).  With u = floor(y * 10^6 / PIT_FREQ) and its remainder
+   r = y * 10^6 - u * PIT_FREQ, (y + 1) * 10^6 is u * PIT_FREQ + r + 10^6,
+   and r + 10^6 is above PIT_FREQ exactly when r is above 193182: so u + 1,
+   or u + 2 then.  u as q above, from floor(2^32 * 10^6 / PIT_FREQ). */
+static inline uint32_t pit_us_up(uint32_t y)
+{
+	uint32_t u = (uint32_t) (((uint64_t) y * 3599591090u) >> 32);
+	uint32_t r = y * 1000000u - u * (uint32_t) PIT_FREQ;
+	if (r >= (uint32_t) PIT_FREQ) {
+		u++;
+		r -= PIT_FREQ;
+	}
+	return u + 1 + (r > 193182u);
+}
+#define PIT_TICKS(t) pit_ticks(t)
+#else
+#define PIT_TICKS(t) ((uint32_t) (((uint64_t) (t)) * PIT_FREQ / 1000000))
+#endif
+
 /* Keep the programmed bits for status readback; aliases affect behavior only. */
 static int pit_mode(PITChannelState *s)
 {
@@ -81,7 +123,7 @@ static int pit_get_count(PITChannelState *s)
 
 	if (s->reload_pending)
 		return s->stopped_count;
-	d = ((uint64_t) (get_uticks() - s->count_load_time)) * PIT_FREQ / 1000000;
+	d = PIT_TICKS(get_uticks() - s->count_load_time);
 	switch(pit_mode(s)) {
 	case 0:
 	case 1:
@@ -108,7 +150,7 @@ static int pit_get_out1(PITChannelState *s, uint32_t current_time)
 
 	if (s->reload_pending)
 		return 0;
-	d = ((uint64_t) (current_time - s->count_load_time)) * PIT_FREQ / 1000000;
+	d = PIT_TICKS(current_time - s->count_load_time);
 	switch(pit_mode(s)) {
 	default:
 	case 0:
@@ -335,17 +377,29 @@ uint32_t i8254_step_us;
 static void pit_plan(PITState *pit, uint32_t uticks, uint32_t d)
 {
 	PITChannelState *s = pit->channels;
+#if QW_PITX
+	uint32_t y;             /* the count to reach, less 1 */
+#else
 	uint64_t x;
+#endif
 	pit->next_valid = 1;
 	switch (pit_mode(s)) {
 	case 2:
 	case 3:
+#if QW_PITX
+		y = s->last_irq_count + s->count;
+		if (y - d >= 0x80000000) {      /* due at once, or not as the test reads it */
+			pit->next_valid = 0;
+			return;
+		}
+#else
 		x = (uint32_t) (s->last_irq_count + s->count);
 		if ((uint32_t) (x - d) >= 0x80000000) {   /* due at once, or not as the test reads it */
 			pit->next_valid = 0;
 			return;
 		}
 		x++;
+#endif
 		break;
 	case 0:
 	case 4:
@@ -355,14 +409,22 @@ static void pit_plan(PITState *pit, uint32_t uticks, uint32_t d)
 			pit->next_valid = 0;
 			return;
 		}
+#if QW_PITX
+		y = s->count - 1;       /* count is 1 to 65536 */
+#else
 		x = s->count;
+#endif
 		break;
 	default:
 	never:
 		pit->next_us = uticks + (1u << 30);   /* looked at again in 18 minutes */
 		return;
 	}
+#if QW_PITX
+	pit->next_us = s->count_load_time + pit_us_up(y);
+#else
 	pit->next_us = s->count_load_time + (uint32_t) ((x * 1000000 + PIT_FREQ - 1) / PIT_FREQ);
+#endif
 }
 #endif
 
@@ -377,7 +439,7 @@ void i8254_update_irq(PITState *pit)
 	if (__builtin_expect(pit->next_valid && (int32_t) (uticks - pit->next_us) < 0, 1))
 		return;
 #endif
-	uint32_t d = ((uint64_t) (uticks - s->count_load_time)) * PIT_FREQ / 1000000;
+	uint32_t d = PIT_TICKS(uticks - s->count_load_time);
 	switch(pit_mode(s)) {
 	case 2:
 	case 3:
@@ -424,7 +486,7 @@ void i8254_update_irq(PITState *pit)
 		break;
 	}
 #if QW_PIT
-	pit_plan(pit, uticks, ((uint64_t) (uticks - s->count_load_time)) * PIT_FREQ / 1000000);
+	pit_plan(pit, uticks, PIT_TICKS(uticks - s->count_load_time));
 #endif
 }
 
