@@ -8055,3 +8055,98 @@ starts), and the 17.6 KB of `.bss` moved there makes the pool that much smaller;
 `profile = 1` (its tables 178 KiB).
 
 Not done here: anything on a board. What only the board can say is in `NET.md` 5.
+
+## 36. v5.3, batch 4 and its review: `fast_exec()`'s 16-bit paths, the clock, the timer (2026-11-11 to 12)
+
+Branch `v53`, not pushed, none of it on a board yet. Batches 1 to 3 (the NE2000, internal RAM, the disk path)
+are in their commit messages and in the test build v53-test2 (ef44b3a), which is with Plat for a board round;
+their notes come with that round.
+
+### 36.1 Batch 4's switches [verified: RV32 counts by `rv.sh` and `rvt.sh`; `espbuild.sh korvo1`]
+
+Host instructions a guest instruction on core 1, under qwemu with the board's compiler, each commit after the
+one before. BENCH is BENCH without A4, W2 Windows' boot's first 300 M guest instructions, FC16 a FreeDOS
+workload of 16-bit code (`fc16-hd.img` in WSL `~/org2/v53/cpu/qw`: a1 compares, a2 jumps, a3 INC and DEC, a4
+misaligned REPs, a5 far transfers). Korvo-1 DIRAM left after each build.
+
+| Commit | Switch | What | BENCH | W2 | FC16 | DIRAM left |
+|-|-|-|-|-|-|-|
+| ef44b3a | | before | 51.40 | 51.79 | | 115,925 |
+| 3d79814 | `QW_EA16` | 16-bit code's common memory form in one test | 51.09 | 51.76 | a1 72.21 to 69.97 | 113,481 |
+| 4454ad1 | `QW_J16` | the window clamped to the segment, jumps without the mask | 50.96 | 51.66 | a2 33.63 to 30.24, a5 129.44 to 140.92 | 115,217 |
+| 6b72262 | `QW_INCL` | INC and DEC take CF in line after AND, OR, XOR | 50.96 | 51.45 | a3 68.57 to 67.29 | |
+| 3086feb | `QW_EA16T` | `fast_ea2()`'s 16-bit form from one table entry | 50.66 | 51.43 | a1 69.28 to 68.13 | |
+| 9524fcb | `QW_COND2` | `fast_cond()` in line after more kinds of result | 50.67 | 51.39 | a3 66.72 to 64.35 | 115,185 |
+| 0bbefac | `QW_REPMIS` | misaligned REP MOVS and STOS by page pieces (`i386.c`) | 50.67 | 51.27 | a4 61,103 to 19,632 | 114,089 |
+| 503201f | `QW_RMREF` | the inline refill's page change without paging | 50.11 | 51.19 | a5 140.92 to 137.56 | 113,929 |
+| 15e4eac | `QW_UCLK` | core 1's clock from its cycle counter (the boards only) | 50.11 | 51.19 | | 113,657 |
+| e94479e | `QW_PITX` | the PIT's conversions by 32-bit multiplies | 50.11 | 51.17 | | 113,611 |
+| 3e8ba78, 175fc18 | | the FPU in the equipment word with fpu = 1; the cards' `bios.bin` (`s31/bios`) | | | | 113,611 |
+
+6b72262 and 3086feb were not built alone (with 9524fcb, 32 bytes for the three). The RV32 counts cannot see
+`QW_UCLK`: on the board the systimer's reads were 0.6 to 0.7% of the busy time (v52-test3's profiles), an
+upper bound on its gain. Two costs, the second found by the review:
+
+* `QW_J16` makes far transfers in 16-bit code dearer: `fast_j16_clamp()` is called at every window set there
+  (far transfers, INT, IRET, each instruction tiny386 runs). FC16's a5 rose 8.9% at 4454ad1 (model cycles
+  10.2%) and is still 6.3% above ef44b3a after 503201f. 4454ad1's message gives only its gains. The clamp
+  done inside `fast_window()`, with the window's end in `struct fast_win` (`QW_J16W`, counted after the
+  review), took a5 to 136.40 but cost W2 2.0% and BENCH 1.6% (`fast_exec()` 1,324 bytes larger, GCC's
+  registers again): dropped. 503201f's dropped k7b variant would also win it back, for 0.8% of W2.
+* `QW_REPMIS`'s two helpers ran from flash on every image until 699446a: `IRAM_ATTR_EXEC1_HELPER` is empty
+  without `I386_EXEC1_SMALL`, which no board defines. 0bbefac's 1,096 bytes left out their 1,468.
+
+### 36.2 The two reviews of batch 4, and what was done (2026-11-12)
+
+One of the CPU commits, one of the clock, timer and BIOS commits, each by a fresh agent from the code.
+
+| Finding | Severity | Since |
+|-|-|-|
+| `repmis_movs()` and `repmis_stos()` in flash | should fix | 699446a: `IRAM_ATTR_CPU_EXEC1` and `EXEC1_OPT`; 1,468 bytes |
+| mode z's REPs, with DS and ES page aligned, never test the stop at a 16-bit wrap | should fix | ffadb25: a pass at 2010h in all four of z's settings; fault `repmisw16` in 24d |
+| the idle hook and the wait are not one step: a task woken between them reads the clock, and the wait after goes uncounted if the counter stops in WFI | should fix | f115045: the clock only where `uclock_start()`'s test finds that the counter counts through a wait; reads between hook and wait in `test_uclock.c`; fault `IDLEOK` |
+| `fast_j16_eip()` unrolled to 838 bytes | minor | ceddcd5: `#pragma GCC unroll 1`, 94 bytes |
+| no test of RET n with 66h past FFFFh | minor | 11cc21e: mode z's RET n; fault `c2ret` |
+| `QW_RMREF`'s MMIO and RAM's end barely tested | minor | ca15a7e: mode z's jumps into the VGA window, and six times into RAM's last page; faults `rmiomem` and `rmend` |
+| far transfers dearer since `QW_J16`, not in its message | minor | 36.1 (the message is not rewritten); `QW_J16W` counted and dropped |
+| the run's length at its end wraps after 71.6 minutes | minor | 410ae97: from `esp_system_get_time()`, 64 bits |
+| with the clock off each read goes through `uclock_sync()` in flash | note | 608dda2: `uclock_slow()` in internal RAM, the true read itself while off |
+| `parity_tab` in flash, read from internal RAM | note | 52a3212: `QW_PFPOP` |
+| BOUND with a register operand trips `translate()`'s assertion, which the boards keep (upstream too) | note | 24f9763: #UD, decoded as GvMp; host test 24e |
+| `maininit()` differs by more than the CMOS read | note | 9b68e55: `s31/bios/README.txt` |
+| no v5.3 section here | note | this section |
+
+Found on the way, 73ebc2e: a sync after the tick or the idle hook had marked the pair stale made no rate check,
+and with a counter running fast it set the new pair below what the old pair had given, so the clock could go
+back (in 15e4eac). While the counter keeps time a floor is never above the true clock, so a floor more than
+`UCLK_SLACK` above the true read now takes the clock off as the rate check does (`test_uclock.c`: a case of its
+own, fault `NOFLOOR`).
+
+| Commit | BENCH | W2 | FC16 | DIRAM left |
+|-|-|-|-|-|
+| 175fc18 | 1,726,845,838 | 15,352,467,639 | 1,027,927,857 | 113,611 |
+| 699446a | the same | the same | the same | 112,143 |
+| ceddcd5 | +1,974 | +81,891 | +1,956 | 112,887 |
+| f115045 to 410ae97 (the clock) | | | | 112,899 |
+| 24f9763 (BOUND) | the same | +4 | the same | 113,091 |
+| 52a3212 (`QW_PFPOP`) | -118,247 | -984,555 | -78,292 | 113,131 |
+
+(Core 1's host instructions in each run, against the row before. The tests' commits change no code.) Since
+175fc18 each workload has 0.006 to 0.007% fewer: W2 51.17, BENCH 50.11 a guest instruction, guest output lines
+differing from v5.1 0 and 0. Internal RAM 480 bytes more used: `QW_REPMIS`'s helpers 1,468 in;
+`fast_j16_eip()` 744, BOUND 192, `QW_PFPOP` 40 and the clock 12 back. `test_fast_cpu` 1,320 scenarios in both
+builds and 400 seeds of mode z, 0 failed.
+
+Not done: the hook and the wait made one step (MIE cleared around the mark and a `wfi` of its own),
+which would keep `QW_UCLK`'s gain where the counter stops in WFI, but how the S31's interrupt controller wakes
+from such a `wfi` has not been checked, and a mistake there would hang core 1.
+
+### 36.3 What only the board can say
+
+* Whether core 1's counter counts through WFI. The start line says "(it counts through waits)", or "QW_UCLK off:
+  the cycle counter does not count through a wait for an interrupt" with the idle figure; in that case the
+  clock's gain is not there, and the one-step hook above is the thing to check.
+* The batch's gains: fc /b in a DOS box (op_88 to op_8b, the 83h group, ldsistdi and stdi taking less), BENCH
+  about 2.5% by RV32, Windows' boot about 1.2%, the copy timing (9.67 s on v52-test3).
+* The least internal RAM free against the 64 KiB rule.
+* With fpu = 1 and the new `bios.bin`, EQU.COM's int11=0026.
