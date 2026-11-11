@@ -81,7 +81,8 @@ uint32_t get_uticks()
 {
 #if QW_UCLK && CONFIG_IDF_TARGET_ESP32S31
 	/* v5.3: on core 1, the emulator's, from its cycle counter between
-	   true reads (uclock.h); core 0 reads the systimer as before */
+	   true reads (uclock.h), or the true read while that is off; core 0
+	   reads the systimer as before */
 	if (esp_cpu_get_core_id() == 1)
 		return uclock_get(&uclock_c1);
 #endif

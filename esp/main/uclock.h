@@ -77,10 +77,15 @@
 #include "freertos/FreeRTOS.h"
 #include "esp_cpu.h"
 #include "esp_private/system_internal.h"
+#include "esp_attr.h"
 #define UCLK_CYCLES() ((uint32_t) esp_cpu_get_cycle_count())
 #define UCLK_TRUE_US() ((uint32_t) esp_system_get_time())
 #define UCLK_LOCK() ((uint32_t) portSET_INTERRUPT_MASK_FROM_ISR())
 #define UCLK_UNLOCK(s) portCLEAR_INTERRUPT_MASK_FROM_ISR(s)
+#define UCLK_SLOW_ATTR IRAM_ATTR
+#endif
+#ifndef UCLK_SLOW_ATTR
+#define UCLK_SLOW_ATTR
 #endif
 
 #ifndef UCLK_SPAN
@@ -233,6 +238,25 @@ uint32_t __attribute__((noinline)) uclock_sync(struct uclock *k)
 }
 #endif
 
+/* uclock_get()'s slow way, out of line where get_uticks() is (internal
+   RAM on the board), so that its copies in line stay as small as before.
+   With the clock off (before uclock_start(), when it refused, or after a
+   check), where gen stays odd and the fast read always fails, the true
+   read itself, as without QW_UCLK, not uclock_sync() in flash with
+   interrupts masked and a cycle read each time.  recip goes to 0 only in a
+   sync on this core with interrupts masked, which first waits for the true
+   clock to pass what the pair gave or could have given, so the true read
+   never gives less than the clock gave before. */
+uint32_t uclock_slow(struct uclock *k);
+#ifdef UCLK_DEFINE_SYNC
+uint32_t __attribute__((noinline)) UCLK_SLOW_ATTR uclock_slow(struct uclock *k)
+{
+	if (!k->recip)
+		return UCLK_TRUE_US();
+	return uclock_sync(k);
+}
+#endif
+
 /* FreeRTOS's idle hook on the clock's core, before each wait for an
    interrupt: the pair is stale after it, in case the counter stops in the
    wait after all.  What the pair gives now is kept as the floor for the
@@ -272,7 +296,7 @@ static inline uint32_t uclock_get(struct uclock *k)
 	uint32_t t;
 	if (uclock_fast(k, &t))
 		return t;
-	return uclock_sync(k);
+	return uclock_slow(k);
 }
 
 #ifdef ESP_PLATFORM

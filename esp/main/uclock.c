@@ -111,14 +111,19 @@ void uclock_say(void)
 		       (unsigned long) uclock_c1.syncs, (unsigned long) uclock_c1.waits);
 }
 
-/* the end of the run */
+/* the end of the run (with the clock off its true reads are not counted:
+   uclock_slow()) */
 void uclock_totals(uint32_t run_s)
 {
+	if (!uclock_c1.recip && !uclock_c1.off) {
+		console_printf(CON_INFO, "Clock: the true read each time in %lu s of run.",
+			       (unsigned long) run_s);
+		return;
+	}
 	console_printf(CON_INFO, "Clock: %lu true reads in %lu s of run, %lu of them after waits; %s.",
 		       (unsigned long) uclock_c1.syncs, (unsigned long) run_s,
 		       (unsigned long) uclock_c1.waits,
-		       uclock_c1.recip ? "still on the cycle counter" :
-		       uclock_c1.off ? "back on the true read" : "never on the cycle counter");
+		       uclock_c1.recip ? "still on the cycle counter" : "then the true read each time");
 }
 
 #endif

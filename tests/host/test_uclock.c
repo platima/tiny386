@@ -465,9 +465,11 @@ int main(int argc, char **argv)
 	nest_pct = 2;
 	for (int i = 0; i < 20; i++) {
 		checked_get();
+		if (k.off && !off_at)
+			off_at = k.syncs;
 		advance(rnd_in(50, 50000));
 	}
-	printf("  %s: off %d at sync %u (%+d us); %lu failed\n", scen, k.off, k.syncs, k.err, fails - s0);
+	printf("  %s: off %d at sync %u (%+d us); %lu failed\n", scen, k.off, off_at, k.err, fails - s0);
 	if (k.recip != 0 || k.off != 1) {
 		printf("  FAIL: %s: not off as it should be\n", scen);
 		fails++;
