@@ -42,7 +42,10 @@
    GCC then inlines none of this -O3 file's small static helpers into it,
    so the ones it calls instead (the address translations, tlb_clear(),
    ENTER's helper) go where it is: IRAM_ATTR_EXEC1_HELPER.  Built without
-   it, they are inlined as before and the attribute changes nothing. */
+   it, they are inlined as before and the attribute changes nothing.
+   (v5.3: helpers that are never inlined, noinline, take
+   IRAM_ATTR_CPU_EXEC1 and EXEC1_OPT themselves, so that they are where
+   cpu_exec1() is and compiled as it is, with or without it.) */
 #ifdef I386_EXEC1_SMALL
 #define EXEC1_OPT __attribute__((optimize("Os")))
 #define IRAM_ATTR_EXEC1_HELPER IRAM_ATTR_CPU_EXEC1
@@ -3410,7 +3413,8 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
    as before (the source first), and if the first element lies in one page at each end, the
    elements wholly in both pages from there are loaded and stored as ldsistdi and stdi do it, but
    without translating each again: repmis_movs() and repmis_stos(), out of line (in each of the
-   eight copies of the macros, their loops took about 1.7 KB).  An element across a page's end
+   eight copies of the macros, their loops took about 1.7 KB), where cpu_exec1() is (internal RAM
+   on the boards; they were in flash until the review of batch 4).  An element across a page's end
    goes alone by ldsistdi or stdi, both ends translated again, as before; so a fault in the next
    page comes at the same element, in the same order, with the same registers.  They return the
    elements done; s and d are left past them.  si and di: SI and DI with 16-bit addresses (a16),
@@ -3430,8 +3434,8 @@ static uword repmis_count(uword a1, uword a2, int n, int dir, uword cx, int a16,
 	}
 	return count;
 }
-static noinline uword IRAM_ATTR_EXEC1_HELPER repmis_movs(CPUI386 *cpu, OptAddr *s, OptAddr *d, int n, int dir,
-							  uword cx, int a16, uword si, uword di)
+static noinline uword EXEC1_OPT IRAM_ATTR_CPU_EXEC1 repmis_movs(CPUI386 *cpu, OptAddr *s, OptAddr *d, int n,
+								 int dir, uword cx, int a16, uword si, uword di)
 {
 	uword count = repmis_count(s->addr1, d->addr1, n, dir, cx, a16, si, di);
 	for (uword i = 0; i < count; i++) {
@@ -3442,8 +3446,8 @@ static noinline uword IRAM_ATTR_EXEC1_HELPER repmis_movs(CPUI386 *cpu, OptAddr *
 	}
 	return count;
 }
-static noinline uword IRAM_ATTR_EXEC1_HELPER repmis_stos(CPUI386 *cpu, OptAddr *d, int n, int dir, u32 ax,
-							  uword cx, int a16, uword di)
+static noinline uword EXEC1_OPT IRAM_ATTR_CPU_EXEC1 repmis_stos(CPUI386 *cpu, OptAddr *d, int n, int dir,
+								 u32 ax, uword cx, int a16, uword di)
 {
 	uword count = repmis_count(d->addr1, d->addr1, n, dir, cx, a16, di, di);
 	for (uword i = 0; i < count; i++) {
