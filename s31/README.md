@@ -54,7 +54,7 @@ git am path/to/tiny386/s31/esp-idf/e00861c3f497.patch path/to/tiny386/s31/esp-id
 
 with no `am.*` or `commit.gpgSign` settings in git's config, which would give other commits [verified, 2026-11-11: in a scratch repository borrowing ESP-IDF's objects, this gives 80e0998aa8 and f771a91e20, with the date written either this way or as `1794365466 +0800`].
 
-Without the fixes the build still works: `esp/main/sdmmc_timeout_wrap.c` then builds in its stand-ins for them (a command whose event never came is told by how long it took, and a failed multi-block write keeps its own error). `esp/main/sdmmc_fixes.cmake` looks for each fix in ESP-IDF's own source, whatever its version, and the configure step says what it found, for example `sdmmc_timeout_wrap.c: timeout part out (ESP-IDF has e00861c3f497), CMD25 part out (ESP-IDF has 007945125db7)`. With "in" for either, that ESP-IDF lacks the fix and the stand-in is built.
+Without the fixes the build still works: `esp/main/sdmmc_timeout_wrap.c` then builds in its stand-ins for them (a command whose event never came is told by how long it took, and a failed multi-block write keeps its own error). `esp/main/sdmmc_fixes.cmake` looks for each fix in ESP-IDF's own source, whatever its version, and the configure step says what it found (`s31/build.sh` prints that line for each build), for example `sdmmc_timeout_wrap.c: timeout part out (ESP-IDF has e00861c3f497), CMD25 part out (ESP-IDF has 007945125db7)`. With "in" for either, that ESP-IDF lacks the fix and the stand-in is built.
 
 Then:
 

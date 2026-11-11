@@ -69,7 +69,8 @@
 # ESP-IDF's fixes e00861c3f497 and 007945125db7 on top (README.md says how
 # to take them).  Without them the build still works, with the stand-ins for
 # them in sdmmc_timeout_wrap.c built in; each build's log says which
-# ("sdmmc_timeout_wrap.c: timeout part ..., CMD25 part ...").
+# ("sdmmc_timeout_wrap.c: timeout part ..., CMD25 part ..."), and this
+# script prints that line for each build.
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -135,6 +136,7 @@ build() {       # name, board, more idf.py arguments
         > "$W/build-$name.log" 2>&1 || { tail -30 "$W/build-$name.log"; exit 1; }
     idf idf.py -B "build-$name" -DBOARD="$board" "$@" size > "$W/size-$name.txt" 2>&1
     grep -E "warning:" "$W/build-$name.log" | grep -v "/managed_components/\|/esp-idf/" || true
+    grep -m1 "sdmmc_timeout_wrap\.c: timeout part" "$W/build-$name.log" || true
     grep -E "Total image size|DIRAM  " "$W/size-$name.txt" || true
 }
 NET=${TINY386_NET:-}
