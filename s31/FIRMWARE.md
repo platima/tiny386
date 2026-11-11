@@ -342,9 +342,8 @@ standalone and DOS board builds of the v5.0 code give the v5.0 release build's `
 Or the release's way, in WSL, with the boards' ESP-IDF at `~/esp/esp-idf` (188e3e55bb,
 v6.1-dev-8142, for the releases up to v5.2; from v5.3 with ESP-IDF's fixes e00861c3f497 and
 007945125db7 on top, as `README.md` beside this file says, and without them the stand-ins for them
-built in): put the
-release's `tiny386-idf-v4.patch` beside `build.sh`, and its `bootloader.bin`, `partition-table.bin`
-and `partition-table-tiny386-default.bin` in `dualboot\`, then
+built in): put the release's `tiny386-idf-v4.patch` beside `build.sh`, and its `bootloader.bin`,
+`partition-table.bin` and `partition-table-tiny386-default.bin` in `dualboot\`, then
 
 ```
 bash s31/build.sh ~/some-empty-folder
@@ -352,4 +351,7 @@ bash s31/build.sh ~/some-empty-folder
 
 A few minutes on this PC (233 to 276 s in v5.0's four runs, with other work on the machine); the
 images it makes are the bytes of the release, all four sets [verified: four runs in different
-folders, `BUILD-NOTES.md` 33.9].
+folders, `BUILD-NOTES.md` 33.9]. From v5.3 that needs the boards' own ESP-IDF commits, 80e0998aa8
+and f771a91e20 (v6.1-dev-8144-gf771a91e20), which `README.md`'s "Building" shows how to make again
+with `git am`. Any other way of taking the two fixes builds the same code, with another ESP-IDF
+version string in each `tiny386.bin` and in the standalone and DOS board bootloaders.

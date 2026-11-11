@@ -40,7 +40,19 @@ git fetch origin master
 git cherry-pick e00861c3f497 007945125db7
 ```
 
-or, in place of the fetch and the cherry-pick, `git am` the two patches as GitHub gives them (`https://github.com/espressif/esp-idf/commit/e00861c3f497.patch` and `https://github.com/espressif/esp-idf/commit/007945125db7.patch`; the same files are in `s31/esp-idf/`). `git describe` in ESP-IDF then gives v6.1-dev-8144 and the new commit, and that string goes into every image, so a tree made another way builds the same code with other bytes in that one place.
+or, in place of the fetch and the cherry-pick, `git am` the two patches as GitHub gives them (`https://github.com/espressif/esp-idf/commit/e00861c3f497.patch` and `https://github.com/espressif/esp-idf/commit/007945125db7.patch`; the same files are in `s31/esp-idf/`). `git describe` in ESP-IDF then gives v6.1-dev-8144 and the new commit. That string goes into the images, twice into each `tiny386.bin` and once into the standalone and DOS board bootloaders (the dual-boot set's bootloader comes from `s31/dualboot/`), and the app's ELF hash and each image's hash and checksum change with it. So a tree made another way builds the same code, with other bytes in those places.
+
+The boards' own tree is that branch, `s31-sdmmc-fixes`, made with `git am` of the two files in `s31/esp-idf/` and no fetch. Its two commits are 80e0998aa8 and f771a91e20, so the v5.3 images say v6.1-dev-8144-gf771a91e20. The same two commits, and so the v5.3 images byte for byte, come from:
+
+```sh
+cd ~/esp/esp-idf
+git switch -c s31-sdmmc-fixes 188e3e55bb
+GIT_COMMITTER_NAME=Platima GIT_COMMITTER_EMAIL=13729856+platima@users.noreply.github.com \
+GIT_COMMITTER_DATE='2026-11-11 10:51:06 +0800' \
+git am path/to/tiny386/s31/esp-idf/e00861c3f497.patch path/to/tiny386/s31/esp-idf/007945125db7.patch
+```
+
+with no `am.*` or `commit.gpgSign` settings in git's config, which would give other commits [verified, 2026-11-11: in a scratch repository borrowing ESP-IDF's objects, this gives 80e0998aa8 and f771a91e20, with the date written either this way or as `1794365466 +0800`].
 
 Without the fixes the build still works: `esp/main/sdmmc_timeout_wrap.c` then builds in its stand-ins for them (a command whose event never came is told by how long it took, and a failed multi-block write keeps its own error). `esp/main/sdmmc_fixes.cmake` looks for each fix in ESP-IDF's own source, whatever its version, and the configure step says what it found, for example `sdmmc_timeout_wrap.c: timeout part out (ESP-IDF has e00861c3f497), CMD25 part out (ESP-IDF has 007945125db7)`. With "in" for either, that ESP-IDF lacks the fix and the stand-in is built.
 
