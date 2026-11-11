@@ -648,7 +648,7 @@ static void run_pc(PC *pc)
 	profile_write("end");
 	disk_errors(get_uticks());
 #if QW_UCLK && CONFIG_IDF_TARGET_ESP32S31
-	uclock_totals((get_uticks() - pc->boot_start_time) / 1000000);
+	uclock_totals();
 #endif
 }
 

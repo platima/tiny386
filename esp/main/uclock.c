@@ -19,6 +19,9 @@
 #include "console.h"
 
 struct uclock uclock_c1 = { .gen = 1 };
+/* when uclock_start() ended, for the run's length (64 bits: the 32-bit
+   clock's difference wraps after 71.6 minutes) */
+static int64_t uclock_run_from;
 
 static bool uclock_idle_hook(void)
 {
@@ -79,6 +82,7 @@ void uclock_start(void)
 		}
 	}
 	if (why) {
+		uclock_run_from = esp_system_get_time();
 		console_printf(CON_WARN, "Clock: the true read each time (QW_UCLK off: %s; "
 			       "%lu MHz, against the clock over 20 ms: busy %+ld us, idle %+ld us).",
 			       why, (unsigned long) mhz, (long) busy, (long) idle);
@@ -93,6 +97,7 @@ void uclock_start(void)
 	uclock_c1.waits = 0;
 	uclock_c1.gen = 1;      /* odd: the next read syncs */
 	UCLK_UNLOCK(s);
+	uclock_run_from = esp_system_get_time();
 	console_printf(CON_INFO, "Clock: core 1's cycle counter (%lu MHz) between true reads; "
 		       "against the clock over 20 ms: busy %+ld us, idle %+ld us (it counts "
 		       "through waits).", (unsigned long) mhz, (long) busy, (long) idle);
@@ -113,15 +118,15 @@ void uclock_say(void)
 
 /* the end of the run (with the clock off its true reads are not counted:
    uclock_slow()) */
-void uclock_totals(uint32_t run_s)
+void uclock_totals(void)
 {
+	unsigned long run_s = (unsigned long) ((esp_system_get_time() - uclock_run_from) / 1000000);
 	if (!uclock_c1.recip && !uclock_c1.off) {
-		console_printf(CON_INFO, "Clock: the true read each time in %lu s of run.",
-			       (unsigned long) run_s);
+		console_printf(CON_INFO, "Clock: the true read each time in %lu s of run.", run_s);
 		return;
 	}
 	console_printf(CON_INFO, "Clock: %lu true reads in %lu s of run, %lu of them after waits; %s.",
-		       (unsigned long) uclock_c1.syncs, (unsigned long) run_s,
+		       (unsigned long) uclock_c1.syncs, run_s,
 		       (unsigned long) uclock_c1.waits,
 		       uclock_c1.recip ? "still on the cycle counter" : "then the true read each time");
 }

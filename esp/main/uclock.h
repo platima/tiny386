@@ -303,7 +303,7 @@ static inline uint32_t uclock_get(struct uclock *k)
 extern struct uclock uclock_c1;         /* core 1's (uclock.c) */
 void uclock_start(void);                /* on core 1, before the PC runs */
 void uclock_say(void);                  /* the line when it has gone off */
-void uclock_totals(uint32_t run_s);     /* the line at the run's end */
+void uclock_totals(void);               /* the line at the run's end */
 #endif
 
 #endif
