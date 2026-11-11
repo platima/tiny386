@@ -1163,7 +1163,11 @@ fi
 # (nofoldss) or by STI (nofoldsti).
 # v5.3 (batch 4, fast_exec()'s 16-bit paths): QW_EA16's one test taking a
 # segment override for none (ea16ov), and its form for 32-bit code's 16-bit
-# operands loading 32 bits (ea16do).
+# operands loading 32 bits (ea16do); mode z (tests/host/cpu/gen_z.inc: jumps
+# across offset FFFFh and 0 in real, virtual-8086 and 16-bit protected mode
+# with CS's base off a page boundary, targets past the segment's end) and
+# QW_J16's mask at a jump out of the window never made (j16eip), and its
+# instructions at FFF1h and above not sent to tiny386 (j16end).
 echo
 FCSEEDS=${FCSEEDS:-40}
 fcbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_fast_cpu-name
@@ -1212,7 +1216,9 @@ for m in fold:'s/!NOFOLD_IS() \&\& \\/1 \&\& \\/;s/if (_t \&\& !NOFOLD_IS()) { \
          nofoldss:'s/^#define STEPS_SS() do { steps++; sadj++; nofold_st++; } while (0)$/#define STEPS_SS() do { steps++; sadj++; } while (0)/' \
          nofoldsti:'s/ sadj += steps - _o; nofold_st += steps - _o; }/ sadj += steps - _o; }/' \
          ea16ov:'s/^#define EAP_DW(...) else if ((pfx & 0x73) == 3)/#define EAP_DW(...) else if ((pfx \& 3) == 3)/' \
-         ea16do:'/EAP_DO(EA_OFF32(off, m) mreg = r;/s/sreg16(r, fm16(p))/sreg32(r, fm32(p))/'; do
+         ea16do:'/EAP_DO(EA_OFF32(off, m) mreg = r;/s/sreg16(r, fm16(p))/sreg32(r, fm32(p))/' \
+         j16eip:'s/^\treturn eip \& 0xffff;$/\treturn eip;/' \
+         j16end:'s/if (unlikely(cpu->code16) \&\& eip >= FAST_J16_END)/if (0)/;s/^#define FAST_J16_SLOW(e) (unlikely(code16) \&\& (e) >= FAST_J16_END)$/#define FAST_J16_SLOW(e) 0/'; do
     mname=${m%%:*}
     mfile=i386_fast.h       # (v5.1: lpgno's fault is in i386.c)
     [ "$mname" = lpgno ] && mfile=i386.c

@@ -28,3 +28,4 @@
 #define QW_DECJ 1
 /* v5.3: fast_exec()'s 16-bit paths */
 #define QW_EA16 1
+#define QW_J16 1

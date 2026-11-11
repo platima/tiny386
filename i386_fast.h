@@ -626,6 +626,21 @@ static inline __attribute__((always_inline)) int fast_cond(CPUI386 *cpu, int c)
    the fast TLB (tab, the table for the privilege level), as a 1-byte read
    (v5.1). */
 #define FAST_WIN (4096 - 16)
+#if QW_J16
+/* v5.3: in 16-bit code the window holds offsets 0 to FFF0h only (fast_j16_clamp()): an instruction
+   at FFF1h or above (its bytes may run past FFFFh, an offset tiny386 does not wrap) goes to
+   tiny386, so no instruction run here leaves pc above FFFFh but a jump */
+#define FAST_J16_END 0xfff1
+/* The window from lo to hi clamped to the segment's offsets 0 to FFF0h (ipd: offset 0's host
+   address).  Out of line and called only in 16-bit code: in line, its few instructions in every
+   WINDOW() made GCC give up the register it kept the fast TLB's table in. */
+struct fast_j16_win { uintptr_t lo, hi; };
+static noinline struct fast_j16_win IRAM_ATTR_FAST_EXEC fast_j16_clamp(uintptr_t lo, uintptr_t hi, uintptr_t ipd)
+{
+	struct fast_j16_win w = { lo < ipd ? ipd : lo, hi > ipd + FAST_J16_END ? ipd + FAST_J16_END : hi };
+	return w;
+}
+#endif
 struct fast_win {
 	const u8 *pc, *lo;
 	uintptr_t ipd;
@@ -636,6 +651,10 @@ static noinline int IRAM_ATTR_FAST_EXEC fast_window(CPUI386 *cpu, struct fast_tl
 	int r = 1;
 	if ((lin & 0xfff) >= FAST_WIN)
 		return 0;
+#if QW_J16
+	if (unlikely(cpu->code16) && eip >= FAST_J16_END)   /* (v5.3: before anything is cached, as tiny386 alone) */
+		return 0;
+#endif
 	if (!((lin ^ cpu->ifetch.laddr) < 4096)) {
 		/* peek8(): translate8r(), then the cache filled if the page is RAM
 		   away from the end of RAM and the VGA window */
@@ -678,6 +697,26 @@ static noinline int IRAM_ATTR_FAST_EXEC fast_window(CPUI386 *cpu, struct fast_tl
 	w->ipd = (uintptr_t) host - eip;
 	return r;
 }
+
+#if QW_J16
+/* v5.3: the offset at which 16-bit code goes on after a jump out of its window to eip, above FFFFh or
+   below 0 (pc - ipd): masked to 16 bits, as tiny386 masks a relative jump's target, unless the
+   instruction at ins (its prefixes skipped) is C3h, C2h or FFh, RET, RET n and CALL or JMP near
+   through r/m, the targets JUMP_ABS() sets, which tiny386 leaves as they are (a 32-bit one with
+   66h).  Only the jumps can take pc there (FAST_J16_END); the CMP or TEST before a JZ or JNZ
+   done with it (FOLD_JCC()) is not one of those three. */
+static noinline uword IRAM_ATTR_FAST_EXEC fast_j16_eip(const u8 *ins, uword eip)
+{
+	const u8 *p = ins;
+	for (int i = 0; i < 14; i++, p++)
+		if (!(*p == 0x26 || *p == 0x2e || *p == 0x36 || *p == 0x3e || (*p >= 0x64 && *p <= 0x67) ||
+		      *p == 0xf0 || *p == 0xf2 || *p == 0xf3))
+			break;
+	if (*p == 0xc3 || *p == 0xc2 || *p == 0xff)
+		return eip;
+	return eip & 0xffff;
+}
+#endif
 
 /* fault: an exception raised by one of tiny386's macros here (DIV's #DE) */
 #pragma push_macro("THROW0")
@@ -997,11 +1036,38 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	} while (0)
 #endif
 	/* relative and absolute jumps; 16-bit code wraps at 64 KB */
+#if QW_J16
+	/* v5.3: 16-bit code's window is clamped to its segment where it is set (WINDOW(), the
+	   inline refill: offsets 0 to FFF0h), so a relative jump's target is in the window only if
+	   it is in the segment, and a target past either end of it goes to refill or out as any
+	   outside the window does; there (FAST_EIP()), and nowhere else, its offset is masked to
+	   16 bits (fast_j16_eip()).  So no jump tests code16 or masks, in 16-bit code or 32-bit. */
+#define JUMP_REL(d) do { \
+		pc += (d); \
+		if (unlikely((uintptr_t) pc < (uintptr_t) win_lo)) win_hi = 0; \
+	} while (0)
+#define FAST_J16_CLAMP() do { \
+		if (unlikely(code16)) { \
+			struct fast_j16_win _c = fast_j16_clamp((uintptr_t) win_lo, win_hi, ipd); \
+			win_lo = (const u8 *) _c.lo; \
+			win_hi = _c.hi; \
+		} \
+	} while (0)
+	/* pc as EIP at a step's end */
+#define FAST_EIP() ({ uword _e = EIP_OF(pc); \
+		if (unlikely(code16 && _e > 0xffff)) _e = fast_j16_eip(ins, _e); \
+		_e; })
+#define FAST_J16_SLOW(e) (unlikely(code16) && (e) >= FAST_J16_END)
+#else
 #define JUMP_REL(d) do { \
 		if (QH_U(code16)) pc = (const u8 *) (ipd + ((EIP_OF(pc) + (d)) & 0xffff)); \
 		else pc += (d); \
 		if (unlikely((uintptr_t) pc < (uintptr_t) win_lo)) win_hi = 0; \
 	} while (0)
+#define FAST_J16_CLAMP() do { } while (0)
+#define FAST_EIP() EIP_OF(pc)
+#define FAST_J16_SLOW(e) 0
+#endif
 #define JUMP_ABS(neweip) do { \
 		pc = (const u8 *) (ipd + (uword) (neweip)); \
 		if (unlikely((uintptr_t) pc < (uintptr_t) win_lo)) win_hi = 0; \
@@ -1448,7 +1514,8 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 	} while (0)
 
 	/* the code window for the instruction at eip, by fast_window(); the
-	   fusion rule's saves when it is the first in a page newly cached */
+	   fusion rule's saves when it is the first in a page newly cached
+	   (v5.3, QW_J16: in 16-bit code the window clamped to the segment) */
 #define WINDOW() do { \
 		unsigned long _l0 = cpu->ifetch.laddr; \
 		uword _x0 = cpu->ifetch.xaddr; \
@@ -1460,6 +1527,7 @@ static bool IRAM_ATTR_FAST_EXEC fast_exec(CPUI386 *cpu, int stepcount)
 		win_lo = _w.lo; \
 		win_hi = (uintptr_t) _w.lo + FAST_WIN; \
 		ipd = _w.ipd; \
+		FAST_J16_CLAMP(); \
 		if (_r == 2) { \
 			NOFOLD_SET(); \
 			nofold_laddr = _l0; \
@@ -1478,7 +1546,9 @@ reload:   /* after a change of mode, CS or segment registers made outside the ha
 	WINDOW();
 	DISPATCH;
 refill:   /* the next instruction is outside the code window */
-	eip = EIP_OF(pc);
+	eip = FAST_EIP();
+	if (FAST_J16_SLOW(eip))   /* (v5.3: as WINDOW()) */
+		goto slow_eip;
 	{   /* v5.1: inline, as fast_window() does it, for an instruction in a
 	       page's last 16 bytes (to tiny386) and for the common page change:
 	       paging on, CS not null, another page than the one cached, whose
@@ -1503,6 +1573,7 @@ refill:   /* the next instruction is outside the code window */
 				win_lo = h - (lin & 0xfff);
 				win_hi = (uintptr_t) win_lo + FAST_WIN;
 				ipd = (uintptr_t) h - eip;
+				FAST_J16_CLAMP();
 				DISPATCH;
 			}
 		}
@@ -2865,7 +2936,7 @@ op_shrd: SHxD(SHRD)
 	/* == leaving */
 out:	/* the step is done; pc is the next instruction */
 	cpu->ip = EIP_OF(ins);
-	cpu->next_ip = EIP_OF(pc);
+	cpu->next_ip = FAST_EIP();
 	SYNC_OUT();
 	return true;
 out_ip:	/* the same after an instruction that changed CS (cpu->ip and next_ip set) */

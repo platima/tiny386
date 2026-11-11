@@ -142,6 +142,11 @@
  * which passes if both machines stopped in the same step and agree, not
  * the whole run; and the fetch cache's xaddr starts at 0 in both machines.
  *
+ * v5.3 (batch 4, fast_exec()'s 16-bit paths): mode z (gen_z.inc), jumps
+ * across offset FFFFh and 0 in real mode, virtual-8086 mode and 16-bit
+ * protected mode, with CS's base off a page boundary, and targets past the
+ * segment's end that tiny386 does not mask.
+ *
  *   test_fast_cpu [SEEDS [FIRST_SEED [MODES]]]
  *
  * MODES: the scenarios for each seed, one character each (run() names
@@ -3779,6 +3784,7 @@ static int step_or_stop(CPUI386 *c, int n)
 }
 
 #include "gen_y.inc"     /* v5.2 (the fastx review): mode y */
+#include "gen_z.inc"     /* v5.3 (batch 4): mode z */
 
 /* one scenario: mode 0 real, 1 protected at level 0, 2 at level 3;
    since the v5.0 reviews: 3 virtual-8086, 4 16-bit protected with paging, 5
@@ -3872,6 +3878,7 @@ static void setup_mode(int mode, u8 *mem, CPUI386 *cpu)
 	   (real mode, level 0, 32-bit code with a 16-bit stack, V86 mode, 16-bit
 	   protected mode with a 32-bit stack, 16-bit protected mode with paging) */
 	case 34: setup_mode((const int[]) { 0, 1, 12, 3, 11, 4 }[ysub], mem, cpu); break;
+	case 35: setup_z(mem, cpu); break;   /* v5.3 (batch 4): z, fast_exec()'s 16-bit paths */
 	default: setup_pm16(mem, cpu, 0); break;
 	}
 	if (mode == 7 || mode == 13 || mode == 17)     /* interrupts on, so that the IRQ's handler (level 0) runs first */
@@ -3905,6 +3912,7 @@ static int run(int mode, int seed)
 					      [29] = "code fetches: privilege, PTEs changed, EIP wraps, 4 GiB (hand, t)",
 					      [33] = "two memory operands at random",
 					      [34] = "the switches after v5.2 at their edges (hand, y)",
+					      [35] = "16-bit paths: jumps across FFFFh and 0, CS off a page (hand, z)",
 	};
 	if (mode == 23 && refill_probes(seed))   /* v5.1 (n): fast_miss() itself first */
 		return 1;
@@ -3914,6 +3922,8 @@ static int run(int mode, int seed)
 	lrights(seed);
 	cp_sub = seed % 5;   /* (mode t) */
 	ysub = seed % 6;   /* (mode y) */
+	zsub = seed % 3;   /* (mode z) */
+	zdir = (seed / 3) % 2;
 	fz_level = (const int[]) { 0, 1, 3 }[seed % 3];
 	for (int i = 0; i < 2; i++)
 		mach_new(&M[i], i == 0);
@@ -3984,8 +3994,18 @@ static int run(int mode, int seed)
 		gpm16 = ysub == 4 || ysub == 5;
 		gcs_far = g32 ? 0x08 : R_CS;
 	}
+	if (mode == 35) {   /* z: real mode, V86 mode, 16-bit protected mode with paging (zsub) */
+		g32 = 0;
+		guser = glfbuser = gcpl1 = gnopriv = 0;
+		gv86 = zsub == 1;
+		gpm16 = zsub == 2;
+		gcs_far = zsub == 2 ? Z_SEL : Z_SEG;
+	}
 	setup_mode(mode, M[0].mem, M[0].cpu);
-	if (!g32) {
+	if (mode == 35) {
+		gcode_phys = Z_BASE;
+		gbase_lin = 0;
+	} else if (!g32) {
 		gcode_phys = R_CS << 4;
 		gbase_lin = 0;   /* (IP offsets: glin() - gbase_lin) */
 	} else {
@@ -4072,6 +4092,8 @@ static int run(int mode, int seed)
 		gen_cp();   /* v5.1 (t) */
 	} else if (mode == 34) {
 		gen_y();   /* v5.2 (y) */
+	} else if (mode == 35) {
+		gen_z();   /* v5.3 (z) */
 	} else {
 		uword limit = gcode_phys + 0xf000;
 		while (gp < limit)
@@ -4087,7 +4109,7 @@ static int run(int mode, int seed)
 	CPUI386 *a = M[0].cpu, *b = M[1].cpu;
 	setup_mode(mode, M[1].mem, b);
 	for (int i = 0; i < 2; i++) {
-		M[i].vec = (mode == 0 || mode == 8 || mode == 18 || (mode == 34 && ysub == 0)) ? 8 : 0x20;
+		M[i].vec = (mode == 0 || mode == 8 || mode == 18 || (mode == 34 && ysub == 0) || (mode == 35 && zsub == 0)) ? 8 : 0x20;
 		M[i].cpu->cycle = 0;
 	}
 	uword end_ip = g32 ? end - gcode_phys + P_CODE : end - gcode_phys;
@@ -4107,6 +4129,7 @@ static int run(int mode, int seed)
 	if (mode == 23) { hand = 1; steps_max = 4000; }   /* v5.1 (n): about 450 instructions, 14 page faults */
 	if (mode == 24) steps_max = 5000;   /* (o: about 330 instructions with its handlers) */
 	if (mode == 34) { hand = 1; steps_max = 2000; }   /* (y: about 900 instructions, by 500 steps) */
+	if (mode == 35) { hand = 1; steps_max = 3000; }   /* (z) */
 	crash_name = names[mode];
 	crash_seed = seed;
 	while (step < steps_max) {
@@ -4275,6 +4298,7 @@ int main(int argc, char **argv)
 		"pqrs"  /* v5.1 (WI-3's check): the group opcodes, DIV's #DE, segment loads */
 		"t"     /* v5.1 (WI-1's check): code fetches */
 		"y"     /* v5.2 (the fastx review): the switches after v5.2 at their edges */
+		"z"     /* v5.3 (batch 4): fast_exec()'s 16-bit paths at their edges */
 		;
 	int bad = 0, nsc = 0;
 	setvbuf(stdout, NULL, _IOLBF, 0);

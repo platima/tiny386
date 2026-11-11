@@ -92,6 +92,9 @@
 #ifndef QW_EA16
 #define QW_EA16 0       /* with QW_EAP: 16-bit code's common memory form in one test, the hottest handlers */
 #endif
+#ifndef QW_J16
+#define QW_J16 0        /* 16-bit code's window clamped to its segment: relative jumps without the mask */
+#endif
 #if QW_GRPTAB && !(QW_OPS0F && QW_GRP5)
 #error "QW_GRPTAB needs QW_OPS0F and QW_GRP5"
 #endif
