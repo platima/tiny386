@@ -41,15 +41,24 @@
    protected mode a selector with that base), so that a 16-bit SI or DI
    wraps inside a page and the pieces stop at the wrap, not at a page's
    end: SI and DI near FFFFh going up, near 0 going down, or about 800h.
+   Then (the review of batch 4) a JMP FAR to 9800h:7F00h (in 16-bit
+   protected mode a selector of base 98000h), the page below the VGA
+   window, and six times a near JMP from there into the window (A0010h
+   up), which tiny386 runs, and one back: the inline refill's page change
+   into MMIO, with and without paging (QW_RMREF's in_iomem() tests).  RAM
+   under the window holds INC AX, so that code run from there differs.
    Last, without paging (QW_RMREF's page changes), a JMP FAR into RAM's last
-   page but one, a near JMP from there into its last page, which tiny386
-   runs, and one back, then NOPs that run on into the last page, and a JMP
-   FAR back. */
+   page but one, six times a near JMP from there into its last page, which
+   tiny386 runs, and one back (more than once, since only a step that goes
+   on past the JMP shows the page cached), then NOPs that run on into the
+   last page, and a JMP FAR back. */
 #define Z_BASE 0xff20u          /* CS's base */
 #define Z_SEG 0x0ff2            /* ... as a real-mode and virtual-8086 segment */
 #define Z_SEL 0x0fe8            /* ... as a selector of GDT16 */
 #define Z_TSEL 0x0fe0           /* 16-bit protected mode: a segment at RAM's end (MEM - 2000h) */
 #define Z_DSEG 0x2010           /* data at 20100h, off a page boundary: a segment, and a selector of GDT16 */
+#define Z_VSEG 0x9800           /* code at 98000h, its offset 8000h the VGA window: a real-mode segment */
+#define Z_VSEL 0x0fd8           /* ... and a selector of GDT16 with that base */
 static int zsub;                /* mode z's setting: seed % 4 */
 static int zdir;                /* (seed / 4) % 2: the short jumps forward (0) or backward (1) */
 static uword z_off(void) { return gp - gcode_phys; }
@@ -113,6 +122,7 @@ static void setup_z(u8 *mem, CPUI386 *cpu)
 		desc(mem, GDT16_PHYS + Z_SEL, Z_BASE, 0xfffff, 0x09a);   /* (limit 1 MiB: code past FFFFh) */
 		desc(mem, GDT16_PHYS + Z_TSEL, MEM - 0x2000, 0xffff, 0x09a);
 		desc(mem, GDT16_PHYS + Z_DSEG, Z_DSEG << 4, 0xffff, 0x092);
+		desc(mem, GDT16_PHYS + Z_VSEL, Z_VSEG << 4, 0xffff, 0x09a);
 		break;
 	}
 	cpu->seg[SEG_CS].sel = zsub >= 2 ? Z_SEL : Z_SEG;
@@ -282,17 +292,43 @@ static void gen_z(void)
 		if (down) e8(0xfc);                             /* CLD */
 	}
 	e8(0x1f); e8(0x1e); e8(0x07);                           /* POP DS; PUSH DS; POP ES */
-	if (zsub == 3) {   /* (Z_TSEL's offsets: F00h and FE0h in RAM's last page but one, 1012h in its last) */
+	{   /* (offsets of Z_VSEG: 7F00h up in RAM, 8010h up the VGA window) */
+		e8(0xea); e16(0x7f00); e16(zsub >= 2 ? Z_VSEL : Z_VSEG);   /* JMP FAR to 7F00h */
+		uword next = z_off();
+		uword s = gp;
+		uword t = (uword) Z_VSEG << 4;
+		for (int i = 0; i < 6; i++) {
+			gp = t + 0x7f00 + 0x10 * i;
+			e8(0x90);                                       /* NOP; JMP near into the window */
+			e8(0xe9); e16(0x8010 + 0x20 * i - (0x7f00 + 0x10 * i + 4));
+			for (int m = 0; m < 2; m++) {                   /* there: 3 NOPs, a JMP near back */
+				u8 *v = M[m].vga + 0x10 + 0x20 * i;
+				v[0] = v[1] = v[2] = 0x90;
+				uword to = 0x7f10 + 0x10 * i, at = 0x8010 + 0x20 * i + 6;
+				v[3] = 0xe9; v[4] = (u8) (to - at); v[5] = (u8) ((to - at) >> 8);
+			}
+			for (int j = 0; j < 6; j++)                     /* the RAM under it: INC AX */
+				gm[0xa0010 + 0x20 * i + j] = 0x40;
+		}
+		gp = t + 0x7f60;
+		e8(0xea); e16(next); e16(gcs_far);              /* JMP FAR back */
+		gp = s;
+	}
+	if (zsub == 3) {   /* (Z_TSEL's offsets: F00h up and FE0h in RAM's last page but one, 1012h up in its last) */
 		e8(0xea); e16(0x0f00); e16(Z_TSEL);             /* JMP FAR Z_TSEL:F00h */
 		uword next = z_off();
 		uword s = gp;
 		uword t = MEM - 0x2000;
-		gp = t + 0x0f00;
-		e8(0xe9); e16(0x1012 - 0x0f03);                 /* JMP near to 1012h, into the last page */
-		gp = t + 0x1012;
-		for (int i = 0; i < 8; i++)
-			e8(0x90);
-		e8(0xe9); e16(0x0fe0 - (0x101a + 3));           /* JMP near back to FE0h */
+		for (int i = 0; i < 6; i++) {
+			gp = t + 0x0f00 + 0x10 * i;
+			e8(0x90);                                       /* NOP; JMP near into the last page */
+			e8(0xe9); e16(0x1012 + 0x10 * i - (0x0f00 + 0x10 * i + 4));
+			gp = t + 0x1012 + 0x10 * i;                     /* there: 3 NOPs, a JMP near back */
+			e8(0x90); e8(0x90); e8(0x90);
+			e8(0xe9); e16(0x0f10 + 0x10 * i - (0x1012 + 0x10 * i + 6));
+		}
+		gp = t + 0x0f60;
+		e8(0xe9); e16(0x0fe0 - (0x0f60 + 3));           /* JMP near on to FE0h */
 		gp = t + 0x0fe0;
 		for (int i = 0; i < 40; i++)                    /* NOPs on into the last page */
 			e8(0x90);
