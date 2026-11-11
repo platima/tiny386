@@ -3,22 +3,33 @@
  * reported as one, and a multi-block write that failed as failed.  The
  * wrap is built as the S31 boards build it, around a stand-in for
  * ESP-IDF's sdmmc_host_do_transaction() that takes as long as each case
- * says, on a pretend clock, and gives what the case says: the board's
- * ESP-IDF, which gives ESP_OK for a command whose event never came when
- * its buffer is in PSRAM; the fixed one, which gives ESP_ERR_TIMEOUT; data
+ * says, on a pretend clock, and gives what the case says: 188e3e55bb,
+ * which gives ESP_OK for a command whose event never came when its buffer
+ * is in PSRAM; one with e00861c3f497, which gives ESP_ERR_TIMEOUT; data
  * errors, which the driver keeps in cmd->error; and good commands.
  *
- * 1. A lost event is the driver's wait of timeout_ms / portTICK_PERIOD_MS
- *    ticks run out: begun at any point in a tick, it lasts more than all
- *    those ticks but one.  Every such command with data in PSRAM must come
- *    back as ESP_ERR_TIMEOUT, whatever else it took; every good one, and
- *    every one with no data or with data in internal RAM, as the driver
- *    gave it, with cmd->error untouched; and the clock read only for data
- *    in PSRAM.
- * 2. sdmmc_write_sectors_dma() as the board's ESP-IDF has it, which returns
- *    the result of ACMD22 (the card's count of blocks written) for a failed
- *    multi-block write: through the wrap it must return the write's own
- *    error, for each task its own, and nothing else may change.
+ * The wrap's two parts are each built only for an ESP-IDF without the fix
+ * they stand in for, and so is this test: SD_WRAP_TIMEOUT and
+ * SD_WRAP_CMD25 as the wrap has them (1 when not given), for the four
+ * ESP-IDFs that can be.  In every one, the slot's settings are forgotten
+ * after a failed command, and only then.
+ *
+ * 1. With the timeout part (an ESP-IDF without e00861c3f497): a lost event
+ *    is the driver's wait of timeout_ms / portTICK_PERIOD_MS ticks run
+ *    out: begun at any point in a tick, it lasts more than all those
+ *    ticks but one.  Every such command with data in PSRAM must come back
+ *    as ESP_ERR_TIMEOUT, whatever else it took; every good one, and every
+ *    one with no data or with data in internal RAM, as the driver gave it,
+ *    with cmd->error untouched; and the clock read only for data in PSRAM.
+ *    Without it: every command as the driver gave it, the clock never
+ *    read and the buffer never looked at.
+ * 2. sdmmc_write_sectors_dma() as the ESP-IDF has it.  With the CMD25 part
+ *    (an ESP-IDF without 007945125db7, which returns the result of ACMD22,
+ *    the card's count of blocks written, for a failed multi-block write):
+ *    through the wrap it must return the write's own error, for each task
+ *    its own, and nothing else may change.  Without it (an ESP-IDF that
+ *    keeps the write's error itself): each count as the card gave it, and
+ *    no task ever asked for.
  *
  *   test_sdmmc_timeout
  *
@@ -34,6 +45,13 @@
 #include "esp_err.h"
 #include "sd_protocol_defs.h"
 #include "sd_protocol_types.h"
+
+#ifndef SD_WRAP_TIMEOUT
+#define SD_WRAP_TIMEOUT 1
+#endif
+#ifndef SD_WRAP_CMD25
+#define SD_WRAP_CMD25 1
+#endif
 
 esp_err_t __wrap_sdmmc_host_do_transaction(int slot, sdmmc_command_t *cmdinfo);
 
@@ -59,7 +77,7 @@ static int checks, fails;
 
 static uint8_t s_psram[4096], s_internal[4096], s_count[4];
 static int64_t s_now = 1000000;         /* microseconds */
-static int s_clock_reads;
+static int s_clock_reads, s_cache_asks, s_task_asks;
 static int s_tasks[8];
 static TaskHandle_t s_task = &s_tasks[0];
 
@@ -72,13 +90,19 @@ int64_t esp_timer_get_time(void)
 size_t esp_cache_get_line_size_by_addr(const void *addr)
 {
 	const uint8_t *p = addr;
+	s_cache_asks++;
 	return p >= s_psram && p < s_psram + sizeof(s_psram) ? 64 : 0;
 }
 
 TaskHandle_t xTaskGetCurrentTaskHandle(void)
 {
+	s_task_asks++;
 	return s_task;
 }
+
+/* what the driver gives for a command with data in PSRAM whose event never
+   came: ESP_OK without e00861c3f497, its timeout with it */
+#define LOST_GIVES (SD_WRAP_TIMEOUT ? ESP_OK : ESP_ERR_TIMEOUT)
 
 /* what the driver does with each command: one step for the next command,
    or a script of them, one for each command in turn */
@@ -138,6 +162,7 @@ static esp_err_t run(enum where w, uint32_t timeout_ms, int64_t takes, esp_err_t
 	return r;
 }
 
+#if SD_WRAP_TIMEOUT
 /* the least and the most a wait that saw no event can last, begun at the
    start of a tick or just before its end */
 static int64_t lost_least(uint32_t timeout_ms)
@@ -160,7 +185,7 @@ static void part1(void)
 	for (unsigned t = 0; t < 2; t++) {
 		uint32_t to = timeouts[t];
 		int64_t least = lost_least(to), most = lost_most(to);
-		/* a lost event: the board's ESP-IDF gives ESP_OK, the fixed one
+		/* a lost event: 188e3e55bb gives ESP_OK, one with e00861c3f497
 		   ESP_ERR_TIMEOUT; both must come back as ESP_ERR_TIMEOUT, and
 		   so must the same with time before the wait (the driver's
 		   mutex, the clock, the card's other events) */
@@ -223,10 +248,41 @@ static void part1(void)
 	CHECK(r == ESP_ERR_TIMEOUT && host_log_lines == lines + 1, "one log line for each");
 	printf("%u lost events caught, %u good commands passed\n", caught, passed);
 }
+#else
+/* an ESP-IDF with e00861c3f497: every command comes back as the driver
+   gave it, whatever it took and wherever its buffer is, with no look at
+   the clock or the buffer and no log line */
+static void part1(void)
+{
+	static const uint32_t timeouts[] = { 0, portTICK_PERIOD_MS, 1000, 5000 };
+	static const int64_t takes[] = { 0, 180, 25000, 990001, 1000000, 5000000 };
+	static const esp_err_t gives[] = { ESP_OK, ESP_ERR_TIMEOUT, ESP_FAIL, ESP_ERR_INVALID_CRC };
+	static const esp_err_t errors[] = { ESP_OK, ESP_ERR_INVALID_CRC, ESP_ERR_TIMEOUT };
+	int reads, lines = host_log_lines, asks = s_cache_asks;
+	unsigned through = 0;
 
-/* ==== 2. a multi-block write, as the board's ESP-IDF sends it ==== */
+	for (enum where w = NONE; w <= PSRAM; w++)
+		for (unsigned t = 0; t < 4; t++)
+			for (unsigned k = 0; k < 6; k++)
+				for (unsigned g = 0; g < 4; g++)
+					for (unsigned e = 0; e < 3; e++) {
+						esp_err_t r = run(w, timeouts[t], takes[k], gives[g], errors[e],
+								  &reads);
+						CHECK(r == gives[g] && reads == 0, "%s, %u ms timeout, %lld us, "
+						      "the driver's %#x and %#x: %#x, %d clock reads", wheres[w],
+						      (unsigned) timeouts[t], (long long) takes[k], gives[g],
+						      errors[e], r, reads);
+						through++;
+					}
+	CHECK(host_log_lines == lines && s_cache_asks == asks, "no log line (%d) and no look at "
+	      "where a buffer is (%d)", host_log_lines - lines, s_cache_asks - asks);
+	printf("%u commands passed through\n", through);
+}
+#endif
 
-/* sdmmc_send_cmd() as the board's ESP-IDF has it, cut to what this needs */
+/* ==== 2. a multi-block write, as the ESP-IDF sends it ==== */
+
+/* sdmmc_send_cmd() as ESP-IDF has it, cut to what this needs */
 static esp_err_t send_cmd(sdmmc_command_t *cmd)
 {
 	if (cmd->timeout_ms == 0)
@@ -254,18 +310,28 @@ static esp_err_t num_written(void)
 	return err != ESP_OK ? err : send(SD_APP_SEND_NUM_WR_BLOCKS, s_count, 4, 0);
 }
 
-/* sdmmc_write_sectors_dma() as the board's ESP-IDF has it (sdmmc_cmd.c at
-   188e3e55bb), cut to the commands it sends: CMD25 from buf, CMD13, and
-   for a failed CMD25 the count, whose result it returns in place of the
-   write's; its wait for the card after a good write is left out */
+/* sdmmc_write_sectors_dma() as the ESP-IDF has it, cut to the commands it
+   sends: CMD25 from buf, CMD13, and for a failed CMD25 the count.  Without
+   007945125db7 (sdmmc_cmd.c at 188e3e55bb) it returns the count's result
+   in place of the write's; with it, the write's.  Its wait for the card
+   after a good write is left out. */
 static esp_err_t idf_write_multiple(void *buf)
 {
 	esp_err_t err = send(MMC_WRITE_BLOCK_MULTIPLE, buf, 4096, 5000);
 	send(MMC_SEND_STATUS, NULL, 0, 0);
-	if (err != ESP_OK)
+	if (err != ESP_OK) {
+#if SD_WRAP_CMD25
 		err = num_written();
+#else
+		num_written();
+#endif
+	}
 	return err;
 }
+
+/* what a task's count after its failed write gives: the write's error with
+   the CMD25 part, the card's answer without it */
+#define COUNT_GIVES(e) (SD_WRAP_CMD25 ? (e) : ESP_OK)
 
 static const struct step good = { 150, ESP_OK, ESP_OK };
 
@@ -283,8 +349,8 @@ static void part2(void)
 	r = idf_write_multiple(s_internal);
 	CHECK(r == ESP_OK && s_calls == 2, "a good write from internal RAM: %#x", r);
 
-	/* a CRC error the driver keeps, from either buffer: the board's
-	   ESP-IDF alone would give ACMD22's ESP_OK */
+	/* a CRC error the driver keeps, from either buffer: 188e3e55bb alone
+	   would give ACMD22's ESP_OK */
 	enum where bw[2] = { INTERNAL, PSRAM };
 	for (int k = 0; k < 2; k++) {
 		void *buf = bw[k] == PSRAM ? (void *) s_psram : (void *) s_internal;
@@ -295,7 +361,8 @@ static void part2(void)
 		CHECK(r == ESP_ERR_INVALID_CRC && s_calls == 4 && s_opcodes[3] == SD_APP_SEND_NUM_WR_BLOCKS,
 		      "a write from %s with a CRC error: %#x after %d commands", wheres[bw[k]], r,
 		      s_calls);
-		CHECK(host_log_lines == lines + 1, "one log line for it");
+		CHECK(host_log_lines == lines + SD_WRAP_CMD25, "the wrap's log lines for it: %d",
+		      host_log_lines - lines);
 		/* the same task's next count, with no failed write before it:
 		   the card's answer, as it is */
 		script(2, w + 2);
@@ -309,35 +376,39 @@ static void part2(void)
 		CHECK(r == ESP_ERR_TIMEOUT, "a write from %s the driver times out: %#x",
 		      wheres[bw[k]], r);
 	}
-	/* the board's ESP-IDF with a lost event on a write from PSRAM:
-	   ESP_OK from the driver, ESP_ERR_TIMEOUT from the wrap, and the
-	   write's timeout from the count */
-	w[0] = (struct step) { 5000000, ESP_OK, ESP_OK };
+	/* a lost event on a write from PSRAM: without e00861c3f497, ESP_OK
+	   from the driver and ESP_ERR_TIMEOUT from the wrap; and then the
+	   write's timeout from sdmmc_write_sectors_dma() */
+	w[0] = (struct step) { 5000000, LOST_GIVES, ESP_OK };
 	script(4, w);
 	r = idf_write_multiple(s_psram);
 	CHECK(r == ESP_ERR_TIMEOUT && s_calls == 4, "a write from PSRAM whose event never "
 	      "came: %#x after %d commands", r, s_calls);
-	/* a count that fails itself: its own error */
+	/* a count that fails itself: its own error without 007945125db7, the
+	   write's with it */
 	w[0] = (struct step) { 2000, ESP_OK, ESP_ERR_INVALID_CRC };
 	w[3] = (struct step) { 1000000, ESP_ERR_TIMEOUT, ESP_OK };
 	script(4, w);
 	r = idf_write_multiple(s_internal);
-	CHECK(r == ESP_ERR_TIMEOUT, "a failed write whose count times out: %#x", r);
+	CHECK(r == (SD_WRAP_CMD25 ? ESP_ERR_TIMEOUT : ESP_ERR_INVALID_CRC),
+	      "a failed write whose count times out: %#x", r);
 	w[3] = good;
 	script(2, w + 2);
 	r = num_written();
 	CHECK(r == ESP_OK, "and after it, a count with no failed write before it: %#x", r);
-	/* CMD55 refused: no count sent, the write's error from CMD55 */
+	/* CMD55 refused: no count sent, the write's error from CMD55 without
+	   007945125db7, the write's own with it */
 	w[0] = (struct step) { 2000, ESP_OK, ESP_ERR_INVALID_CRC };
 	w[2] = (struct step) { 100, ESP_ERR_TIMEOUT, ESP_OK };
 	script(4, w);
 	r = idf_write_multiple(s_internal);
-	CHECK(r == ESP_ERR_TIMEOUT && s_calls == 3, "a failed write whose CMD55 fails: %#x", r);
+	CHECK(r == (SD_WRAP_CMD25 ? ESP_ERR_TIMEOUT : ESP_ERR_INVALID_CRC) && s_calls == 3,
+	      "a failed write whose CMD55 fails: %#x", r);
 	w[2] = good;
 
-	/* tasks: each count gives its own task's failed write.  Two tasks,
-	   their commands one after the other as the driver's mutex lets
-	   them through */
+	/* tasks: each count gives its own task's failed write (the card's
+	   answer without the CMD25 part).  Two tasks, their commands one
+	   after the other as the driver's mutex lets them through */
 	TaskHandle_t a = &s_tasks[1], b = &s_tasks[2];
 	s_step = good;
 	s_script_n = 0;
@@ -347,7 +418,7 @@ static void part2(void)
 	s_step = good;
 	CHECK(r == ESP_ERR_INVALID_CRC, "task a's write fails");
 	s_task = b;
-	s_step = (struct step) { 5000000, ESP_OK, ESP_OK };
+	s_step = (struct step) { 5000000, LOST_GIVES, ESP_OK };
 	r = send(MMC_WRITE_BLOCK_MULTIPLE, s_psram, 4096, 5000);
 	s_step = good;
 	CHECK(r == ESP_ERR_TIMEOUT, "task b's write's event never comes");
@@ -356,10 +427,10 @@ static void part2(void)
 	CHECK(r == ESP_OK, "a third task's count, with no failed write: %#x", r);
 	s_task = b;
 	r = num_written();
-	CHECK(r == ESP_ERR_TIMEOUT, "task b's count: b's timeout, %#x", r);
+	CHECK(r == COUNT_GIVES(ESP_ERR_TIMEOUT), "task b's count: %#x", r);
 	s_task = a;
 	r = num_written();
-	CHECK(r == ESP_ERR_INVALID_CRC, "task a's count: a's CRC error, %#x", r);
+	CHECK(r == COUNT_GIVES(ESP_ERR_INVALID_CRC), "task a's count: %#x", r);
 	/* five tasks with a failed write: room for four, the oldest goes */
 	for (int t = 0; t < 5; t++) {
 		s_task = &s_tasks[3 + t];
@@ -371,12 +442,13 @@ static void part2(void)
 	for (int t = 0; t < 5; t++) {
 		s_task = &s_tasks[3 + t];
 		r = num_written();
-		if (r == 0x200 + t)
+		if (SD_WRAP_CMD25 && r == 0x200 + t)
 			kept++;
 		else
-			CHECK(t == 0 && r == ESP_OK, "five tasks: task %d's count gave %#x", t, r);
+			CHECK((t == 0 || !SD_WRAP_CMD25) && r == ESP_OK, "five tasks: task %d's count "
+			      "gave %#x", t, r);
 	}
-	CHECK(kept == 4, "five tasks with a failed write: the last four kept (%u)", kept);
+	CHECK(kept == (SD_WRAP_CMD25 ? 4 : 0), "five tasks with a failed write: %u kept", kept);
 	s_task = &s_tasks[0];
 	CHECK(host_crit == 0, "every critical section left (%d)", host_crit);
 }
@@ -384,11 +456,18 @@ static void part2(void)
 int main(void)
 {
 	setvbuf(stdout, NULL, _IONBF, 0);
-	printf("tick %u ms (%u Hz)\n", (unsigned) portTICK_PERIOD_MS, (unsigned) configTICK_RATE_HZ);
+	printf("tick %u ms (%u Hz); the timeout part %s, the CMD25 part %s\n",
+	       (unsigned) portTICK_PERIOD_MS, (unsigned) configTICK_RATE_HZ,
+	       SD_WRAP_TIMEOUT ? "in" : "out", SD_WRAP_CMD25 ? "in" : "out");
 	printf("== 1. one command at a time\n");
 	part1();
-	printf("== 2. a multi-block write, as the board's ESP-IDF sends it\n");
+	printf("== 2. a multi-block write, as the ESP-IDF sends it\n");
 	part2();
+	/* without a part, nothing it needs is ever asked for */
+	CHECK(SD_WRAP_TIMEOUT || (s_clock_reads == 0 && s_cache_asks == 0), "without the timeout "
+	      "part: %d clock reads, %d looks at a buffer", s_clock_reads, s_cache_asks);
+	CHECK(SD_WRAP_CMD25 || s_task_asks == 0, "without the CMD25 part: the task asked for %d "
+	      "times", s_task_asks);
 	printf("test_sdmmc_timeout: %d checks, %d failed\n", checks, fails);
 	return fails ? 1 : 0;
 }

@@ -1,0 +1,47 @@
+From e00861c3f49729e30a66633a809654f63c13ff06 Mon Sep 17 00:00:00 2001
+From: morris <maoshengrong@espressif.com>
+Date: Tue, 29 Sep 2026 15:19:52 +0800
+Subject: [PATCH] fix(sdmmc): do not let cache sync mask a failed transaction
+
+The final esp_cache_msync() call in sd_host_slot_sdmmc_do_transaction()
+assigned its result to ret unconditionally, overwriting an error that
+the event loop had already produced. When a transaction with a cacheable
+data buffer timed out in handle_event(), that function stopped the DMA
+and returned ESP_ERR_TIMEOUT without setting cmd->error, so the loop
+broke with ret == ESP_ERR_TIMEOUT and cmdinfo->error still ESP_OK. The
+subsequent successful cache sync then reset ret to ESP_OK, and
+sdmmc_send_cmd() reported success for a transfer that never completed.
+
+The cache synchronization is still needed on the error path to leave the
+buffer coherent, so keep performing it, but only adopt its return value
+when the transaction has not already failed.
+
+The needs_sync guard only tests the start address, while esp_cache_msync
+checks the whole range against the cacheable window, so a buffer ending
+past that window makes the sync fail with ESP_ERR_NOT_SUPPORTED. When the
+transaction has already failed that error would be dropped silently, so
+log it instead.
+
+Closes https://github.com/espressif/esp-idf/issues/19141
+---
+ components/esp_driver_sdmmc/src/sd_trans_sdmmc.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/components/esp_driver_sdmmc/src/sd_trans_sdmmc.c b/components/esp_driver_sdmmc/src/sd_trans_sdmmc.c
+index b26e7e43c803..d467cd3653f2 100644
+--- a/components/esp_driver_sdmmc/src/sd_trans_sdmmc.c
++++ b/components/esp_driver_sdmmc/src/sd_trans_sdmmc.c
+@@ -578,7 +578,12 @@ esp_err_t sd_host_slot_sdmmc_do_transaction(sd_host_slot_handle_t slot, sdmmc_co
+     if (cmdinfo->data) {
+         bool needs_sync = esp_cache_get_line_size_by_addr(cmdinfo->data) > 0;
+         if (needs_sync) {
+-            ret = esp_cache_msync((void *)cmdinfo->data, cache_sync_len, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
++            esp_err_t sync_ret = esp_cache_msync((void *)cmdinfo->data, cache_sync_len, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
++            if (ret == ESP_OK) {
++                ret = sync_ret;
++            } else if (sync_ret != ESP_OK) {
++                ESP_LOGE(TAG, "cache sync failed: 0x%x", sync_ret);
++            }
+             if (ret != ESP_OK) {
+                 goto out;
+             }

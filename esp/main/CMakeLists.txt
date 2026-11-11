@@ -146,11 +146,13 @@ endif()
 
 # v5.2, the S31 boards: the SD clock kept between commands (sdmmc_clk_wrap.c,
 # [esp] sd_clock_fix), and the memory benchmark ([esp] membench, membench.c).
-# v5.3: a card command that timed out reported as one, which this ESP-IDF
-# reports as done when its buffer is in PSRAM (sdmmc_timeout_wrap.c); the
-# slot's other settings kept between commands too (sdmmc_setup_wrap.c), and
-# after a write the card asked again as it lets go of D0 (sdmmc_wait_wrap.c),
-# and no status command after a read (sdmmc_read_wrap.c).
+# v5.3: every card command through sdmmc_timeout_wrap.c, which after a
+# failed one has the next set the slot's settings again, and which for an
+# ESP-IDF without the upstream fixes reports a command that timed out as
+# one and a failed multi-block write as failed (below); the slot's other
+# settings kept between commands too (sdmmc_setup_wrap.c), and after a
+# write the card asked again as it lets go of D0 (sdmmc_wait_wrap.c), and
+# no status command after a read (sdmmc_read_wrap.c).
 if(IDF_TARGET STREQUAL "esp32s31")
     target_sources(${COMPONENT_LIB} PRIVATE "membench.c" "membench_pie.S")
     target_link_options(${COMPONENT_LIB} INTERFACE
@@ -172,6 +174,37 @@ if(IDF_TARGET STREQUAL "esp32s31")
         -Wl,--undefined=__wrap_sdmmc_wait_for_idle
         -Wl,--wrap=sdmmc_read_sectors
         -Wl,--undefined=__wrap_sdmmc_read_sectors)
+    # sdmmc_timeout_wrap.c's timeout part only for an ESP-IDF without
+    # e00861c3f497, its CMD25 part only for one without 007945125db7, each
+    # read from that ESP-IDF's own source (sdmmc_fixes.cmake); a change in
+    # either file runs this again
+    include(${CMAKE_CURRENT_LIST_DIR}/sdmmc_fixes.cmake)
+    idf_build_get_property(_tiny386_idf IDF_PATH)
+    tiny386_sdmmc_fixes("${_tiny386_idf}" _tiny386_sync_fixed _tiny386_cmd25_fixed)
+    foreach(_f "esp_driver_sdmmc/src/sd_trans_sdmmc.c" "sdmmc/sdmmc_cmd.c")
+        if(EXISTS "${_tiny386_idf}/components/${_f}")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                "${_tiny386_idf}/components/${_f}")
+        endif()
+    endforeach()
+    if(_tiny386_sync_fixed)
+        set(_tiny386_timeout 0)
+        set(_tiny386_timeout_is "out (ESP-IDF has e00861c3f497)")
+    else()
+        set(_tiny386_timeout 1)
+        set(_tiny386_timeout_is "in (ESP-IDF without e00861c3f497)")
+    endif()
+    if(_tiny386_cmd25_fixed)
+        set(_tiny386_cmd25 0)
+        set(_tiny386_cmd25_is "out (ESP-IDF has 007945125db7)")
+    else()
+        set(_tiny386_cmd25 1)
+        set(_tiny386_cmd25_is "in (ESP-IDF without 007945125db7)")
+    endif()
+    set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/sdmmc_timeout_wrap.c" APPEND PROPERTY
+        COMPILE_DEFINITIONS SD_WRAP_TIMEOUT=${_tiny386_timeout} SD_WRAP_CMD25=${_tiny386_cmd25})
+    message(STATUS "sdmmc_timeout_wrap.c: timeout part ${_tiny386_timeout_is}, "
+        "CMD25 part ${_tiny386_cmd25_is}")
 endif()
 
 # Linker wrap for SPI SD CMD59 workaround (elecrow7s3 only)

@@ -607,29 +607,56 @@ result $st "ide.c: a command's blocks gathered and read ahead, the guest sees th
 
 # ==== 14d. a card command that timed out reported as one (v5.3): tests/host/sdmmc ====
 # esp/main/sdmmc_timeout_wrap.c as the S31 boards build it, around a
-# stand-in for ESP-IDF's sdmmc_host_do_transaction() on a pretend clock, at
-# the boards' tick of 100 Hz and at 1000 Hz: a command whose event never
-# came, which the board's ESP-IDF gives back as done when its buffer is in
-# PSRAM, comes back as a timeout; good commands, data errors and buffers in
-# internal RAM as the driver gave them.  Then the board's
-# sdmmc_write_sectors_dma() as it sends a multi-block write: a failed one
-# must give its own error, not the result of the card's count of blocks
-# written, for each task its own.
+# stand-in for ESP-IDF's sdmmc_host_do_transaction() on a pretend clock.
+# Its two parts are each built only for an ESP-IDF without the upstream
+# fix they stand in for (esp/main/sdmmc_fixes.cmake), so the test runs in
+# the four ways.  Both parts, as for 188e3e55bb, at the boards' tick of
+# 100 Hz and at 1000 Hz: a command whose event never came, which that
+# ESP-IDF gives back as done when its buffer is in PSRAM, comes back as a
+# timeout; good commands, data errors and buffers in internal RAM as the
+# driver gave them.  Then sdmmc_write_sectors_dma() as 188e3e55bb sends a
+# multi-block write: a failed one must give its own error, not the result
+# of the card's count of blocks written, for each task its own.  Neither
+# part, as for the boards' ESP-IDF with e00861c3f497 and 007945125db7:
+# every result as the driver gave it, with no clock read and no table.
+# And each part alone.  In all four the slot's settings are forgotten
+# after a failed command, and only then.
 echo
-for hz in 100 1000; do
-    $CC $CFLAGS -DconfigTICK_RATE_HZ=$hz -I"$HERE/sdmmc/stubs" -o "$OUT/test_sdmmc_timeout-$hz" \
-        "$HERE/sdmmc/test_sdmmc_timeout.c" "$TREE/esp/main/sdmmc_timeout_wrap.c" || exit 1
-    "$OUT/test_sdmmc_timeout-$hz" > "$OUT/sdmmc_timeout-$hz.log" 2>&1
+# timeout_test NAME TIMEOUT CMD25 HZ: OUT/sdmmc_timeout-NAME.log
+timeout_test() {
+    $CC $CFLAGS -DconfigTICK_RATE_HZ=$4 -DSD_WRAP_TIMEOUT=$2 -DSD_WRAP_CMD25=$3 -I"$HERE/sdmmc/stubs" \
+        -o "$OUT/test_sdmmc_timeout-$1" "$HERE/sdmmc/test_sdmmc_timeout.c" \
+        "$TREE/esp/main/sdmmc_timeout_wrap.c" || exit 1
+    "$OUT/test_sdmmc_timeout-$1" > "$OUT/sdmmc_timeout-$1.log" 2>&1
     st=$?
-    grep -E "FAIL|caught|test_sdmmc_timeout" "$OUT/sdmmc_timeout-$hz.log" | sed 's/^/    | /'
-    result $st "sdmmc_timeout_wrap.c at $hz Hz: a card command whose event never came reported as a timeout, a failed multi-block write as failed; the rest as the driver gave them"
+    grep -E "FAIL|caught|passed through|test_sdmmc_timeout" "$OUT/sdmmc_timeout-$1.log" | sed 's/^/    | /'
+}
+for hz in 100 1000; do
+    timeout_test $hz 1 1 $hz
+    result $st "sdmmc_timeout_wrap.c with both parts (ESP-IDF 188e3e55bb) at $hz Hz: a card command whose event never came reported as a timeout, a failed multi-block write as failed; the rest as the driver gave them"
 done
+timeout_test fixed 0 0 100
+result $st "sdmmc_timeout_wrap.c with neither part (ESP-IDF with both fixes): every result as the driver gave it, no clock read, no table"
+timeout_test timeout-only 1 0 100
+result $st "sdmmc_timeout_wrap.c with the timeout part alone (ESP-IDF with 007945125db7 only)"
+timeout_test cmd25-only 0 1 100
+result $st "sdmmc_timeout_wrap.c with the CMD25 part alone (ESP-IDF with e00861c3f497 only)"
+# with neither part, the wrap's object is the pass-through alone: no data,
+# and nothing called but the driver and sd_setup_forget()
+$CC $CFLAGS -DSD_WRAP_TIMEOUT=0 -DSD_WRAP_CMD25=0 -I"$HERE/sdmmc/stubs" -c \
+    -o "$OUT/sdmmc_timeout_wrap-fixed.o" "$TREE/esp/main/sdmmc_timeout_wrap.c" || exit 1
+syms=$(nm -P "$OUT/sdmmc_timeout_wrap-fixed.o" | awk '{print $2, $1}' | LC_ALL=C sort | tr '\n' ' ')
+echo "    | $syms"
+[ "$syms" = "T __wrap_sdmmc_host_do_transaction U __real_sdmmc_host_do_transaction U sd_setup_forget " ]
+result $? "sdmmc_timeout_wrap.c with neither part: the object holds only the pass-through, which calls only the driver and sd_setup_forget()"
 # faults planted in copies of the wrap, which the test has to see: no time
-# taken (the board's ESP-IDF alone), a lost event taken only after all its
-# ticks rather than all but one, and a failed write's error left to the count
+# taken (188e3e55bb alone), a lost event taken only after all its ticks
+# rather than all but one, and a failed write's error left to the count;
+# and with neither part, no sd_setup_forget() after a failed command, and
+# each part built in all the same
 planted_wrap() {
     sed -e "$2" "$TREE/esp/main/sdmmc_timeout_wrap.c" > "$OUT/sdmmc_timeout_wrap-$1.c"
-    $CC $CFLAGS -w -I"$HERE/sdmmc/stubs" -I"$TREE/esp/main" -o "$OUT/test_sdmmc_timeout-$1" \
+    $CC $CFLAGS -w ${4:-} -I"$HERE/sdmmc/stubs" -I"$TREE/esp/main" -o "$OUT/test_sdmmc_timeout-$1" \
         "$HERE/sdmmc/test_sdmmc_timeout.c" "$OUT/sdmmc_timeout_wrap-$1.c" || exit 1
     "$OUT/test_sdmmc_timeout-$1" > "$OUT/sdmmc_timeout-$1.log" 2>&1
     local st=$?
@@ -643,6 +670,46 @@ planted_wrap late 's/(ticks - 1) \* portTICK_PERIOD_MS/ticks * portTICK_PERIOD_M
     "a lost event taken only after all its ticks"
 planted_wrap count 's/ret = written_count(ret, ok);/(void) ok;/' \
     "a failed multi-block write given the result of the card's count"
+NEITHER="-DSD_WRAP_TIMEOUT=0 -DSD_WRAP_CMD25=0"
+planted_wrap noforget 's/^\t\tsd_setup_forget();$/\t\t(void) 0;/' \
+    "with neither part, the slot's settings kept after a failed command" "$NEITHER"
+planted_wrap timeoutin 's/^#if SD_WRAP_TIMEOUT$/#if 1/' \
+    "with neither part, the timeout part built in all the same" "$NEITHER"
+planted_wrap cmd25in 's/^#if SD_WRAP_CMD25$/#if 1/' \
+    "with neither part, the CMD25 part built in all the same" "$NEITHER"
+# esp/main/sdmmc_fixes.cmake, which decides the parts (cmake -P,
+# tests/host/sdmmc/test_sdmmc_fixes.cmake): the two files it reads as
+# ESP-IDF 188e3e55bb has them (from the ESP-IDF's git at IDF_PATH), with
+# each fix and with both (s31/esp-idf, the patches as GitHub gives them);
+# copies with a fix altered so that the fault stays, or with it only in a
+# comment, must count as not fixed; and the ESP-IDF at IDF_PATH itself
+IDF=${IDF_PATH:-$HOME/esp/esp-idf}
+FX=$OUT/sdmmc_fixes
+TRANS=components/esp_driver_sdmmc/src/sd_trans_sdmmc.c
+CMD=components/sdmmc/sdmmc_cmd.c
+if command -v cmake > /dev/null && command -v patch > /dev/null &&
+   GIT_OPTIONAL_LOCKS=0 git -C "$IDF" cat-file -e 188e3e55bb:$CMD 2> /dev/null; then
+    rm -rf "$FX"
+    for c in 188e3e55bb sync cmd25 both; do
+        for f in $TRANS $CMD; do
+            mkdir -p "$FX/$c/$(dirname $f)"
+            GIT_OPTIONAL_LOCKS=0 git -C "$IDF" show 188e3e55bb:$f > "$FX/$c/$f" || exit 1
+        done
+    done
+    for c in sync both; do
+        patch -s -p1 -d "$FX/$c" < "$TREE/s31/esp-idf/e00861c3f497.patch" || exit 1
+    done
+    for c in cmd25 both; do
+        patch -s -p1 -d "$FX/$c" < "$TREE/s31/esp-idf/007945125db7.patch" || exit 1
+    done
+    cmake -DTREE="$TREE" -DOUT="$FX" -DIDF="$IDF" -P "$HERE/sdmmc/test_sdmmc_fixes.cmake" \
+        > "$OUT/sdmmc_fixes.log" 2>&1
+    st=$?
+    grep -E "FAIL|ESP-IDF at|none of the copies|same files|test_sdmmc_fixes" "$OUT/sdmmc_fixes.log" | sed 's/^/    | /'
+    result $st "sdmmc_fixes.cmake: each fix found in ESP-IDF's fixed source and only there, not when altered so the fault stays"
+else
+    echo "SKIP sdmmc_fixes.cmake: no cmake or patch, or no ESP-IDF 188e3e55bb in git at $IDF"
+fi
 
 # v5.3: esp/main/sdmmc_setup_wrap.c, the slot's width, sampling mode and
 # delays kept between commands, around stand-ins for ESP-IDF's five that

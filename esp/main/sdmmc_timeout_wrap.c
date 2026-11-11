@@ -1,19 +1,32 @@
 /*
- * sdmmc_timeout_wrap.c: v5.3, a card command that timed out is reported
- * as one, and a multi-block write that failed as failed (the S31 boards).
+ * sdmmc_timeout_wrap.c: v5.3, every card command on the S31 boards.  After
+ * a command that failed, the next one sets the slot's settings again
+ * (sdmmc_setup_wrap.c).  And for an ESP-IDF without two upstream fixes,
+ * a command that timed out is reported as one, and a multi-block write
+ * that failed as failed: each of those two parts is built only when the
+ * ESP-IDF being built against lacks its fix.
  *
- * In this tree's ESP-IDF (188e3e55bb), sd_host_slot_sdmmc_do_transaction()
- * syncs the cache after each transfer to or from a buffer behind the cache
- * (on the S31, PSRAM only), and the sync's result takes the place of the
- * transfer's.  So when no event comes from the controller within the
- * command's timeout_ms (handle_event()'s ESP_ERR_TIMEOUT, which leaves
- * cmd->error at ESP_OK), the command comes back as done, and
- * sdmmc_read_sectors() or sdmmc_write_sectors() reports a read or a write
- * that did not happen as a success.  ESP-IDF has since fixed it upstream
- * (e00861c3f4, "do not let cache sync mask a failed transaction").  Since
- * v5.3 the guest's disk runs for hda = sd:N go to the card straight from
- * ide.c's buffer in PSRAM (sd_part.c), so guest data takes this path; so do
- * FatFs's own sector buffers, the profile files and the ini.
+ * The boards' ESP-IDF is 188e3e55bb with both fixes on top (s31/README.md):
+ * e00861c3f497, "do not let cache sync mask a failed transaction", and
+ * 007945125db7, "Dont overwrite CMD25 err with ACMD22 result in
+ * sdmmc_write_sectors_dma".  CMakeLists.txt reads that ESP-IDF's own
+ * source for each (sdmmc_fixes.cmake) and gives SD_WRAP_TIMEOUT and
+ * SD_WRAP_CMD25 as 0 for a fix that is there and 1 for one that is not;
+ * left out, both are 1.  With both fixes the wrap passes every command
+ * through, reads no clock and keeps no table.
+ *
+ * The timeout part (SD_WRAP_TIMEOUT, for an ESP-IDF without e00861c3f497).
+ * There, sd_host_slot_sdmmc_do_transaction() syncs the cache after each
+ * transfer to or from a buffer behind the cache (on the S31, PSRAM only),
+ * and the sync's result takes the place of the transfer's.  So when no
+ * event comes from the controller within the command's timeout_ms
+ * (handle_event()'s ESP_ERR_TIMEOUT, which leaves cmd->error at ESP_OK),
+ * the command comes back as done, and sdmmc_read_sectors() or
+ * sdmmc_write_sectors() reports a read or a write that did not happen as a
+ * success.  Since v5.3 the guest's disk runs for hda = sd:N go to the card
+ * straight from ide.c's buffer in PSRAM (sd_part.c), so guest data takes
+ * this path; so do FatFs's own sector buffers, the profile files and the
+ * ini.
  *
  * The result cannot tell such a command from a good one, but the time can.
  * For each event the driver waits timeout_ms / portTICK_PERIOD_MS ticks,
@@ -23,22 +36,23 @@
  * the fixed driver reports it.  The commands that move sectors wait 1 s
  * for a read and 5 s for a write (sdmmc_common.h) and take a few
  * milliseconds when they work, so a good one is taken for a lost one only
- * if the card has stalled for about as long as the driver waits.  With a
- * fixed ESP-IDF such a command fails before this test, which then does
- * nothing.  Commands without data, or with it in internal RAM, are not
- * timed: the driver keeps their errors.
+ * if the card has stalled for about as long as the driver waits.
+ * Commands without data, or with it in internal RAM, are not timed: the
+ * driver keeps their errors.
  *
- * And when a multi-block write (CMD25) fails, this ESP-IDF's
- * sdmmc_write_sectors_dma() asks the card how many blocks it wrote
- * (ACMD22) and returns that command's result in place of the write's, so a
- * write that failed comes back as done once the card answers the count
- * (upstream keeps the write's error).  That has been so for every failed
- * CMD25 since sd:N came in (v4.4), through v5.2's internal buffer as well,
- * and it would undo the timeout above for every guest write of more than
- * one sector.  So a failed CMD25 is noted for the task that sent it, and
- * that task's next ACMD22, which sdmmc_write_sectors_dma() sends only
- * after one, gives the write's error.  sd_part.c then tries the run once
- * more and counts it, and FatFs gives a disk error.
+ * The CMD25 part (SD_WRAP_CMD25, for an ESP-IDF without 007945125db7).
+ * There, when a multi-block write (CMD25) fails, sdmmc_write_sectors_dma()
+ * asks the card how many blocks it wrote (ACMD22) and returns that
+ * command's result in place of the write's, so a write that failed comes
+ * back as done once the card answers the count.  That has been so for
+ * every failed CMD25 since sd:N came in (v4.4), through v5.2's internal
+ * buffer as well, and it would undo the timeout above for every guest
+ * write of more than one sector.  So a failed CMD25 is noted for the task
+ * that sent it, and that task's next ACMD22, which
+ * sdmmc_write_sectors_dma() sends only after one, gives the write's error.
+ * sd_part.c then tries the run once more and counts it, and FatFs gives a
+ * disk error.  With the fix in ESP-IDF this part would only make ACMD22's
+ * log line give the write's error as its own.
  *
  * Linked by -Wl,--wrap=sdmmc_host_do_transaction (CMakeLists.txt, the S31
  * boards): SDMMC_HOST_DEFAULT() in storage.c names it, so this is the
@@ -62,11 +76,19 @@
 #include "sd_protocol_types.h"
 #include "sdmmc_setup_wrap.h"
 
+#ifndef SD_WRAP_TIMEOUT
+#define SD_WRAP_TIMEOUT 1
+#endif
+#ifndef SD_WRAP_CMD25
+#define SD_WRAP_CMD25 1
+#endif
+
 #define TAG "sdmmc_timeout_wrap"
 
 esp_err_t __real_sdmmc_host_do_transaction(int slot, sdmmc_command_t *cmdinfo);
 esp_err_t __wrap_sdmmc_host_do_transaction(int slot, sdmmc_command_t *cmdinfo);
 
+#if SD_WRAP_TIMEOUT
 static esp_err_t __attribute__((noinline)) said_timeout(const sdmmc_command_t *cmd, int64_t us)
 {
 	ESP_LOGE(TAG, "card command %u (%u bytes at %p) came back as done after %u ms, as "
@@ -75,7 +97,9 @@ static esp_err_t __attribute__((noinline)) said_timeout(const sdmmc_command_t *c
 		 (unsigned) (us / 1000), (unsigned) cmd->timeout_ms);
 	return ESP_ERR_TIMEOUT;
 }
+#endif
 
+#if SD_WRAP_CMD25
 /* the failed multi-block writes whose ACMD22 is still to come, one for
    each task that sends card commands (the emulator's, and whichever task
    writes a file); with more than this, the oldest goes */
@@ -125,15 +149,19 @@ static esp_err_t __attribute__((noinline)) written_count(esp_err_t ret, bool ok)
 		 "count of the blocks written", (unsigned) err);
 	return err;
 }
+#endif
 
 esp_err_t __wrap_sdmmc_host_do_transaction(int slot, sdmmc_command_t *cmdinfo)
 {
 	if (!cmdinfo)
 		return __real_sdmmc_host_do_transaction(slot, cmdinfo);
+#if SD_WRAP_TIMEOUT
 	bool timed = cmdinfo->data && esp_cache_get_line_size_by_addr(cmdinfo->data) > 0;
 	int64_t t0 = timed ? esp_timer_get_time() : 0;
+#endif
 	esp_err_t ret = __real_sdmmc_host_do_transaction(slot, cmdinfo);
 	bool ok = ret == ESP_OK && cmdinfo->error == ESP_OK;
+#if SD_WRAP_TIMEOUT
 	if (timed && ok) {
 		/* the least a wait that saw no event lasts: all its ticks but one */
 		uint32_t ticks = cmdinfo->timeout_ms / portTICK_PERIOD_MS;
@@ -143,14 +171,17 @@ esp_err_t __wrap_sdmmc_host_do_transaction(int slot, sdmmc_command_t *cmdinfo)
 			ok = false;
 		}
 	}
+#endif
 	/* v5.3: after a failed command the next one sets the slot's settings
 	   again (sdmmc_setup_wrap.c) */
 	if (!ok)
 		sd_setup_forget();
+#if SD_WRAP_CMD25
 	if (cmdinfo->opcode == MMC_WRITE_BLOCK_MULTIPLE && !ok)
 		write_failed(ret != ESP_OK ? ret : cmdinfo->error);
 	else if (cmdinfo->opcode == SD_APP_SEND_NUM_WR_BLOCKS)
 		ret = written_count(ret, ok);
+#endif
 	return ret;
 }
 
