@@ -4633,7 +4633,10 @@ static bool verrw_helper(CPUI386 *cpu, int sel, int wr, int *zf)
 	} \
 	cpu->cc.mask &= ~ZF;
 
-#define GvMa GvM
+/* (v5.3, the review of batch 4: as GvMp, #UD for a register operand, which has no memory for the
+   bounds; GvM gave BOUND_helper the register's value as an address with no segment, curr_seg -1,
+   and translate() asserted) */
+#define GvMa GvMp
 #define BOUND_helper(BIT, a, b, la, sa, lb, sb) \
 	OptAddr meml1, meml2; \
 	s ## BIT idx = la(a); \

@@ -1555,6 +1555,40 @@ cmp -s "$TREE/i386.c" "$OUT/repmis-w16/i386.c" && st=1
 echo "    | (repmisw16: $(diff "$OUT/repmis-on.dump" "$OUT/repmis-w16.dump" | grep -c '^<') lines differ)"
 result $st "the step by step comparison catches the pieces without their stop at the 16-bit wrap (repmisw16)"
 
+# ==== 24e. BOUND with a register operand (v5.3, the review of batch 4) ====
+# tests/host/cpu/test_bound.c: BOUND AX,BX and BOUND EAX,EBX raise #UD, and
+# BOUND AX,[500h] raises #BR only out of its bounds, with tiny386's
+# interpreter and the fast one, as the Korvo-1 builds i386.c and without the
+# board header.  Then a copy of i386.c with GvM's decoding put back, where
+# the guest must not finish (translate()'s assertion ends it).
+echo
+tbbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_bound-name
+    local name=$1 dir=$2
+    shift 2
+    $CC -O2 -g -w -I"$dir" -I"$TREE" "$@" -o "$OUT/test_bound-$name" \
+        "$HERE/cpu/test_bound.c" "$TREE/fpu.c" -lm || exit 1
+}
+tbbuild korvo1 "$TREE" $PCBOARD
+"$OUT/test_bound-korvo1" > "$OUT/bound-korvo1.log" 2>&1
+st=$?
+grep "FAIL\|^test_bound" "$OUT/bound-korvo1.log"
+result $st "BOUND: #UD for a register operand, #BR out of its bounds, in both interpreters as the Korvo-1 builds them"
+tbbuild plain "$TREE" -DI386_ALIGNED_ONLY -DI386_ENABLE_FPU
+"$OUT/test_bound-plain" > "$OUT/bound-plain.log" 2>&1
+st=$?
+tail -1 "$OUT/bound-plain.log" | sed 's/^/    | /'
+result $st "the same without the board header"
+mkdir -p "$OUT/bound-old"
+sed 's/^#define GvMa GvMp$/#define GvMa GvM/' "$TREE/i386.c" > "$OUT/bound-old/i386.c"
+cp "$TREE/i386_fast.h" "$OUT/bound-old/"
+nl=$(diff "$TREE/i386.c" "$OUT/bound-old/i386.c" | grep -c '^>')
+tbbuild old "$OUT/bound-old" $PCBOARD
+"$OUT/test_bound-old" before > "$OUT/bound-old.log" 2>&1
+st=$?
+grep "^  \|^test_bound" "$OUT/bound-old.log" | sed 's/^/    | /'
+[ "$nl" = 1 ] && [ $st = 0 ]
+result $? "the BOUND test sees GvM's decoding (i386.c with it put back: $nl line)"
+
 # ==== 25. the profiler's counts and PROFILE.TXT (v5.1, s31/PROFILE.md) ====
 # esp/main/prof_hist.c (the tables, the instruction key, the file) and
 # prof_cpu.h (the guest's state read from a CPU's fields) as the board
