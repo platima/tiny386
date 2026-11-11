@@ -1832,6 +1832,22 @@ op_a9: { int r = 0;
 	   holding it, cpu->flags has it already and nothing is done; holding it,
 	   the commonest (ADD, SUB, then AND, OR, XOR: 96 per cent of INC r and
 	   DEC r in T386MON's tests) in line. */
+#if QW_INCL
+	/* v5.3: and the logical operations' CF, 0, in line too, after ADD's and SUB's: in W2
+	   (Windows' boot, its first 300 M) the INCs and DECs that find CF held find it after ADD
+	   9.4 M times, after AND, OR or XOR 5.7 M, SUB 1.2 M, anything else 0.6 M, and each AND, OR
+	   or XOR was a call of get_CF_cc().  (Testing them before SUB cost BENCH and FC16 more than
+	   it saved in W2, whose DEC after CMP comes third.) */
+#define FAST_KEEP_CF() do { \
+		if (cpu->cc.mask & CF) { \
+			unsigned _op = cpu->cc.op; \
+			if (_op == CC_ADD) SET_BIT(cpu->flags, cpu->cc.dst < cpu->cc.src2, CF); \
+			else if (_op == CC_SUB) SET_BIT(cpu->flags, cpu->cc.src1 < cpu->cc.src2, CF); \
+			else if (_op >= CC_AND) cpu->flags &= ~CF; \
+			else SET_BIT(cpu->flags, get_CF_cc(cpu), CF); \
+		} \
+	} while (0)
+#else
 #define FAST_KEEP_CF() do { \
 		if (cpu->cc.mask & CF) { \
 			unsigned _op = cpu->cc.op; \
@@ -1842,6 +1858,7 @@ op_a9: { int r = 0;
 			SET_BIT(cpu->flags, _cf, CF); \
 		} \
 	} while (0)
+#endif
 #define FINCDEC_helper(NAME, BIT, OP, a, la, sa) \
 	FAST_KEEP_CF(); \
 	cpu->cc.dst = sext ## BIT(sext ## BIT(la(a)) OP 1); \

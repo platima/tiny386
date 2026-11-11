@@ -19,7 +19,14 @@
      absolute targets past the segment's end, which tiny386 does not mask:
        RET with 66h to 10000h up, JMP EAX with 66h to 10000h up, each a JMP
        near there back to the main flow (whose target tiny386 masks); JMP AX
-       to FFF4h, NOPs on past FFFFh, a JMP near back from 10000h up */
+       to FFF4h, NOPs on past FFFFh, a JMP near back from 10000h up
+   Then, in the main flow, the lazy flags (QW_INCL, and the conditions of
+   fast_cond()): an ALU operation (ADD, ADC, SUB, SBB, CMP, AND, OR, XOR,
+   TEST, NEG, SHR, SHL) of AX with BX or an immediate, the two from edge
+   values (0, 1, 7Fh to 81h, 7FFFh to 8001h, FFFFh), at times with 66h;
+   none, one or two INC or DEC of a register or of a word or dword at
+   [BP+d8], at times with 66h; then a Jcc short over a NOP, of each of the
+   sixteen conditions in turn, and PUSHF; POP DX. */
 #define Z_BASE 0xff20u          /* CS's base */
 #define Z_SEG 0x0ff2            /* ... as a real-mode and virtual-8086 segment */
 #define Z_SEL 0x0fe8            /* ... as a selector of GDT16 */
@@ -34,6 +41,49 @@ static uword z_nl, z_np;        /* the near jumps' forward launch and pad */
 static uword z_bl, z_bp;        /* ... and backward */
 static uword z_xp;              /* the next target past the segment's end */
 static int z_tests, z_ax_done;
+static u32 z_edge(void)
+{
+	static const u32 v[] = { 0, 1, 2, 0x7f, 0x80, 0x81, 0xff, 0x7fff, 0x8000, 0x8001, 0xffff,
+				 0x7fffffff, 0x80000000, 0xffffffff, 0x12345678 };
+	return chance(4) ? (u32) rs : v[rnd(sizeof(v) / sizeof(v[0]))];
+}
+/* (the second part) an ALU result, INC and DEC after it, a Jcc of condition c */
+static void z_flags(int c)
+{
+	int o32 = chance(3);
+	if (o32) e8(0x66);
+	e8(0xb8); if (o32) e32(z_edge()); else e16(z_edge());   /* MOV (E)AX */
+	if (o32) e8(0x66);
+	e8(0xbb); if (o32) e32(z_edge()); else e16(z_edge());   /* MOV (E)BX */
+	if (chance(3)) e8(0xf9);                                /* STC (for ADC, SBB) */
+	int alu = rnd(12);
+	if (chance(4)) e8(0x66);
+	switch (alu) {
+	case 0: e8(0x01); e8(0xd8); break;                      /* ADD AX,BX */
+	case 1: e8(0x11); e8(0xd8); break;                      /* ADC */
+	case 2: e8(0x29); e8(0xd8); break;                      /* SUB */
+	case 3: e8(0x19); e8(0xd8); break;                      /* SBB */
+	case 4: e8(0x39); e8(0xd8); break;                      /* CMP */
+	case 5: e8(0x21); e8(0xd8); break;                      /* AND */
+	case 6: e8(0x09); e8(0xd8); break;                      /* OR */
+	case 7: e8(0x31); e8(0xd8); break;                      /* XOR */
+	case 8: e8(0x85); e8(0xd8); break;                      /* TEST */
+	case 9: e8(0xf7); e8(0xd8); break;                      /* NEG AX */
+	case 10: e8(0xd1); e8(0xe8); break;                     /* SHR AX,1 */
+	default: e8(0x83); e8(0xc0 | (rnd(8) << 3)); e8(z_edge()); break;   /* 83h /r AX,imm8 */
+	}
+	for (int n = rnd(3); n > 0; n--) {
+		if (chance(3)) e8(0x66);
+		switch (rnd(4)) {
+		case 0: e8(0x40 + rnd(2) * 8); break;                   /* INC or DEC AX */
+		case 1: e8(0x41 + rnd(2) * 8); break;                   /* ... CX */
+		case 2: e8(0xff); e8(0x46 | rnd(2) << 3); e8(0x10 + 2 * rnd(8)); break;   /* INC or DEC [BP+d8] */
+		default: e8(0xfe); e8(0xc0 | rnd(2) << 3 | rnd(4)); break;   /* INC or DEC AL to BL */
+		}
+	}
+	e8(0x70 + c); e8(1); e8(0x90);                          /* Jcc over a NOP */
+	e8(0x9c); e8(0x5a);                                     /* PUSHF; POP DX */
+}
 static void setup_z(u8 *mem, CPUI386 *cpu)
 {
 	switch (zsub) {
@@ -162,5 +212,7 @@ static void gen_z(void)
 		}
 		z_tests++;
 	}
+	for (int i = 0; i < 128; i++)
+		z_flags(i & 15);
 	e8(0xfa);       /* CLI */
 }

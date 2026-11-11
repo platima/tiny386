@@ -4129,7 +4129,7 @@ static int run(int mode, int seed)
 	if (mode == 23) { hand = 1; steps_max = 4000; }   /* v5.1 (n): about 450 instructions, 14 page faults */
 	if (mode == 24) steps_max = 5000;   /* (o: about 330 instructions with its handlers) */
 	if (mode == 34) { hand = 1; steps_max = 2000; }   /* (y: about 900 instructions, by 500 steps) */
-	if (mode == 35) { hand = 1; steps_max = 3000; }   /* (z) */
+	if (mode == 35) { hand = 1; steps_max = 6000; }   /* (z: about 2,500 instructions) */
 	crash_name = names[mode];
 	crash_seed = seed;
 	while (step < steps_max) {
