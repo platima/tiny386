@@ -620,11 +620,16 @@ result $st "ide.c: a command's blocks gathered and read ahead, the guest sees th
 # part, as for the boards' ESP-IDF with e00861c3f497 and 007945125db7:
 # every result as the driver gave it, with no clock read and no table.
 # And each part alone.  In all four the slot's settings are forgotten
-# after a failed command, and only then.
+# after a failed command, and only then.  Last, neither given, as a build
+# outside esp/main/CMakeLists.txt would make it: both parts in.
 echo
-# timeout_test NAME TIMEOUT CMD25 HZ: OUT/sdmmc_timeout-NAME.log
+# timeout_test NAME TIMEOUT CMD25 HZ: OUT/sdmmc_timeout-NAME.log; with
+# TIMEOUT and CMD25 empty, neither -D given
 timeout_test() {
-    $CC $CFLAGS -DconfigTICK_RATE_HZ=$4 -DSD_WRAP_TIMEOUT=$2 -DSD_WRAP_CMD25=$3 -I"$HERE/sdmmc/stubs" \
+    local parts=""
+    [ -n "$2" ] && parts="$parts -DSD_WRAP_TIMEOUT=$2"
+    [ -n "$3" ] && parts="$parts -DSD_WRAP_CMD25=$3"
+    $CC $CFLAGS -DconfigTICK_RATE_HZ=$4 $parts -I"$HERE/sdmmc/stubs" \
         -o "$OUT/test_sdmmc_timeout-$1" "$HERE/sdmmc/test_sdmmc_timeout.c" \
         "$TREE/esp/main/sdmmc_timeout_wrap.c" || exit 1
     "$OUT/test_sdmmc_timeout-$1" > "$OUT/sdmmc_timeout-$1.log" 2>&1
@@ -641,6 +646,9 @@ timeout_test timeout-only 1 0 100
 result $st "sdmmc_timeout_wrap.c with the timeout part alone (ESP-IDF with 007945125db7 only)"
 timeout_test cmd25-only 0 1 100
 result $st "sdmmc_timeout_wrap.c with the CMD25 part alone (ESP-IDF with e00861c3f497 only)"
+timeout_test default "" "" 100
+[ $st = 0 ] && grep -q "the timeout part in, the CMD25 part in$" "$OUT/sdmmc_timeout-default.log"
+result $? "sdmmc_timeout_wrap.c with neither part given: both built in, as for 188e3e55bb"
 # with neither part, the wrap's object is the pass-through alone: no data,
 # and nothing called but the driver and sd_setup_forget()
 $CC $CFLAGS -DSD_WRAP_TIMEOUT=0 -DSD_WRAP_CMD25=0 -I"$HERE/sdmmc/stubs" -c \
@@ -653,7 +661,7 @@ result $? "sdmmc_timeout_wrap.c with neither part: the object holds only the pas
 # taken (188e3e55bb alone), a lost event taken only after all its ticks
 # rather than all but one, and a failed write's error left to the count;
 # and with neither part, no sd_setup_forget() after a failed command, and
-# each part built in all the same
+# each part built in all the same; and with neither given, both left out
 planted_wrap() {
     sed -e "$2" "$TREE/esp/main/sdmmc_timeout_wrap.c" > "$OUT/sdmmc_timeout_wrap-$1.c"
     $CC $CFLAGS -w ${4:-} -I"$HERE/sdmmc/stubs" -I"$TREE/esp/main" -o "$OUT/test_sdmmc_timeout-$1" \
@@ -677,6 +685,8 @@ planted_wrap timeoutin 's/^#if SD_WRAP_TIMEOUT$/#if 1/' \
     "with neither part, the timeout part built in all the same" "$NEITHER"
 planted_wrap cmd25in 's/^#if SD_WRAP_CMD25$/#if 1/' \
     "with neither part, the CMD25 part built in all the same" "$NEITHER"
+planted_wrap defaultout 's/^#define SD_WRAP_\(TIMEOUT\|CMD25\) 1$/#define SD_WRAP_\1 0/' \
+    "with neither part given, both left out"
 # esp/main/sdmmc_fixes.cmake, which decides the parts (cmake -P,
 # tests/host/sdmmc/test_sdmmc_fixes.cmake): the two files it reads as
 # ESP-IDF 188e3e55bb has them (from the ESP-IDF's git at IDF_PATH), with
