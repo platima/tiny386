@@ -42,8 +42,10 @@ What was checked (2026-11-11, v5.3):
   seabios/patch and SB_STAMP_BIOS=20261019_000000.
 * With v5.3's seabios/patch and that time, the only code that differs is
   in maininit(), where mathcp_setup() is inlined: the CMOS read and the
-  OR into 0x410.  Every other function of code16.o, code32seg.o and
-  code32flat.o is the same but for its addresses.  With the time of
+  OR into 0x410, and around them some of GCC's register choices elsewhere
+  in the function (33 instructions out and 39 in, of 3,539).  Every other
+  function of code16.o, code32seg.o and code32flat.o is the same but for
+  its addresses.  With the time of
   20261111_000000 the file differs from that one only in the version
   string.
 * The headless build with FreeDOS: INT 11h and 0040:0010 give 0026 with
