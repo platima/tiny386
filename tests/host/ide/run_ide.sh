@@ -9,8 +9,9 @@
 #    ports, every change of the interrupt line and both disks after every
 #    command must be the same.  (v5.3) The front end's flush,
 #    ide_write_pending(), comes between commands and in the middle of them,
-#    after which both disks must be the same at once.  The one difference allowed is PR 70's own,
-#    a gathered write that fails, which is checked against a model of it.
+#    after which both disks must be the same at once.  The one difference
+#    allowed is PR 70's own, a gathered write that fails, which is checked
+#    against a model of it.
 #    Side A is ide.c at bd091f7 (v5.2 before this work) when the tree has
 #    that commit, else this tree's ide.c without the two defines.  Side B:
 #    this tree's ide.c as the boards build it, then with each define alone,
@@ -120,7 +121,7 @@ planted left "a write command left before its end losing what it gathered (PR 70
 # v5.3: the data port straight at the read-ahead and gathering buffers
 planted flushlost "the front end's flush writing nothing of a command left part way" \
     '/^void ide_write_pending/,/^}/s/ide_write_gathered(sif->drives\[i\]);/;/'
-planted stale "the data port left at the read-ahead buffer when a transfer starts" \
+planted startptr "the data port left at the read-ahead buffer when a transfer starts" \
     '/^static void ide_transfer_start(IDEState \*s, int size,/,/^}/{/IDE_DATA_AT/d}'
 planted notmoved "a block the guest wrote at the gathering buffer's old end left there" \
     '/^        if (blk != s->wbuf + s->wcount \* 512)$/,/memmove/d'
