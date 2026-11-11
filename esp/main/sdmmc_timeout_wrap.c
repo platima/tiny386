@@ -38,7 +38,9 @@
  * milliseconds when they work, so a good one is taken for a lost one only
  * if the card has stalled for about as long as the driver waits.
  * Commands without data, or with it in internal RAM, are not timed: the
- * driver keeps their errors.
+ * driver keeps their errors.  With the fix in ESP-IDF the driver reports
+ * a lost event itself, and this part could only act on a slow good
+ * command.
  *
  * The CMD25 part (SD_WRAP_CMD25, for an ESP-IDF without 007945125db7).
  * There, when a multi-block write (CMD25) fails, sdmmc_write_sectors_dma()
@@ -51,8 +53,10 @@
  * that sent it, and that task's next ACMD22, which
  * sdmmc_write_sectors_dma() sends only after one, gives the write's error.
  * sd_part.c then tries the run once more and counts it, and FatFs gives a
- * disk error.  With the fix in ESP-IDF this part would only make ACMD22's
- * log line give the write's error as its own.
+ * disk error.  With the fix in ESP-IDF the write keeps its own error
+ * there, and this part would only get in the way: ESP-IDF's log lines for
+ * the count would give the write's error as the count's, this part would
+ * add its own, and the count would not be read.
  *
  * Linked by -Wl,--wrap=sdmmc_host_do_transaction (CMakeLists.txt, the S31
  * boards): SDMMC_HOST_DEFAULT() in storage.c names it, so this is the
