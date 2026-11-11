@@ -836,9 +836,11 @@ static void ide_sector_write_cb1(IDEState *s)
         if (!s->wcount)
             s->wsector = sector_num;
         /* v5.3: the guest wrote it in place unless it was in io_buffer,
-           or those gathered before it were written meanwhile (above, or
-           the front end's ide_write_pending()), which leaves it further
-           on in the buffer than it now goes */
+           or those gathered before it were written meanwhile, which leaves
+           it further on in the buffer than it now goes: by the front end's
+           ide_write_pending(), or above (only as a defence: the guest's
+           writes to registers 2 to 6 write those gathered first, so the
+           guest cannot bring that case about) */
         if (blk != s->wbuf + s->wcount * 512)
             memmove(s->wbuf + s->wcount * 512, blk, n * 512);
         s->wcount += n;
