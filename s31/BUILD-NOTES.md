@@ -158,9 +158,13 @@ from this folder (v2's, the resolved one) into the tree [verified: `cmp` against
 
 ## 2. Building
 
-In WSL, with the boards' ESP-IDF (v6.1-dev-8142-g188e3e55bb at `~/esp/esp-idf`, its tools at
-`~/.espressif-upstream`; since v5.3 the boards' ESP-IDF is 188e3e55bb with ESP-IDF's fixes
-e00861c3f497 and 007945125db7 on top, as `README.md`'s "Building" says):
+In WSL, with the ESP-IDF this release was built with, 188e3e55bb alone
+(v6.1-dev-8142-g188e3e55bb at `~/esp/esp-idf`, its tools at `~/.espressif-upstream`). Since
+v5.3, `~/esp/esp-idf` is the branch `s31-sdmmc-fixes`, 188e3e55bb with ESP-IDF's fixes
+e00861c3f497 and 007945125db7 on top (`README.md`'s "Building"), so for this build check out
+188e3e55bb there first (`git -C ~/esp/esp-idf switch --detach 188e3e55bb`, and
+`git -C ~/esp/esp-idf switch s31-sdmmc-fixes` after), as `FIRMWARE.md`'s "Building again" has it
+for the releases up to v5.2:
 
 ```
 bash /mnt/d/Repos/esp32-s31-linux-release/tiny386-idf/v3/build.sh WORKDIR
