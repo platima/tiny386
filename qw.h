@@ -88,6 +88,10 @@
 #ifndef QW_GRPTAB
 #define QW_GRPTAB 0     /* the group tables just before ops[] (with QW_OPS0F and QW_GRP5) */
 #endif
+/* v5.3: fast_exec()'s 16-bit paths, from the board's profiles (fc /b, BENCH, Windows) */
+#ifndef QW_EA16
+#define QW_EA16 0       /* with QW_EAP: 16-bit code's common memory form in one test, the hottest handlers */
+#endif
 #if QW_GRPTAB && !(QW_OPS0F && QW_GRP5)
 #error "QW_GRPTAB needs QW_OPS0F and QW_GRP5"
 #endif

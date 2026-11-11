@@ -26,3 +26,5 @@
 #define QW_SEGL 1
 #define QW_FOLD2 1
 #define QW_DECJ 1
+/* v5.3: fast_exec()'s 16-bit paths */
+#define QW_EA16 1

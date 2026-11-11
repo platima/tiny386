@@ -1161,6 +1161,9 @@ fi
 # inline JZ without its start (decjins), QW_STK's 16-bit copy storing all of
 # ESP (stk16), and the fusion rule's instruction not moved by a load of SS
 # (nofoldss) or by STI (nofoldsti).
+# v5.3 (batch 4, fast_exec()'s 16-bit paths): QW_EA16's one test taking a
+# segment override for none (ea16ov), and its form for 32-bit code's 16-bit
+# operands loading 32 bits (ea16do).
 echo
 FCSEEDS=${FCSEEDS:-40}
 fcbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_fast_cpu-name
@@ -1207,7 +1210,9 @@ for m in fold:'s/!NOFOLD_IS() \&\& \\/1 \&\& \\/;s/if (_t \&\& !NOFOLD_IS()) { \
          decjins:'/^#define JZNZ_INLINE() do {/,/} while (0)/s/^\t\t\tins = pc; \\$/\t\t\t(void) 0; \\/' \
          stk16:'s/sp_mask == 0xffff) sreg16(4, (v)); \\$/sp_mask == 0xffff) sreg32(4, (v)); \\/' \
          nofoldss:'s/^#define STEPS_SS() do { steps++; sadj++; nofold_st++; } while (0)$/#define STEPS_SS() do { steps++; sadj++; } while (0)/' \
-         nofoldsti:'s/ sadj += steps - _o; nofold_st += steps - _o; }/ sadj += steps - _o; }/'; do
+         nofoldsti:'s/ sadj += steps - _o; nofold_st += steps - _o; }/ sadj += steps - _o; }/' \
+         ea16ov:'s/^#define EAP_DW(...) else if ((pfx & 0x73) == 3)/#define EAP_DW(...) else if ((pfx \& 3) == 3)/' \
+         ea16do:'/EAP_DO(EA_OFF32(off, m) mreg = r;/s/sreg16(r, fm16(p))/sreg32(r, fm32(p))/'; do
     mname=${m%%:*}
     mfile=i386_fast.h       # (v5.1: lpgno's fault is in i386.c)
     [ "$mname" = lpgno ] && mfile=i386.c
