@@ -11,6 +11,7 @@
  * reads the card fails with a CRC error.  For each:
  *
  * - the same result and the same bytes in the buffer, the card's own;
+ * - the same read commands, CMD17 for one sector and CMD18 for more;
  * - through the wrap, for a buffer the host takes, one read command and no
  *   CMD13 when it works (ESP-IDF: the read and a CMD13), and a CMD13 after
  *   one that failed, with the same one error line as ESP-IDF's;
@@ -78,6 +79,7 @@ static void card_fill(void)
 struct res {
 	esp_err_t err;
 	unsigned reads, cmd13, log;
+	unsigned r17, r18;              /* of the reads, CMD17s and CMD18s */
 	bool data_ok, tran;
 };
 
@@ -88,6 +90,7 @@ static struct res one_read(int wrap, uint8_t *buf, size_t start, size_t n, unsig
 	struct res r;
 	unsigned rd0 = idf_card.cmds[MMC_READ_BLOCK_SINGLE] + idf_card.cmds[MMC_READ_BLOCK_MULTIPLE];
 	unsigned s0 = idf_card.cmds[MMC_SEND_STATUS];
+	unsigned c17 = idf_card.cmds[MMC_READ_BLOCK_SINGLE], c18 = idf_card.cmds[MMC_READ_BLOCK_MULTIPLE];
 	int l0 = idf_log_errors;
 	memset(buf, 0xC3, MAXN * 512);
 	idf_card.read_fail_at = fail ? rd0 + 1 : 0;
@@ -96,6 +99,8 @@ static struct res one_read(int wrap, uint8_t *buf, size_t start, size_t n, unsig
 	idf_card.read_fail_at = 0;
 	r.reads = idf_card.cmds[MMC_READ_BLOCK_SINGLE] + idf_card.cmds[MMC_READ_BLOCK_MULTIPLE] - rd0;
 	r.cmd13 = idf_card.cmds[MMC_SEND_STATUS] - s0;
+	r.r17 = idf_card.cmds[MMC_READ_BLOCK_SINGLE] - c17;
+	r.r18 = idf_card.cmds[MMC_READ_BLOCK_MULTIPLE] - c18;
 	r.log = (unsigned) (idf_log_errors - l0);
 	r.data_ok = r.err != ESP_OK || !memcmp(buf, idf_card.mem + start * 512, n * 512);
 	r.tran = !idf_card_busy();
@@ -151,6 +156,9 @@ int main(void)
 					CHECK(a.reads == r.reads && r.tran, "%s, %zu at %zu: %u read commands "
 					      "(ESP-IDF %u), the card %s after", what, n, start, r.reads, a.reads,
 					      r.tran ? "in tran" : "busy");
+					CHECK(a.r17 == r.r17 && a.r18 == r.r18, "%s, %zu at %zu: CMD17 %u and "
+					      "CMD18 %u (ESP-IDF %u and %u)", what, n, start, r.r17, r.r18, a.r17,
+					      a.r18);
 					if (bufs[b].taken && n && a.reads) {
 						CHECK(r.cmd13 == (r.err != ESP_OK) && a.cmd13 >= 1, "%s, %zu at %zu%s: "
 						      "%u CMD13s after the read (ESP-IDF %u)", what, n, start,

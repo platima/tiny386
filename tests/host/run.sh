@@ -734,7 +734,8 @@ if [ -f "$IC/sdmmc/sdmmc_cmd.c" ] && [ -f "$IC/sdmmc/sdmmc_common.c" ]; then
     # ESP-IDF's own sdmmc_read_sectors(): every read made through both, from
     # buffers the host takes and ones it refuses, 0 to 130 sectors, at the
     # card's ends and past them, reads that fail; then reads and writes
-    # mixed with the wait after writes linked too.  Four planted faults.
+    # mixed with the wait after writes linked too; the same CMD17s and
+    # CMD18s as ESP-IDF's.  Five planted faults.
     $CC $CFLAGS -ffunction-sections $SI -c -o "$OUT/sdmmc_wait_wrap.o" "$TREE/esp/main/sdmmc_wait_wrap.c" || exit 1
     read_test() {
         $CC $CFLAGS -w -ffunction-sections $SI -o "$OUT/test_sdmmc_read-$1" "$HERE/sdmmc/test_sdmmc_read.c" \
@@ -763,6 +764,8 @@ if [ -f "$IC/sdmmc/sdmmc_cmd.c" ] && [ -f "$IC/sdmmc/sdmmc_common.c" ]; then
         "half the sectors asked for"
     planted_read nolimit 's/return ESP_ERR_INVALID_SIZE;/(void) 0;/' \
         "no check against the card's size"
+    planted_read multi 's/cmd.opcode = block_count == 1 ? MMC_READ_BLOCK_SINGLE : MMC_READ_BLOCK_MULTIPLE;/cmd.opcode = MMC_READ_BLOCK_MULTIPLE;/' \
+        "a one-sector read sent as CMD18"
 else
     echo "SKIP sdmmc_wait_wrap.c: no ESP-IDF sdmmc sources at $IC/sdmmc"
 fi
