@@ -9,10 +9,10 @@
 #
 # Each must come out as it is; and so must copies of the fixed files
 # altered here in ways that leave a fault in, or the fix only in a comment,
-# which must count as not fixed, and one with only its white space and
-# line ends changed, which must still count as fixed.  Then the ESP-IDF at
-# IDF, for the record, checked when its files are the same as one of the
-# copies.
+# some with the live old line spelled another way, which must count as not
+# fixed, and two with only white space changed, which must still count as
+# fixed.  Then the ESP-IDF at IDF, for the record, checked when its files
+# are the same as one of the copies.
 #
 #   cmake -DTREE=... -DOUT=... -DIDF=... -P test_sdmmc_fixes.cmake
 #
@@ -107,6 +107,16 @@ make_copy(sync-call "${t}" "${cmd}")
 check("the sync in the other direction" "${OUT}/sync-call" FALSE TRUE)
 make_copy(sync-none "" "${cmd}")
 check("no sd_trans_sdmmc.c" "${OUT}/sync-none" FALSE TRUE)
+# the old line live but spelled another way, beside upstream's own lines
+altered("${old_trans}" "${sync_old}" "${I12}ret = esp_cache_msync(cmdinfo->data, cache_sync_len, ESP_CACHE_MSYNC_FLAG_DIR_M2C);\n" t)
+make_copy(sync-comment-nocast "/*\n${sync_hunk}*/\n${t}" "${cmd}")
+check("the fixed lines only in a comment, the old line below without its cast" "${OUT}/sync-comment-nocast" FALSE TRUE)
+altered("${trans}" "${sync_hunk}" "${sync_hunk}${I12}ret = esp_cache_msync((void*)cmdinfo->data, cache_sync_len, ESP_CACHE_MSYNC_FLAG_DIR_M2C);\n" t)
+make_copy(sync-after-tight "${t}" "${cmd}")
+check("the old line after the fixed lines, written (void*)" "${OUT}/sync-after-tight" FALSE TRUE)
+altered("${trans}" "${sync_hunk}" "${sync_hunk}${I12}void *buf = cmdinfo->data;\n${I12}ret = esp_cache_msync(buf, cache_sync_len, ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_UNALIGNED);\n" t)
+make_copy(sync-after-other "${t}" "${cmd}")
+check("a second sync after the fixed lines, on another name, with another flag" "${OUT}/sync-after-other" FALSE TRUE)
 
 message("== 007945125db7 altered: the CMD25 fix must not count")
 altered("${cmd}" "__func__, err_acmd22);\n${I12}}\n" "__func__, err_acmd22);\n${I12}}\n${I12}err = err_acmd22;\n" t)
@@ -122,14 +132,30 @@ make_copy(cmd25-test "${trans}" "${t}")
 check("the write's error tested in place of the count's" "${OUT}/cmd25-test" TRUE FALSE)
 make_copy(cmd25-none "${trans}" "")
 check("no sdmmc_cmd.c" "${OUT}/cmd25-none" TRUE FALSE)
+# the old line live but spelled another way, beside upstream's own lines
+altered("${cmd}" "${cmd25_hunk}" "${cmd25_hunk}${I12}err = sdmmc_send_cmd_num_of_written_blocks(card,&successfully_written_blocks);\n" t)
+make_copy(cmd25-after-tight "${trans}" "${t}")
+check("the count into err again after the fixed lines, written (card,&" "${OUT}/cmd25-after-tight" TRUE FALSE)
+altered("${cmd}" "${cmd25_hunk}" "${cmd25_hunk}${I12}err = sdmmc_send_cmd_num_of_written_blocks(card, NULL);\n" t)
+make_copy(cmd25-after-null "${trans}" "${t}")
+check("the count into err again after the fixed lines, with NULL" "${OUT}/cmd25-after-null" TRUE FALSE)
+altered("${old_cmd}" "${cmd25_old}" "${I12}err = sdmmc_send_cmd_num_of_written_blocks(card,&successfully_written_blocks);\n" t)
+make_copy(cmd25-comment-tight "${trans}" "/*\n${cmd25_hunk}*/\n${t}")
+check("the fixed lines only in a comment, the old line below written (card,&" "${OUT}/cmd25-comment-tight" TRUE FALSE)
 
-message("== white space and line ends changed only: both fixes must still count")
+message("== white space changed only: both fixes must still count")
 string(REPLACE "    " "\t" t1 "${trans}")
 string(REPLACE "\n" "\r\n" t1 "${t1}")
 string(REPLACE "    " "\t" t2 "${cmd}")
 string(REPLACE "\n" "\r\n" t2 "${t2}")
 make_copy(spaces "${t1}" "${t2}")
 check("tabs for spaces, CRLF line ends" "${OUT}/spaces" TRUE TRUE)
+string(REPLACE "if (" "if(" t1 "${trans}")
+string(REPLACE "(void *)" "(void*)" t1 "${t1}")
+string(REPLACE "if (" "if(" t2 "${cmd}")
+string(REPLACE "(card, &" "(card,&" t2 "${t2}")
+make_copy(tight "${t1}" "${t2}")
+check("spaces taken out between tokens: if(, (void*), (card,&" "${OUT}/tight" TRUE TRUE)
 
 message("== the ESP-IDF at ${IDF}")
 tiny386_sdmmc_fixes("${IDF}" sync cmd25)
