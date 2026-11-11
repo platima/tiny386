@@ -47,6 +47,12 @@
  *   counted are held against the time gone by.  More than UCLK_SLACK us
  *   apart either way (a counter stopped, or a frequency changed) and the
  *   clock goes back to the true read for good, without going back in time.
+ *   A span the tick or the idle hook ended has no such check, but its floor
+ *   is what the pair gave or could have given, never above the true clock
+ *   while the counter keeps time: a floor more than UCLK_SLACK us above the
+ *   true read means the counter ran fast, and the clock goes off the same
+ *   way (the review of batch 4; before, the new pair started at the true
+ *   read, below what the old one had given).
  *
  * A read in between on the same core, from an interrupt or another task,
  * cannot take a half-set pair: gen changes at every set, a read that finds
@@ -200,6 +206,15 @@ uint32_t __attribute__((noinline)) uclock_sync(struct uclock *k)
 		(void) err;
 		k->floor = want;
 	}
+#ifndef UCLK_FAULT_NOFLOOR
+	if (k->recip && (int32_t) (k->floor - t) > (int32_t) UCLK_SLACK) {
+		k->recip = 0;
+		k->err = (int32_t) (t - k->floor);
+		k->off = 1;
+		while ((int32_t) (t - k->floor) < 0)
+			t = UCLK_TRUE_US();
+	}
+#endif
 	/* never less than what was given before, when the two are close */
 	if ((uint32_t) (k->floor - t) - 1u < UCLK_SLACK)
 		t = k->floor;

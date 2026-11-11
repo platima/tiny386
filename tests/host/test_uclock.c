@@ -25,7 +25,9 @@
  * UCLK_FAULT_NOIDLE (no idle hook), UCLK_FAULT_NOTICK (no tick hook),
  * UCLK_FAULT_NORATE (no check of the counter's rate), UCLK_FAULT_SPAN
  * with UCLK_SPAN 2^28 (the reciprocal not exact over the span),
- * UCLK_FAULT_IDLEOK (the start's test does not look at the idle part).
+ * UCLK_FAULT_IDLEOK (the start's test does not look at the idle part),
+ * UCLK_FAULT_NOFLOOR (no check of a stale pair's floor against the true
+ * read, so that a counter running fast takes the clock back).
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -444,6 +446,31 @@ int main(int argc, char **argv)
 			       k.recip ? "still on the counter" : "off", k.off, bad[i].off);
 			fails++;
 		}
+	}
+	/* a counter twice as fast whose span the tick ends: reads for 6 ms (the
+	   pair up to 6 ms ahead), none until just after the tick at 10 ms, which
+	   marks the pair stale, then a read (a sync with no rate check); no
+	   interrupt reads, so that nothing else ends the span */
+	s0 = fails;
+	start("twice as fast, the span ended by the tick", 2, 1, 0);
+	reads = 0;
+	nest_pct = 0;
+	checked_get();
+	for (int i = 0; i < 6; i++) {
+		advance(1000ull * MHZ);
+		checked_get();
+	}
+	if (real < TICK + 100ull * MHZ)
+		advance(TICK + 100ull * MHZ - real);
+	nest_pct = 2;
+	for (int i = 0; i < 20; i++) {
+		checked_get();
+		advance(rnd_in(50, 50000));
+	}
+	printf("  %s: off %d at sync %u (%+d us); %lu failed\n", scen, k.off, k.syncs, k.err, fails - s0);
+	if (k.recip != 0 || k.off != 1) {
+		printf("  FAIL: %s: not off as it should be\n", scen);
+		fails++;
 	}
 	/* the frequency changed part way */
 	s0 = fails;

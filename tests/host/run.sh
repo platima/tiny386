@@ -1682,7 +1682,7 @@ echo
 $CC $CFLAGS -I"$TREE/esp/main" -o "$OUT/test_uclock" "$HERE/test_uclock.c" || exit 1
 "$OUT/test_uclock"
 result $? "uclock.h: core 1's clock never back, never ahead, under 4 us behind, through waits, interrupts and wraps"
-for f in NOGEN ORDER NOIDLE NOTICK NORATE SPAN IDLEOK; do
+for f in NOGEN ORDER NOIDLE NOTICK NORATE SPAN IDLEOK NOFLOOR; do
     $CC $CFLAGS -DUCLK_FAULT_$f -I"$TREE/esp/main" -o "$OUT/test_uclock_$f" "$HERE/test_uclock.c" || exit 1
     "$OUT/test_uclock_$f" > "$OUT/uclock-$f.log" 2>&1
     st=$?
