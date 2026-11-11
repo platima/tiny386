@@ -1787,16 +1787,17 @@ void app_main(void)
 #if CONFIG_IDF_TARGET_ESP32S31
 	if (config.membench)
 		membench_board();
+	/* (the card was mounted and the ini read with both at 1) */
 	sd_clock_fix = config.sd_clock_fix;
 	if (!config.sd_clock_fix)
-		console_puts(CON_INFO, "sd_clock_fix = 0: the SD clock and the slot's width, "
-			     "sampling and delays are set again before every command, as "
-			     "before v5.2.");
+		console_puts(CON_INFO, "sd_clock_fix = 0: from here on, the SD clock and the "
+			     "slot's width, sampling and delays are set again before every "
+			     "command, as before v5.2 (the card was mounted with 1).");
 	sd_wait_fix = config.sd_wait_fix;
 	if (!config.sd_wait_fix)
-		console_puts(CON_INFO, "sd_wait_fix = 0: the card's status is asked after a "
-			     "write on ESP-IDF's own schedule, and after every read, as "
-			     "before v5.3.");
+		console_puts(CON_INFO, "sd_wait_fix = 0: from here on, the card's status is asked "
+			     "after a write on ESP-IDF's own schedule, and after every read, "
+			     "as before v5.3 (the card was mounted with 1).");
 #else
 	if (config.membench || !config.sd_clock_fix || !config.sd_wait_fix)
 		console_puts(CON_INFO, "membench, sd_clock_fix and sd_wait_fix are ignored: not "
