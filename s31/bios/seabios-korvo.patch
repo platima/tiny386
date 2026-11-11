@@ -1,0 +1,705 @@
+SeaBIOS fixes for tiny386 on the ESP32-S31-Korvo-1
+===================================================
+Against SeaBIOS 81ec9ec0 (rel-1.17.0-20) with tiny386's own patch
+(patches/seabios-tiny386.patch, tiny386 9ed786b) applied first:
+tools/build-bios.sh applies the two in that order.  Found by
+tests/bios-tests.sh; BIOS-COVERAGE.txt has the details.  What IBM's VGA and
+its BIOS do is what is wanted.  Offered under the GNU LGPL version 3, as
+SeaBIOS is.
+
+vgasrc/stdvgaio.c, stdvga.h
+  The attribute controller's flip-flop is reset by reading input status 1
+  at 3BAh while the misc output selects monochrome addressing, and at 3DAh
+  otherwise.  It was always 3DAh, which a VGA does not answer in mode 07h:
+  the next mode set after 07h filled the palette registers askew, and every
+  palette call in 07h went astray.
+
+vgasrc/stdvgamodes.c
+  * The mode set writes the misc output before the CRT controller, not
+    after.  In mode 07h all 25 CRT controller registers went to 3B4h while
+    the misc output still selected 3D4h, a VGA ignored them, and the screen
+    was black.
+  * 12h BL=30h AL=01h (350 scan lines) now does something: modes 00h to
+    03h are then 8x14 characters in 350 lines, 8 dots wide (80 columns are
+    640x350), and 07h 9x14 (720x350), as on IBM's VGA; the 8x14 font is
+    loaded for them.  The vertical registers are those of modes 0Fh and
+    10h, the horizontal those of the 400-line text modes.  8x8 (11h AL=12h)
+    then gives 43 rows.  The video parameter table keeps the 400-line modes.
+
+vgasrc/stdvga.c, stdvga.h
+  stdvga_enable_video_refresh(): the sequencer's screen-off bit (SR01h bit 5).
+
+vgasrc/vgabios.c, vgabios.h
+  * Cursor emulation (01h) scales a CGA shape the way IBM's VGA BIOS does:
+    0607h gives lines 13 and 14 of 16, which is what the mode set leaves;
+    it gave 14 and 15.  Shapes that end below line 7, or are switched off,
+    are left as they were.
+  * 12h BL=31h (default palette loading) sets bit 3 of 0040:0089h, which
+    the mode set reads; it set bit 3 of 0040:0087h.
+  * 12h BL=36h (video refresh) sets and clears SR01h bit 5; it did nothing.
+  * 10h AL=10h and AL=12h store greys while summing (12h BL=33h) is on.
+  * 1Bh gives the rows (not the rows less one) and the colours, pages and
+    scan lines of the mode in use; it gave 16, 8 and 400 for every mode.
+  * 0Ch and 0Dh use the page in BH in the planar modes that have room for
+    more than one (0Dh, 0Eh, 0Fh, 10h); they always used page 0.
+  * A mode set after 200 scan lines were selected (12h BL=30h AL=00h, which
+    SeaVGABIOS does not do: it sets 400) leaves 0040:0089h saying 400, so
+    that the next one is not taken for 350.
+
+vgasrc/vgafb.c, vgafb.h
+  The pixel functions take the page; struct gfx_op has where it starts.
+
+src/disk.c, src/hw/floppy.c, src/util.h
+  13h AH=18h (set the media type for a format) on a floppy drive: accepted
+  for a media that the drive takes, with ES:DI pointing at the diskette
+  parameter table and the media noted in the BIOS data area as media
+  sensing notes it; 0Ch for any other.  It was refused with 01h.
+
+diff --git a/src/disk.c b/src/disk.c
+index f2773bd0..cc3a0b0a 100644
+--- a/src/disk.c
++++ b/src/disk.c
+@@ -658,6 +658,20 @@ disk_13(struct bregs *regs, struct drive_s *drive_fl)
+     }
+ }
+ 
++// set media type for format
++static void
++floppy_1318(struct bregs *regs, struct drive_s *drive_fl)
++{
++    u16 cylinders = (regs->ch | ((regs->cl & 0xc0) << 2)) + 1;
++    int status = floppy_set_media_type(drive_fl, cylinders, regs->cl & 0x3f);
++    if (status == DISK_RET_SUCCESS) {
++        // set es & di to point to 11 byte diskette param table in ROM
++        regs->es = SEG_BIOS;
++        regs->di = (u32)&diskette_param_table2;
++    }
++    disk_ret(regs, status);
++}
++
+ static void
+ floppy_13(struct bregs *regs, struct drive_s *drive_fl)
+ {
+@@ -674,6 +688,7 @@ floppy_13(struct bregs *regs, struct drive_s *drive_fl)
+     case 0x16:
+         disk_13(regs, drive_fl);
+         break;
++    case 0x18: floppy_1318(regs, drive_fl); break;
+     default:   disk_13XX(regs, drive_fl); break;
+     }
+ }
+diff --git a/src/hw/floppy.c b/src/hw/floppy.c
+index 9c44be65..dc901b78 100644
+--- a/src/hw/floppy.c
++++ b/src/hw/floppy.c
+@@ -519,6 +519,46 @@ floppy_check_media(struct drive_s *drive_gf, u8 floppyid)
+     return floppy_drive_seek(floppyid, 0);
+ }
+ 
++// Note in the BIOS data area that drive floppyid, of type ftype, has
++// media of type stype
++static void
++floppy_set_media_state(u8 floppyid, u8 ftype, u8 stype)
++{
++    u8 data_rate = GET_GLOBAL(FloppyInfo[stype].data_rate);
++    u8 old_data_rate = GET_BDA(floppy_media_state[floppyid]) >> 6;
++    SET_BDA(floppy_last_data_rate, (old_data_rate<<2) | (data_rate<<6));
++    u8 media = (stype == 1 ? 0x04 : (stype == 2 ? 0x05 : 0x07));
++    u8 fms = (data_rate<<6) | FMS_MEDIA_DRIVE_ESTABLISHED | media;
++    if (GET_GLOBAL(FloppyInfo[stype].chs.cylinder)
++        < GET_GLOBAL(FloppyInfo[ftype].chs.cylinder))
++        fms |= FMS_DOUBLE_STEPPING;
++    SET_BDA(floppy_media_state[floppyid], fms);
++}
++
++// Set the media for a format (int 13h AH=18h): one the drive takes, with
++// the given cylinders and sectors a track
++int
++floppy_set_media_type(struct drive_s *drive_gf, u16 cylinders, u8 sectors)
++{
++    u8 ftype = GET_GLOBALFLAT(drive_gf->floppy_type), stype;
++    if (!ftype || ftype >= ARRAY_SIZE(FloppyInfo))
++        return DISK_RET_EBADTRACK;
++    for (stype=1; stype < ARRAY_SIZE(FloppyInfo); stype++)
++        if (GET_GLOBAL(FloppyInfo[stype].chs.cylinder) == cylinders
++            && GET_GLOBAL(FloppyInfo[stype].chs.sector) == sectors
++            && (GET_GLOBAL(FloppyInfo[stype].floppy_size)
++                == GET_GLOBAL(FloppyInfo[ftype].floppy_size))
++            && (GET_GLOBAL(FloppyInfo[stype].chs.head)
++                <= GET_GLOBAL(FloppyInfo[ftype].chs.head))
++            && cylinders <= GET_GLOBAL(FloppyInfo[ftype].chs.cylinder)
++            && sectors <= GET_GLOBAL(FloppyInfo[ftype].chs.sector))
++            break;
++    if (stype >= ARRAY_SIZE(FloppyInfo))
++        return DISK_RET_EBADTRACK;
++    floppy_set_media_state(GET_GLOBALFLAT(drive_gf->cntl_id), ftype, stype);
++    return DISK_RET_SUCCESS;
++}
++
+ static int
+ floppy_media_sense(struct drive_s *drive_gf)
+ {
+@@ -551,15 +591,7 @@ floppy_media_sense(struct drive_s *drive_gf)
+     dprintf(2, "Floppy_media_sense on drive %d found rate %d\n"
+             , floppyid, data_rate);
+ 
+-    u8 old_data_rate = GET_BDA(floppy_media_state[floppyid]) >> 6;
+-    SET_BDA(floppy_last_data_rate, (old_data_rate<<2) | (data_rate<<6));
+-    u8 media = (stype == 1 ? 0x04 : (stype == 2 ? 0x05 : 0x07));
+-    u8 fms = (data_rate<<6) | FMS_MEDIA_DRIVE_ESTABLISHED | media;
+-    if (GET_GLOBAL(FloppyInfo[stype].chs.cylinder)
+-        < GET_GLOBAL(FloppyInfo[ftype].chs.cylinder))
+-        fms |= FMS_DOUBLE_STEPPING;
+-    SET_BDA(floppy_media_state[floppyid], fms);
+-
++    floppy_set_media_state(floppyid, ftype, stype);
+     return DISK_RET_SUCCESS;
+ }
+ 
+diff --git a/src/util.h b/src/util.h
+index aff8e888..479d22e5 100644
+--- a/src/util.h
++++ b/src/util.h
+@@ -169,6 +169,7 @@ extern struct floppy_ext_dbt_s diskette_param_table2;
+ void floppy_setup(void);
+ struct drive_s *init_floppy(int floppyid, int ftype);
+ int find_floppy_type(u32 size);
++int floppy_set_media_type(struct drive_s *drive_gf, u16 cylinders, u8 sectors);
+ int floppy_process_op(struct disk_op_s *op);
+ void floppy_tick(void);
+ 
+diff --git a/vgasrc/stdvga.c b/vgasrc/stdvga.c
+index 3d9c7c1f..bfc1b396 100644
+--- a/vgasrc/stdvga.c
++++ b/vgasrc/stdvga.c
+@@ -557,6 +557,14 @@ stdvga_enable_video_addressing(u8 disable)
+     stdvga_misc_mask(0x02, v);
+ }
+ 
++// Enable/disable the screen (sequencer clocking mode, screen off bit)
++void
++stdvga_enable_video_refresh(u8 disable)
++{
++    u8 v = (disable & 1) ? 0x20 : 0x00;
++    stdvga_sequ_mask(0x01, 0x20, v);
++}
++
+ int
+ stdvga_setup(void)
+ {
+diff --git a/vgasrc/stdvga.h b/vgasrc/stdvga.h
+index 55ad76e5..289fde5a 100644
+--- a/vgasrc/stdvga.h
++++ b/vgasrc/stdvga.h
+@@ -35,6 +35,7 @@
+ #define VGAREG_MDA_WRITE_FEATURE_CTL   0x3ba
+ #define VGAREG_VGA_WRITE_FEATURE_CTL   0x3da
+ #define VGAREG_ACTL_RESET              0x3da
++#define VGAREG_MDA_ACTL_RESET          0x3ba
+ 
+ #define VGAREG_MDA_MODECTL             0x3b8
+ #define VGAREG_CGA_MODECTL             0x3d8
+@@ -82,6 +83,7 @@ int stdvga_get_dacformat(struct vgamode_s *curmode_g);
+ int stdvga_set_dacformat(struct vgamode_s *curmode_g, int val);
+ int stdvga_save_restore(int cmd, u16 seg, void *data);
+ void stdvga_enable_video_addressing(u8 disable);
++void stdvga_enable_video_refresh(u8 disable);
+ int stdvga_setup(void);
+ 
+ // stdvgaio.c
+diff --git a/vgasrc/stdvgaio.c b/vgasrc/stdvgaio.c
+index d8a5774b..ed3b5d2e 100644
+--- a/vgasrc/stdvgaio.c
++++ b/vgasrc/stdvgaio.c
+@@ -106,14 +106,25 @@ stdvga_crtc_mask(u16 crtc_addr, u8 index, u8 off, u8 on)
+ }
+ 
+ 
++// Reset the attribute controller's flip-flop by reading input status 1,
++// which is at 3BAh while the misc output selects monochrome addressing
++static void
++stdvga_attr_reset(void)
++{
++    if (stdvga_misc_read() & 1)
++        inb(VGAREG_ACTL_RESET);
++    else
++        inb(VGAREG_MDA_ACTL_RESET);
++}
++
+ u8
+ stdvga_attr_read(u8 index)
+ {
+-    inb(VGAREG_ACTL_RESET);
++    stdvga_attr_reset();
+     u8 orig = inb(VGAREG_ACTL_ADDRESS);
+     outb(index, VGAREG_ACTL_ADDRESS);
+     u8 v = inb(VGAREG_ACTL_READ_DATA);
+-    inb(VGAREG_ACTL_RESET);
++    stdvga_attr_reset();
+     outb(orig, VGAREG_ACTL_ADDRESS);
+     return v;
+ }
+@@ -121,7 +132,7 @@ stdvga_attr_read(u8 index)
+ void
+ stdvga_attr_write(u8 index, u8 value)
+ {
+-    inb(VGAREG_ACTL_RESET);
++    stdvga_attr_reset();
+     u8 orig = inb(VGAREG_ACTL_ADDRESS);
+     outb(index, VGAREG_ACTL_ADDRESS);
+     outb(value, VGAREG_ACTL_WRITE_DATA);
+@@ -131,7 +142,7 @@ stdvga_attr_write(u8 index, u8 value)
+ void
+ stdvga_attr_mask(u8 index, u8 off, u8 on)
+ {
+-    inb(VGAREG_ACTL_RESET);
++    stdvga_attr_reset();
+     u8 orig = inb(VGAREG_ACTL_ADDRESS);
+     outb(index, VGAREG_ACTL_ADDRESS);
+     u8 v = inb(VGAREG_ACTL_READ_DATA);
+@@ -142,14 +153,14 @@ stdvga_attr_mask(u8 index, u8 off, u8 on)
+ u8
+ stdvga_attrindex_read(void)
+ {
+-    inb(VGAREG_ACTL_RESET);
++    stdvga_attr_reset();
+     return inb(VGAREG_ACTL_ADDRESS);
+ }
+ 
+ void
+ stdvga_attrindex_write(u8 value)
+ {
+-    inb(VGAREG_ACTL_RESET);
++    stdvga_attr_reset();
+     outb(value, VGAREG_ACTL_ADDRESS);
+ }
+ 
+diff --git a/vgasrc/stdvgamodes.c b/vgasrc/stdvgamodes.c
+index d72d36b4..2ef8df65 100644
+--- a/vgasrc/stdvgamodes.c
++++ b/vgasrc/stdvgamodes.c
+@@ -265,6 +265,31 @@ static u8 crtc_6A[] VAR16 = {
+     0x59, 0x8d, 0x57, 0x32, 0x00, 0x57, 0x73, 0xe3,
+     0xff };
+ 
++// Text in 350 scan lines (int 10h AH=12h BL=30h AL=01h): the vertical
++// timing of modes 0Fh and 10h with 8x14 characters, 8 dots wide in the
++// colour modes (as the EGA's) and 9 in mode 07h
++static u8 sequ_01_350[] VAR16 = { 0x09, 0x03, 0x00, 0x02 };
++static u8 crtc_01_350[] VAR16 = {
++    0x2d, 0x27, 0x28, 0x90, 0x2b, 0xa0, 0xbf, 0x1f,
++    0x00, 0x4d, 0x0b, 0x0c, 0x00, 0x00, 0x00, 0x00,
++    0x83, 0x85, 0x5d, 0x14, 0x1f, 0x63, 0xba, 0xa3,
++    0xff };
++static u8 actl_01_350[] VAR16 = {
++    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x14, 0x07,
++    0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
++    0x08, 0x00, 0x0f, 0x00 };
++static u8 sequ_03_350[] VAR16 = { 0x01, 0x03, 0x00, 0x02 };
++static u8 crtc_03_350[] VAR16 = {
++    0x5f, 0x4f, 0x50, 0x82, 0x55, 0x81, 0xbf, 0x1f,
++    0x00, 0x4d, 0x0b, 0x0c, 0x00, 0x00, 0x00, 0x00,
++    0x83, 0x85, 0x5d, 0x28, 0x1f, 0x63, 0xba, 0xa3,
++    0xff };
++static u8 crtc_07_350[] VAR16 = {
++    0x5f, 0x4f, 0x50, 0x82, 0x55, 0x81, 0xbf, 0x1f,
++    0x00, 0x4d, 0x0b, 0x0c, 0x00, 0x00, 0x00, 0x00,
++    0x83, 0x85, 0x5d, 0x28, 0x0d, 0x63, 0xba, 0xa3,
++    0xff };
++
+ #define PAL(x) x, sizeof(x)
+ 
+ struct stdvga_mode_s {
+@@ -317,6 +342,20 @@ static struct stdvga_mode_s vga_modes[] VAR16 = {
+      , sequ_0e, 0xe3, crtc_6A, actl_10, grdc_0d},
+ };
+ 
++// The text modes when 350 scan lines are selected
++static struct stdvga_mode_s vga_modes_350[] VAR16 = {
++    {0x00, { MM_TEXT,    40,  25, 4, 8, 14, SEG_CTEXT }, PAL(pal_ega)
++     , sequ_01_350, 0xa3, crtc_01_350, actl_01_350, grdc_01},
++    {0x01, { MM_TEXT,    40,  25, 4, 8, 14, SEG_CTEXT }, PAL(pal_ega)
++     , sequ_01_350, 0xa3, crtc_01_350, actl_01_350, grdc_01},
++    {0x02, { MM_TEXT,    80,  25, 4, 8, 14, SEG_CTEXT }, PAL(pal_ega)
++     , sequ_03_350, 0xa3, crtc_03_350, actl_01_350, grdc_01},
++    {0x03, { MM_TEXT,    80,  25, 4, 8, 14, SEG_CTEXT }, PAL(pal_ega)
++     , sequ_03_350, 0xa3, crtc_03_350, actl_01_350, grdc_01},
++    {0x07, { MM_TEXT,    80,  25, 4, 9, 14, SEG_MTEXT }, PAL(pal_mda)
++     , sequ_03, 0xa6, crtc_07_350, actl_07, grdc_07},
++};
++
+ 
+ /****************************************************************
+  * Mode functions
+@@ -325,14 +364,23 @@ static struct stdvga_mode_s vga_modes[] VAR16 = {
+ static int
+ is_stdvga_mode(struct vgamode_s *vmode_g)
+ {
+-    return (vmode_g >= &vga_modes[0].info
+-            && vmode_g <= &vga_modes[ARRAY_SIZE(vga_modes)-1].info);
++    return ((vmode_g >= &vga_modes[0].info
++             && vmode_g <= &vga_modes[ARRAY_SIZE(vga_modes)-1].info)
++            || (vmode_g >= &vga_modes_350[0].info
++                && vmode_g <= &vga_modes_350[ARRAY_SIZE(vga_modes_350)-1].info));
+ }
+ 
+-struct vgamode_s *
+-stdvga_find_mode(int mode)
++static struct vgamode_s *
++find_mode(int mode, int lines350)
+ {
+     int i;
++    if (lines350) {
++        for (i = 0; i < ARRAY_SIZE(vga_modes_350); i++) {
++            struct stdvga_mode_s *stdmode_g = &vga_modes_350[i];
++            if (GET_GLOBAL(stdmode_g->mode) == mode)
++                return &stdmode_g->info;
++        }
++    }
+     for (i = 0; i < ARRAY_SIZE(vga_modes); i++) {
+         struct stdvga_mode_s *stdmode_g = &vga_modes[i];
+         if (GET_GLOBAL(stdmode_g->mode) == mode)
+@@ -341,6 +389,13 @@ stdvga_find_mode(int mode)
+     return NULL;
+ }
+ 
++struct vgamode_s *
++stdvga_find_mode(int mode)
++{
++    // 350 scan lines: modeset_ctl bits 4 (400 lines) and 7 (200) clear
++    return find_mode(mode, !(GET_BDA(modeset_ctl) & 0x90));
++}
++
+ void
+ stdvga_list_modes(u16 seg, u16 *dest, u16 *last)
+ {
+@@ -382,7 +437,7 @@ stdvga_build_video_param(void)
+         if (! mode)
+             continue;
+         struct video_param_s *vparam_g = &video_param_table[i];
+-        struct vgamode_s *vmode_g = stdvga_find_mode(mode);
++        struct vgamode_s *vmode_g = find_mode(mode, 0);
+         if (!vmode_g)
+             continue;
+         int width = GET_GLOBAL(vmode_g->width);
+@@ -429,7 +484,7 @@ stdvga_build_video_param(void)
+ void
+ stdvga_override_crtc(int mode, u8 *crtc)
+ {
+-    struct vgamode_s *vmode_g = stdvga_find_mode(mode);
++    struct vgamode_s *vmode_g = find_mode(mode, 0);
+     if (!vmode_g)
+         return;
+     struct stdvga_mode_s *stdmode_g = container_of(
+@@ -500,8 +555,10 @@ stdvga_set_mode(struct vgamode_s *vmode_g, int flags)
+     for (i = 0; i <= 8; i++)
+         stdvga_grdc_write(i, GET_GLOBAL(regs[i]));
+ 
+-    // Set CRTC address VGA or MDA
++    // Set the misc register, which selects the CRTC address, VGA or
++    // MDA: a VGA ignores the CRTC at the other address
+     u8 miscreg = GET_GLOBAL(stdmode_g->miscreg);
++    stdvga_misc_write(miscreg);
+     u16 crtc_addr = VGAREG_VGA_CRTC_ADDRESS;
+     if (!(miscreg & 1))
+         crtc_addr = VGAREG_MDA_CRTC_ADDRESS;
+@@ -513,9 +570,6 @@ stdvga_set_mode(struct vgamode_s *vmode_g, int flags)
+     for (i = 0; i <= 0x18; i++)
+         stdvga_crtc_write(crtc_addr, i, GET_GLOBAL(regs[i]));
+ 
+-    // Set the misc register
+-    stdvga_misc_write(miscreg);
+-
+     // Enable video
+     stdvga_attrindex_write(0x20);
+ 
+@@ -525,8 +579,12 @@ stdvga_set_mode(struct vgamode_s *vmode_g, int flags)
+ 
+     // Write the fonts in memory
+     u8 memmodel = GET_GLOBAL(vmode_g->memmodel);
+-    if (memmodel == MM_TEXT)
+-        stdvga_load_font(get_global_seg(), vgafont16, 0x100, 0, 0, 16);
++    if (memmodel == MM_TEXT) {
++        if (GET_GLOBAL(vmode_g->cheight) == 14)
++            stdvga_load_font(get_global_seg(), vgafont14, 0x100, 0, 0, 14);
++        else
++            stdvga_load_font(get_global_seg(), vgafont16, 0x100, 0, 0, 16);
++    }
+ 
+     return 0;
+ }
+diff --git a/vgasrc/vgabios.c b/vgasrc/vgabios.c
+index 44fb26c2..00f83785 100644
+--- a/vgasrc/vgabios.c
++++ b/vgasrc/vgabios.c
+@@ -52,6 +52,21 @@ calc_page_size(u8 memmodel, u16 width, u16 height)
+     }
+ }
+ 
++// Number of pages that fit in video memory in the given mode
++int
++vga_page_count(struct vgamode_s *vmode_g)
++{
++    u8 memmodel = GET_GLOBAL(vmode_g->memmodel);
++    if (memmodel != MM_TEXT && memmodel != MM_PLANAR)
++        return 1;
++    u32 size = memmodel == MM_TEXT ? 32*1024 : 64*1024;
++    u16 pagesize = GET_BDA(video_pagesize);
++    if (!pagesize || pagesize > size)
++        return 1;
++    int pages = size / pagesize;
++    return pages > 8 ? 8 : pages;
++}
++
+ // Determine cursor shape (taking into account possible cursor scaling)
+ u16
+ get_cursor_shape(void)
+@@ -65,11 +80,30 @@ get_cursor_shape(void)
+     u16 cheight = GET_BDA(char_height);
+     if (cheight <= 8 || end >= 8 || start >= 0x20)
+         return cursor_type;
+-    if (end != (start + 1))
+-        start = ((start + 1) * cheight / 8) - 1;
+-    else
+-        start = ((end + 1) * cheight / 8) - 2;
+-    end = ((end + 1) * cheight / 8) - 1;
++    // Scale the CGA shape as the IBM VGA BIOS does: a cursor that ends
++    // above its start, or one of four lines or more, goes down to the
++    // bottom line; a short one keeps its height at the bottom, one line
++    // up in characters taller than 13 lines (0607h gives 0D0Eh in 16)
++    u8 last = cheight - 1;
++    if (end < start) {
++        if (!end)
++            return cursor_type;
++        start = end;
++        end = last;
++    } else if (end > 3) {
++        if (start + 2 < end) {
++            if (start > 2)
++                start = (last + 1) / 2;
++            end = last;
++        } else {
++            start = start - end + last;
++            end = last;
++            if (last > 12) {
++                start--;
++                end--;
++            }
++        }
++    }
+     return (start << 8) | end;
+ }
+ 
+@@ -302,7 +336,12 @@ vga_set_mode(int mode, int flags)
+     SET_BDA(char_height, cheight);
+     SET_BDA(video_ctl, 0x60 | (flags & MF_NOCLEARMEM ? 0x80 : 0x00));
+     SET_BDA(video_switches, 0xF9);
+-    SET_BDA(modeset_ctl, GET_BDA(modeset_ctl) & 0x7f);
++    // 200 scan lines (12h BL=30h AL=00h) are not done: the mode has 400,
++    // and modeset_ctl says so (bits 7 and 4 both clear would mean 350)
++    u8 mctl = GET_BDA(modeset_ctl);
++    if (mctl & 0x80)
++        mctl = (mctl & ~0x80) | 0x10;
++    SET_BDA(modeset_ctl, mctl);
+     int i;
+     for (i=0; i<8; i++)
+         SET_BDA(cursor_pos[i], 0x0000);
+@@ -490,15 +529,13 @@ handle_100b(struct bregs *regs)
+ static void
+ handle_100c(struct bregs *regs)
+ {
+-    // XXX - page (regs->bh) is unused
+-    vgafb_write_pixel(regs->al, regs->cx, regs->dx);
++    vgafb_write_pixel(regs->al, regs->cx, regs->dx, regs->bh);
+ }
+ 
+ static void
+ handle_100d(struct bregs *regs)
+ {
+-    // XXX - page (regs->bh) is unused
+-    regs->al = vgafb_read_pixel(regs->cx, regs->dx);
++    regs->al = vgafb_read_pixel(regs->cx, regs->dx, regs->bh);
+ }
+ 
+ static void noinline
+@@ -573,12 +610,17 @@ handle_101010(struct bregs *regs)
+     struct vbe_palette_entry rgb = {
+         .red=regs->dh, .green=regs->ch, .blue=regs->cl };
+     stdvga_dac_write(regs->bx, rgb);
++    // With summing to grey on (12h BL=33h), the colour goes in as a grey
++    if (GET_BDA(modeset_ctl) & 0x02)
++        stdvga_perform_gray_scale_summing(regs->bx, 1);
+ }
+ 
+ static void
+ handle_101012(struct bregs *regs)
+ {
+     stdvga_dac_write_many(regs->es, (u8*)(regs->dx + 0), regs->bx, regs->cx);
++    if (GET_BDA(modeset_ctl) & 0x02)
++        stdvga_perform_gray_scale_summing(regs->bx, regs->cx);
+ }
+ 
+ static void
+@@ -908,9 +950,10 @@ handle_101230(struct bregs *regs)
+ static void
+ handle_101231(struct bregs *regs)
+ {
++    // modeset_ctl bit 3, which a mode set reads (MF_NOPALETTE)
+     u8 v = (regs->al & 0x01) << 3;
+-    u8 mctl = GET_BDA(video_ctl) & ~0x08;
+-    SET_BDA(video_ctl, mctl | v);
++    u8 mctl = GET_BDA(modeset_ctl) & ~0x08;
++    SET_BDA(modeset_ctl, mctl | v);
+     regs->al = 0x12;
+ }
+ 
+@@ -949,8 +992,10 @@ handle_101235(struct bregs *regs)
+ static void
+ handle_101236(struct bregs *regs)
+ {
+-    debug_stub(regs);
+-    regs->al = 0x12;
++    if (CONFIG_VGA_STDVGA_PORTS) {
++        stdvga_enable_video_refresh(regs->al);
++        regs->al = 0x12;
++    }
+ }
+ 
+ static void
+@@ -1061,11 +1106,28 @@ handle_101b(struct bregs *regs)
+                , sizeof(info->bda_0x49));
+     memcpy_far(seg, info->bda_0x84, SEG_BDA, (void*)0x84
+                , sizeof(info->bda_0x84));
++    // The rows, where the BIOS data area has the rows less one
++    SET_FARVAR(seg, info->bda_0x84[0], GET_BDA(video_rows) + 1);
+ 
+     SET_FARVAR(seg, info->dcc_index, GET_BDA(dcc_index));
+-    SET_FARVAR(seg, info->colors, 16);
+-    SET_FARVAR(seg, info->pages, 8);
+-    SET_FARVAR(seg, info->scan_lines, 2);
++    u16 colors = 16;
++    u8 pages = 8, scan_lines = 2;
++    struct vgamode_s *curmode_g = get_current_mode();
++    if (curmode_g) {
++        u8 depth = GET_GLOBAL(curmode_g->depth);
++        if (GET_GLOBAL(curmode_g->memmodel) != MM_TEXT)
++            colors = depth < 16 ? 1 << depth : 0;
++        pages = vga_page_count(curmode_g);
++    }
++    if (CONFIG_VGA_STDVGA_PORTS) {
++        // 0, 1, 2, 3: 200, 350, 400, 480 scan lines on the display
++        u16 lines = stdvga_get_vertical_size();
++        scan_lines = lines <= 200 ? 0 : (lines <= 350 ? 1
++                                         : (lines <= 400 ? 2 : 3));
++    }
++    SET_FARVAR(seg, info->colors, colors);
++    SET_FARVAR(seg, info->pages, pages);
++    SET_FARVAR(seg, info->scan_lines, scan_lines);
+     SET_FARVAR(seg, info->video_mem, 3);
+     regs->al = 0x1B;
+ }
+diff --git a/vgasrc/vgabios.h b/vgasrc/vgabios.h
+index e2edec03..e620b24a 100644
+--- a/vgasrc/vgabios.h
++++ b/vgasrc/vgabios.h
+@@ -78,6 +78,7 @@ static inline int vga_emulate_text(void) {
+ // vgabios.c
+ int vga_bpp(struct vgamode_s *vmode_g);
+ u16 calc_page_size(u8 memmodel, u16 width, u16 height);
++int vga_page_count(struct vgamode_s *vmode_g);
+ u16 get_cursor_shape(void);
+ struct cursorpos get_cursor_pos(u8 page);
+ int bda_save_restore(int cmd, u16 seg, void *data);
+diff --git a/vgasrc/vgafb.c b/vgasrc/vgafb.c
+index bb4f11ec..94f3ffe1 100644
+--- a/vgasrc/vgafb.c
++++ b/vgasrc/vgafb.c
+@@ -51,7 +51,8 @@ gfx_planar(struct gfx_op *op)
+ {
+     if (!CONFIG_VGA_STDVGA_PORTS)
+         return;
+-    void *dest_far = (void*)(op->y * op->linelength + op->x / 8);
++    void *dest_far = (void*)(op->pagestart + op->y * op->linelength
++                             + op->x / 8);
+     int plane;
+     switch (op->op) {
+     default:
+@@ -84,7 +85,8 @@ gfx_planar(struct gfx_op *op)
+         }
+         break;
+     case GO_MEMMOVE: ;
+-        void *src_far = (void*)(op->srcy * op->linelength + op->x / 8);
++        void *src_far = (void*)(op->pagestart + op->srcy * op->linelength
++                                + op->x / 8);
+         for (plane = 0; plane < 4; plane++) {
+             stdvga_planar4_plane(plane);
+             memmove_stride(SEG_GRAPH, dest_far, src_far
+@@ -498,16 +500,27 @@ fail:
+     return (struct carattr){0, 0, 0};
+ }
+ 
++// Prepare a struct gfx_op for a pixel on the given page: planar modes with
++// room for more than one page have pages (0Dh, 0Eh, 0Fh, 10h)
++static void
++init_pixel_op(struct gfx_op *op, struct vgamode_s *curmode_g, u8 page)
++{
++    init_gfx_op(op, curmode_g);
++    if (GET_GLOBAL(curmode_g->memmodel) == MM_PLANAR
++        && page < vga_page_count(curmode_g))
++        op->pagestart = page * GET_BDA(video_pagesize);
++}
++
+ // Set the pixel at the given position.
+ void
+-vgafb_write_pixel(u8 color, u16 x, u16 y)
++vgafb_write_pixel(u8 color, u16 x, u16 y, u8 page)
+ {
+     struct vgamode_s *curmode_g = get_current_mode();
+     if (!curmode_g)
+         return;
+ 
+     struct gfx_op op;
+-    init_gfx_op(&op, curmode_g);
++    init_pixel_op(&op, curmode_g, page);
+     op.x = ALIGN_DOWN(x, 8);
+     op.y = y;
+     op.op = GO_READ8;
+@@ -524,14 +537,14 @@ vgafb_write_pixel(u8 color, u16 x, u16 y)
+ 
+ // Return the pixel at the given position.
+ u8
+-vgafb_read_pixel(u16 x, u16 y)
++vgafb_read_pixel(u16 x, u16 y, u8 page)
+ {
+     struct vgamode_s *curmode_g = get_current_mode();
+     if (!curmode_g)
+         return 0;
+ 
+     struct gfx_op op;
+-    init_gfx_op(&op, curmode_g);
++    init_pixel_op(&op, curmode_g, page);
+     op.x = ALIGN_DOWN(x, 8);
+     op.y = y;
+     op.op = GO_READ8;
+diff --git a/vgasrc/vgafb.h b/vgasrc/vgafb.h
+index d5644279..008d002f 100644
+--- a/vgasrc/vgafb.h
++++ b/vgasrc/vgafb.h
+@@ -6,6 +6,7 @@ struct gfx_op {
+     struct vgamode_s *curmode_g;
+     u32 linelength;
+     u32 displaystart;
++    u16 pagestart;      // planar modes: where the page is in each plane
+ 
+     u8 op;
+     u16 x, y;
+@@ -37,7 +38,7 @@ void vgafb_scroll(struct cursorpos win, struct cursorpos winsize
+                   , int lines, struct carattr ca);
+ void vgafb_write_char(struct cursorpos cp, struct carattr ca);
+ struct carattr vgafb_read_char(struct cursorpos cp);
+-void vgafb_write_pixel(u8 color, u16 x, u16 y);
+-u8 vgafb_read_pixel(u16 x, u16 y);
++void vgafb_write_pixel(u8 color, u16 x, u16 y, u8 page);
++u8 vgafb_read_pixel(u16 x, u16 y, u8 page);
+ 
+ #endif // vgafb.h
