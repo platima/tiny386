@@ -752,10 +752,13 @@ static noinline int IRAM_ATTR_FAST_EXEC fast_window(CPUI386 *cpu, struct fast_tl
    instruction at ins (its prefixes skipped) is C3h, C2h or FFh, RET, RET n and CALL or JMP near
    through r/m, the targets JUMP_ABS() sets, which tiny386 leaves as they are (a 32-bit one with
    66h).  Only the jumps can take pc there (FAST_J16_END); the CMP or TEST before a JZ or JNZ
-   done with it (FOLD_JCC()) is not one of those three. */
+   done with it (FOLD_JCC()) is not one of those three.  Its loop is not unrolled: GCC's -O3 made
+   236 instructions of it (838 bytes of internal RAM on the Korvo-1), for a call made only when 16-bit
+   code jumps past either end of its segment. */
 static noinline uword IRAM_ATTR_FAST_EXEC fast_j16_eip(const u8 *ins, uword eip)
 {
 	const u8 *p = ins;
+#pragma GCC unroll 1
 	for (int i = 0; i < 14; i++, p++)
 		if (!(*p == 0x26 || *p == 0x2e || *p == 0x36 || *p == 0x3e || (*p >= 0x64 && *p <= 0x67) ||
 		      *p == 0xf0 || *p == 0xf2 || *p == 0xf3))
