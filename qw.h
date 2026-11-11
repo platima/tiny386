@@ -101,6 +101,9 @@
 #ifndef QW_EA16T
 #define QW_EA16T 0      /* with QW_EA: fast_ea2()'s 16-bit form from one packed table entry, mod 1 first */
 #endif
+#ifndef QW_COND2
+#define QW_COND2 0      /* fast_cond() in line for S, the logical operations' results, B after ADD */
+#endif
 #if QW_GRPTAB && !(QW_OPS0F && QW_GRP5)
 #error "QW_GRPTAB needs QW_OPS0F and QW_GRP5"
 #endif

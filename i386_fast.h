@@ -628,6 +628,30 @@ static inline __attribute__((always_inline)) int fast_cond(CPUI386 *cpu, int c)
 		}
 		return cond ^ (c & 1);
 	}
+#if QW_COND2
+	/* v5.3: what fast_cond_slow() was called for most, in line: S after any result that holds
+	   SF (JS after DEC in a getc() loop, after AND and INC), and every condition after AND, OR,
+	   XOR and TEST (their mask: CF and OF are 0; AF is not there, and no condition reads it),
+	   and B after ADD.  W2 (Windows' boot, its first 300 M) called fast_cond_slow() about 2 M
+	   times, the commonest JNP after AND (0.57 M), JB after SUB without CF in the mask (0.47 M),
+	   JS after DEC (0.36 M), JAE after ADD (0.15 M) and JB after AND (0.13 M). */
+	if ((c >> 1) == 4 && (cpu->cc.mask & SF))   /* S */
+		return ((sword) cpu->cc.dst < 0) ^ (c & 1);
+	if (cpu->cc.op >= CC_AND && cpu->cc.mask == (CF | PF | ZF | SF | OF)) {
+		uword d = cpu->cc.dst;
+		int cond;
+		switch (c >> 1) {
+		case 0: case 1: cond = 0; break;                                /* O, B */
+		case 3: cond = d == 0; break;                                   /* BE */
+		case 5: cond = !__builtin_parity(d & 0xff); break;              /* P */
+		case 6: cond = (sword) d < 0; break;                            /* L */
+		default: cond = d == 0 || (sword) d < 0; break;                 /* LE (Z and S: get_ZF()) */
+		}
+		return cond ^ (c & 1);
+	}
+	if ((c >> 1) == 1 && cpu->cc.op == CC_ADD && (cpu->cc.mask & CF))   /* B after ADD */
+		return (cpu->cc.dst < cpu->cc.src2) ^ (c & 1);
+#endif
 	return fast_cond_slow(cpu, c);
 }
 

@@ -1171,7 +1171,8 @@ fi
 # INC and DEC after each kind of result and every condition after it, and
 # QW_INCL's CF after AND, OR and XOR set, not cleared (incl); QW_EA16T's
 # [BP+d] with DS for its default segment (ea16ss, which only mode z's INC
-# and DEC of [BP+d8] catch).
+# and DEC of [BP+d8] catch); QW_COND2's parity after AND, OR and XOR
+# inverted (cond2p).
 echo
 FCSEEDS=${FCSEEDS:-40}
 fcbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_fast_cpu-name
@@ -1224,7 +1225,8 @@ for m in fold:'s/!NOFOLD_IS() \&\& \\/1 \&\& \\/;s/if (_t \&\& !NOFOLD_IS()) { \
          j16eip:'s/^\treturn eip \& 0xffff;$/\treturn eip;/' \
          j16end:'s/if (unlikely(cpu->code16) \&\& eip >= FAST_J16_END)/if (0)/;s/^#define FAST_J16_SLOW(e) (unlikely(code16) \&\& (e) >= FAST_J16_END)$/#define FAST_J16_SLOW(e) 0/' \
          incl:'s/else if (_op >= CC_AND) cpu->flags \&= ~CF;/else if (_op >= CC_AND) cpu->flags |= CF;/' \
-         ea16ss:'s/^\t3 | 6 << 3 | 0x40, 3 | 7 << 3 | 0x40, 5 | 6 << 3 | 0xc0, 5 | 7 << 3 | 0xc0, 6, 7, 5 | 0x80, 3 };$/\t3 | 6 << 3 | 0x40, 3 | 7 << 3 | 0x40, 5 | 6 << 3 | 0xc0, 5 | 7 << 3 | 0xc0, 6, 7, 5, 3 };/'; do
+         ea16ss:'s/^\t3 | 6 << 3 | 0x40, 3 | 7 << 3 | 0x40, 5 | 6 << 3 | 0xc0, 5 | 7 << 3 | 0xc0, 6, 7, 5 | 0x80, 3 };$/\t3 | 6 << 3 | 0x40, 3 | 7 << 3 | 0x40, 5 | 6 << 3 | 0xc0, 5 | 7 << 3 | 0xc0, 6, 7, 5, 3 };/' \
+         cond2p:'s/case 5: cond = !__builtin_parity(d \& 0xff); break;/case 5: cond = __builtin_parity(d \& 0xff); break;/'; do
     mname=${m%%:*}
     mfile=i386_fast.h       # (v5.1: lpgno's fault is in i386.c)
     [ "$mname" = lpgno ] && mfile=i386.c

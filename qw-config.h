@@ -31,3 +31,4 @@
 #define QW_J16 1
 #define QW_INCL 1
 #define QW_EA16T 1
+#define QW_COND2 1
