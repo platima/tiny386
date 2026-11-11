@@ -444,10 +444,13 @@ void profile_write(const char *why)
 	/* v5.3: and the slot's other settings (sdmmc_setup_wrap.c) */
 	console_printf(CON_INFO, "Profile: SD commands that kept the slot's width, sampling and "
 		       "delays %" PRIu32 ", that set them %" PRIu32 ".", sd_setup_kept, sd_setup_set);
-	/* v5.3: the waits after writes (sdmmc_wait_wrap.c) */
+	/* v5.3: the waits after writes (sdmmc_wait_wrap.c): with D0 working
+	   the third figure is about the first and the fourth is small; D0
+	   stuck free gives 0 and about the first; stuck busy 0 and 0 */
 	console_printf(CON_INFO, "Profile: SD waits after writes %" PRIu32 ", with %" PRIu32 " status "
-		       "commands, %" PRIu32 " of them as D0 went free (sd_wait_fix = %d).",
-		       sd_wait_waits, sd_wait_polls, sd_wait_early, sd_wait_fix);
+		       "commands: %" PRIu32 " sent as D0 went from busy to free, %" PRIu32 " at once "
+		       "with D0 already free (sd_wait_fix = %d).", sd_wait_waits, sd_wait_polls,
+		       sd_wait_early, sd_wait_free, sd_wait_fix);
 	/* v5.3: and the reads (sdmmc_read_wrap.c) */
 	console_printf(CON_INFO, "Profile: SD reads with no status command after them %" PRIu32 ".",
 		       sd_read_direct);

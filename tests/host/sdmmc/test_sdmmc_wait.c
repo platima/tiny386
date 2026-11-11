@@ -17,7 +17,11 @@
  * - with D0 working, done within 60 us of the card's end of programming,
  *   for the emulator's task at any length and for any other task up to
  *   ESP-IDF's busy-wait (12.7 ms), past which they sleep a tick as before;
- * - with D0 stuck busy or stuck free, ESP-IDF's schedule (plus one CMD13).
+ * - with D0 stuck busy or stuck free, ESP-IDF's schedule (plus one CMD13);
+ * - the counts that profile.c gives, which must tell the three apart: with
+ *   D0 stuck free, no CMD13 counted as sent as D0 went from busy to free
+ *   and one at once in every wait; stuck busy, neither; working, the end of
+ *   every wait that watched D0 to the end counted as one of the two.
  *
  *   test_sdmmc_wait
  *
@@ -107,6 +111,8 @@ int main(void)
 	unsigned nprogs = sizeof(progs) / sizeof(progs[0]);
 	unsigned cases = 0, sooner = 0;
 	int64_t late_a[2] = { 0 }, late_b[2] = { 0 };
+	/* the wrap's counts over all the cases, for each kind of D0 */
+	uint32_t c_waits[3] = { 0 }, c_polls[3] = { 0 }, c_early[3] = { 0 }, c_free[3] = { 0 };
 
 	printf("== writes of 1 and 64 sectors, the card programming for a while after\n");
 	printf("  programming us | ESP-IDF's wait ends, us late, CMD13s | the wrap's (emulator's task)\n");
@@ -116,9 +122,28 @@ int main(void)
 				for (unsigned p = 0; p < nprogs; p++) {
 					uint32_t pu = progs[p];
 					struct res a = one_write(0, pu, d0, spin, n, 0);
+					uint32_t w0 = sd_wait_waits, p0 = sd_wait_polls;
+					uint32_t e0 = sd_wait_early, f0 = sd_wait_free;
 					struct res b = one_write(1, pu, d0, spin, n, 0);
+					uint32_t dw = sd_wait_waits - w0, de = sd_wait_early - e0;
+					uint32_t df = sd_wait_free - f0;
+					c_waits[d0] += dw;
+					c_polls[d0] += sd_wait_polls - p0;
+					c_early[d0] += de;
+					c_free[d0] += df;
 					cases++;
 					const char *w = d0s[d0];
+					/* what the board's profile line can tell */
+					if (d0 == D0_STUCK_FREE)
+						CHECK(de == 0 && df == dw, "%s, %u us: waits %u, sent as D0 "
+						      "went free %u, at once %u", w, pu, dw, de, df);
+					else if (d0 == D0_STUCK_BUSY)
+						CHECK(de == 0 && df == 0, "%s, %u us: sent as D0 went free "
+						      "%u, at once %u", w, pu, de, df);
+					else if (b.err == ESP_OK && (spin || pu < 12000))
+						CHECK(de + df == dw, "%s, %s task, %u sectors, %u us: waits %u, "
+						      "sent as D0 went free %u, at once %u", w, spin ?
+						      "emulator's" : "another", n, pu, dw, de, df);
 					CHECK(a.err == b.err, "%s, %s task, %u sectors, %u us: ESP-IDF %#x, "
 					      "the wrap %#x", w, spin ? "emulator's" : "another", n, pu,
 					      a.err, b.err);
@@ -161,6 +186,11 @@ int main(void)
 	       "%lld us and the wrap %lld us for 13 to 40 ms\n", cases, sooner,
 	       (long long) late_a[0] / 1000, (long long) late_b[0] / 1000,
 	       (long long) late_a[1] / 1000, (long long) late_b[1] / 1000);
+	for (int d0 = D0_WORKS; d0 <= D0_STUCK_FREE; d0++)
+		printf("%s, the profile line's figures over these cases: waits %u, with %u status "
+		       "commands: %u sent as D0 went from busy to free, %u at once\n", d0s[d0],
+		       (unsigned) c_waits[d0], (unsigned) c_polls[d0], (unsigned) c_early[d0],
+		       (unsigned) c_free[d0]);
 
 	printf("== a CMD13 that fails in the wait\n");
 	for (unsigned k = 2; k <= 5; k++) {
@@ -177,12 +207,20 @@ int main(void)
 	      "stuck busy: both give its error (%#x, %#x)", a.err, b.err);
 
 	printf("== the counts\n");
-	uint32_t w0 = sd_wait_waits, e0 = sd_wait_early, p0 = sd_wait_polls;
-	b = one_write(1, 1600, D0_WORKS, true, 64, 0);
-	CHECK(sd_wait_waits == w0 + 1 && sd_wait_early == e0 + 1 && sd_wait_polls - p0 == b.cmd13 - 1,
-	      "one wait, its CMD13s counted, the last sent as D0 went free (%u, %u, %u)",
-	      (unsigned) (sd_wait_waits - w0), (unsigned) (sd_wait_polls - p0),
-	      (unsigned) (sd_wait_early - e0));
+	/* one wait of 1.6 ms with each kind of D0: its CMD13s, the last sent
+	   as D0 went free; the first sent at once; neither */
+	static const unsigned want_early[3] = { 1, 0, 0 }, want_free[3] = { 0, 0, 1 };
+	uint32_t w0;
+	for (int d0 = D0_WORKS; d0 <= D0_STUCK_FREE; d0++) {
+		w0 = sd_wait_waits;
+		uint32_t e0 = sd_wait_early, f0 = sd_wait_free, p0 = sd_wait_polls;
+		b = one_write(1, 1600, d0, true, 64, 0);
+		CHECK(sd_wait_waits == w0 + 1 && sd_wait_polls - p0 == b.cmd13 - 1 &&
+		      sd_wait_early - e0 == want_early[d0] && sd_wait_free - f0 == want_free[d0],
+		      "%s: one wait (%u), its CMD13s counted (%u of %u), sent as D0 went free %u, at "
+		      "once %u", d0s[d0], (unsigned) (sd_wait_waits - w0), (unsigned) (sd_wait_polls - p0),
+		      b.cmd13, (unsigned) (sd_wait_early - e0), (unsigned) (sd_wait_free - f0));
+	}
 	w0 = sd_wait_waits;
 	b = one_write(1, 0, D0_WORKS, true, 1, 0);
 	CHECK(sd_wait_waits == w0, "a card done before its first CMD13: no wait");

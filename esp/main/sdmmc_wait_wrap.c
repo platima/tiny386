@@ -25,6 +25,12 @@
  * that never moves, stuck either way, leaves ESP-IDF's schedule as it was,
  * with one CMD13 more at most.
  *
+ * The counts tell the three apart on the board (profile.c's line): a CMD13
+ * sent as D0 went from busy to free (sd_wait_early) only comes from a D0
+ * that works, while one sent at once because D0 was free when the wait
+ * began (sd_wait_free) is all a D0 stuck free gives, one in every wait.
+ * A D0 stuck busy gives neither.
+ *
  * Past ESP-IDF's busy-wait (about 12.7 ms), where it sleeps a tick at a
  * time, the emulator's own task (sd_wait_spin_task, set by esp_main.c)
  * goes on watching D0 a tick at a time instead: it never yields core 1
@@ -56,23 +62,27 @@
 
 int sd_wait_fix = 1;
 void *sd_wait_spin_task;
-uint32_t sd_wait_waits, sd_wait_polls, sd_wait_early;
+uint32_t sd_wait_waits, sd_wait_polls, sd_wait_early, sd_wait_free;
 
 esp_err_t __real_sdmmc_wait_for_idle(sdmmc_card_t *card, uint32_t status);
 esp_err_t __wrap_sdmmc_wait_for_idle(sdmmc_card_t *card, uint32_t status);
+
+/* what D0 has shown since the wait began or since the last CMD13: nothing
+   yet that calls for a CMD13 at once, free when the wait began, busy */
+enum { D0_NOT_YET, D0_FREE_AT_START, D0_SEEN_BUSY };
 
 static inline bool d0_busy(void)
 {
 	return sdmmc_ll_is_card_data_busy(SDMMC_LL_GET_HW(0));
 }
 
-/* until the time due: true as soon as D0 is free with *armed (D0 was free
-   when the wait began, or has been seen busy since) */
-static inline bool wait_d0(int64_t due, bool *armed)
+/* until the time due: true as soon as D0 is free with *armed set (D0 was
+   free when the wait began, or has been seen busy since) */
+static inline bool wait_d0(int64_t due, uint8_t *armed)
 {
 	for (;;) {
 		if (d0_busy())
-			*armed = true;
+			*armed = D0_SEEN_BUSY;
 		else if (*armed)
 			return true;
 		if (esp_timer_get_time() >= due)
@@ -83,12 +93,12 @@ static inline bool wait_d0(int64_t due, bool *armed)
 /* the same until the tick count moves, when vTaskDelay(1) would end: past
    ESP-IDF's busy-wait, for the task that never yields (and at most two
    ticks by esp_timer, should the tick count not move) */
-static inline bool wait_d0_tick(int64_t t1, uint32_t tick_us, bool *armed)
+static inline bool wait_d0_tick(int64_t t1, uint32_t tick_us, uint8_t *armed)
 {
 	TickType_t t = xTaskGetTickCount();
 	for (;;) {
 		if (d0_busy())
-			*armed = true;
+			*armed = D0_SEEN_BUSY;
 		else if (*armed)
 			return true;
 		if (xTaskGetTickCount() != t || esp_timer_get_time() - t1 >= 2 * (int64_t) tick_us)
@@ -114,7 +124,7 @@ esp_err_t __wrap_sdmmc_wait_for_idle(sdmmc_card_t *card, uint32_t status)
 	bool spin = sd_wait_spin_task && xTaskGetCurrentTaskHandle() == sd_wait_spin_task;
 	uint32_t period = SDMMC_READY_POLL_PERIOD_START_US;
 	int64_t due = 0;                /* when ESP-IDF's next CMD13 would go */
-	bool armed = !d0_busy();
+	uint8_t armed = d0_busy() ? D0_NOT_YET : D0_FREE_AT_START;
 	int64_t t0 = esp_timer_get_time();
 	do {
 		/* ESP-IDF's loop: its limit, then its delay, then CMD13; the
@@ -135,12 +145,15 @@ esp_err_t __wrap_sdmmc_wait_for_idle(sdmmc_card_t *card, uint32_t status)
 		else
 			vTaskDelay(1);
 		if (early) {
-			sd_wait_early++;
+			if (armed == D0_SEEN_BUSY)
+				sd_wait_early++;
+			else
+				sd_wait_free++;
 		} else {
 			period = MIN(delay * 2, tick_us);
 			due = 0;
 		}
-		armed = false;
+		armed = D0_NOT_YET;
 		sd_wait_polls++;
 		esp_err_t err = sdmmc_send_cmd_send_status(card, &status);
 		if (err != ESP_OK)

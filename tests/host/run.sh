@@ -683,7 +683,8 @@ planted_setup noforget '/^void sd_setup_forget/,/^}/s/\ts_era++;//' \
 # writes of 1 and 64 sectors, the card programming for 0 to 6 s, with D0
 # working, stuck busy and stuck free, for the emulator's task and another:
 # the same results, never later, at most one CMD13 more, and with D0
-# working done within 60 us of the card.  Four planted faults.
+# working done within 60 us of the card; and counts that tell a D0 stuck
+# free from one that works.  Six planted faults.
 echo
 IDF=${IDF_PATH:-$HOME/esp/esp-idf}
 IC=$IDF/components
@@ -703,7 +704,7 @@ if [ -f "$IC/sdmmc/sdmmc_cmd.c" ] && [ -f "$IC/sdmmc/sdmmc_common.c" ]; then
     $CC $CFLAGS -Werror -ffunction-sections $SI -fsyntax-only "$TREE/esp/main/sdmmc_wait_wrap.c" || exit 1
     wait_test tree "$TREE/esp/main/sdmmc_wait_wrap.c"
     st=$?
-    grep -E "FAIL|cases|1600 \||test_sdmmc_wait" "$OUT/sdmmc_wait-tree.log" | sed 's/^/    | /'
+    grep -E "FAIL|cases|1600 \||profile line|test_sdmmc_wait" "$OUT/sdmmc_wait-tree.log" | sed 's/^/    | /'
     result $st "sdmmc_wait_wrap.c with ESP-IDF's own sdmmc_cmd.c: after a write, done as the card lets go of D0, never later than ESP-IDF's wait, the same results"
     planted_wait() {
         sed -e "$2" "$TREE/esp/main/sdmmc_wait_wrap.c" > "$OUT/sdmmc_wait_wrap-$1.c"
@@ -715,12 +716,16 @@ if [ -f "$IC/sdmmc/sdmmc_cmd.c" ] && [ -f "$IC/sdmmc/sdmmc_common.c" ]; then
     }
     planted_wait noarm 's/else if (\*armed)/else/' \
         "a CMD13 whenever D0 is free, not only as it goes free"
-    planted_wait d0ready 's/^\t\t\tsd_wait_early++;$/\t\t\treturn ESP_OK;/' \
+    planted_wait d0ready 's/^\t\tif (early) {$/\t\tif (early) { return ESP_OK;/' \
         "the card taken as ready on D0 alone"
     planted_wait nolimit 's/return ESP_ERR_TIMEOUT;/(void) 0;/' \
         "no 5 s limit"
-    planted_wait late 's/^\t\t\tsd_wait_early++;$/\t\t\tsd_wait_early++; due = 0;/' \
+    planted_wait late 's/^\t\tif (early) {$/\t\tif (early) { due = 0;/' \
         "after a CMD13 at D0's release, the next on a schedule of its own"
+    planted_wait freecount 's/if (armed == D0_SEEN_BUSY)$/if (armed)/' \
+        "a CMD13 sent at once with D0 free at the start counted as one at D0's release"
+    planted_wait nostartfree 's/? D0_NOT_YET : D0_FREE_AT_START;/? D0_NOT_YET : D0_NOT_YET;/' \
+        "no CMD13 at once when D0 is free as the wait begins"
 
     # v5.3: esp/main/sdmmc_read_wrap.c, no CMD13 after a read, against
     # ESP-IDF's own sdmmc_read_sectors(): every read made through both, from
