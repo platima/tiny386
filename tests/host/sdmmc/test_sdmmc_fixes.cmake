@@ -7,12 +7,13 @@
 #   OUT/cmd25       the same with 007945125db7 applied
 #   OUT/both        the same with both
 #
-# Each must come out as it is; and so must copies of the fixed files
-# altered here in ways that leave a fault in, or the fix only in a comment,
-# some with the live old line spelled another way, which must count as not
-# fixed, and two with only white space changed, which must still count as
-# fixed.  Then the ESP-IDF at IDF, for the record, checked when its files
-# are the same as one of the copies.
+# Each must come out as it is, also with its two files named one by one as
+# esp/main/CMakeLists.txt names them; and so must copies of the fixed
+# files altered here in ways that leave a fault in, or the fix only in a
+# comment, some with the live old line spelled another way, which must
+# count as not fixed, and two with only white space changed, which must
+# still count as fixed.  Then the ESP-IDF at IDF, for the record, checked
+# when its files are the same as one of the copies.
 #
 #   cmake -DTREE=... -DOUT=... -DIDF=... -P test_sdmmc_fixes.cmake
 #
@@ -29,6 +30,21 @@ set(cases 0)
 # one ESP-IDF: what sdmmc_fixes.cmake makes of it against what it should
 function(check name dir want_sync want_cmd25)
     tiny386_sdmmc_fixes("${dir}" sync cmd25)
+    math(EXPR n "${cases} + 1")
+    set(cases ${n} PARENT_SCOPE)
+    if(sync STREQUAL want_sync AND cmd25 STREQUAL want_cmd25)
+        message("  ok: ${name}: cache sync fix ${sync}, CMD25 fix ${cmd25}")
+    else()
+        message("  FAIL: ${name}: cache sync fix ${sync} (want ${want_sync}), "
+            "CMD25 fix ${cmd25} (want ${want_cmd25})")
+        math(EXPR n "${fails} + 1")
+        set(fails ${n} PARENT_SCOPE)
+    endif()
+endfunction()
+
+# the same for the two files named, as esp/main/CMakeLists.txt asks it
+function(check_in name trans_c cmd_c want_sync want_cmd25)
+    tiny386_sdmmc_fixes_in("${trans_c}" "${cmd_c}" sync cmd25)
     math(EXPR n "${cases} + 1")
     set(cases ${n} PARENT_SCOPE)
     if(sync STREQUAL want_sync AND cmd25 STREQUAL want_cmd25)
@@ -69,6 +85,9 @@ check("188e3e55bb with e00861c3f497" "${OUT}/sync" TRUE FALSE)
 check("188e3e55bb with 007945125db7" "${OUT}/cmd25" FALSE TRUE)
 check("188e3e55bb with both" "${OUT}/both" TRUE TRUE)
 check("no ESP-IDF there" "${OUT}/nothing-here" FALSE FALSE)
+check_in("the two files named, from two copies" "${OUT}/both/${TRANS}" "${OUT}/188e3e55bb/${CMD}" TRUE FALSE)
+check_in("the two files named, from two copies the other way" "${OUT}/188e3e55bb/${TRANS}" "${OUT}/both/${CMD}" FALSE TRUE)
+check_in("no files named (neither component in the build)" "" "" FALSE FALSE)
 
 file(READ "${OUT}/188e3e55bb/${TRANS}" old_trans)
 file(READ "${OUT}/188e3e55bb/${CMD}" old_cmd)

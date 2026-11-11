@@ -177,14 +177,26 @@ if(IDF_TARGET STREQUAL "esp32s31")
     # sdmmc_timeout_wrap.c's timeout part only for an ESP-IDF without
     # e00861c3f497, its CMD25 part only for one without 007945125db7, each
     # read from that ESP-IDF's own source (sdmmc_fixes.cmake); a change in
-    # either file runs this again
+    # either file runs this again.  The files are those of the components
+    # this build compiles, which a project's own copy of either would move
+    # away from IDF_PATH; a component not in the build counts as unfixed.
     include(${CMAKE_CURRENT_LIST_DIR}/sdmmc_fixes.cmake)
-    idf_build_get_property(_tiny386_idf IDF_PATH)
-    tiny386_sdmmc_fixes("${_tiny386_idf}" _tiny386_sync_fixed _tiny386_cmd25_fixed)
-    foreach(_f "esp_driver_sdmmc/src/sd_trans_sdmmc.c" "sdmmc/sdmmc_cmd.c")
-        if(EXISTS "${_tiny386_idf}/components/${_f}")
-            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-                "${_tiny386_idf}/components/${_f}")
+    idf_build_get_property(_tiny386_comps BUILD_COMPONENTS)
+    set(_tiny386_trans_c "")
+    set(_tiny386_cmd_c "")
+    if("esp_driver_sdmmc" IN_LIST _tiny386_comps)
+        idf_component_get_property(_tiny386_dir esp_driver_sdmmc COMPONENT_DIR)
+        set(_tiny386_trans_c "${_tiny386_dir}/src/sd_trans_sdmmc.c")
+    endif()
+    if("sdmmc" IN_LIST _tiny386_comps)
+        idf_component_get_property(_tiny386_dir sdmmc COMPONENT_DIR)
+        set(_tiny386_cmd_c "${_tiny386_dir}/sdmmc_cmd.c")
+    endif()
+    tiny386_sdmmc_fixes_in("${_tiny386_trans_c}" "${_tiny386_cmd_c}"
+        _tiny386_sync_fixed _tiny386_cmd25_fixed)
+    foreach(_f "${_tiny386_trans_c}" "${_tiny386_cmd_c}")
+        if(EXISTS "${_f}")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_f}")
         endif()
     endforeach()
     if(_tiny386_sync_fixed)

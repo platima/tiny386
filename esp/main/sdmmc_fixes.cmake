@@ -26,8 +26,11 @@
 #
 # tiny386_sdmmc_fixes(IDF_PATH SYNC_FIXED CMD25_FIXED) sets SYNC_FIXED
 # (e00861c3f497) and CMD25_FIXED (007945125db7) to TRUE or FALSE in the
-# caller's scope.  esp/main/CMakeLists.txt calls it, and so does
-# tests/host/sdmmc/test_sdmmc_fixes.cmake (cmake -P).
+# caller's scope, from the two files under IDF_PATH/components, and
+# tiny386_sdmmc_fixes_in(TRANS_C CMD_C SYNC_FIXED CMD25_FIXED) does the
+# same from the two files named.  esp/main/CMakeLists.txt calls the second
+# with the files of the components the build uses, and
+# tests/host/sdmmc/test_sdmmc_fixes.cmake (cmake -P) calls the first.
 
 # TEXT with all its white space taken out
 function(_tiny386_bare text out)
@@ -81,12 +84,12 @@ function(_tiny386_has_fix text call fixed name uses out)
     endif()
 endfunction()
 
-function(tiny386_sdmmc_fixes idf_path sync_out cmd25_out)
+function(tiny386_sdmmc_fixes_in trans_c cmd_c sync_out cmd25_out)
     # e00861c3f497: the cache sync after the transfer keeps its result
     # apart, and takes the place of the transfer's only when that was good;
     # the call is the sync of the data after the transfer, whatever the
     # buffer is written as
-    _tiny386_bare_file("${idf_path}/components/esp_driver_sdmmc/src/sd_trans_sdmmc.c" text)
+    _tiny386_bare_file("${trans_c}" text)
     _tiny386_has_fix("${text}"
         "cache_sync_len, ESP_CACHE_MSYNC_FLAG_DIR_M2C"
         "esp_err_t sync_ret = esp_cache_msync((void *)cmdinfo->data, cache_sync_len, ESP_CACHE_MSYNC_FLAG_DIR_M2C); if (ret == ESP_OK) { ret = sync_ret; } else if (sync_ret != ESP_OK) { ESP_LOGE(TAG, \"cache sync failed: 0x%x\", sync_ret); } if (ret != ESP_OK) { goto out; }"
@@ -94,11 +97,18 @@ function(tiny386_sdmmc_fixes idf_path sync_out cmd25_out)
     # 007945125db7: a failed CMD25's count of blocks written (ACMD22) keeps
     # its result apart, so sdmmc_write_sectors_dma() returns the write's;
     # the call is the count, whatever it is given to fill in
-    _tiny386_bare_file("${idf_path}/components/sdmmc/sdmmc_cmd.c" text)
+    _tiny386_bare_file("${cmd_c}" text)
     _tiny386_has_fix("${text}"
         "sdmmc_send_cmd_num_of_written_blocks(card,"
         "size_t successfully_written_blocks = 0; esp_err_t err_acmd22 = sdmmc_send_cmd_num_of_written_blocks(card, &successfully_written_blocks); if (err_acmd22 == ESP_OK) { ESP_LOGD(TAG, \"%s: successfully wrote %zu blocks out of %zu\", __func__, successfully_written_blocks, block_count); } else { ESP_LOGE(TAG, \"%s: sdmmc_send_cmd_num_of_written_blocks returned 0x%x\", __func__, err_acmd22); }"
         "err_acmd22" 3 cmd25)
+    set(${sync_out} ${sync} PARENT_SCOPE)
+    set(${cmd25_out} ${cmd25} PARENT_SCOPE)
+endfunction()
+
+function(tiny386_sdmmc_fixes idf_path sync_out cmd25_out)
+    tiny386_sdmmc_fixes_in("${idf_path}/components/esp_driver_sdmmc/src/sd_trans_sdmmc.c"
+        "${idf_path}/components/sdmmc/sdmmc_cmd.c" sync cmd25)
     set(${sync_out} ${sync} PARENT_SCOPE)
     set(${cmd25_out} ${cmd25} PARENT_SCOPE)
 endfunction()
