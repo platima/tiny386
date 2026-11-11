@@ -104,6 +104,9 @@
 #ifndef QW_COND2
 #define QW_COND2 0      /* fast_cond() in line for S, the logical operations' results, B after ADD */
 #endif
+#ifndef QW_REPMIS
+#define QW_REPMIS 0     /* REP MOVS and STOS with misaligned elements by page pieces (i386.c and fast_exec()) */
+#endif
 #if QW_GRPTAB && !(QW_OPS0F && QW_GRP5)
 #error "QW_GRPTAB needs QW_OPS0F and QW_GRP5"
 #endif

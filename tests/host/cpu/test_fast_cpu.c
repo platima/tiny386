@@ -3889,6 +3889,48 @@ static void setup_mode(int mode, u8 *mem, CPUI386 *cpu)
 		tlb_clear(cpu);
 	}
 }
+/* v5.3: with TFC_DUMP=FILE, a hash of each machine's state after every step, and of its memory at
+   each scenario's end, a line each, so that two builds can be compared step by step (run.sh 24d:
+   tiny386's own string loops, which both machines run, against their earlier form) */
+static FILE *tfc_dump;
+static uint64_t tfc_h(uint64_t h, const void *p, size_t n)
+{
+	const unsigned char *c = p;
+	for (size_t i = 0; i < n; i++)
+		h = (h ^ c[i]) * 0x100000001b3ull;
+	return h;
+}
+static uint64_t tfc_state(CPUI386 *c)
+{
+	uint64_t h = 0xcbf29ce484222325ull;
+	h = tfc_h(h, c->gprx, sizeof(c->gprx));
+	h = tfc_h(h, &c->ip, sizeof(c->ip));
+	h = tfc_h(h, &c->next_ip, sizeof(c->next_ip));
+	h = tfc_h(h, &c->flags, sizeof(c->flags));
+	h = tfc_h(h, &c->cc.op, sizeof(c->cc.op));
+	h = tfc_h(h, &c->cc.mask, sizeof(c->cc.mask));
+	if (c->cc.mask) {   /* (as compare(): the operands only while they mean anything) */
+		h = tfc_h(h, &c->cc.dst, sizeof(c->cc.dst));
+		h = tfc_h(h, &c->cc.src1, sizeof(c->cc.src1));
+		h = tfc_h(h, &c->cc.src2, sizeof(c->cc.src2));
+		h = tfc_h(h, &c->cc.dst2, sizeof(c->cc.dst2));
+	}
+	h = tfc_h(h, &c->cycle, sizeof(c->cycle));
+	h = tfc_h(h, &c->cr2, sizeof(c->cr2));
+	h = tfc_h(h, &c->cpl, sizeof(c->cpl));
+	for (int i = 0; i < 6; i++) {
+		h = tfc_h(h, &c->seg[i].sel, sizeof(c->seg[i].sel));
+		h = tfc_h(h, &c->seg[i].base, sizeof(c->seg[i].base));
+		h = tfc_h(h, &c->seg[i].limit, sizeof(c->seg[i].limit));
+		h = tfc_h(h, &c->seg[i].flags, sizeof(c->seg[i].flags));
+	}
+	for (int i = 0; i < tlb_size; i++) {
+		h = tfc_h(h, &c->tlb.tab[i].lpgno, sizeof(c->tlb.tab[i].lpgno));
+		if (c->tlb.tab[i].lpgno != (uword) -1)
+			h = tfc_h(h, &c->tlb.tab[i].xaddr, sizeof(c->tlb.tab[i].xaddr));
+	}
+	return h;
+}
 static int run(int mode, int seed)
 {
 	static const char *const names[] = { "real mode", "protected mode", "level 3", "V86 mode",
@@ -4175,6 +4217,9 @@ static int run(int mode, int seed)
 			const char *w = check_fast_tlb();
 			if (w) { printf("  FAIL %s seed %d step %ld: fast TLB invariant: %s\n", names[mode], seed, step, w); fails++; bad = 1; break; }
 		}
+		if (tfc_dump)
+			fprintf(tfc_dump, "%d %d %ld %016llx %016llx\n", mode, seed, step,
+				(unsigned long long) tfc_state(a), (unsigned long long) tfc_state(b));
 		if (compare(names[mode], seed, step)) {
 			bad = 1;
 			snprintf(why, sizeof(why), "a difference");
@@ -4259,6 +4304,9 @@ static int run(int mode, int seed)
 		else
 			bad = o_check(names[mode], seed);
 	}
+	if (tfc_dump)
+		fprintf(tfc_dump, "%d %d end %016llx %016llx\n", mode, seed,
+			(unsigned long long) tfc_h(0, M[0].mem, MEM), (unsigned long long) tfc_h(0, M[1].mem, MEM));
 	bad |= rdbad;
 	total_insns += a->cycle;
 	total_steps += step;
@@ -4302,6 +4350,10 @@ int main(int argc, char **argv)
 		;
 	int bad = 0, nsc = 0;
 	setvbuf(stdout, NULL, _IOLBF, 0);
+	if (getenv("TFC_DUMP") && !(tfc_dump = fopen(getenv("TFC_DUMP"), "w"))) {
+		perror(getenv("TFC_DUMP"));
+		return 1;
+	}
 	signal(SIGSEGV, on_crash);
 	signal(SIGBUS, on_crash);
 	for (int s = first; s < first + seeds; s++)

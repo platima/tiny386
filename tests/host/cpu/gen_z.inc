@@ -26,7 +26,14 @@
    values (0, 1, 7Fh to 81h, 7FFFh to 8001h, FFFFh), at times with 66h;
    none, one or two INC or DEC of a register or of a word or dword at
    [BP+d8], at times with 66h; then a Jcc short over a NOP, of each of the
-   sixteen conditions in turn, and PUSHF; POP DX. */
+   sixteen conditions in turn, and PUSHF; POP DX.
+   Then REP MOVS and REP STOS of bytes, words and dwords (QW_REPMIS), ES
+   DS's segment, SI and DI from a few bytes either side of DS's 1000h and
+   B000h (the pages at 21000h and 2B000h, which V86 mode and 16-bit
+   protected mode map only at their first fault, so that some runs fault
+   in their second page) and of 7FFFh, at odd offsets or not, CX 1 to 40,
+   forwards and backwards (STD; CLD after); at times SI or DI near FFFFh,
+   where a 16-bit run wraps. */
 #define Z_BASE 0xff20u          /* CS's base */
 #define Z_SEG 0x0ff2            /* ... as a real-mode and virtual-8086 segment */
 #define Z_SEL 0x0fe8            /* ... as a selector of GDT16 */
@@ -214,5 +221,22 @@ static void gen_z(void)
 	}
 	for (int i = 0; i < 128; i++)
 		z_flags(i & 15);
+	e8(0x1e); e8(0x07);                                     /* PUSH DS; POP ES */
+	for (int i = 0; i < 64; i++) {
+		static const u16 at[] = { 0x1000, 0xb000, 0x8000, 0x1000, 0xb000 };
+		int down = chance(3);
+		u16 si = at[rnd(5)] - 8 + rnd(16), di = at[rnd(5)] - 8 + rnd(16);
+		if (chance(10)) di = 0xfff8 + rnd(8);
+		if (chance(10)) si = 0xfff8 + rnd(8);
+		e8(0xbe); e16(si);                              /* MOV SI */
+		e8(0xbf); e16(di);                              /* MOV DI */
+		e8(0xb9); e16(1 + rnd(40));                     /* MOV CX */
+		if (down) e8(0xfd);                             /* STD */
+		int k = rnd(6);
+		if (k == 2 || k == 5) e8(0x66);                 /* dwords */
+		e8(0xf3);                                       /* REP */
+		e8(k < 3 ? (k == 0 ? 0xa4 : 0xa5) : (k == 3 ? 0xaa : 0xab));   /* MOVS or STOS */
+		if (down) e8(0xfc);                             /* CLD */
+	}
 	e8(0xfa);       /* CLI */
 }

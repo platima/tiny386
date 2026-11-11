@@ -3404,6 +3404,89 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 	(ABIT == 16 && dir > 0 && \
 	 (lreg16(r1) > 0x10000 - BIT / 8 || lreg16(r2) > 0x10000 - BIT / 8))
 
+#if QW_REPMIS
+/* v5.3: REP MOVS and REP STOS with a misaligned end, by pieces.  These were done an element at a
+   time, ldsistdi and stdi translating both ends of each again.  Now the loop's top translates them
+   as before (the source first), and if the first element lies in one page at each end, the
+   elements wholly in both pages from there are loaded and stored as ldsistdi and stdi do it, but
+   without translating each again: repmis_movs() and repmis_stos(), out of line (in each of the
+   eight copies of the macros, their loops took about 1.7 KB).  An element across a page's end
+   goes alone by ldsistdi or stdi, both ends translated again, as before; so a fault in the next
+   page comes at the same element, in the same order, with the same registers.  They return the
+   elements done; s and d are left past them.  si and di: SI and DI with 16-bit addresses (a16),
+   so that a run stops where either would wrap, as wrap16_cap() stops it. */
+static uword repmis_count(uword a1, uword a2, int n, int dir, uword cx, int a16, uword si, uword di)
+{
+	uword count = cx, c;
+	c = dir > 0 ? (4096 - (a1 & 4095)) / n : 1 + (a1 & 4095) / n;
+	if (c < count) count = c;
+	c = dir > 0 ? (4096 - (a2 & 4095)) / n : 1 + (a2 & 4095) / n;
+	if (c < count) count = c;
+	if (a16) {
+		c = dir > 0 ? (0x10000 - si) / n : si / n + 1;
+		if (c < count) count = c;
+		c = dir > 0 ? (0x10000 - di) / n : di / n + 1;
+		if (c < count) count = c;
+	}
+	return count;
+}
+static noinline uword IRAM_ATTR_EXEC1_HELPER repmis_movs(CPUI386 *cpu, OptAddr *s, OptAddr *d, int n, int dir,
+							  uword cx, int a16, uword si, uword di)
+{
+	uword count = repmis_count(s->addr1, d->addr1, n, dir, cx, a16, si, di);
+	for (uword i = 0; i < count; i++) {
+		if (n == 2) store16(cpu, d, load16(cpu, s));
+		else store32(cpu, d, load32(cpu, s));
+		d->addr1 += dir;
+		s->addr1 += dir;
+	}
+	return count;
+}
+static noinline uword IRAM_ATTR_EXEC1_HELPER repmis_stos(CPUI386 *cpu, OptAddr *d, int n, int dir, u32 ax,
+							  uword cx, int a16, uword di)
+{
+	uword count = repmis_count(d->addr1, d->addr1, n, dir, cx, a16, di, di);
+	for (uword i = 0; i < count; i++) {
+		if (n == 2) store16(cpu, d, ax);
+		else store32(cpu, d, ax);
+		d->addr1 += dir;
+	}
+	return count;
+}
+#define REPMIS_STOS(BIT, ABIT) \
+		if (BIT > 8 && memld.addr1 % (BIT / 8) && !wrap16_across(7, 7, BIT, ABIT)) { \
+			if (CROSSES_PAGE(&memld, BIT / 8)) { \
+				stdi(BIT, ABIT) \
+				sreg ## ABIT(1, lreg ## ABIT(1) - 1); \
+			} else { \
+				uword count = repmis_stos(cpu, &memld, BIT / 8, dir, ax, cx, ABIT == 16, \
+							  lreg ## ABIT(7)); \
+				sreg ## ABIT(7, lreg ## ABIT(7) + count * dir); \
+				sreg ## ABIT(1, cx - count); \
+			} \
+			cx = lreg ## ABIT(1); \
+			continue; \
+		}
+#define REPMIS_MOVS(BIT, ABIT) \
+		if (BIT > 8 && (memls.addr1 % (BIT / 8) || memld.addr1 % (BIT / 8)) && !wrap16_across(6, 7, BIT, ABIT)) { \
+			if (CROSSES_PAGE(&memls, BIT / 8) || CROSSES_PAGE(&memld, BIT / 8)) { \
+				ldsistdi(BIT, ABIT) \
+				sreg ## ABIT(1, lreg ## ABIT(1) - 1); \
+			} else { \
+				uword count = repmis_movs(cpu, &memls, &memld, BIT / 8, dir, cx, ABIT == 16, \
+							  lreg ## ABIT(6), lreg ## ABIT(7)); \
+				sreg ## ABIT(6, lreg ## ABIT(6) + count * dir); \
+				sreg ## ABIT(7, lreg ## ABIT(7) + count * dir); \
+				sreg ## ABIT(1, cx - count); \
+			} \
+			cx = lreg ## ABIT(1); \
+			continue; \
+		}
+#else
+#define REPMIS_STOS(BIT, ABIT)
+#define REPMIS_MOVS(BIT, ABIT)
+#endif
+
 #define xdir8 int dir = (cpu->flags & DF) ? -1 : 1;
 #define xdir16 int dir = (cpu->flags & DF) ? -2 : 2;
 #define xdir32 int dir = (cpu->flags & DF) ? -4 : 4;
@@ -3413,6 +3496,7 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 	uword cx = lreg ## ABIT(1); \
 	while (cx) { \
 		TRY(translate ## BIT(cpu, &memld, 2, SEG_ES, lreg ## ABIT(7))); \
+		REPMIS_STOS(BIT, ABIT) \
 		if (memld.addr1 % (BIT / 8) || wrap16_across(7, 7, BIT, ABIT)) { \
 			/* slow path */ \
 			while (lreg ## ABIT(1)) { \
@@ -3533,6 +3617,7 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 	while (cx) { \
 		TRY(translate ## BIT(cpu, &memls, 1, curr_seg, lreg ## ABIT(6))); \
 		TRY(translate ## BIT(cpu, &memld, 2, SEG_ES, lreg ## ABIT(7))); \
+		REPMIS_MOVS(BIT, ABIT) \
 		if (memls.addr1 % (BIT / 8) || memld.addr1 % (BIT / 8) || \
 		    wrap16_across(6, 7, BIT, ABIT)) { \
 			/* slow path */ \

@@ -1458,6 +1458,52 @@ else
     echo "    | (no 32-bit as and ld: the CMPXCHG test is skipped)"
 fi
 
+# ==== 24d. tiny386's REP MOVS and STOS by pieces against element by element (v5.3) ====
+# QW_REPMIS does misaligned REP MOVS and REP STOS in tiny386's own string
+# loops by pieces, where they went an element at a time, each element's ends
+# translated again.  Both of test_fast_cpu's machines run those loops, so it
+# cannot see a change there: here it is built from the tree and from a copy
+# with QW_REPMIS 0, each writes a hash of both machines' state after every
+# step and of their memory at each scenario's end (TFC_DUMP), and the two
+# must be the same (mode z has the misaligned REPs across page ends, some
+# into a page not yet present).  Then a fault in the pieces' count (repmis),
+# which has to make them differ.
+echo
+repmis_run() {  # name dir: OUT/repmis-name.dump from the seeds in 8 pieces
+    local name=$1 dir=$2 st=0
+    fcbuild "repmis-$name" "$dir" $PCBOARD
+    local per=$(( (FCSEEDS + 7) / 8 )) pids=""
+    for i in 0 1 2 3 4 5 6 7; do
+        local f=$((1 + i * per)) n=$per
+        [ $((f + n)) -gt $((1 + FCSEEDS)) ] && n=$((1 + FCSEEDS - f))
+        [ $n -le 0 ] && continue
+        TFC_DUMP="$OUT/repmis-$name-$i.dump" "$OUT/test_fast_cpu-repmis-$name" $n $f > "$OUT/repmis-$name-$i.log" 2>&1 &
+        pids="$pids $!"
+    done
+    for p in $pids; do wait $p || st=1; done
+    cat "$OUT"/repmis-$name-[0-7].dump > "$OUT/repmis-$name.dump"
+    rm -f "$OUT"/repmis-$name-[0-7].dump
+    return $st
+}
+for v in off bad; do
+    mkdir -p "$OUT/repmis-$v"
+    cp "$TREE/i386.c" "$TREE/i386.h" "$TREE/i386_fast.h" "$TREE/qw.h" "$TREE/qw-config.h" "$OUT/repmis-$v/"
+done
+sed -i 's/^#define QW_REPMIS 1$/#define QW_REPMIS 0/' "$OUT/repmis-off/qw-config.h"
+sed -i 's/^\tc = dir > 0 ? (4096 - (a1 \& 4095)) \/ n : 1 + (a1 \& 4095) \/ n;$/\tc = dir > 0 ? (4096 - (a1 \& 4095)) \/ n + 1 : 1 + (a1 \& 4095) \/ n;/' "$OUT/repmis-bad/i386.c"
+st=0
+grep -q '^#define QW_REPMIS 0$' "$OUT/repmis-off/qw-config.h" || st=1
+cmp -s "$TREE/i386.c" "$OUT/repmis-bad/i386.c" && st=1
+repmis_run on "$TREE" || st=1
+repmis_run off "$OUT/repmis-off" || st=1
+repmis_run bad "$OUT/repmis-bad"
+echo "    | ($(wc -l < "$OUT/repmis-on.dump") steps and scenario ends compared)"
+cmp -s "$OUT/repmis-on.dump" "$OUT/repmis-off.dump" || st=1
+result $st "tiny386's REP MOVS and STOS by pieces (QW_REPMIS): the same at every step as element by element"
+if cmp -s "$OUT/repmis-on.dump" "$OUT/repmis-bad.dump"; then st=1; else st=0; fi
+echo "    | (repmis: $(diff "$OUT/repmis-on.dump" "$OUT/repmis-bad.dump" | grep -c '^<') lines differ)"
+result $st "the step by step comparison catches a fault in the pieces' count (repmis)"
+
 # ==== 25. the profiler's counts and PROFILE.TXT (v5.1, s31/PROFILE.md) ====
 # esp/main/prof_hist.c (the tables, the instruction key, the file) and
 # prof_cpu.h (the guest's state read from a CPU's fields) as the board
