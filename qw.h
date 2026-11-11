@@ -107,6 +107,9 @@
 #ifndef QW_REPMIS
 #define QW_REPMIS 0     /* REP MOVS and STOS with misaligned elements by page pieces (i386.c and fast_exec()) */
 #endif
+#ifndef QW_RMREF
+#define QW_RMREF 0      /* the inline refill without paging too */
+#endif
 #if QW_GRPTAB && !(QW_OPS0F && QW_GRP5)
 #error "QW_GRPTAB needs QW_OPS0F and QW_GRP5"
 #endif

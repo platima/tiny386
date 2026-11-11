@@ -1625,6 +1625,26 @@ refill:   /* the next instruction is outside the code window */
 				DISPATCH;
 			}
 		}
+#if QW_RMREF
+		/* v5.3: the same without paging (real mode, and protected mode without it), where the
+		   page's linear address is its physical one, as fast_window() takes it: BENCH's 16-bit
+		   pieces and DOS went through fast_window() at every page change */
+		else if (!(cpu->cr0 & CR0_PG) && !(nullsegs & (1u << SEG_CS)) && (lin ^ cpu->ifetch.laddr) >= 4096) {
+			uword po = lin;
+			if (po < (uword) cpu->phys_mem_size - 4096 && !in_iomem(po) && !in_iomem(po + 16)) {
+				const u8 *h = (const u8 *) cpu->phys_mem + po;
+				NOFOLD_SET(); nofold_laddr = cpu->ifetch.laddr; nofold_xaddr = cpu->ifetch.xaddr;
+				cpu->ifetch.laddr = lin & (~4095ul);
+				cpu->ifetch.xaddr = 0;   /* (po ^ lin) */
+				pc = h;
+				win_lo = h - (lin & 0xfff);
+				win_hi = (uintptr_t) win_lo + FAST_WIN;
+				ipd = (uintptr_t) h - eip;
+				FAST_J16_CLAMP();
+				DISPATCH;
+			}
+		}
+#endif
 	}
 	WINDOW();
 	DISPATCH;

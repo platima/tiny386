@@ -3964,8 +3964,8 @@ static int run(int mode, int seed)
 	lrights(seed);
 	cp_sub = seed % 5;   /* (mode t) */
 	ysub = seed % 6;   /* (mode y) */
-	zsub = seed % 3;   /* (mode z) */
-	zdir = (seed / 3) % 2;
+	zsub = seed % 4;   /* (mode z) */
+	zdir = (seed / 4) % 2;
 	fz_level = (const int[]) { 0, 1, 3 }[seed % 3];
 	for (int i = 0; i < 2; i++)
 		mach_new(&M[i], i == 0);
@@ -4036,12 +4036,12 @@ static int run(int mode, int seed)
 		gpm16 = ysub == 4 || ysub == 5;
 		gcs_far = g32 ? 0x08 : R_CS;
 	}
-	if (mode == 35) {   /* z: real mode, V86 mode, 16-bit protected mode with paging (zsub) */
+	if (mode == 35) {   /* z: real mode, V86 mode, 16-bit protected mode with paging and without it (zsub) */
 		g32 = 0;
 		guser = glfbuser = gcpl1 = gnopriv = 0;
 		gv86 = zsub == 1;
-		gpm16 = zsub == 2;
-		gcs_far = zsub == 2 ? Z_SEL : Z_SEG;
+		gpm16 = zsub >= 2;
+		gcs_far = zsub >= 2 ? Z_SEL : Z_SEG;
 	}
 	setup_mode(mode, M[0].mem, M[0].cpu);
 	if (mode == 35) {

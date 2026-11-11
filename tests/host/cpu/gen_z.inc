@@ -1,7 +1,8 @@
 /* == v5.3 (batch 4, fast_exec()'s 16-bit paths), mode z, by hand, a few
    instructions a step, with IF set for the random interrupts.  By the seed
-   (seed % 3): real mode, virtual-8086 mode, 16-bit protected mode with
-   paging; in each CS's base is FF20h, off a page boundary, so that one page
+   (seed % 4): real mode, virtual-8086 mode, 16-bit protected mode with
+   paging and without it; in each CS's base is FF20h, off a page boundary,
+   so that one page
    holds both the segment's start and the end of the 64 KiB below it, and
    another its end and what lies past it.  Jumps across offset FFFFh and 0
    (QW_J16: 16-bit code's window clamped to the segment, the mask where pc
@@ -19,7 +20,8 @@
      absolute targets past the segment's end, which tiny386 does not mask:
        RET with 66h to 10000h up, JMP EAX with 66h to 10000h up, each a JMP
        near there back to the main flow (whose target tiny386 masks); JMP AX
-       to FFF4h, NOPs on past FFFFh, a JMP near back from 10000h up
+       to FFF4h, NOPs on past FFFFh, a JMP near back from 10000h up (each
+       with interrupts off: one there would push IP cut to 16 bits)
    Then, in the main flow, the lazy flags (QW_INCL, and the conditions of
    fast_cond()): an ALU operation (ADD, ADC, SUB, SBB, CMP, AND, OR, XOR,
    TEST, NEG, SHR, SHL) of AX with BX or an immediate, the two from edge
@@ -33,12 +35,17 @@
    protected mode map only at their first fault, so that some runs fault
    in their second page) and of 7FFFh, at odd offsets or not, CX 1 to 40,
    forwards and backwards (STD; CLD after); at times SI or DI near FFFFh,
-   where a 16-bit run wraps. */
+   where a 16-bit run wraps.
+   Last, without paging (QW_RMREF's page changes), a JMP FAR into RAM's last
+   page but one, a near JMP from there into its last page, which tiny386
+   runs, and one back, then NOPs that run on into the last page, and a JMP
+   FAR back. */
 #define Z_BASE 0xff20u          /* CS's base */
 #define Z_SEG 0x0ff2            /* ... as a real-mode and virtual-8086 segment */
 #define Z_SEL 0x0fe8            /* ... as a selector of GDT16 */
-static int zsub;                /* mode z's setting: seed % 3 */
-static int zdir;                /* (seed / 3) % 2: the short jumps forward (0) or backward (1) */
+#define Z_TSEL 0x0fe0           /* 16-bit protected mode: a segment at RAM's end (MEM - 2000h) */
+static int zsub;                /* mode z's setting: seed % 4 */
+static int zdir;                /* (seed / 4) % 2: the short jumps forward (0) or backward (1) */
 static uword z_off(void) { return gp - gcode_phys; }
 static void z_at(uword off) { gp = gcode_phys + off; }
 static void z_jmp_near(uword to) { e8(0xe9); e16(to - (z_off() + 2)); }   /* JMP near to (16 bits wrap) */
@@ -96,13 +103,14 @@ static void setup_z(u8 *mem, CPUI386 *cpu)
 	switch (zsub) {
 	case 0: setup_real(mem, cpu); break;
 	case 1: setup_v86(mem, cpu); break;
-	default: setup_pm16(mem, cpu, 1);
+	default: setup_pm16(mem, cpu, zsub == 2);
 		desc(mem, GDT16_PHYS + Z_SEL, Z_BASE, 0xfffff, 0x09a);   /* (limit 1 MiB: code past FFFFh) */
+		desc(mem, GDT16_PHYS + Z_TSEL, MEM - 0x2000, 0xffff, 0x09a);
 		break;
 	}
-	cpu->seg[SEG_CS].sel = zsub == 2 ? Z_SEL : Z_SEG;
+	cpu->seg[SEG_CS].sel = zsub >= 2 ? Z_SEL : Z_SEG;
 	cpu->seg[SEG_CS].base = Z_BASE;
-	if (zsub == 2)
+	if (zsub >= 2)
 		cpu->seg[SEG_CS].limit = 0xfffff;
 }
 /* a short jump of kind k from the launch at the current place to the pad at offset to; the
@@ -190,6 +198,7 @@ static void gen_z(void)
 			if (z_xp > 0x100c0)
 				continue;
 			uword x = z_xp;
+			e8(0xfa);  /* CLI: an interrupt there would push IP cut to 16 bits (STI back here) */
 			if (chance(2)) {   /* PUSH DWORD x; RET with 66h */
 				e8(0x66); e8(0x68); e32(x);
 				e8(0x66); e8(0xc3);
@@ -203,10 +212,12 @@ static void gen_z(void)
 			z_jmp_near(next);       /* (tiny386 masks its target) */
 			z_xp = z_off() + 2;
 			gp = s;
+			e8(0xfb);       /* STI */
 		} else {                /* JMP AX to FFF4h, on past FFFFh (once) */
 			if (z_ax_done)
 				continue;
 			z_ax_done = 1;
+			e8(0xfa);                       /* CLI (as above) */
 			e8(0xb8); e16(0xfff4);          /* MOV AX,FFF4h */
 			e8(0xff); e8(0xe0);             /* JMP AX */
 			next = z_off();
@@ -216,6 +227,7 @@ static void gen_z(void)
 				e8(0x90);
 			z_jmp_near(next);
 			gp = s;
+			e8(0xfb);                       /* STI */
 		}
 		z_tests++;
 	}
@@ -237,6 +249,23 @@ static void gen_z(void)
 		e8(0xf3);                                       /* REP */
 		e8(k < 3 ? (k == 0 ? 0xa4 : 0xa5) : (k == 3 ? 0xaa : 0xab));   /* MOVS or STOS */
 		if (down) e8(0xfc);                             /* CLD */
+	}
+	if (zsub == 3) {   /* (Z_TSEL's offsets: F00h and FE0h in RAM's last page but one, 1012h in its last) */
+		e8(0xea); e16(0x0f00); e16(Z_TSEL);             /* JMP FAR Z_TSEL:F00h */
+		uword next = z_off();
+		uword s = gp;
+		uword t = MEM - 0x2000;
+		gp = t + 0x0f00;
+		e8(0xe9); e16(0x1012 - 0x0f03);                 /* JMP near to 1012h, into the last page */
+		gp = t + 0x1012;
+		for (int i = 0; i < 8; i++)
+			e8(0x90);
+		e8(0xe9); e16(0x0fe0 - (0x101a + 3));           /* JMP near back to FE0h */
+		gp = t + 0x0fe0;
+		for (int i = 0; i < 40; i++)                    /* NOPs on into the last page */
+			e8(0x90);
+		e8(0xea); e16(next); e16(Z_SEL);                /* JMP FAR back */
+		gp = s;
 	}
 	e8(0xfa);       /* CLI */
 }

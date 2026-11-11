@@ -33,3 +33,4 @@
 #define QW_EA16T 1
 #define QW_COND2 1
 #define QW_REPMIS 1
+#define QW_RMREF 1
