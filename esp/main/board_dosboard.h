@@ -2,7 +2,8 @@
 // transmitter fed from the 16-bit RGB565 bus at 800x600 60 Hz, WCH CH9350L
 // USB keyboard and mouse host on UART1, microSD on SDMMC slot 0, CH340C on
 // UART0 for the console and for flashing.  Built against ESP-IDF
-// v6.1-dev-8142-g188e3e55bb.
+// 188e3e55bb (v6.1-dev-8142) with ESP-IDF's fixes e00861c3f497 and
+// 007945125db7 on top (s31/README.md).
 //
 // Pins are rev A2c's (tiny386-hdmi-board dosboard/out/CHANGES-A2.md section
 // 19, 2026-10-22; DESIGN-BRIEF.md section 4 for the rest).  Every shared

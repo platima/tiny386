@@ -339,7 +339,10 @@ standalone and DOS board builds of the v5.0 code give the v5.0 release build's `
 [verified: 2026-10-27, built from `git archive` of the branch's v5.0 code in WSL,
 `BUILD-NOTES.md` 33.9; the same was checked for v4.6, v4.5, v4.4 and v4.3].
 
-Or the release's way, in WSL, with ESP-IDF v6.1-dev-8142-g188e3e55bb at `~/esp/esp-idf`: put the
+Or the release's way, in WSL, with the boards' ESP-IDF at `~/esp/esp-idf` (188e3e55bb,
+v6.1-dev-8142, for the releases up to v5.2; from v5.3 with ESP-IDF's fixes e00861c3f497 and
+007945125db7 on top, as `README.md` beside this file says, and without them the stand-ins for them
+built in): put the
 release's `tiny386-idf-v4.patch` beside `build.sh`, and its `bootloader.bin`, `partition-table.bin`
 and `partition-table-tiny386-default.bin` in `dualboot\`, then
 

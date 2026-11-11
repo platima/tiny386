@@ -62,10 +62,14 @@
 # WORKDIR/bb-layout-*.txt has the waits and what follows each.
 #
 # It needs git, make and a host cc (for fmopl.inc), the boards' ESP-IDF at
-# $IDF_PATH (default $HOME/esp/esp-idf, v6.1-dev-8142-g188e3e55bb) with its
-# tools in $IDF_TOOLS_PATH (default $HOME/.espressif-upstream), and network
-# access for the clone and for the component manager.  BUILD-NOTES.md says
-# what to expect.
+# $IDF_PATH (default $HOME/esp/esp-idf) with its tools in $IDF_TOOLS_PATH
+# (default $HOME/.espressif-upstream), and network access for the clone and
+# for the component manager.  BUILD-NOTES.md says what to expect.  The
+# boards' ESP-IDF is 188e3e55bb (v6.1-dev-8142), and since v5.3 it has
+# ESP-IDF's fixes e00861c3f497 and 007945125db7 on top (README.md says how
+# to take them).  Without them the build still works, with the stand-ins for
+# them in sdmmc_timeout_wrap.c built in; each build's log says which
+# ("sdmmc_timeout_wrap.c: timeout part ..., CMD25 part ...").
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)

@@ -1,4 +1,5 @@
-// ESP32-S31-Korvo-1, built against ESP-IDF v6.1-dev-8142-g188e3e55bb.
+// ESP32-S31-Korvo-1, built against ESP-IDF 188e3e55bb (v6.1-dev-8142) with
+// ESP-IDF's fixes e00861c3f497 and 007945125db7 on top (s31/README.md).
 // Pins and panel timings are the ones the esp32-s31-linux loader uses
 // (annoyedmilk/esp32-s31-linux be5b725, bootloader/main/display.c and sd.c).
 #define BUILD_ESP32

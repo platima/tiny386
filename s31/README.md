@@ -31,7 +31,20 @@ Binaries aren't committed here - build them, or take them from a release.
 
 ## Building 🛠️
 
-In Linux or WSL, with ESP-IDF v6.1-dev-8142-g188e3e55bb (the ESP32-S31 needs ESP-IDF's master; that's the commit every release was built with):
+In Linux or WSL, with ESP-IDF 188e3e55bb (v6.1-dev-8142; the ESP32-S31 needs ESP-IDF's master) and, since v5.3, two later ESP-IDF fixes on top of it: e00861c3f497 ("fix(sdmmc): do not let cache sync mask a failed transaction", `sd_trans_sdmmc.c`) and 007945125db7 ("fix(sdmmc): Dont overwrite CMD25 err with ACMD22 result in sdmmc_write_sectors_dma", `sdmmc_cmd.c`). Every release up to v5.2 was built with 188e3e55bb alone. To take the two into a clone of ESP-IDF, on a branch of its own:
+
+```sh
+cd ~/esp/esp-idf
+git switch -c s31-sdmmc-fixes 188e3e55bb
+git fetch origin master
+git cherry-pick e00861c3f497 007945125db7
+```
+
+or, in place of the fetch and the cherry-pick, `git am` the two patches as GitHub gives them (`https://github.com/espressif/esp-idf/commit/e00861c3f497.patch` and `https://github.com/espressif/esp-idf/commit/007945125db7.patch`; the same files are in `s31/esp-idf/`). `git describe` in ESP-IDF then gives v6.1-dev-8144 and the new commit, and that string goes into every image, so a tree made another way builds the same code with other bytes in that one place.
+
+Without the fixes the build still works: `esp/main/sdmmc_timeout_wrap.c` then builds in its stand-ins for them (a command whose event never came is told by how long it took, and a failed multi-block write keeps its own error). `esp/main/sdmmc_fixes.cmake` looks for each fix in ESP-IDF's own source, whatever its version, and the configure step says what it found, for example `sdmmc_timeout_wrap.c: timeout part out (ESP-IDF has e00861c3f497), CMD25 part out (ESP-IDF has 007945125db7)`. With "in" for either, that ESP-IDF lacks the fix and the stand-in is built.
+
+Then:
 
 ```sh
 git clone -b esp32-s31 https://github.com/platima/tiny386.git
@@ -43,7 +56,7 @@ idf.py -B build-korvo1-standalone -DBOARD=korvo1 -DIDF_TARGET=esp32s31 -DPARTITI
 idf.py -B build-dosboard -DBOARD=dosboard -DIDF_TARGET=esp32s31 build
 ```
 
-`build-korvo1` is the app for the Korvo-1 beside Linux (it goes at 0xE20000 with the dual-boot bootloader and table), `build-korvo1-standalone` the Korvo-1 on its own, `build-dosboard` the DOS board. Built this way from the v5.1 code, all three give the v5.1 release build's `tiny386.bin` and `tiny386.elf` byte for byte, and the standalone and DOS board builds their bootloader and table too [verified, 2026-10-28; the same was checked for `s31-v5.0`, `s31-v4.6`, `s31-v4.5`, `s31-v4.4` and `s31-v4.3`]; the dual-boot set's bootloader comes from `s31/dualboot/` instead. Since 2026-10-25 the committed `esp/dependencies.lock` is the S31 one, `s31/dependencies.lock` byte for byte, and the builds leave it as it is (before then it was upstream's, for the S3, and the first build rewrote it).
+`build-korvo1` is the app for the Korvo-1 beside Linux (it goes at 0xE20000 with the dual-boot bootloader and table), `build-korvo1-standalone` the Korvo-1 on its own, `build-dosboard` the DOS board. Built this way from the v5.1 code, with 188e3e55bb alone, all three give the v5.1 release build's `tiny386.bin` and `tiny386.elf` byte for byte, and the standalone and DOS board builds their bootloader and table too [verified, 2026-10-28; the same was checked for `s31-v5.0`, `s31-v4.6`, `s31-v4.5`, `s31-v4.4` and `s31-v4.3`]; the dual-boot set's bootloader comes from `s31/dualboot/` instead. Since 2026-10-25 the committed `esp/dependencies.lock` is the S31 one, `s31/dependencies.lock` byte for byte, and the builds leave it as it is (before then it was upstream's, for the S3, and the first build rewrote it).
 
 The dual-boot build refuses `idf.py flash` on purpose: write it with `s31/flash-dualboot.bat`, which backs up the board's flash first.
 
@@ -67,6 +80,7 @@ s31/
   REVIEW-*.md             the independent reviews, as their authors left them
   REVIEW-RESOLUTION.md    every finding, one line each
   build.sh                the release build (with dependencies.lock)
+  esp-idf/                v5.3: the two ESP-IDF fixes the builds take, as GitHub gives them
   flash-*.bat, back-to-linux.bat, flash-paths.cmd
                           the Windows flash scripts: they check the board, back it up, then write
   card/, card-dosboard/   the inis for the card's tiny386 folder

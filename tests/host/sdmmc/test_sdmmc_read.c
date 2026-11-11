@@ -1,6 +1,8 @@
 /*
  * v5.3: esp/main/sdmmc_read_wrap.c, no status command after a card read.
- * ESP-IDF's own sdmmc_cmd.c and sdmmc_common.c (188e3e55bb) built with
+ * ESP-IDF's own sdmmc_cmd.c and sdmmc_common.c (IDF_PATH: the boards'
+ * 188e3e55bb with e00861c3f497 and 007945125db7 on top, or 188e3e55bb
+ * alone, which gives the same results here) built with
  * their real headers (idf_stubs/README) and linked with
  * -Wl,--wrap=sdmmc_read_sectors and --wrap=sdmmc_wait_for_idle as the S31
  * boards link them, around idf_card.c's pretend card and host.  Every read

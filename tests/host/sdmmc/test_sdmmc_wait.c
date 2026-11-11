@@ -1,7 +1,10 @@
 /*
  * v5.3: esp/main/sdmmc_wait_wrap.c, the card asked again after a write as
  * soon as it lets go of D0.  ESP-IDF's own sdmmc_cmd.c and sdmmc_common.c
- * (188e3e55bb) are built here with their real headers (idf_stubs/README),
+ * (IDF_PATH: the boards' 188e3e55bb with e00861c3f497 and 007945125db7 on
+ * top, or 188e3e55bb alone, which gives the same results here, as no case
+ * makes a multi-block write fail) are built here with their real headers
+ * (idf_stubs/README),
  * linked with -Wl,--wrap=sdmmc_wait_for_idle as the S31 boards link them,
  * around idf_card.c's pretend card and clock.  Each case is one
  * sdmmc_write_sectors() of 1 or 64 sectors with the card programming for a

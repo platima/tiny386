@@ -385,9 +385,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## ESP-IDF, the code it links in, and the USB components
 
-**What.** ESP-IDF v6.1-dev-8142-g188e3e55bb (github.com/espressif/esp-idf), unchanged, is linked
-into every image: its drivers, FreeRTOS, FatFs, the TLSF heap, the C library (picolibc) and, in
-every image set, the second-stage bootloader. The Korvo-1's images also link espressif/usb 1.6.0
+**What.** ESP-IDF 188e3e55bb (v6.1-dev-8142, github.com/espressif/esp-idf) is linked into every
+image: its drivers, FreeRTOS, FatFs, the TLSF heap, the C library (picolibc) and, in every image
+set, the second-stage bootloader. Up to v5.2 it was 188e3e55bb unchanged. Since v5.3 it has two of
+ESP-IDF's own later fixes on top and is otherwise unchanged: e00861c3f497 (`sd_trans_sdmmc.c`)
+and 007945125db7 (`sdmmc_cmd.c`), both on ESP-IDF's master and under its licence, whose patches
+as GitHub gives them are in `s31/esp-idf/` (`README.md`, "Building"). The dual-boot set's
+bootloader (`s31/dualboot/`) was built from 188e3e55bb unchanged; neither fix touches the
+bootloader. The Korvo-1's images also link espressif/usb 1.6.0
 and espressif/usb_host_hid 1.2.0 (`esp/dependencies.lock`), which the component manager fetches;
 the S31 builds take no other managed component. `esp/main/usb_input.c` began as Espressif's HID
 host example and `esp/main/esp_main.c` as the hello world example, whose CC0 header it keeps.
