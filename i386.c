@@ -546,6 +546,15 @@ static int IRAM_ATTR_FAST_HELPER get_CF(CPUI386 *cpu)
 #define get_CF_cc get_CF
 #endif
 
+/* v5.3 (QW_PFPOP, the review of batch 4): where the compiler has an instruction for it (Zbb's cpop on
+   the S31, x86 on the PC), PF from __builtin_parity(), as QW_COND2 takes it in fast_exec(), not from
+   this table, which the boards kept in flash and read from internal RAM's get_PF() */
+#if QW_PFPOP && (defined(__riscv_zbb) || defined(__i386__) || defined(__x86_64__))
+#define PF_POP 1
+#else
+#define PF_POP 0
+#endif
+#if !PF_POP
 const static u8 parity_tab[256] = {
   1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
   0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
@@ -564,11 +573,16 @@ const static u8 parity_tab[256] = {
   0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
   1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1
 };
+#endif
 
 static int IRAM_ATTR_FAST_HELPER get_PF(CPUI386 *cpu)
 {
 	if (cpu->cc.mask & PF) {
+#if PF_POP
+		return !__builtin_parity(cpu->cc.dst & 0xff);
+#else
 		return parity_tab[cpu->cc.dst & 0xff];
+#endif
 	} else {
 		return !!(cpu->flags & PF);
 	}

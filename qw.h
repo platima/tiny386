@@ -110,6 +110,9 @@
 #ifndef QW_RMREF
 #define QW_RMREF 0      /* the inline refill without paging too */
 #endif
+#ifndef QW_PFPOP
+#define QW_PFPOP 0      /* i386.c's get_PF() by the parity instruction where there is one, not a table in flash */
+#endif
 /* v5.3: the clock and the timer */
 #ifndef QW_UCLK
 #define QW_UCLK 0       /* the S31 boards: core 1's clock from its cycle counter (esp/main/uclock.h) */

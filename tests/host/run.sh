@@ -1462,7 +1462,9 @@ fi
 # and 32 bits, with a register and with memory, with tiny386's interpreter
 # and the fast one (which hands it to tiny386's), as the Korvo-1 builds
 # i386.c and without the board header.  Then a copy of i386.c with the old
-# subtraction (destination less accumulator), which the test has to see.
+# subtraction (destination less accumulator), which the test has to see;
+# and (v5.3, QW_PFPOP) one with get_PF()'s parity inverted, which its PF
+# answers have to show.
 echo
 if command -v as > /dev/null && command -v ld > /dev/null &&
         as --32 -o "$OUT/guest_cmpxchg.o" "$HERE/cpu/guest_cmpxchg.S" 2> "$OUT/cmpxchg-as.log" &&
@@ -1495,6 +1497,17 @@ if command -v as > /dev/null && command -v ld > /dev/null &&
     grep "FAIL\|^test_cmpxchg" "$OUT/cmpxchg-old.log" | sed 's/^/    | /'
     [ "$nl" = 3 ] && [ $st = 0 ]
     result $? "the CMPXCHG test sees the old subtraction (i386.c with it put back: $nl lines)"
+    mkdir -p "$OUT/cmpxchg-pf"
+    sed 's/return !__builtin_parity(cpu->cc.dst \& 0xff);/return __builtin_parity(cpu->cc.dst \& 0xff);/' \
+        "$TREE/i386.c" > "$OUT/cmpxchg-pf/i386.c"
+    cp "$TREE/i386_fast.h" "$OUT/cmpxchg-pf/"
+    nl=$(diff "$TREE/i386.c" "$OUT/cmpxchg-pf/i386.c" | grep -c '^>')
+    cxbuild pf "$OUT/cmpxchg-pf" $PCBOARD
+    "$OUT/test_cmpxchg-pf" "$OUT/guest_cmpxchg.bin" > "$OUT/cmpxchg-pf.log" 2>&1
+    st=$?
+    echo "    | (pfpop: $(grep -c FAIL "$OUT/cmpxchg-pf.log") FAIL lines; exit status $st)"
+    [ "$nl" = 1 ] && [ $st != 0 ]
+    result $? "the CMPXCHG test sees get_PF()'s parity inverted (pfpop, QW_PFPOP)"
 else
     sed 's/^/    | /' "$OUT/cmpxchg-as.log" 2> /dev/null
     echo "    | (no 32-bit as and ld: the CMPXCHG test is skipped)"
