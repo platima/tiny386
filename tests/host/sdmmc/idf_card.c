@@ -18,6 +18,7 @@ struct idf_card idf_card;
 int64_t idf_now = 1000000000;           /* 1 s in */
 int idf_log_errors;
 void *idf_task;
+unsigned idf_sleeps;
 
 #define CMD_NS 18000                    /* a command and its answer, with the driver's own time */
 #define SECTOR_NS 25600                 /* 512 bytes at 4 bits and 40 MHz */
@@ -74,6 +75,7 @@ void vTaskDelay(TickType_t ticks)
 {
 	/* to the start of the next tick, and whole ticks after it */
 	int64_t tick = (int64_t) IDF_TICK_US * 1000;
+	idf_sleeps++;
 	idf_now = (idf_now / tick + ticks) * tick;
 	time_check();
 }

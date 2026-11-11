@@ -684,7 +684,8 @@ planted_setup noforget '/^void sd_setup_forget/,/^}/s/\ts_era++;//' \
 # working, stuck busy and stuck free, for the emulator's task and another:
 # the same results, never later, at most one CMD13 more, and with D0
 # working done within 60 us of the card; and counts that tell a D0 stuck
-# free from one that works.  Six planted faults.
+# free from one that works; other tasks sleeping as before, the emulator's
+# never.  Seven planted faults.
 echo
 IDF=${IDF_PATH:-$HOME/esp/esp-idf}
 IC=$IDF/components
@@ -726,6 +727,8 @@ if [ -f "$IC/sdmmc/sdmmc_cmd.c" ] && [ -f "$IC/sdmmc/sdmmc_common.c" ]; then
         "a CMD13 sent at once with D0 free at the start counted as one at D0's release"
     planted_wait nostartfree 's/? D0_NOT_YET : D0_FREE_AT_START;/? D0_NOT_YET : D0_NOT_YET;/' \
         "no CMD13 at once when D0 is free as the wait begins"
+    planted_wait spinall 's/bool spin = sd_wait_spin_task \&\& xTaskGetCurrentTaskHandle() == sd_wait_spin_task;/bool spin = true;/' \
+        "every task watching D0 past ESP-IDF's busy-wait, none sleeping"
 
     # v5.3: esp/main/sdmmc_read_wrap.c, no CMD13 after a read, against
     # ESP-IDF's own sdmmc_read_sectors(): every read made through both, from

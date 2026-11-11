@@ -17,6 +17,8 @@
  * - with D0 working, done within 60 us of the card's end of programming,
  *   for the emulator's task at any length and for any other task up to
  *   ESP-IDF's busy-wait (12.7 ms), past which they sleep a tick as before;
+ * - any task but the emulator's sleeping (vTaskDelay()) as often as in
+ *   ESP-IDF's own wait, and the emulator's task never;
  * - with D0 stuck busy or stuck free, ESP-IDF's schedule (plus one CMD13);
  * - the counts that profile.c gives, which must tell the three apart: with
  *   D0 stuck free, no CMD13 counted as sent as D0 went from busy to free
@@ -65,6 +67,7 @@ struct res {
 	int64_t gap;                    /* the least ns between two CMD13s */
 	bool busy_at_end;
 	bool data_ok;
+	unsigned sleeps;                /* vTaskDelay() calls */
 };
 
 static struct res one_write(int fix, uint32_t prog_us, int d0, bool spin, unsigned n,
@@ -88,7 +91,9 @@ static struct res one_write(int fix, uint32_t prog_us, int d0, bool spin, unsign
 	int64_t tick = (int64_t) IDF_TICK_US * 1000;
 	idf_now = (idf_now / tick + 1) * tick + 3300000;
 	int64_t t0 = idf_now;
+	unsigned sl0 = idf_sleeps;
 	r.err = sdmmc_write_sectors(&s_card, buf, 100, n);
+	r.sleeps = idf_sleeps - sl0;
 	r.end = idf_now - t0;
 	r.late = idf_now - idf_card.busy_until;
 	r.cmd13 = idf_card.cmds[MMC_SEND_STATUS];
@@ -167,6 +172,12 @@ int main(void)
 					if (d0 == D0_STUCK_BUSY && b.cmd13 > 2)
 						CHECK(b.gap >= a.gap - 5000, "%s, %u us: CMD13s %lld ns apart, "
 						      "ESP-IDF %lld", w, pu, (long long) b.gap, (long long) a.gap);
+					if (spin)
+						CHECK(b.sleeps == 0, "%s, %u sectors, %u us: the emulator's task "
+						      "slept %u times (ESP-IDF %u)", w, n, pu, b.sleeps, a.sleeps);
+					else
+						CHECK(b.sleeps == a.sleeps, "%s, %u sectors, %u us: another task "
+						      "slept %u times, ESP-IDF %u", w, n, pu, b.sleeps, a.sleeps);
 					if (b.end + 1000 < a.end)
 						sooner++;
 					if (d0 == D0_WORKS && spin && n == 64 && a.err == ESP_OK) {

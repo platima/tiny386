@@ -38,6 +38,7 @@ extern struct idf_card idf_card;
 extern int64_t idf_now;                 /* ns */
 extern int idf_log_errors;
 extern void *idf_task;                  /* what xTaskGetCurrentTaskHandle() gives */
+extern unsigned idf_sleeps;             /* calls of vTaskDelay() */
 
 /* a card of n sectors at its start (TRAN, D0 working), and card set up as
    the SD host's with it */
