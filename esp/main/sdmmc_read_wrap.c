@@ -8,21 +8,34 @@
  * read.  Nothing reads that answer but the wait, and the wait looks only at
  * READY_FOR_DATA and the tran state, not at the card's error bits.  After
  * a read the card is in tran again by itself: CMD17's block ends it, and
- * for CMD18 the host sends CMD12 (auto-stop), whose failure fails the read.
- * Nor can the card be programming then: a write that worked comes back
- * only once its programming has ended, and after one that failed the read
- * command itself fails on a card still programming, CMD13 after it or not.
- * So the answer never makes the wait wait, and Linux's mmc block driver
- * sends no CMD13 after reads either.  An error the card found inside a
- * read and did not report in the read itself (the spec's "X" error bits)
- * would show in the answer to its next command, as it does here; ESP-IDF
- * read none of them before.
+ * for CMD18 the host sends CMD12 (auto-stop) by itself.  Nor can the card
+ * be programming then: a write that worked comes back only once its
+ * programming has ended, and after one that failed the read command
+ * itself fails on a card still programming, CMD13 after it or not.  So
+ * the answer never makes the wait wait, and Linux's mmc block driver sends
+ * no CMD13 after reads either.  An error the card found inside a read and
+ * did not report in the read itself (the spec's "X" error bits) would show
+ * in the answer to its next command, as it does here; ESP-IDF read none of
+ * them before.
  *
  * So for a buffer the host takes as it is, this sends the read command as
  * sdmmc_read_sectors_dma() does, the same command, address and checks, and
  * stops there.  A failed read sends CMD13 still, for the same log line as
  * ESP-IDF's.  Any other buffer (ESP-IDF's bounce buffer path), a card in
  * SPI mode and sd_wait_fix = 0 go to ESP-IDF's own sdmmc_read_sectors().
+ *
+ * One case does change: an auto-stop CMD12 that the card misses.  This
+ * ESP-IDF does not report one.  sd_trans_sdmmc.c's process_events() looks
+ * at response errors (RTO, RCRC, RESP_ERR) only while the command itself
+ * goes out, so one that comes with the auto-stop is dropped and the read
+ * comes back good.  Its data is right, as its blocks passed their CRC, but
+ * the card is left in its data state.  The CMD13 after the read would find
+ * it there, out of tran, and the read would fail after the wait's 5 s.
+ * Now the read is good and the card's next read or write command fails
+ * instead, as a card in its data state does not answer one.  Either way
+ * nothing sends the CMD12 that would free it.  (Seen in the driver's code,
+ * not on a board.)  To drop the CMD13 in ESP-IDF itself, the auto-stop's
+ * own result would want checking first.
  *
  * Linked by -Wl,--wrap=sdmmc_read_sectors (CMakeLists.txt, the S31
  * boards): diskio_sdmmc.c's ff_sdmmc_read() calls it from another
