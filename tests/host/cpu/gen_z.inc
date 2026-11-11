@@ -35,7 +35,11 @@
    protected mode map only at their first fault, so that some runs fault
    in their second page) and of 7FFFh, at odd offsets or not, CX 1 to 40,
    forwards and backwards (STD; CLD after); at times SI or DI near FFFFh,
-   where a 16-bit run wraps.
+   where a 16-bit run wraps.  Then the same with DS and ES at 2010h (the
+   review of batch 4), a base off a page boundary (20100h; in 16-bit
+   protected mode a selector with that base), so that a 16-bit SI or DI
+   wraps inside a page and the pieces stop at the wrap, not at a page's
+   end: SI and DI near FFFFh going up, near 0 going down, or about 800h.
    Last, without paging (QW_RMREF's page changes), a JMP FAR into RAM's last
    page but one, a near JMP from there into its last page, which tiny386
    runs, and one back, then NOPs that run on into the last page, and a JMP
@@ -44,6 +48,7 @@
 #define Z_SEG 0x0ff2            /* ... as a real-mode and virtual-8086 segment */
 #define Z_SEL 0x0fe8            /* ... as a selector of GDT16 */
 #define Z_TSEL 0x0fe0           /* 16-bit protected mode: a segment at RAM's end (MEM - 2000h) */
+#define Z_DSEG 0x2010           /* data at 20100h, off a page boundary: a segment, and a selector of GDT16 */
 static int zsub;                /* mode z's setting: seed % 4 */
 static int zdir;                /* (seed / 4) % 2: the short jumps forward (0) or backward (1) */
 static uword z_off(void) { return gp - gcode_phys; }
@@ -106,6 +111,7 @@ static void setup_z(u8 *mem, CPUI386 *cpu)
 	default: setup_pm16(mem, cpu, zsub == 2);
 		desc(mem, GDT16_PHYS + Z_SEL, Z_BASE, 0xfffff, 0x09a);   /* (limit 1 MiB: code past FFFFh) */
 		desc(mem, GDT16_PHYS + Z_TSEL, MEM - 0x2000, 0xffff, 0x09a);
+		desc(mem, GDT16_PHYS + Z_DSEG, Z_DSEG << 4, 0xffff, 0x092);
 		break;
 	}
 	cpu->seg[SEG_CS].sel = zsub >= 2 ? Z_SEL : Z_SEG;
@@ -250,6 +256,24 @@ static void gen_z(void)
 		e8(k < 3 ? (k == 0 ? 0xa4 : 0xa5) : (k == 3 ? 0xaa : 0xab));   /* MOVS or STOS */
 		if (down) e8(0xfc);                             /* CLD */
 	}
+	e8(0x1e);                                               /* PUSH DS */
+	e8(0xb8); e16(Z_DSEG); e8(0x8e); e8(0xd8); e8(0x8e); e8(0xc0);   /* MOV AX,2010h; MOV DS,AX; MOV ES,AX */
+	for (int i = 0; i < 64; i++) {
+		int down = chance(2);
+		u16 si = down ? rnd(9) : 0xfff0 + rnd(16), di = down ? rnd(9) : 0xfff0 + rnd(16);
+		if (chance(3)) si = 0x0800 + rnd(16);
+		if (chance(3)) di = 0x0800 + rnd(16);
+		e8(0xbe); e16(si);                              /* MOV SI */
+		e8(0xbf); e16(di);                              /* MOV DI */
+		e8(0xb9); e16(1 + rnd(40));                     /* MOV CX */
+		if (down) e8(0xfd);                             /* STD */
+		int k = rnd(6);
+		if (k == 2 || k == 5) e8(0x66);                 /* dwords */
+		e8(0xf3);                                       /* REP */
+		e8(k < 3 ? (k == 0 ? 0xa4 : 0xa5) : (k == 3 ? 0xaa : 0xab));   /* MOVS or STOS */
+		if (down) e8(0xfc);                             /* CLD */
+	}
+	e8(0x1f); e8(0x1e); e8(0x07);                           /* POP DS; PUSH DS; POP ES */
 	if (zsub == 3) {   /* (Z_TSEL's offsets: F00h and FE0h in RAM's last page but one, 1012h in its last) */
 		e8(0xea); e16(0x0f00); e16(Z_TSEL);             /* JMP FAR Z_TSEL:F00h */
 		uword next = z_off();
