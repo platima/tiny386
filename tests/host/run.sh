@@ -1206,7 +1206,8 @@ fi
 # [BP+d] with DS for its default segment (ea16ss, which only mode z's INC
 # and DEC of [BP+d8] catch); QW_COND2's parity after AND, OR and XOR
 # inverted (cond2p); QW_RMREF's page change without paging, with no fusion
-# rule's saves (rmfold).
+# rule's saves (rmfold).  After the review of batch 4: mode z's RET n with
+# 66h past FFFFh, and fast_j16_eip() masking its target (c2ret).
 echo
 FCSEEDS=${FCSEEDS:-40}
 fcbuild() {     # name dir-with-i386.c-and-i386_fast.h [flags]: OUT/test_fast_cpu-name
@@ -1261,7 +1262,8 @@ for m in fold:'s/!NOFOLD_IS() \&\& \\/1 \&\& \\/;s/if (_t \&\& !NOFOLD_IS()) { \
          incl:'s/else if (_op >= CC_AND) cpu->flags \&= ~CF;/else if (_op >= CC_AND) cpu->flags |= CF;/' \
          ea16ss:'s/^\t3 | 6 << 3 | 0x40, 3 | 7 << 3 | 0x40, 5 | 6 << 3 | 0xc0, 5 | 7 << 3 | 0xc0, 6, 7, 5 | 0x80, 3 };$/\t3 | 6 << 3 | 0x40, 3 | 7 << 3 | 0x40, 5 | 6 << 3 | 0xc0, 5 | 7 << 3 | 0xc0, 6, 7, 5, 3 };/' \
          cond2p:'s/case 5: cond = !__builtin_parity(d \& 0xff); break;/case 5: cond = __builtin_parity(d \& 0xff); break;/' \
-         rmfold:'/^\t\telse if (!(cpu->cr0 \& CR0_PG) \&\& !(nullsegs/,/DISPATCH;/s/^\t\t\t\tNOFOLD_SET(); nofold_laddr = cpu->ifetch.laddr; nofold_xaddr = cpu->ifetch.xaddr;$/\t\t\t\t(void) 0;/'; do
+         rmfold:'/^\t\telse if (!(cpu->cr0 \& CR0_PG) \&\& !(nullsegs/,/DISPATCH;/s/^\t\t\t\tNOFOLD_SET(); nofold_laddr = cpu->ifetch.laddr; nofold_xaddr = cpu->ifetch.xaddr;$/\t\t\t\t(void) 0;/' \
+         c2ret:'s/if (\*p == 0xc3 || \*p == 0xc2 || \*p == 0xff)/if (*p == 0xc3 || *p == 0xff)/'; do
     mname=${m%%:*}
     mfile=i386_fast.h       # (v5.1: lpgno's fault is in i386.c)
     [ "$mname" = lpgno ] && mfile=i386.c

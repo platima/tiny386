@@ -18,7 +18,8 @@
        near after XOR, and JMP near and Jcc near with 66h, whose 32-bit
        displacement also crosses 64 KiB a few times over
      absolute targets past the segment's end, which tiny386 does not mask:
-       RET with 66h to 10000h up, JMP EAX with 66h to 10000h up, each a JMP
+       RET with 66h to 10000h up, RET n with 66h (since the review of batch
+       4), JMP EAX with 66h to 10000h up, each a JMP
        near there back to the main flow (whose target tiny386 masks); JMP AX
        to FFF4h, NOPs on past FFFFh, a JMP near back from 10000h up (each
        with interrupts off: one there would push IP cut to 16 bits)
@@ -205,9 +206,16 @@ static void gen_z(void)
 				continue;
 			uword x = z_xp;
 			e8(0xfa);  /* CLI: an interrupt there would push IP cut to 16 bits (STI back here) */
-			if (chance(2)) {   /* PUSH DWORD x; RET with 66h */
+			int kx = rnd(3);
+			if (kx == 0) {     /* PUSH DWORD x; RET with 66h */
 				e8(0x66); e8(0x68); e32(x);
 				e8(0x66); e8(0xc3);
+			} else if (kx == 1) {   /* PUSH AX once or twice; PUSH DWORD x; RET n with 66h, n the AXs */
+				int n = 2 << rnd(2);
+				for (int j = 0; j < n; j += 2)
+					e8(0x50);
+				e8(0x66); e8(0x68); e32(x);
+				e8(0x66); e8(0xc2); e16(n);
 			} else {           /* MOV EAX,x; JMP EAX with 66h */
 				e8(0x66); e8(0xb8); e32(x);
 				e8(0x66); e8(0xff); e8(0xe0);
