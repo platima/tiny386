@@ -98,6 +98,9 @@
 #ifndef QW_INCL
 #define QW_INCL 0       /* with QW_INC: the logical operations' CF in line too */
 #endif
+#ifndef QW_EA16T
+#define QW_EA16T 0      /* with QW_EA: fast_ea2()'s 16-bit form from one packed table entry, mod 1 first */
+#endif
 #if QW_GRPTAB && !(QW_OPS0F && QW_GRP5)
 #error "QW_GRPTAB needs QW_OPS0F and QW_GRP5"
 #endif

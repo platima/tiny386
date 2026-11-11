@@ -503,6 +503,13 @@ static inline __attribute__((always_inline)) uword fast_ea(CPUI386 *cpu, const u
 }
 
 #if QW_EA
+#if QW_EA16T
+/* v5.3: the 16-bit forms' registers and default segment in one entry for each rm: bits 0 to 2
+   the base, 3 to 5 the index, 6 set if there is an index, 7 set if the default segment is SS
+   (rm 2, 3 and 6: BP's) */
+static const u8 DRAM_ATTR fast_ea16_pk[8] = {
+	3 | 6 << 3 | 0x40, 3 | 7 << 3 | 0x40, 5 | 6 << 3 | 0xc0, 5 | 7 << 3 | 0xc0, 6, 7, 5 | 0x80, 3 };
+#endif
 /* v5.2 (prototype): fast_ea() with the same results, shaped for the common forms: ov is the segment
    override + 1 as pfx holds it (0: none), and the special forms are tested from modrm in one
    compare each.  T386MON's tests: 64 per cent of memory operands with 32-bit addresses, 55 per cent of
@@ -519,6 +526,22 @@ static inline __attribute__((always_inline)) uword fast_ea2(CPUI386 *cpu, const 
 			pc += 2;
 			dseg = SEG_DS;
 		} else {
+#if QW_EA16T
+			/* v5.3: one table entry (fast_ea16_pk[]) for the registers and the segment, and
+			   mod 1 first: [BP+d8] and [BX+d8], a small-model program's locals and fields */
+			unsigned t = fast_ea16_pk[rm];
+			a = cpu->gprx[t & 7].r16;
+			if (t & 0x40)
+				a += cpu->gprx[(t >> 3) & 7].r16;
+			if (likely(mod == 1))
+				a += (s8) *pc++;
+			else if (mod == 2) {
+				a += fm16(pc);
+				pc += 2;
+			}
+			a &= 0xffff;
+			dseg = SEG_DS - (int) (t >> 7);
+#else
 			a = cpu->gprx[fast_ea16_base[rm]].r16;
 			if (rm < 4)
 				a += cpu->gprx[fast_ea16_index[rm]].r16;
@@ -529,6 +552,7 @@ static inline __attribute__((always_inline)) uword fast_ea2(CPUI386 *cpu, const 
 				a += (s8) *pc++;
 			a &= 0xffff;
 			dseg = (rm == 2 || rm == 3 || rm == 6) ? SEG_SS : SEG_DS;
+#endif
 		}
 	} else {
 		if (unlikely(rm == 4)) {
