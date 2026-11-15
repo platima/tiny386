@@ -8150,3 +8150,64 @@ from such a `wfi` has not been checked, and a mistake there would hang core 1.
   about 2.5% by RV32, Windows' boot about 1.2%, the copy timing (9.67 s on v52-test3).
 * The least internal RAM free against the 64 KiB rule.
 * With fpu = 1 and the new `bios.bin`, EQU.COM's int11=0026.
+
+## 37. v5.3 after batch 4: the per-step costs, the PIT's word reads, membench's slowed panel (2026-11-15)
+
+### 37.1 Where the time goes now [verified: `rvt.sh` counts of 52a3212; v52-test3's board profile]
+
+Counted for the board's core on the PC (W2, the first 300 M guest instructions of Windows' start, on
+52a3212): `fast_exec()` is 45.67 of 51.18 host instructions a guest instruction (89 per cent). The calls
+`pc_step()` makes at every step (512 guest instructions on the boards) came to about 0.9:
+`i8257_dma_run()` 0.272, `kbd_step()` 0.140, `pc_step()` 0.079, `i8254_update_irq()` 0.061,
+`cmos_update_irq()` 0.055, `ne2000_step()` 0.037. The harness's own clock (`vnow_us()`, with a 64-bit
+atomic store through libatomic's lock) is about 0.5 of the rest and is not on the board.
+
+On the board, v52-test3's Windows profile (492,580 of its 1,172,302 samples with the guest running):
+`i8257_dma_run()` 1,687 of those (0.34 per cent), `kbd_step()` 1,211 (0.25), `i386_task` 905, `pic_get_irq()`
+686, `speed_step()` 591, `pc_step()` 545. Most of `kbd_step()`'s samples sit on two lines, i8042.c 748 (the
+key repeat flag's test-and-set) and 1077 (the mouse ring's acquire loads).
+
+Looked at and not done:
+* A larger fast TLB: each fast entry stays only while tiny386's entry at its index holds the same page, so
+  it means tiny386's 256 entries as well. 512 would cost 8 KB of static internal RAM (`fast_state0`) and
+  4 KB of the internal heap (tiny386's `tlb.tab`), against 3 KB spare; W2's `fast_miss()` is 0.374 (0.7
+  per cent).
+* Zcmp's push and pop for code size: the S31 build already uses
+  `-march=rv32imafcb_zicsr_zifencei_zcb_zcmp_zcmt_xesploop_xespv` with `-mno-cm-popret`.
+* The run loop's own calls (`speed_run_step_at()`, `disk_errors()`, `display_pace_step()`): each a few
+  loads and tests already; the counts cannot see them (the harness does not build esp/main).
+* `ets_delay_us()` in the profile's exec1 area (4,126 samples): the guest's HLT inside an instruction
+  handed to tiny386 leaves the area at exec1 while `cpui386_step()` spins in `usleep(1)`, so these are
+  halted time counted as running [inferred].
+
+### 37.2 The commits [verified: `rvt.sh`, the host suite, the lockstep gate, `espbuild.sh`]
+
+| Commit | What | W2 | BENCH | FC16 | Korvo-1 DIRAM left |
+|-|-|-|-|-|-|
+| 23d48fa `QW_DMAQ` | `i8257_dma_run()` returns when no channel is unmasked and asking | -0.42% | -1.5% | -2.4% | |
+| 5df8a74 | a word read of ports 40h to 42h gives both bytes (was FFFFh) | | | | 113,115 |
+| dd7c6dd `QW_KBDQ` | `kbd_step()`: no atomic read-modify-write or fence with nothing due | -0.07% | -0.27% | -0.42% | 113,103 |
+| 922767d | membench repeats four PSRAM-miss lines with the panel at 3 MHz | | | | 113,103 |
+
+(Core 1's host instructions against the row before; W2 51.17 to 50.92 a guest instruction, BENCH without
+a4 50.11 to 49.94. Guest output lines differing from the references: 0 on each. DIRAM was 113,131 at
+0394fb1; the DOS board 115,339 to 115,311.) The counts take a fence or an atomic as one instruction, so
+`QW_KBDQ`'s gain on the board is likely larger than they show.
+
+The PIT's word read: PITW.COM (4,096 `IN AX,40h`, a guest program kept with the scratch work) in FreeDOS
+under the headless build gave one value, FFFFh, and 4,097 "inw 0x40" lines on stderr before; 571 values and
+none after. tab5-pc found it (b2c8de1).
+
+Host suite on 5df8a74 and on dd7c6dd: 199 passed, 0 failed, 0 skipped. Lockstep gate on both: 14 of 14
+against v4.6 with upstream's three lines, 10 of 14 against plain v4.6 (v5.2's known msdos and restart,
+fast and off).
+
+Upstream: local branches r5-dma-quick (3a93631) and r5-pit-word (6c6c9f6) on hchunhui/tiny386's master
+cab7765, each against master in the lockstep tester on six workloads with no difference; not sent.
+
+### 37.3 What only the board can say
+
+* membench.ini: the "slow panel" lines against the usual "miss" lines. 20 to 30 cycles less a missed line
+  would be worth about 1 per cent of the running time (about 40 fills per 1,000 guest instructions in
+  v52-test3's profile) [inferred]; whether the panel can then run slower in use is a separate question.
+* `kbd_step()` and `i8257_dma_run()` in the next profile, against 37.1's figures.
