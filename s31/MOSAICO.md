@@ -45,6 +45,8 @@ A USB keyboard (and mouse) through a USB-C OTG adapter, as on the Korvo-1. While
 
 You need esptool 5.4 or later (`pip install esptool`) and an image writer such as Win32 Disk Imager.
 
+The package's `card\tiny386\vgabios.bin` is SeaVGABIOS as the Linux route builds it: 40,448 bytes, SHA-256 `f658c3b0...`, version `...20261019_000000-korvo`, without the 800x480 VBE modes. The Korvo-1 cards since v5.2-test3 carry the `-v4` build instead (40,960 bytes, `4aeae74f...`, with those modes). Windows' display driver never asks the BIOS for modes, so either works here; copy the `-v4` one over it if you prefer the Korvo-1's.
+
 1. **Download mode.** Switch the board off (POWER), hold BOOT, press POWER briefly, let go of BOOT. Plug the Type-C into the PC and note the COM port.
 2. **Flash.** In this folder: `flash-mosaico.bat COM12` (your port). It saves the whole 16 MB NOR flash to `backup\mosaico-nor-before.bin` first, which takes a few minutes, and then writes tiny386. Keep that `backup` folder. With `net` after the port it writes the network build (see `NET.md`; `[esp] ssid` and `pass` in the ini).
 3. **Start.** Switch off and on with POWER. The first start has no ini yet, so it goes into **USB disk mode** by itself and says so on the panel. The PC sees two drives:
