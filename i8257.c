@@ -21,6 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "qw.h"
 #include "i8257.h"
 #include <stdbool.h>
 #include <stdio.h>
@@ -355,6 +356,15 @@ void IRAM_ATTR i8257_dma_run(void *opaque)
     int ichan;
     int rearm = 0;
 
+#if QW_DMAQ
+    /* v5.3: pc_step() calls this for both controllers at every step (512
+       instructions on the boards).  A channel runs only when its request
+       bit (status bits 4 to 7) is set and its mask bit clear; with none
+       such, and not called from inside a transfer, the loop below would
+       run nothing and change nothing, so leave first. */
+    if (!d->running && !((d->status >> 4) & ~d->mask & 0xf))
+        return;
+#endif
     if (d->running) {
         rearm = 1;
         goto out;

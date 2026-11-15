@@ -35,6 +35,7 @@
 #define QW_REPMIS 1
 #define QW_RMREF 1
 #define QW_PFPOP 1
+#define QW_DMAQ 1
 /* v5.3: the clock and the timer */
 #define QW_UCLK 1
 #define QW_PITX 1
