@@ -218,6 +218,9 @@ void usb_disk_mode(void)
 	console_puts(CON_GOOD, "Ready: connect the Type-C port to the PC. When done, "
 		     "eject both drives there, then press the AI button to start tiny386.");
 
+	/* the hold that asked for this mode is not a press */
+	while (ai_down())
+		vTaskDelay(pdMS_TO_TICKS(50));
 	int held = 0;                   /* ticks of 50 ms the button is down */
 	bool told = false;
 	for (int tick = 0; ; tick++) {
