@@ -25,6 +25,20 @@ The disk is a fixed **119,279,616 bytes** (113.75 MiB, 232,968 sectors). Your im
 
 Writes get slower as the NAND fills with data, because the map has to move old pages first. Two things keep them quick: less in the image (the free space inside it is free on the NAND too), and Windows' swap file turned off or set to a fixed size (Control Panel, System, Performance, Virtual Memory).
 
+## Making the image from a folder
+
+`s31/mkimage-mosaico.py` makes the NAND's image from a folder that holds the C: drive's files (Linux or WSL, Python 3 and mtools). The image is the whole 119,279,616 bytes:
+
+- tiny386's own master boot record, then one FAT16 partition from sector 2048;
+- 2 KiB clusters, with the data area starting on a 2 KiB boundary, so each cluster Windows writes is one NAND page;
+- the free space left as zeros, which the NAND doesn't store.
+
+From an existing Windows 95 image (`--boot`, FAT16) it takes only Microsoft's boot sector code and `IO.SYS`. The other boot files (`MSDOS.SYS`, `COMMAND.COM`) come from the folder, or from that image, or are written fresh. Attributes come from a list made with PowerShell (`--attrs`; the script's top comment gives the command), because the WSL view of an NTFS drive doesn't show them.
+
+```
+python3 s31/mkimage-mosaico.py --windows "/mnt/d/.../Win95 Shrunk" --boot win95.img --attrs attrs.txt --out mosaico-win95.img
+```
+
 ## The picture
 
 The frame is 640x480; the panel shows 480x480 of it:
