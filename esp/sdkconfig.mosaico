@@ -1,0 +1,80 @@
+CONFIG_IDF_TARGET="esp32s31"
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_320=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+# The board's Type-C is the chip's USB-OTG download port, with no reset
+# lines: download mode by hand (hold BOOT, press POWER), and esptool told
+# not to reset it (s31/MOSAICO.md).
+CONFIG_ESPTOOLPY_BEFORE_NORESET=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+# tiny386 alone on the 16 MB NOR flash: app, nvs, and the FAT volume with
+# the ini files and BIOSes (storage)
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions-mosaico.csv"
+CONFIG_PARTITION_TABLE_OFFSET=0x8000
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_250M=y
+CONFIG_SPIRAM_BOOT_HW_INIT=y
+CONFIG_SPIRAM_BOOT_INIT=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+# CONFIG_SPIRAM_MEMTEST is not set
+# The console on UART0, TX0 GPIO58 and RX0 GPIO59 on the right module
+# header; USB Serial/JTAG is only on the left one.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+CONFIG_ESP_MAIN_TASK_AFFINITY_CPU0=y
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+CONFIG_FREERTOS_HZ=100
+# CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1 is not set
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+CONFIG_FATFS_VOLUME_COUNT=4
+CONFIG_FATFS_USE_LABEL=y
+CONFIG_FATFS_USE_FASTSEEK=y
+# No crash screen on this panel yet (crash.c draws for a panel that shows
+# the frame by itself): a crash stops with the last picture, and says why on
+# UART0.
+CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y
+CONFIG_ESP_MM_CACHE_MSYNC_C2M_CHUNKED_OPS=y
+CONFIG_ESP_MM_CACHE_MSYNC_C2M_CHUNKED_OPS_MAX_LEN=0x8000
+# A keyboard and a mouse through a hub on the Type-C (an OTG adapter)
+CONFIG_USB_HOST_HUBS_SUPPORTED=y
+CONFIG_APP_REPRODUCIBLE_BUILD=y
+
+# As sdkconfig.korvo1: ESP-IDF code that need not be in internal RAM.
+# CONFIG_ESP_WIFI_SLP_IRAM_OPT is not set
+# CONFIG_PM_SLEEP_FUNC_IN_IRAM is not set
+# CONFIG_PM_SLP_IRAM_OPT is not set
+CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH=y
+# CONFIG_LIBC_LOCKS_PLACE_IN_IRAM is not set
+CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH=y
+# CONFIG_RMT_ENCODER_FUNC_IN_IRAM is not set
+# CONFIG_RMT_TX_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_RMT_RX_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_GDMA_CTRL_FUNC_IN_IRAM is not set
+# CONFIG_GDMA_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_I2C_MASTER_ISR_HANDLER_IN_IRAM is not set
+# The panel's and the NAND's SPI: their handlers run from flash, and wait
+# while the cache is off (a write of the NOR flash's FAT volume).
+# CONFIG_SPI_MASTER_ISR_IN_IRAM is not set
+# CONFIG_SPI_SLAVE_ISR_IN_IRAM is not set
+# CONFIG_PARLIO_TX_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_PARLIO_RX_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_ANA_CMPR_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_MCPWM_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_GPTIMER_ISR_HANDLER_IN_IRAM is not set
+# CONFIG_IEEE802154_ENABLED is not set
+
+# The FAT volume in the NOR flash in 512-byte sectors, so that USB disk
+# mode offers it to a PC as an ordinary drive.
+CONFIG_WL_SECTOR_SIZE_512=y
+CONFIG_WL_SECTOR_SIZE=512
+# USB disk mode (usb_disk.c): TinyUSB's mass storage class, with a 4 KiB
+# buffer of internal RAM rather than its 8 KiB.
+CONFIG_TINYUSB_MSC_ENABLED=y
+CONFIG_TINYUSB_MSC_BUFSIZE=4096
+CONFIG_TINYUSB_DESC_MANUFACTURER_STRING="tiny386"
+CONFIG_TINYUSB_DESC_PRODUCT_STRING="tiny386 on the ESP-Mosaico"
+CONFIG_TINYUSB_DESC_MSC_STRING="tiny386 disks"

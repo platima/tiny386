@@ -1738,6 +1738,15 @@ for f in NOGEN ORDER NOIDLE NOTICK NORATE SPAN IDLEOK NOFLOOR; do
     result $? "the clock test sees planted fault $f"
 done
 
+# ==== the ESP-Mosaico's NAND disk (esp/main/nand_vol.c) ====
+# The signature, sectors on 2 KiB pages through the kept page, zero pages
+# trimmed, the disk's bounds, 20,000 random reads and writes against a
+# model with syncs and reopens, and a store that fails, under ASan and
+# UBSan (tests/host/nand).
+echo
+bash "$HERE/nand/run_nand.sh" "$OUT"
+result $? "nand_vol.c: the ESP-Mosaico's NAND disk against pages in memory"
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]

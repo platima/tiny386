@@ -319,6 +319,9 @@
 #include <errno.h>
 #include "esp/main/disk_image.h"
 #include "esp/main/sd_part.h"
+#ifdef IDE_BOARD_DISK
+#include "esp/main/board_disk.h"
+#endif
 void *pcmalloc(long size);
 /* says so on the panel and stops (esp/main/esp_main.c) */
 void tiny386_fatal(const char *fmt, ...) __attribute__((noreturn));
@@ -2264,6 +2267,10 @@ unsigned bf_writes; /* v5.3: not static, for esp_main.c's run loop's every step 
 #define BF_MAX_SDP 4
 static struct sd_part *bf_sdp[BF_MAX_SDP];
 static int bf_sdp_count;
+#ifdef IDE_BOARD_DISK
+static void *bf_board[BF_MAX_SDP];
+static int bf_board_count;
+#endif
 #endif
 #ifdef BUILD_ESP32
 /* reads, writes and flushes the card refused (a card pulled out, or
@@ -2321,6 +2328,12 @@ void ide_flush(void)
        card's own cache, if any, is asked to empty */
     for (i = 0; i < bf_sdp_count; i++)
         if (sd_part_sync(bf_sdp[i]) != 0)
+            bf_errors++;
+#endif
+#ifdef IDE_BOARD_DISK
+    /* the board's own disk: what it keeps onto the medium */
+    for (i = 0; i < bf_board_count; i++)
+        if (board_disk_sync(bf_board[i]) != 0)
             bf_errors++;
 #endif
 }
@@ -2666,6 +2679,62 @@ static BlockDevice *block_device_init_sdpart(const char *filename)
 }
 #endif
 
+#ifdef IDE_BOARD_DISK
+/* A disk the board gives (esp/main/board_disk.h): the ESP-Mosaico's NAND,
+   hda = nand: */
+static int64_t bd_get_sector_count(BlockDevice *bs)
+{
+    return (int64_t) board_disk_sectors(bs->opaque);
+}
+
+static int bd_read_async(BlockDevice *bs,
+                         uint64_t sector_num, uint8_t *buf, int n,
+                         BlockDeviceCompletionFunc *cb, void *opaque)
+{
+    BF_ACTIVITY();
+    if (n < 0)
+        return -1;
+    if (board_disk_read(bs->opaque, sector_num, buf, (unsigned) n) != 0) {
+        bf_errors++;
+        return -1;
+    }
+    return 0;
+}
+
+static int bd_write_async(BlockDevice *bs,
+                          uint64_t sector_num, const uint8_t *buf, int n,
+                          BlockDeviceCompletionFunc *cb, void *opaque)
+{
+    BF_ACTIVITY();
+    if (n < 0)
+        return -1;
+    if (board_disk_write(bs->opaque, sector_num, buf, (unsigned) n) != 0) {
+        bf_errors++;
+        return -1;
+    }
+    bf_writes++;
+    return 0;
+}
+
+static BlockDevice *block_device_init_board(const char *filename)
+{
+    static char why[200];
+    void *d = board_disk_open(filename, why, sizeof(why));
+    if (!d)
+        tiny386_fatal("%s: %s.", filename, why);
+    BlockDevice *bs = pcmalloc(sizeof(*bs));
+    memset(bs, 0, sizeof(*bs));
+    bs->opaque = d;
+    bs->get_sector_count = bd_get_sector_count;
+    bs->get_chs = NULL;
+    bs->read_async = bd_read_async;
+    bs->write_async = bd_write_async;
+    if (bf_board_count < BF_MAX_SDP)
+        bf_board[bf_board_count++] = d;
+    return bs;
+}
+#endif
+
 /* The whole card as one raw disk (hda = /dev/mmcblk0).  Not in the
    firmware of this tree: the card's FAT partitions are mounted by FatFs at
    the same time, and Linux's root is on it too, so a guest given it could
@@ -2921,6 +2990,10 @@ int ide_attach(IDEIFState *s, int drive, const char *filename)
 #endif
     } else if (sd_part_name(filename) != 0) {
         bs = block_device_init_sdpart(filename);
+#ifdef IDE_BOARD_DISK
+    } else if (board_disk_name(filename)) {
+        bs = block_device_init_board(filename);
+#endif
     } else {
         bs = block_device_init(filename, BF_MODE_RW);
     }

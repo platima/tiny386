@@ -1,0 +1,17 @@
+## The ESP-Mosaico's components (esp/CMakeLists.txt adds this folder for
+## BOARD=mosaico only, with its own lock file, esp/dependencies.mosaico.lock)
+dependencies:
+  idf:
+    version: '>=6.1'
+  # the NAND, with its Dhara map (as Espressif's ESP-Mosaico BSP takes it)
+  espressif/spi_nand_flash:
+    version: ==1.4.4
+  # USB disk mode
+  espressif/esp_tinyusb:
+    version: ==3.0.1
+  # the touch panel
+  espressif/esp_lcd_touch_cst9220:
+    version: ==0.1.2
+  # the ES8311 codec (i2s.c, USE_ES8311)
+  espressif/esp_codec_dev:
+    version: ^1.3.4

@@ -43,6 +43,9 @@
 #include "setup.h"
 #include "storage.h"
 #include "sd_part.h"
+#ifdef IDE_BOARD_DISK
+#include "board_disk.h"
+#endif
 #include "bootmenu.h"
 #include "speed.h"
 #include "profile.h"
@@ -946,7 +949,11 @@ static int parse_ini(void *user, const char *section,
 
 	/* v4.4: hda = sd:3, a partition of the card, is no file's name */
 	if (known_key(section, name) && setup_is_path_key(section, name) && value[0] &&
-	    !sd_part_name(value)) {
+	    !sd_part_name(value)
+#ifdef IDE_BOARD_DISK
+	    && !board_disk_name(value)
+#endif
+	    ) {
 		bool missing;
 		setup_resolve(s_ini_dir, value, s_maps, 2, resolved, sizeof(resolved),
 			      &missing);
@@ -1376,6 +1383,20 @@ static int check_config(void)
 			bad += check_card_partition(i, key, path);
 			continue;
 		}
+#ifdef IDE_BOARD_DISK
+		/* the board's own disk (hda = nand: on the ESP-Mosaico) */
+		if (board_disk_name(path)) {
+			char info[160], why[320];
+			if (board_disk_check(i, i < 4 && conf.iscd[i], info, sizeof(info),
+					     why, sizeof(why)) != 0) {
+				console_printf(CON_ERROR, "[pc] %s = %s: %s.", key, path, why);
+				bad++;
+			} else {
+				console_printf(CON_INFO, "%s: %s", key, info);
+			}
+			continue;
+		}
+#endif
 		struct stat st;
 		if (stat(path, &st) != 0) {
 			console_printf(CON_ERROR, "[pc] %s: there is no file %s. Check "
@@ -1572,6 +1593,10 @@ static void mount_storage(void)
 /* ==== which ini ==== */
 
 static const struct setup_place s_places[] = {
+#ifdef BOARD_SPIFLASH_INIS
+	/* no card: the flash's FAT volume, its tiny386 folder first */
+	{ "/spiflash/tiny386", NULL },
+#endif
 	{ "/sdcard/tiny386", NULL },
 	{ "/sdcard", "tiny386.ini" },
 	{ "/spiflash", "tiny386.ini" },

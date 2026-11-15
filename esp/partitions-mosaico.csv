@@ -1,0 +1,8 @@
+# ESP-Mosaico: tiny386 alone on the 16 MB NOR flash (the guest's disk is on
+# the NAND).  storage is the FAT volume with the tiny386 folder (inis,
+# bios.bin, vgabios.bin): the TINY386 drive in USB disk mode, at /spiflash.
+# Name, Type, SubType, Offset, Size, Flags
+nvs,data,nvs,0x9000,24K,
+phy_init,data,phy,0xf000,4K,
+factory,app,factory,0x10000,4M,
+storage,data,fat,0x410000,8M,

@@ -7,7 +7,7 @@ endif()
 # holds about 45 KB of internal RAM through the Wi-Fi libraries, even when
 # Wi-Fi never starts.
 set(TINY386_CONSOLE_BOARDS korvo1 dosboard)
-set(TINY386_NO_WIFI_BOARDS korvo1 dosboard)
+set(TINY386_NO_WIFI_BOARDS korvo1 dosboard mosaico)
 
 # v5.2 net: idf.py -DTINY386_WIFI=1, the Korvo-1's network build: wifi.c in
 # (started only by [esp] ssid), sdkconfig.korvo1-wifi after the board's own
@@ -18,10 +18,10 @@ set(TINY386_NO_WIFI_BOARDS korvo1 dosboard)
 # never starts, and more once it has (s31/NET.md).  Without TINY386_WIFI the
 # Korvo-1's build is as before.
 if(TINY386_WIFI)
-    if(NOT BOARD STREQUAL "korvo1")
-        message(FATAL_ERROR "TINY386_WIFI: the network build is for BOARD=korvo1")
+    if(NOT BOARD STREQUAL "korvo1" AND NOT BOARD STREQUAL "mosaico")
+        message(FATAL_ERROR "TINY386_WIFI: the network build is for BOARD=korvo1 or mosaico")
     endif()
-    list(REMOVE_ITEM TINY386_NO_WIFI_BOARDS korvo1)
+    list(REMOVE_ITEM TINY386_NO_WIFI_BOARDS ${BOARD})
     set(NO_HOT_IRAM 1)
 endif()
 
@@ -91,6 +91,13 @@ endif()
 if(BOARD STREQUAL "dosboard")
     list(APPEND srcs "lcd_dosboard.c" "dosboard.c" "ms7210.c" "ch9350.c")
 else()
+    # The ESP-Mosaico: its QSPI panel, the NAND as the guest's disk, USB
+    # disk mode, the touch panel as the mouse (s31/MOSAICO.md); its
+    # components come from esp/mosaico/idf_component.yml
+    if(BOARD STREQUAL "mosaico")
+        list(APPEND srcs "lcd_mosaico.c" "mosaico.c" "touch_mosaico.c"
+             "nand_vol.c" "nand_disk.c" "usb_disk.c")
+    endif()
     list(APPEND srcs "usb_input.c")
 endif()
 
@@ -156,6 +163,16 @@ endif()
 # no status command after a read (sdmmc_read_wrap.c).
 if(IDF_TARGET STREQUAL "esp32s31")
     target_sources(${COMPONENT_LIB} PRIVATE "membench.c" "membench_pie.S")
+endif()
+# The ESP-Mosaico has no card: none of the card's wraps, which would pull
+# the SD driver in.  Its NAND map's pages never written read as zeros
+# (nand_disk.c).
+if(BOARD STREQUAL "mosaico")
+    target_link_options(${COMPONENT_LIB} INTERFACE
+        -Wl,--wrap=dhara_map_read
+        -Wl,--undefined=__wrap_dhara_map_read)
+endif()
+if(IDF_TARGET STREQUAL "esp32s31" AND NOT BOARD STREQUAL "mosaico")
     target_link_options(${COMPONENT_LIB} INTERFACE
         -Wl,--wrap=sd_host_slot_get_real_freq
         -Wl,--undefined=__wrap_sd_host_slot_get_real_freq

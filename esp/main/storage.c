@@ -607,7 +607,12 @@ int storage_init(void)
 				     ESP_PARTITION_SUBTYPE_DATA_FAT, "storage")) {
 		const esp_vfs_fat_mount_config_t spiflash_cfg = {
 			.max_files = 4,
+#ifdef BOARD_SPIFLASH_FORMAT
+			/* a board whose own files are there: made the first time */
+			.format_if_mount_failed = true,
+#else
 			.format_if_mount_failed = false,
+#endif
 			.allocation_unit_size = CONFIG_WL_SECTOR_SIZE
 		};
 		flash_ok = esp_vfs_fat_spiflash_mount_rw_wl("/spiflash", "storage",

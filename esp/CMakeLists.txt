@@ -53,8 +53,18 @@ if(EXISTS "${BOARD_SDKCONFIG}")
     file(COPY_FILE "${BOARD_SDKCONFIG}" "${CMAKE_CURRENT_SOURCE_DIR}/sdkconfig" ONLY_IF_DIFFERENT)
 endif()
 set(SDKCONFIG_DEFAULTS "${BOARD_SDKCONFIG}")
+# The ESP-Mosaico's components from the component manager (the NAND, USB
+# device, touch and codec drivers) are named in mosaico/idf_component.yml,
+# a component of its own that only this board's build has, so that the
+# other boards' builds and their dependencies.lock stay as they were.
+if(BOARD STREQUAL "mosaico")
+    list(APPEND EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/mosaico")
+endif()
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+if(BOARD STREQUAL "mosaico")
+    idf_build_set_property(DEPENDENCIES_LOCK "${CMAKE_CURRENT_SOURCE_DIR}/dependencies.mosaico.lock")
+endif()
 project(tiny386)
 
 # The Korvo-1's dual-boot build lives beside Linux: its own flash_args would

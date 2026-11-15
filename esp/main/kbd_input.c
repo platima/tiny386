@@ -6,6 +6,9 @@
 #include <string.h>
 
 #include "kbd_input.h"
+#ifdef BOARD_MOUSE_HOOK
+#include "lcd_mosaico.h"
+#endif
 #include "../../i8042.h"
 
 uint32_t get_uticks();
@@ -442,6 +445,10 @@ void kbd_input_mouse(int dx, int dy, int wheel, int buttons)
 		dy = MOUSE_CLAMP;
 	else if (dy < -MOUSE_CLAMP)
 		dy = -MOUSE_CLAMP;
+#ifdef BOARD_MOUSE_HOOK
+	/* the ESP-Mosaico's panel keeps its window round the pointer */
+	lcd_mosaico_mouse(dx, dy);
+#endif
 	LOCK();
 	/* ps2_mouse_event() takes dy down-positive, as here, and the wheel
 	   as a PS/2 mouse counts it: positive towards the user */

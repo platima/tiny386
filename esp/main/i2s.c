@@ -156,6 +156,11 @@ static esp_err_t es8311_codec_init(void)
 {
 	/* Initialize I2C peripheral */
 	i2c_master_bus_handle_t i2c_bus_handle = NULL;
+#ifdef ES8311_SHARED_BUS
+	/* the board made the bus already, for its touch panel too */
+	if (i2c_master_get_bus_handle(ES8311_I2C_NUM, &i2c_bus_handle) != ESP_OK)
+		return ESP_FAIL;
+#else
 	i2c_master_bus_config_t i2c_mst_cfg = {
 		.i2c_port = ES8311_I2C_NUM,
 		.sda_io_num = ES8311_I2C_SDA,
@@ -167,11 +172,15 @@ static esp_err_t es8311_codec_init(void)
 		.flags.enable_internal_pullup = true,
 	};
 	ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_cfg, &i2c_bus_handle));
+#endif
+#ifndef ES8311_ADDR
+#define ES8311_ADDR ES8311_CODEC_DEFAULT_ADDR
+#endif
 
 	/* Create control interface with I2C bus handle */
 	audio_codec_i2c_cfg_t i2c_cfg = {
 		.port = ES8311_I2C_NUM,
-		.addr = ES8311_CODEC_DEFAULT_ADDR,
+		.addr = ES8311_ADDR,
 		.bus_handle = i2c_bus_handle,
 	};
 	const audio_codec_ctrl_if_t *ctrl_if = audio_codec_new_i2c_ctrl(&i2c_cfg);
@@ -292,7 +301,15 @@ void i2s_main()
 	}
 	ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_chan, &tx_std_cfg));
 #ifdef USE_ES8311
+#ifdef ES8311_SHARED_BUS
+	/* no codec answering is no sound, not a stop */
+	if (es8311_codec_init() != ESP_OK) {
+		console_printf(CON_WARN, "Sound: the ES8311 did not answer: no sound.");
+		return;
+	}
+#else
 	ESP_ERROR_CHECK(es8311_codec_init());
+#endif
 #endif
 	if (xTaskCreatePinnedToCore(i2s_task, "i2s_task", 4096, NULL, 0, NULL, 0) != pdPASS)
 		console_printf(CON_ERROR, "The sound task could not be started (no memory): no sound.");
