@@ -116,6 +116,9 @@
 #ifndef QW_DMAQ
 #define QW_DMAQ 0       /* i8257_dma_run() leaves at once when no channel is unmasked and asking */
 #endif
+#ifndef QW_KBDQ
+#define QW_KBDQ 0       /* kbd_step(): no atomic read-modify-write or fence with no repeat due and the mouse still */
+#endif
 /* v5.3: the clock and the timer */
 #ifndef QW_UCLK
 #define QW_UCLK 0       /* the S31 boards: core 1's clock from its cycle counter (esp/main/uclock.h) */
