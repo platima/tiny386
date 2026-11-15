@@ -94,6 +94,25 @@ def source_volume(path):
     die("%s: no FAT16 volume found" % path)
 
 
+def vbr_from(path):
+    """a FAT12/16 boot sector: the file itself if it is one, else the first
+    512 bytes in it that are one (SYS.COM and FORMAT.COM carry Windows 95's,
+    OEM name MSWIN4.1, jump EB 3C 90)"""
+    d = open(path, "rb").read()
+    if len(d) == SECTOR and d[510:512] == b"\x55\xaa":
+        return d
+    i = -1
+    while True:
+        i = d.find(b"MSWIN4.", i + 1)
+        if i < 3:
+            if i < 0:
+                die("%s: no FAT16 boot sector in it" % path)
+            continue
+        b = d[i - 3:i - 3 + SECTOR]
+        if len(b) == SECTOR and b[0] == 0xEB and b[1] == 0x3C and b[510:512] == b"\x55\xaa":
+            return b
+
+
 def mtools_env():
     env = dict(os.environ)
     env["MTOOLS_SKIP_CHECK"] = "1"
@@ -133,7 +152,11 @@ Network=0
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--windows", required=True)
-    ap.add_argument("--boot", required=True)
+    ap.add_argument("--boot", help="an existing Windows 95 image (FAT16)")
+    ap.add_argument("--vbr", help="instead of --boot: a 512-byte FAT16 boot sector to take "
+                    "the code from, or SYS.COM, whose own template is found in it")
+    ap.add_argument("--io-sys", help="instead of --boot: IO.SYS (WINBOOT.SYS from the "
+                    "setup files' PRECOPY1.CAB)")
     ap.add_argument("--attrs")
     ap.add_argument("--size", type=int, default=NAND_DISK)
     ap.add_argument("--out", required=True)
@@ -147,23 +170,31 @@ def main():
     win = a.windows
     if not os.path.isdir(os.path.join(win, "WINDOWS")) and not find_ci(win, "WINDOWS"):
         die("%s has no WINDOWS folder" % win)
-    off, vbr = source_volume(a.boot)
+    if a.boot:
+        off, vbr = source_volume(a.boot)
+    elif a.vbr and a.io_sys:
+        off, vbr = None, vbr_from(a.vbr)
+    else:
+        die("give --boot, or --vbr and --io-sys")
     if vbr[3:11] not in (b"MSWIN4.0", b"MSWIN4.1"):
-        print("note: --boot's volume has OEM name %r, not MSWIN4.x" % vbr[3:11])
+        print("note: the boot sector has OEM name %r, not MSWIN4.x" % vbr[3:11])
 
     tmp = tempfile.mkdtemp(prefix="mkimage-", dir=os.path.dirname(os.path.abspath(a.out)))
     try:
         # what --boot gives: IO.SYS always; the others if the folder lacks them
-        src = "%s@@%d" % (a.boot, off)
-        listing = mt("mdir", "-i", src, "-b", "::/")
+        if a.boot:
+            src = "%s@@%d" % (a.boot, off)
+            listing = mt("mdir", "-i", src, "-b", "::/")
         def from_boot(name):
+            if not a.boot:
+                return None
             want = "::/" + name.upper()
             if want.lower() not in [l.strip().lower() for l in listing.splitlines()]:
                 return None
             dst = os.path.join(tmp, name.upper())
             mt("mcopy", "-i", src, "-n", want, dst)
             return dst
-        io_sys = from_boot("IO.SYS")
+        io_sys = a.io_sys or from_boot("IO.SYS")
         if not io_sys:
             die("%s has no IO.SYS" % a.boot)
         boot_files = [("IO.SYS", io_sys, "hsr")]

@@ -6,7 +6,7 @@ endif()
 # file gives what lcd.h says), and boards built without Wi-Fi: wifi.c alone
 # holds about 45 KB of internal RAM through the Wi-Fi libraries, even when
 # Wi-Fi never starts.
-set(TINY386_CONSOLE_BOARDS korvo1 dosboard)
+set(TINY386_CONSOLE_BOARDS korvo1 dosboard mosaico)
 set(TINY386_NO_WIFI_BOARDS korvo1 dosboard mosaico)
 
 # v5.2 net: idf.py -DTINY386_WIFI=1, the Korvo-1's network build: wifi.c in

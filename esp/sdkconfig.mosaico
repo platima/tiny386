@@ -33,10 +33,12 @@ CONFIG_FATFS_MAX_LFN=255
 CONFIG_FATFS_VOLUME_COUNT=4
 CONFIG_FATFS_USE_LABEL=y
 CONFIG_FATFS_USE_FASTSEEK=y
-# No crash screen on this panel yet (crash.c draws for a panel that shows
-# the frame by itself): a crash stops with the last picture, and says why on
-# UART0.
-CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y
+# A crash: crash.c writes its report into the console's lines kept over a
+# reset, then the board starts again and shows them on the panel (this
+# panel does not show the frame by itself, as the Korvo-1's does, so the
+# report is seen at the next start rather than at once).  UART0 has
+# ESP-IDF's own account too.
+CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y
 CONFIG_ESP_MM_CACHE_MSYNC_C2M_CHUNKED_OPS=y
 CONFIG_ESP_MM_CACHE_MSYNC_C2M_CHUNKED_OPS_MAX_LEN=0x8000
 # A keyboard and a mouse through a hub on the Type-C (an OTG adapter)
