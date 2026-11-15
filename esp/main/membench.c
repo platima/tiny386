@@ -37,6 +37,7 @@
 #include "esp_clk_tree.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "lcd.h"
 #include "soc/cache_reg.h"
 #include "soc/soc.h"
 #include "esp32s31/rom/cache.h"
@@ -54,6 +55,14 @@ static membench_say_fn say;
 /* the buffers: A and B in PSRAM, C for the eviction checks, S in internal RAM */
 static uint8_t *pa, *pb, *pc, *si;
 static uint32_t mhz;
+
+/* v5.3: a board whose panel's clock cannot be changed (lcd_korvo1.c has
+   the real one) */
+__attribute__((weak)) uint32_t lcd_set_pclk(uint32_t hz)
+{
+	(void) hz;
+	return 0;
+}
 
 /* ==== kernels, in internal RAM, so that their fetches do not touch the bus
    under test (the PIE ones in membench_pie.S) ==== */
@@ -625,6 +634,29 @@ static void run_all(void)
 	measure("miss: memcpy, 16 KiB off", PS_BIG, prep_cold_ab, op_memcpy_off, PS_BIG);
 	measure("miss: PIE copy", PS_BIG, prep_cold_ab, op_pie_copy, PS_BIG);
 	measure("miss: PIE copy, source +2", PS_BIG - WAY, prep_cold_ab, op_pie_copyu, PS_BIG - WAY);
+
+	/* v5.3: the same misses with the panel's DMA slowed, to see what it
+	   costs the emulator's misses beside it (the Mosaico session's idea:
+	   at 18 MHz the panel reads its whole frame from PSRAM about 35 times
+	   a second).  The panel shows nonsense meanwhile; its clock goes back
+	   after, and so does the picture. */
+	uint32_t slow = lcd_set_pclk(3000000);
+	if (!slow)
+		slow = lcd_set_pclk(6000000);
+	if (slow) {
+		vTaskDelay(pdMS_TO_TICKS(400));         /* the new clock from the next frame */
+		say("== PSRAM not in the cache, 1 MiB, the panel's DMA slowed to %u MHz",
+		    (unsigned) (slow / 1000000));
+		measure("slow panel: read a word a line", PS_BIG, prep_cold_a, op_rd_line, PS_BIG);
+		measure("slow panel: read words", PS_BIG, prep_cold_a, op_rd_words, PS_BIG);
+		measure("slow panel: write words", PS_BIG, prep_cold_a, op_wr_words, PS_BIG);
+		measure("slow panel: memcpy", PS_BIG, prep_cold_ab, op_memcpy, PS_BIG);
+		uint32_t back = lcd_set_pclk(0);
+		vTaskDelay(pdMS_TO_TICKS(200));
+		say("   the panel back at %u MHz", (unsigned) (back / 1000000));
+	} else {
+		say("== (this panel's clock cannot be changed here: no slowed-panel lines)");
+	}
 
 	say("== write-back");
 	measure("64 KiB dirty, written back", 64 * 1024, prep_warm_a, op_wb, 64 * 1024);

@@ -97,5 +97,9 @@ void lcd_vga_copy_all(void);
 /* v4.5: the swaps since the PC started, and how many of them the panel did
    not report within 100 ms (lcd_get_stats() has the same per 10 s) */
 void lcd_double_totals(uint32_t *swaps, uint32_t *unreported);
+/* v5.3: the panel's pixel clock in Hz, for the memory benchmark (membench.c):
+   0 to give it back its own; the clock it runs at after the call, or 0 where
+   the panel's clock cannot be changed (a weak default in membench.c) */
+uint32_t lcd_set_pclk(uint32_t hz);
 
 #endif /* LCD_H */

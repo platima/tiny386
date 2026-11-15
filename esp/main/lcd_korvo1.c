@@ -410,4 +410,16 @@ void lcd_double_totals(uint32_t *swaps, uint32_t *unreported)
 	portEXIT_CRITICAL_SAFE(&s_stats_lock);
 }
 
+/* v5.3: for the memory benchmark only, so that it can measure PSRAM with
+   less of the panel's DMA beside it (lcd.h).  ESP-IDF takes the new clock
+   at the panel's next frame. */
+uint32_t lcd_set_pclk(uint32_t hz)
+{
+	if (!s_panel)
+		return 0;
+	if (!hz)
+		hz = LCD_PCLK_HZ;
+	return esp_lcd_rgb_panel_set_pclk(s_panel, hz) == ESP_OK ? hz : 0;
+}
+
 #endif /* USE_LCD_RGB_KORVO1 */
