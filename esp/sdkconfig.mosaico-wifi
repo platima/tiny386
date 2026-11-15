@@ -1,0 +1,64 @@
+# The ESP-Mosaico's network build (idf.py -DTINY386_WIFI=1): esp/CMakeLists.txt
+# puts this after sdkconfig.mosaico.  The same settings as the Korvo-1's
+# (sdkconfig.korvo1-wifi says why each); the chip and its Wi-Fi are the same.
+#
+# Its buffers, lwIP's and mbedTLS's come from PSRAM first, and the .bss of
+# lwIP, net80211 and pp is in PSRAM: 17.6 KB of internal RAM.
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
+# Wi-Fi's and lwIP's hot paths stay in flash: slower Wi-Fi, and with the
+# other trims below 16.1 KB of internal RAM.
+# CONFIG_ESP_WIFI_IRAM_OPT is not set
+# CONFIG_ESP_WIFI_EXTRA_IRAM_OPT is not set
+# CONFIG_ESP_WIFI_RX_IRAM_OPT is not set
+# CONFIG_LWIP_IRAM_OPTIMIZATION is not set
+# CONFIG_LWIP_EXTRA_IRAM_OPTIMIZATION is not set
+# Nothing is written to flash: the dual-boot table's nvs and phy_init
+# partitions are Linux's.  Wi-Fi keeps no settings, and the radio is
+# calibrated in full at each start (about 100 ms).
+# CONFIG_ESP_WIFI_NVS_ENABLED is not set
+# CONFIG_ESP_PHY_CALIBRATION_AND_DATA_STORAGE is not set
+# A station and nothing more.
+# CONFIG_ESP_WIFI_SOFTAP_SUPPORT is not set
+# CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT is not set
+# CONFIG_LWIP_DHCPS is not set
+# CONFIG_LWIP_IPV6 is not set
+CONFIG_LWIP_MAX_SOCKETS=4
+# Fewer buffers than ESP-IDF gives with PSRAM: the guest's NE2000 is a
+# 10 Mbit/s card.
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=6
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=16
+# v5.3: 4 static TX buffers rather than 8, 6.8 KB back.  Each is about
+# 1.75 KB of internal DMA RAM, taken when Wi-Fi starts.  Every frame sent,
+# the guest's (esp_wifi_internal_tx()) and lwIP's, goes first into one of
+# the cache buffers below, in PSRAM, and is copied into a static one when
+# one is free (libnet80211's ieee80211_output_do() and
+# ieee80211_output_process()), so these only bound how many frames are
+# with the radio at once.
+CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=4
+CONFIG_ESP_WIFI_CACHE_TX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_RX_BA_WIN=6
+# Core 1 runs the emulator and never yields: the network's tasks on core 0.
+CONFIG_ESP_WIFI_TASK_PINNED_TO_CORE_0=y
+CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y
+# Wi-Fi's timers and the PHY's run their callbacks in the esp_timer task:
+# its stack at ESP-IDF's default, not sdkconfig.korvo1's 2048.
+CONFIG_ESP_TIMER_TASK_STACK_SIZE=3584
+# v5.3: the default event loop in PSRAM: its task's stack (2304 bytes),
+# the loop and its handlers' records, about 2.5 KB of internal RAM back.
+# It carries Wi-Fi's and the address's events, and nothing it runs writes
+# flash (no NVS, no stored calibration, no saved DHCP address), so it never
+# runs with the cache off.
+CONFIG_ESP_EVENT_LOOP_IN_EXT_RAM=y
+# v5.3: room for 16 events in the loop's queue rather than 32: a join, a
+# loss or an address brings a few at a time.
+CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE=16
+# v5.3: no events posted from interrupts (nothing in this firmware posts
+# any), so with the loop in PSRAM its queue and each event's data go there
+# too, rather than internal RAM: about 0.3 KB more back.
+# CONFIG_ESP_EVENT_POST_FROM_ISR is not set
+# v5.3: no IEEE 802.15.4 (ESP-IDF turns it on for this chip by default),
+# and with it no software coexistence, which Wi-Fi alone does not need:
+# 678 bytes of internal RAM and 7.5 KB of flash back.
+# CONFIG_IEEE802154_ENABLED is not set
