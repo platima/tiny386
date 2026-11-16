@@ -1,0 +1,5 @@
+@ECHO OFF
+REM tiny386 on the ESP-Mosaico: MOSAICO.REG (no network logon box) goes
+REM into the registry once, then is deleted.
+IF EXIST C:\MOSAICO.REG C:\WINDOWS\REGEDIT.EXE /L:C:\WINDOWS\SYSTEM.DAT /R:C:\WINDOWS\USER.DAT C:\MOSAICO.REG
+IF EXIST C:\MOSAICO.REG DEL C:\MOSAICO.REG

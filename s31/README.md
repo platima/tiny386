@@ -4,6 +4,8 @@ This branch, `esp32-s31`, is my bare-metal firmware for [tiny386](https://github
 
 It runs on the ESP32-S31-Korvo-1, either beside Linux (hold VOL+ through reset for tiny386, or the other way round) or on its own, and on the DOS board, an HDMI board I'm designing for it. One source tree builds all of them.
 
+It also runs on Espressif's ESP-Mosaico, Windows 95 from the board's NAND on its 480x480 AMOLED, on the `esp32-s31-mosaico` branch: start with [`s31/MOSAICO.md`](MOSAICO.md).
+
 ## What this branch is 🌿
 
 - **Upstream tiny386 underneath.** The branch is hchunhui's master of 2026-11-07 (`a080c5d`) merged with my work, so `git log` shows what's mine and every upstream commit keeps its own hash.
@@ -22,6 +24,7 @@ Binaries aren't committed here - build them, or take them from a release.
 
 | Read | For |
 |-|-|
+| [`s31/MOSAICO.md`](MOSAICO.md) | the ESP-Mosaico: building, flashing, your own Windows 95 image, using it |
 | [`s31/TEST-PLAN.md`](TEST-PLAN.md) | first: every risk to a Linux install, plainly, then the first boot step by step |
 | [`s31/FLASH.txt`](FLASH.txt) | writing each image set, and every way back to Linux |
 | [`s31/newcard/README.md`](newcard/README.md) | v4.4: a new card with Windows 95's own volume on a partition (`hda = sd:3`), step by step, the old card kept as the fallback |

@@ -1,0 +1,14 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\Network\Logon]
+"PrimaryProvider"=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\480,480]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\DEFAULT]
+"Mode"="16,480,480"
+
+[HKEY_LOCAL_MACHINE\Config\0001\Display\Settings]
+"Resolution"="480,480"
+"BitsPerPixel"="16"
+

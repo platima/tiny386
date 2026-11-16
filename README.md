@@ -1,5 +1,7 @@
 # Tiny386
 
+> **This is my fork's ESP32-S31 branch.** tiny386 runs bare metal on the ESP32-S31 here: on the ESP32-S31-Korvo-1 ([`s31/README.md`](s31/README.md)) and, with Windows 95 on its NAND and 480x480 AMOLED, on Espressif's ESP-Mosaico ([`s31/MOSAICO.md`](s31/MOSAICO.md)). Upstream tiny386's own README follows, unchanged.
+
 ## Introduction
 Tiny386 is an x86 PC emulator written in C99. The highlight of the project is its portability. It now boots Windows 9x/NT on MCU such as ESP32-S3.
 
