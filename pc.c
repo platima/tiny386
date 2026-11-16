@@ -315,6 +315,14 @@ static u16 pc_io_read16(void *o, int addr)
 	case 0xcfc: case 0xcfe:
 		val = i440fx_read_data(pc->i440fx, addr - 0xcfc, 1);
 		return val;
+	case 0x40: case 0x41: case 0x42:
+		/* v5.3: the PIT is an 8-bit device, so on a PC the bus makes a
+		   word read two byte reads, of this port and the next.  FFFFh
+		   here left code that polls the count with IN AX,40h waiting
+		   for ever (found by tab5-pc, b2c8de1). */
+		val = pc_io_read(pc, addr);
+		val |= pc_io_read(pc, addr + 1) << 8;
+		return val;
 	case 0x310:
 		val = ne2000_asic_ioport_read(pc->ne2000, addr);
 		return val;

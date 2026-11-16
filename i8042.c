@@ -745,8 +745,19 @@ void kbd_step(void *opaque)
     KBDState *s = opaque;
     PS2KbdState *kbd = s->kbd;
 #ifdef THREAD_SAFE
+#if QW_KBDQ
+    /* v5.3: delay first, with a plain (relaxed) load.  The key handler
+       sets it under the flag, and with no repeat waiting there is nothing
+       to do under the flag, so most steps take no atomic read-modify-write
+       here; a repeat set at this moment is seen at the next step, as one
+       set while the flag is held already was. */
+    if (__atomic_load_n(&kbd->delay, __ATOMIC_RELAXED) &&
+        !atomic_flag_test_and_set_explicit(&(kbd->delay_flag),
+                                           memory_order_acquire)) {
+#else
     if (!atomic_flag_test_and_set_explicit(&(kbd->delay_flag),
                                            memory_order_acquire)) {
+#endif
 #endif
 
     if (kbd->delay && after_eq(get_uticks(), kbd->delay_time)) {
@@ -1074,9 +1085,19 @@ static void ps2_mouse_step(PS2MouseState *s)
     /* v5.2 (prototype): nothing in the ring, nothing merged, nothing part-way: all that the rest
        would do is move next_send_us up to the time, and a first packet goes at once with it left
        behind too.  So no clock read while the mouse is still. */
+#if QW_KBDQ
+    /* v5.3: the same test with relaxed loads, and their acquire as one
+       fence once there is something to take, so that a step with the
+       mouse still makes no fence (two before) */
+    if (!s->pending && s->ring_tail == __atomic_load_n(&s->ring_head, __ATOMIC_RELAXED) &&
+        !__atomic_load_n(&s->carry, __ATOMIC_RELAXED))
+        return;
+    __atomic_thread_fence(__ATOMIC_ACQUIRE);
+#else
     if (!s->pending && s->ring_tail == __atomic_load_n(&s->ring_head, __ATOMIC_ACQUIRE) &&
         !__atomic_load_n(&s->carry, __ATOMIC_ACQUIRE))
         return;
+#endif
 #endif
     uint32_t now = get_uticks();
 
