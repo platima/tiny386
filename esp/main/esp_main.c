@@ -310,9 +310,16 @@ void usb_setup(void);
 
 /* A board's own start-up, where it has one (dosboard.c): the first thing
    in app_main(), before any pin is driven, and once the boot console is
-   up, for what it noted before that. */
+   up, for what it noted before that.  A board whose hooks are in a file
+   nothing else calls into (mosaico.c) sets BOARD_HOOKS: with no weak
+   defaults here, these calls bring that file into the link, which from
+   main's archive it otherwise is not. */
+void board_early_init(void);
+void board_console_ready(void);
+#ifndef BOARD_HOOKS
 void __attribute__((weak)) board_early_init(void) {}
 void __attribute__((weak)) board_console_ready(void) {}
+#endif
 
 /* The keyboard and mouse: the USB host, or on the DOS board the CH9350L
    (which has its own USB host chip), once; either may be running already

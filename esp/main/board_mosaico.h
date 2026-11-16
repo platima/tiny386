@@ -102,6 +102,9 @@
 // The mouse's movement goes to the panel too, which keeps the window round
 // the pointer (kbd_input.c, lcd_mosaico.c)
 #define BOARD_MOUSE_HOOK
+/* mosaico.c has board_early_init() and board_console_ready(): no weak
+   defaults for them in esp_main.c, so that the link takes mosaico.c */
+#define BOARD_HOOKS 1
 
 // As on the Korvo-1 (board_korvo1.h)
 #define IDE_ENABLE_WRITE_GATHER
