@@ -143,6 +143,7 @@ HostWinBootDrv=C
 BootMulti=1
 BootGUI=1
 Network=0
+AutoScan=0
 ;
 ;The following lines are required for compatibility with other programs.
 ;Do not remove them (MSDOS.SYS needs to be >1024 bytes).

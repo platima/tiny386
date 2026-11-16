@@ -13,6 +13,7 @@ Tested on a V1.2.1 board on 16 November 2026:
 - The touch panel as a touchpad, and a USB keyboard and mouse through a USB-C OTG adapter.
 - Sound: Windows' Sound Blaster 16 through the board's ES8311 and speaker.
 - Wi-Fi, in the network build, through the guest's NE2000.
+- OpenGL: 3D Pipes runs, once `dci-off.py` has been run on the image (below).
 - USB disk mode: the board as a USB drive on a PC, for the card files and the Windows image.
 
 Not done yet: the battery level, a way into USB disk mode while Windows runs (for now, switch off and use the AI button), and touch that puts the pointer under your finger.
@@ -110,17 +111,22 @@ You need Linux or WSL with Python 3 and mtools, and a Windows 95 install (OSR2 o
    - the swap file (Windows' default): with 14 MB of memory, Explorer fails without it.
    - in `WINDOWS\MEDIA`, the sounds you want, such as `The Microsoft Sound.wav` and `DING.WAV`.
 
-   And add `AutoScan=0` under `[Options]` in `MSDOS.SYS`. Otherwise, after any start that did not end in a clean shutdown, Windows runs ScanDisk in DOS behind the start-up logo, where it looks hung. Check the drive from the PC instead (below).
+   `MSDOS.SYS` needs `AutoScan=0` under `[Options]`. Otherwise, after any start that did not end in a clean shutdown, Windows runs ScanDisk in DOS behind the start-up logo, where it looks hung (check the drive from the PC instead, below). `mkimage-mosaico.py` writes it that way when the folder has no `MSDOS.SYS` of its own; if yours has one, add the line.
 2. **No logon box, and 480x480.** Copy [`mosaico-win95/AUTOEXEC.BAT`](mosaico-win95/AUTOEXEC.BAT) and [`mosaico-win95/MOSAICO.REG`](mosaico-win95/MOSAICO.REG) into the top of the folder (if your install has an `AUTOEXEC.BAT`, add these lines to it). At the first start, DOS's REGEDIT puts `MOSAICO.REG` into the registry once and deletes it: Windows then starts without the network logon box, at 480x480 in 16-bit colour.
 3. **The display driver at 480x480.** VMDisp9x, as released, turns any size under 640 wide into 640x480. This changes that one constant in the folder's `WINDOWS\SYSTEM\QEMUMINI.DRV`, only for the 1.2025.0.119 driver (it checks), and keeps the original in the holding folder:
    ```sh
    python3 s31/qemumini-480.py WIN95_FOLDER HOLDING_FOLDER
    ```
-4. **The start-up logo** (optional), drawn in tiny386's own VGA font:
+4. **OpenGL, for 3D Pipes.** Windows' OpenGL draws straight into the screen through DCI when the display driver offers it, and with VMDisp9x it writes into memory that is not the screen: 3D Pipes stops with an "illegal operation" (QEMU does the same, so it is not tiny386's doing). This makes `DCIMAN32.DLL` tell OpenGL there is no DCI, so it draws through GDI instead, and keeps the original in the holding folder:
+   ```sh
+   python3 s31/dci-off.py WIN95_FOLDER HOLDING_FOLDER
+   ```
+   It works on an image already on the board too: in USB disk mode, give it the drive letter the PC gives the NAND drive (for example `E:\`) as `WIN95_FOLDER`.
+5. **The start-up logo** (optional), drawn in tiny386's own VGA font:
    ```sh
    python3 s31/mklogo-mosaico.py vgafont.c WIN95_FOLDER/LOGO.SYS
    ```
-5. **The image:**
+6. **The image:**
    ```sh
    python3 s31/mkimage-mosaico.py --windows WIN95_FOLDER --boot win95.img --out mosaico-win95.img
    ```
@@ -143,6 +149,7 @@ The image is the NAND disk's exact size: tiny386's own boot record, one FAT16 pa
 - **Windows stops at the start-up logo** after a reset or a power loss: ScanDisk is probably running behind the logo (without `AutoScan=0`). Press Esc to see it. Or, in USB disk mode, check the NAND drive from the PC (its C: drive: Properties, Tools, Check), which also clears the mark that makes Windows scan.
 - **It resets at start-up, often just after Wi-Fi joins:** the battery is low. Use USB power. The boot console's second line says why it last reset.
 - **The boot console waits 10 seconds:** it shows a warning or an error. Read it: that is the thing to fix.
+- **3D Pipes, or another OpenGL program, stops with an "illegal operation":** run `dci-off.py` on the image (making the image, step 4).
 - **Writes get slow:** the NAND is getting full. Its map has to move old pages before it can write, and the fuller it is, the more it moves. Keep the image small, and Windows' swap file at a fixed size if it grows.
 
 ## Where it is in the code
@@ -157,6 +164,6 @@ The image is the NAND disk's exact size: tiny386's own boot record, one FAT16 pa
 | `esp/main/touch_mosaico.c` | the touchpad |
 | `esp/sdkconfig.mosaico`, `esp/sdkconfig.mosaico-wifi`, `esp/partitions-mosaico.csv`, `esp/mosaico/` | the build: settings, the NOR layout, components |
 | `s31/card-mosaico/`, `s31/mosaico-win95/` | the ini, and the Windows set-up files |
-| `s31/mkimage-mosaico.py`, `qemumini-480.py`, `mklogo-mosaico.py` | the Windows image |
+| `s31/mkimage-mosaico.py`, `qemumini-480.py`, `dci-off.py`, `mklogo-mosaico.py` | the Windows image |
 | `s31/flash-mosaico.bat`, `restore-mosaico.bat` | flashing a package, and going back |
 | `tests/host/nand` | the NAND disk layer, tested on the PC |
