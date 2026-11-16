@@ -25,6 +25,11 @@ static i2c_master_bus_handle_t s_i2c;
 
 void board_early_init(void)
 {
+	/* ESP-IDF's own drivers at warnings and errors only: their info lines
+	   (Wi-Fi's above all) go out on the UART at 115200 as well as to the
+	   boot console, and slow the start.  tiny386's own lines are not
+	   ESP-IDF's log and stay. */
+	esp_log_level_set("*", ESP_LOG_WARN);
 	const gpio_config_t pwr = {
 		.pin_bit_mask = 1ULL << MOSAICO_PWR_GPIO,
 		.mode = GPIO_MODE_OUTPUT,
