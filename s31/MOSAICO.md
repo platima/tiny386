@@ -82,12 +82,12 @@ The card files: `win95.ini` is in `s31/card-mosaico/tiny386/`, `bios.bin` in `s3
 
 ## Using it
 
-- **The picture.** Windows at 480x480 fills the panel. Wider pictures (640x480 Windows, DOS, the boot screens) are shown whole at 3/4 size, or 480 of their 640 columns following the mouse pointer: a short press of the AI button, or Ctrl+Alt+F7, changes between the two. The panel's corners are rounded, so the very corners of the picture are hidden.
+- **The picture.** Windows at 480x480 fills the panel. Wider pictures (640x480 Windows, DOS, the boot screens) are shown whole at 3/4 size, or 480 of their 640 columns following the mouse pointer: a short press of the AI button, or Ctrl+Alt+F7, changes between the two. DOS text (ScanDisk, FreeDOS) is drawn with 8-dot characters, since 80 columns of 9 dots are wider than the 640-pixel frame (`vga_force_8dm = 0` in the ini turns that off). The panel's corners are rounded, so the very corners of the picture are hidden. Only the parts of the picture that change are sent to the panel, at 80 MHz (`lcd_mhz = 40` under `[esp]` for Espressif's own 40 MHz).
 - **Touch** works as a touchpad, as on a laptop: move a finger to move the pointer, tap to click, tap with two fingers to right-click, and tap, then touch again and move, to drag. The pointer moves by how far your finger moves, so it does not sit under your finger.
 - **Power:** the board draws about 1.2 W running Windows, and its 65 mAh battery lasts only minutes at that; Wi-Fi's transmit bursts can then pull the voltage low enough to reset the chip. Run it from USB power.
 - **A keyboard and mouse:** USB, through a USB-C OTG adapter. While it hosts USB, the board powers the keyboard itself and takes no power from the Type-C, so feed 5 V to the 5V pad on the back or a header's 5V_IN.
-- **Switching off:** shut Windows down first (Start, Shut Down) and wait for "It's now safe to turn off your computer". Writes to the NAND can still be waiting until then.
-- **USB disk mode again:** switch off, hold the AI button, and press POWER. To start Windows from there, eject both drives on the PC and press AI briefly.
+- **Switching off:** shut Windows down first (Start, Shut Down) and wait for "It's now safe to turn off your computer". Writes to the NAND can still be waiting until then. A press of POWER cuts the power at once: the SAM8108 does it in hardware, and the firmware cannot delay it. After an accidental press, ScanDisk repairs the disk at the next start (`AutoScan=2`).
+- **USB disk mode again:** switch off, hold the AI button, and press POWER. Or, once Windows is shut down, hold AI for 3 seconds, or press Ctrl+Alt+F6. To start Windows from there, eject both drives on the PC and press AI briefly.
 - **The boot console** stays up 2 seconds (`console` under `[esp]` in the ini), or 10 seconds when it shows a warning or an error, so it can be read. Ctrl+Alt+F12 shows it again while Windows runs, with the speed.
 
 ## Wi-Fi
@@ -146,6 +146,7 @@ The image is the NAND disk's exact size: tiny386's own boot record, one FAT16 pa
 
 - **A black panel and no USB drives:** look at UART0's output (TX0 is GPIO58 on the right module header, 115200 baud) with a 3.3 V USB serial adapter.
 - **A red crash screen:** photograph it. It is also shown again at the next start.
+- **Faults in the picture** (speckles, rows out of place): put `lcd_mhz = 40` under `[esp]` in the ini, for Espressif's own panel clock.
 - **Windows stops at the start-up logo** after a reset or a power loss, with an image made before 16 November 2026: its partition ran past what DOS can reach, so ScanDisk stops at "cannot read from the last cluster" behind the logo and waits. Press Esc and choose Continue, or check the NAND drive from the PC in USB disk mode (its C: drive: Properties, Tools, Check). Then make the image again with the current `mkimage-mosaico.py`.
 - **It resets at start-up, often just after Wi-Fi joins:** the battery is low. Use USB power. The boot console's second line says why it last reset.
 - **The boot console waits 10 seconds:** it shows a warning or an error. Read it: that is the thing to fix.
@@ -158,7 +159,7 @@ The image is the NAND disk's exact size: tiny386's own boot record, one FAT16 pa
 |-|-|
 | `esp/main/board_mosaico.h` | the board's settings and pins |
 | `esp/main/mosaico.c` | start-up, the AI button, Ctrl+Alt+F7 |
-| `esp/main/lcd_mosaico.c` | the panel: the 640x480 frame to the CO5300 |
+| `esp/main/lcd_mosaico.c`, `panel_diff.c` | the panel: the 640x480 frame to the CO5300, only the blocks that changed |
 | `esp/main/nand_vol.c`, `nand_disk.c` | the NAND disk, and the chip raw for backup and restore |
 | `esp/main/usb_disk.c` | USB disk mode |
 | `esp/main/touch_mosaico.c` | the touchpad |
@@ -166,4 +167,4 @@ The image is the NAND disk's exact size: tiny386's own boot record, one FAT16 pa
 | `s31/card-mosaico/`, `s31/mosaico-win95/` | the ini, and the Windows set-up files |
 | `s31/mkimage-mosaico.py`, `qemumini-480.py`, `dci-off.py`, `mklogo-mosaico.py` | the Windows image |
 | `s31/flash-mosaico.bat`, `restore-mosaico.bat` | flashing a package, and going back |
-| `tests/host/nand` | the NAND disk layer, tested on the PC |
+| `tests/host/nand`, `tests/host/panel_diff` | the NAND disk layer and the panel's changed blocks, tested on the PC |
