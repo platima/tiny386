@@ -83,7 +83,8 @@ The card files: `win95.ini` is in `s31/card-mosaico/tiny386/`, `bios.bin` in `s3
 
 - **The picture.** Windows at 480x480 fills the panel. Wider pictures (640x480 Windows, DOS, the boot screens) are shown whole at 3/4 size, or 480 of their 640 columns following the mouse pointer: a short press of the AI button, or Ctrl+Alt+F7, changes between the two. The panel's corners are rounded, so the very corners of the picture are hidden.
 - **Touch** works as a touchpad, as on a laptop: move a finger to move the pointer, tap to click, tap with two fingers to right-click, and tap, then touch again and move, to drag. The pointer moves by how far your finger moves, so it does not sit under your finger.
-- **A keyboard and mouse:** USB, through a USB-C OTG adapter. While it hosts USB, the board powers the keyboard itself, from its 65 mAh battery unless 5 V comes in on the 5V pad on the back or a header's 5V_IN. For more than a few minutes, power the board that way.
+- **Power:** the board draws about 1.2 W running Windows, and its 65 mAh battery lasts only minutes at that; Wi-Fi's transmit bursts can then pull the voltage low enough to reset the chip. Run it from USB power.
+- **A keyboard and mouse:** USB, through a USB-C OTG adapter. While it hosts USB, the board powers the keyboard itself and takes no power from the Type-C, so feed 5 V to the 5V pad on the back or a header's 5V_IN.
 - **Switching off:** shut Windows down first (Start, Shut Down) and wait for "It's now safe to turn off your computer". Writes to the NAND can still be waiting until then.
 - **USB disk mode again:** switch off, hold the AI button, and press POWER. To start Windows from there, eject both drives on the PC and press AI briefly.
 - **The boot console** stays up 2 seconds (`console` under `[esp]` in the ini), or 10 seconds when it shows a warning or an error, so it can be read. Ctrl+Alt+F12 shows it again while Windows runs, with the speed.
@@ -108,6 +109,8 @@ You need Linux or WSL with Python 3 and mtools, and a Windows 95 install (OSR2 o
    - `WINDOWS\SYSBCKUP\OLE2.DLL` and `STORAGE.DLL`: without them, a "System File Error" at every start.
    - the swap file (Windows' default): with 14 MB of memory, Explorer fails without it.
    - in `WINDOWS\MEDIA`, the sounds you want, such as `The Microsoft Sound.wav` and `DING.WAV`.
+
+   And add `AutoScan=0` under `[Options]` in `MSDOS.SYS`. Otherwise, after any start that did not end in a clean shutdown, Windows runs ScanDisk in DOS behind the start-up logo, where it looks hung. Check the drive from the PC instead (below).
 2. **No logon box, and 480x480.** Copy [`mosaico-win95/AUTOEXEC.BAT`](mosaico-win95/AUTOEXEC.BAT) and [`mosaico-win95/MOSAICO.REG`](mosaico-win95/MOSAICO.REG) into the top of the folder (if your install has an `AUTOEXEC.BAT`, add these lines to it). At the first start, DOS's REGEDIT puts `MOSAICO.REG` into the registry once and deletes it: Windows then starts without the network logon box, at 480x480 in 16-bit colour.
 3. **The display driver at 480x480.** VMDisp9x, as released, turns any size under 640 wide into 640x480. This changes that one constant in the folder's `WINDOWS\SYSTEM\QEMUMINI.DRV`, only for the 1.2025.0.119 driver (it checks), and keeps the original in the holding folder:
    ```sh
@@ -137,6 +140,8 @@ The image is the NAND disk's exact size: tiny386's own boot record, one FAT16 pa
 
 - **A black panel and no USB drives:** look at UART0's output (TX0 is GPIO58 on the right module header, 115200 baud) with a 3.3 V USB serial adapter.
 - **A red crash screen:** photograph it. It is also shown again at the next start.
+- **Windows stops at the start-up logo** after a reset or a power loss: ScanDisk is probably running behind the logo (without `AutoScan=0`). Press Esc to see it. Or, in USB disk mode, check the NAND drive from the PC (its C: drive: Properties, Tools, Check), which also clears the mark that makes Windows scan.
+- **It resets at start-up, often just after Wi-Fi joins:** the battery is low. Use USB power. The boot console's second line says why it last reset.
 - **The boot console waits 10 seconds:** it shows a warning or an error. Read it: that is the thing to fix.
 - **Writes get slow:** the NAND is getting full. Its map has to move old pages before it can write, and the fuller it is, the more it moves. Keep the image small, and Windows' swap file at a fixed size if it grows.
 
