@@ -55,4 +55,6 @@ esp_err_t esp_lcd_rgb_panel_get_frame_buffer(esp_lcd_panel_handle_t panel, uint3
 					     void **fb0, ...);
 esp_err_t esp_lcd_rgb_panel_register_event_callbacks(esp_lcd_panel_handle_t panel,
 		const esp_lcd_rgb_panel_event_callbacks_t *callbacks, void *user_ctx);
+/* lcd_korvo1.c's lcd_set_pclk() (v5.3, membench) */
+esp_err_t esp_lcd_rgb_panel_set_pclk(esp_lcd_panel_handle_t panel, uint32_t freq_hz);
 #endif

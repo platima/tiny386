@@ -7,6 +7,14 @@
 # Exit status 0 when every test passes.
 
 set -u
+# GCC 12's AddressSanitizer loops for ever, printing DEADLYSIGNAL, on about
+# one start in four under the address randomisation of newer kernels (WSL2
+# 6.18, 2026-11-17: 102 of 400 starts of an empty program; one such loop
+# filled the disk with an 88 GB log).  The tests do not need it, so they
+# run without it.
+if [ -z "${HOST_NORAND:-}" ] && setarch -R true 2>/dev/null; then
+    HOST_NORAND=1 exec setarch -R bash "$0" "$@"
+fi
 HERE=$(cd "$(dirname "$0")" && pwd)
 TREE=$(cd "$HERE/../.." && pwd)
 OUT=${1:-$HERE/build}

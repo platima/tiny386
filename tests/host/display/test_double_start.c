@@ -315,6 +315,14 @@ esp_err_t esp_lcd_panel_del(esp_lcd_panel_handle_t p)
 	return ESP_OK;
 }
 
+/* lcd_set_pclk() (v5.3, membench): not part of this test */
+esp_err_t esp_lcd_rgb_panel_set_pclk(esp_lcd_panel_handle_t p, uint32_t hz)
+{
+	(void) p;
+	(void) hz;
+	return ESP_OK;
+}
+
 esp_err_t esp_lcd_rgb_panel_register_event_callbacks(esp_lcd_panel_handle_t p,
 		const esp_lcd_rgb_panel_event_callbacks_t *cbs, void *ctx)
 {
