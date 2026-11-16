@@ -4,7 +4,7 @@ This branch, `esp32-s31`, is my bare-metal firmware for [tiny386](https://github
 
 It runs on the ESP32-S31-Korvo-1, either beside Linux (hold VOL+ through reset for tiny386, or the other way round) or on its own, and on the DOS board, an HDMI board I'm designing for it. One source tree builds all of them.
 
-It also runs on Espressif's ESP-Mosaico, Windows 95 from the board's NAND on its 480x480 AMOLED, on the `esp32-s31-mosaico` branch: start with [`s31/MOSAICO.md`](MOSAICO.md).
+It also runs on Espressif's ESP-Mosaico, Windows 95 from the board's NAND on its 480x480 AMOLED, on the `esp-mosaico` branch: start with [`s31/MOSAICO.md`](MOSAICO.md).
 
 ## What this branch is 🌿
 

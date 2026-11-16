@@ -44,7 +44,7 @@ Pins are Espressif's, from the ESP-Mosaico BSP (`bsp/esp_mosaico.h`) and user gu
 In Linux or WSL, with ESP-IDF set up as [`README.md`](README.md) ("Building") describes: 188e3e55bb with the two SD card fixes in `s31/esp-idf/`. Add ESP-IDF's ec8ce190c17 too ("fix(esp32s31): temporarily disable MSPI TX underflow interrupt", from ESP-IDF's master), which stops a false PSRAM abort on the S31. The tested builds say `v6.1-dev-8145-g2c7163995d`.
 
 ```sh
-git clone -b esp32-s31-mosaico https://github.com/platima/tiny386.git
+git clone -b esp-mosaico https://github.com/platima/tiny386.git
 cd tiny386
 make prepare HOSTCC=cc
 cd esp
