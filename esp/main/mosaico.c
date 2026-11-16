@@ -30,6 +30,10 @@ void board_early_init(void)
 	   boot console, and slow the start.  tiny386's own lines are not
 	   ESP-IDF's log and stay. */
 	esp_log_level_set("*", ESP_LOG_WARN);
+	/* the Wi-Fi driver logs its transmit power for every rate as a
+	   warning, "(phy)rate:...", about 30 lines 150 ms apart, which also
+	   set off the boot console's 10 s hold: its errors only */
+	esp_log_level_set("wifi", ESP_LOG_ERROR);
 	const gpio_config_t pwr = {
 		.pin_bit_mask = 1ULL << MOSAICO_PWR_GPIO,
 		.mode = GPIO_MODE_OUTPUT,
