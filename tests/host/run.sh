@@ -1755,6 +1755,15 @@ echo
 bash "$HERE/nand/run_nand.sh" "$OUT"
 result $? "nand_vol.c: the ESP-Mosaico's NAND disk against pages in memory"
 
+# ==== the ESP-Mosaico's panel: only changed blocks sent (esp/main/panel_diff.c) ====
+# 20,000 rounds of changes to a 640x480 frame sent to a 480x480 panel as
+# lcd_mosaico.c does, in both its views, against a panel in memory that must
+# then show exactly the picture; three planted faults it must catch
+# (tests/host/panel_diff).
+echo
+bash "$HERE/panel_diff/run_panel_diff.sh" "$OUT"
+result $? "panel_diff.c: the ESP-Mosaico panel's changed blocks against a panel in memory"
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]

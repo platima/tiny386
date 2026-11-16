@@ -14,5 +14,9 @@
 bool usb_disk_wanted(void);
 /* USB disk mode itself; it ends by restarting the board. */
 void usb_disk_mode(void) __attribute__((noreturn));
+/* While the PC runs (the AI button held 3 s, Ctrl+Alt+F6): the NAND's last
+   writes out, then a restart into USB disk mode.  Whatever the guest still
+   holds is lost, as at a power cut: shut Windows down first. */
+void usb_disk_from_pc(void) __attribute__((noreturn));
 
 #endif /* USB_DISK_H */

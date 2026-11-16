@@ -19,6 +19,7 @@
 #include "touch_mosaico.h"
 #include "usb_disk.h"
 
+#define HID_KEY_F6 0x3F
 #define HID_KEY_F7 0x40
 
 static i2c_master_bus_handle_t s_i2c;
@@ -52,7 +53,14 @@ void board_early_init(void)
 	vTaskDelay(pdMS_TO_TICKS(20));
 }
 
-/* the AI button while the PC runs: a short press changes the view */
+/* Ctrl+Alt+F6 (kbd_input.c calls hotkeys from the USB task) */
+static void usb_disk_hotkey(void)
+{
+	usb_disk_from_pc();
+}
+
+/* the AI button while the PC runs: a short press changes the view, a hold
+   of 3 s goes to USB disk mode */
 static void button_task(void *arg)
 {
 	(void) arg;
@@ -60,7 +68,8 @@ static void button_task(void *arg)
 	for (;;) {
 		vTaskDelay(pdMS_TO_TICKS(30));
 		if (gpio_get_level(MOSAICO_AI_BUTTON) == 0) {
-			held++;
+			if (++held == 100)
+				usb_disk_from_pc();
 			continue;
 		}
 		if (held >= 2 && held < 30)
@@ -90,6 +99,7 @@ void board_console_ready(void)
 		usb_disk_mode();
 
 	kbd_input_set_hotkey(HID_KEY_F7, lcd_mosaico_next_view);
+	kbd_input_set_hotkey(HID_KEY_F6, usb_disk_hotkey);
 	if (xTaskCreatePinnedToCore(button_task, "ai_button", 2048, NULL, 2, NULL, 0) != pdPASS)
 		console_puts(CON_WARN, "No memory for the AI button's task.");
 	if (s_i2c)
@@ -97,6 +107,8 @@ void board_console_ready(void)
 	console_puts(CON_INFO, "Ctrl+Alt+F7 or the AI button: the whole picture at 3/4, "
 		     "or 480 of its 640 columns following the mouse. Windows at 480x480 "
 		     "fills the panel.");
+	console_puts(CON_INFO, "Ctrl+Alt+F6 or the AI button held 3 s: USB disk mode "
+		     "(shut Windows down first).");
 }
 
 #endif /* USE_LCD_QSPI_MOSAICO */

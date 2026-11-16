@@ -66,6 +66,9 @@
 #include "ch9350.h"
 #include "dosboard.h"
 #endif
+#ifdef USE_LCD_QSPI_MOSAICO
+#include "lcd_mosaico.h"
+#endif
 
 #ifndef BOARD_NAME
 #define BOARD_NAME "an ESP32 board"
@@ -818,6 +821,9 @@ static const char *const known_keys[] = {
 	"pc:cda", "pc:cdb", "pc:cdc", "pc:cdd", "pc:fda", "pc:fdb",
 	"pc:fill_cmos", "pc:linuxstart", "pc:kernel", "pc:initrd",
 	"pc:cmdline", "pc:enable_serial", "pc:vga_force_8dm",
+#ifdef USE_LCD_QSPI_MOSAICO
+	"esp:lcd_mhz",
+#endif
 	"display:width", "display:height",
 	"cpu:gen", "cpu:fpu", "cpu:cpuid_vendor",
 	NULL
@@ -904,6 +910,13 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		conf->enable_usb = atoi(value);
 	} else if (NAME("console")) {
 		conf->console_s = atoi(value);
+#ifdef USE_LCD_QSPI_MOSAICO
+	} else if (NAME("lcd_mhz")) {
+		/* the ESP-Mosaico's panel clock (lcd_mosaico.c) */
+		if (lcd_mosaico_set_mhz(atoi(value)) != 0)
+			console_printf(CON_WARN, "%s: lcd_mhz %s: 10 to 80; the panel stays at "
+				       "%d MHz.", s_ini_name, value, lcd_mosaico_mhz());
+#endif
 	} else if (NAME("lcd_invalidate")) {
 		conf->lcd_invalidate = atoi(value);
 	} else if (NAME("led_brightness")) {
@@ -1765,6 +1778,10 @@ void app_main(void)
 	conf.vga_mem_size = 256 * 1024;
 	conf.cpu_gen = 4;
 	conf.fpu = 0;
+#ifdef VGA_FORCE_8DM_DEFAULT
+	/* a frame too narrow for 80 columns of 9 dots (board_mosaico.h) */
+	conf.vga_force_8dm = VGA_FORCE_8DM_DEFAULT;
+#endif
 	console_printf(CON_INFO, "Settings from %s:", config.filename);
 	int err = ini_parse(config.filename, parse_ini, NULL);
 	if (err == -1) {

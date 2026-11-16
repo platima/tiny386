@@ -23,6 +23,11 @@ void lcd_mosaico_next_view(void);
    follows an estimate of where the pointer is. */
 void lcd_mosaico_mouse(int dx, int dy);
 
+/* The panel's clock in MHz, 10 to 80 ([esp] lcd_mhz): 0, or -1 if out of
+   range or the bus would not take it (the clock stays as it was) */
+int lcd_mosaico_set_mhz(int mhz);
+int lcd_mosaico_mhz(void);
+
 /* The panel's brightness, 0 to 255 (the CO5300's own, 51h) */
 void lcd_mosaico_brightness(int level);
 

@@ -34,7 +34,9 @@
 #include "dhara/map.h"
 #include "dhara/error.h"
 
+#include "esp_timer.h"
 #include "board_disk.h"
+#include "disk_image.h"
 #include "nand_disk.h"
 #include "nand_vol.h"
 
@@ -424,20 +426,33 @@ uint64_t board_disk_sectors(void *d)
 	return nand_vol_sectors(d);
 }
 
+/* The guest's reads and writes are counted with the card's
+   (disk_image_count()): the speed screen's Disk line and the information
+   port's disk figures (perfport.h) are the NAND's on this board. */
 int board_disk_read(void *d, uint64_t lba, void *buf, unsigned n)
 {
+	int64_t t0 = esp_timer_get_time();
 	xSemaphoreTake(s_lock, portMAX_DELAY);
 	int r = nand_vol_read(d, lba, buf, n);
 	xSemaphoreGive(s_lock);
+	disk_image_count(false, n, (uint32_t) (esp_timer_get_time() - t0), r != 0, false);
 	return r;
 }
 
 int board_disk_write(void *d, uint64_t lba, const void *buf, unsigned n)
 {
+	int64_t t0 = esp_timer_get_time();
 	xSemaphoreTake(s_lock, portMAX_DELAY);
 	int r = nand_vol_write(d, lba, buf, n);
 	xSemaphoreGive(s_lock);
+	disk_image_count(true, n, (uint32_t) (esp_timer_get_time() - t0), r != 0, false);
 	return r;
+}
+
+void nand_disk_sync(void)
+{
+	if (s_state == NAND_OURS && s_lock)
+		board_disk_sync(&s_vol);
 }
 
 int board_disk_sync(void *d)

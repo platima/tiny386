@@ -65,6 +65,14 @@ static void restart_into(uint32_t note)
 	esp_restart();
 }
 
+void usb_disk_from_pc(void)
+{
+	nand_disk_sync();
+	restart_into(NOTE_USB);
+	for (;;)
+		vTaskDelay(1);
+}
+
 static bool is_ini(const char *n)
 {
 	size_t l = strlen(n);

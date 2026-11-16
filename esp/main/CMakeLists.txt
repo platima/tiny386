@@ -95,7 +95,7 @@ else()
     # disk mode, the touch panel as the mouse (s31/MOSAICO.md); its
     # components come from esp/mosaico/idf_component.yml
     if(BOARD STREQUAL "mosaico")
-        list(APPEND srcs "lcd_mosaico.c" "mosaico.c" "touch_mosaico.c"
+        list(APPEND srcs "lcd_mosaico.c" "panel_diff.c" "mosaico.c" "touch_mosaico.c"
              "nand_vol.c" "nand_disk.c" "usb_disk.c")
     endif()
     list(APPEND srcs "usb_input.c")

@@ -6,10 +6,12 @@
  *
  * The frame is LCD_WIDTH x LCD_HEIGHT (640x480) RGB565 in PSRAM, the size
  * DOS and Windows draw at; the panel keeps its own picture, so only rows
- * that changed are sent (lcd_flush()).  Each piece of CHUNK panel rows is
- * made in a buffer of internal RAM, with the bytes of each pixel the other
- * way round (the CO5300 takes them high byte first), while the piece before
- * it goes out by DMA.  The panel shows either
+ * that changed are sent (lcd_flush()), and of each piece of CHUNK panel
+ * rows only the rectangle of 32-pixel blocks that differ from what the
+ * panel shows (panel_diff.c).  That rectangle goes from a buffer of
+ * internal RAM, with the bytes of each pixel the other way round (the
+ * CO5300 takes them high byte first), by DMA while the next piece is
+ * made.  The panel shows either
  *   - 480 of the frame's 640 columns 1:1 (a window at s_px: always for a VBE
  *     picture 480 wide or less, which vga.c centres, so Windows at 480x480
  *     fills the panel; and for a wider one in FOLLOW, the window following
@@ -17,9 +19,13 @@
  *   - the whole frame at three quarters (FIT), 480x360 in rows 60 to 419,
  *     each output pixel the area average of the source pixels under it:
  *     the boot console, text modes and 640x480 in FIT.
+ * The window's blocks are compared where they lie in the frame, so only
+ * the rectangle that differs is copied; FIT's pieces are made in full,
+ * then compared.
  * Commands as Espressif's ESP-Mosaico BSP sends them (onboard/display.c,
- * the vendor sequence; 40 MHz; whole rows, so the windows are 0 to 479 by
- * any number of even rows, which keeps to the CO5300's rounding).
+ * the vendor sequence), at 80 MHz rather than its 40 ([esp] lcd_mhz); the
+ * windows are even numbers of rows and of columns, which keeps to the
+ * CO5300's rounding.
  */
 
 #include <string.h>
@@ -42,6 +48,7 @@
 #include "console.h"
 #include "lcd.h"
 #include "lcd_mosaico.h"
+#include "panel_diff.h"
 
 static const char *TAG = "lcd";
 
@@ -70,6 +77,9 @@ static int s_next;
 static SemaphoreHandle_t s_free;        /* buffers not with the DMA */
 static uint16_t s_tmp[FW];              /* FIT: a row blended from two */
 static struct lcd_stats s_stats;
+static struct panel_diff s_pd;         /* what the panel shows, by blocks */
+static uint32_t s_sent_px;             /* pixels sent, for the counts */
+static int s_hz = MOSAICO_LCD_HZ;
 static portMUX_TYPE s_stats_lock = portMUX_INITIALIZER_UNLOCKED;
 
 /* what the panel shows: -1 not drawn yet, 0 FIT, 1 a window at s_px */
@@ -133,19 +143,6 @@ static inline uint16_t swap16(uint32_t v)
 	return (uint16_t) ((v >> 8) | (v << 8));
 }
 
-/* panel rows y to y + n - 1 of the window at px */
-static void fill_window(uint16_t *dst, int y, int n, int px)
-{
-	for (int r = 0; r < n; r++, dst += PW) {
-		const uint32_t *s = (const uint32_t *) (s_fb + (size_t) (y + r) * FW + px);
-		uint32_t *d = (uint32_t *) dst;
-		for (int i = 0; i < PW / 2; i++) {
-			uint32_t w = s[i];
-			d[i] = ((w & 0x00FF00FFu) << 8) | ((w >> 8) & 0x00FF00FFu);
-		}
-	}
-}
-
 /* p and q mixed wp to 4 - wp, RGB565 (each field times at most 4 stays
    clear of the next: R and B masked together, G alone) */
 static inline uint32_t mix(uint32_t p, uint32_t q, uint32_t wp)
@@ -188,23 +185,63 @@ static void fill_fit(uint16_t *dst, int y, int n)
 
 /* ==== sending ==== */
 
-/* panel rows y0 to y1 - 1 (even, in 0 to PH) as view and px say */
-static void send_rows(int y0, int y1, int view, int px)
+/* rows ya to yb - 1 of a piece of n rows made even numbers, as the
+   CO5300's windows want (x0 and x1 are multiples of 32 already) */
+static inline void even_rows(int *ya, int *yb, int n)
+{
+	*ya &= ~1;
+	*yb = (*yb + 1) & ~1;
+	if (*yb > n)
+		*yb = n;
+}
+
+/* Panel rows y0 to y1 - 1 (even, in 0 to PH) as view and px say: of each
+   piece only the rectangle of its blocks that differ from what the panel
+   shows is sent; all of it with force (another view).  The window's
+   blocks are compared where they lie in the frame, and only that
+   rectangle is copied to a buffer; FIT's pieces are made in a buffer in
+   full, then compared and packed. */
+static void send_rows(int y0, int y1, int view, int px, bool force)
 {
 	for (int y = y0; y < y1; y += CHUNK) {
 		int n = y1 - y < CHUNK ? y1 - y : CHUNK;
-		xSemaphoreTake(s_free, portMAX_DELAY);
-		uint16_t *b = s_buf[s_next];
-		s_next ^= 1;
-		if (view)
-			fill_window(b, y, n, px);
-		else
+		int ya, yb, x0, x1;
+		uint16_t *b;
+		size_t npx;
+		if (view) {
+			const uint16_t *src = s_fb + (size_t) y * FW + px;
+			if (!panel_diff_rows(&s_pd, src, FW, y, n, force, &ya, &yb, &x0, &x1))
+				continue;       /* the panel has these rows already */
+			even_rows(&ya, &yb, n);
+			xSemaphoreTake(s_free, portMAX_DELAY);
+			b = s_buf[s_next];
+			npx = panel_diff_copy_swapped(b, src, FW, ya, yb, x0, x1);
+		} else {
+			xSemaphoreTake(s_free, portMAX_DELAY);
+			b = s_buf[s_next];
 			fill_fit(b, y, n);
-		/* the rows' window (this waits for the piece before to go) */
-		uint8_t ra[4] = { y >> 8, y & 0xFF, (y + n - 1) >> 8, (y + n - 1) & 0xFF };
+			if (!panel_diff_rows(&s_pd, b, PW, y, n, force, &ya, &yb, &x0, &x1)) {
+				/* the panel has these rows already: the buffer stays free */
+				xSemaphoreGive(s_free);
+				continue;
+			}
+			even_rows(&ya, &yb, n);
+			npx = panel_diff_pack(b, PW, ya, yb, x0, x1);
+		}
+		s_next ^= 1;
+		/* the window (the first command waits for the piece before to go) */
+		uint8_t ca[4] = { x0 >> 8, x0 & 0xFF, (x1 - 1) >> 8, (x1 - 1) & 0xFF };
+		cmd(0x2A, ca, 4);
+		int r0 = y + ya, r1 = y + yb - 1;
+		uint8_t ra[4] = { r0 >> 8, r0 & 0xFF, r1 >> 8, r1 & 0xFF };
 		cmd(0x2B, ra, 4);
-		if (esp_lcd_panel_io_tx_color(s_io, PIX(0x2C), b, (size_t) n * PW * 2) != ESP_OK)
+		s_sent_px += (uint32_t) npx;
+		if (esp_lcd_panel_io_tx_color(s_io, PIX(0x2C), b, npx * 2) != ESP_OK) {
+			/* not sent: the buffer is free again, and these rows go in
+			   full the next time they come */
 			xSemaphoreGive(s_free);
+			panel_diff_forget_rows(&s_pd, y, n);
+		}
 	}
 }
 
@@ -231,15 +268,16 @@ static int wanted(int *px)
 static void repaint(void)
 {
 	int px, view = wanted(&px);
-	uint32_t t0 = esp_cpu_get_cycle_count();
-	send_rows(0, PH, view, px);
+	uint32_t t0 = esp_cpu_get_cycle_count(), px0 = s_sent_px;
+	send_rows(0, PH, view, px, true);
 	wait_idle();
 	s_shown = view;
 	s_shown_px = px;
 	uint32_t dt = esp_cpu_get_cycle_count() - t0;
 	portENTER_CRITICAL(&s_stats_lock);
 	s_stats.flushes++;
-	s_stats.rows += PH;
+	/* rows: the pixels sent, in rows of 480 */
+	s_stats.rows += (s_sent_px - px0 + PW - 1) / PW;
 	s_stats.cycles += dt;
 	if (dt > s_stats.cycles_max)
 		s_stats.cycles_max = dt;
@@ -277,13 +315,13 @@ void lcd_flush(int x, int y, int w, int h)
 		if (y1 > FIT_TOP + FIT_H)
 			y1 = FIT_TOP + FIT_H;
 	}
-	uint32_t t0 = esp_cpu_get_cycle_count();
-	send_rows(y0, y1, view, px);
+	uint32_t t0 = esp_cpu_get_cycle_count(), px0 = s_sent_px;
+	send_rows(y0, y1, view, px, false);
 	wait_idle();
 	uint32_t dt = esp_cpu_get_cycle_count() - t0;
 	portENTER_CRITICAL(&s_stats_lock);
 	s_stats.flushes++;
-	s_stats.rows += (uint32_t) (y1 - y0);
+	s_stats.rows += (s_sent_px - px0 + PW - 1) / PW;
 	s_stats.cycles += dt;
 	if (dt > s_stats.cycles_max)
 		s_stats.cycles_max = dt;
@@ -307,7 +345,8 @@ void lcd_get_stats(struct lcd_stats *st, bool reset)
 /* ==== the view ==== */
 
 /* repaints asked for from elsewhere (a key, the button, the window
-   following the pointer), at most every 40 ms, under the display lock */
+   following the pointer), at most every 15 ms (a whole panel is 12 ms
+   at 80 MHz), under the display lock */
 static void repaint_task(void *arg)
 {
 	(void) arg;
@@ -318,7 +357,7 @@ static void repaint_task(void *arg)
 		if (view != s_shown || (view && px != s_shown_px))
 			repaint();
 		display_unlock();
-		vTaskDelay(pdMS_TO_TICKS(40));
+		vTaskDelay(pdMS_TO_TICKS(15));
 	}
 }
 
@@ -369,6 +408,51 @@ void lcd_mosaico_mouse(int dx, int dy)
 	}
 }
 
+static esp_err_t make_io(int hz)
+{
+	const esp_lcd_panel_io_spi_config_t io_cfg = {
+		.cs_gpio_num = MOSAICO_LCD_CS,
+		.dc_gpio_num = -1,
+		.spi_mode = 0,
+		.pclk_hz = hz,
+		.trans_queue_depth = 4,
+		.on_color_trans_done = on_done,
+		.lcd_cmd_bits = 32,
+		.lcd_param_bits = 8,
+		.flags.quad_mode = true,
+	};
+	return esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t) SPI2_HOST, &io_cfg, &s_io);
+}
+
+int lcd_mosaico_set_mhz(int mhz)
+{
+	if (mhz < 10 || mhz > 80)
+		return -1;
+	int hz = mhz * 1000000;
+	if (!s_io || hz == s_hz)
+		return s_io ? 0 : -1;
+	/* the panel keeps its picture: only the bus's device changes */
+	display_lock();
+	wait_idle();
+	esp_lcd_panel_io_del(s_io);
+	s_io = NULL;
+	int ret = 0;
+	if (make_io(hz) == ESP_OK) {
+		s_hz = hz;
+	} else {
+		ret = -1;
+		if (make_io(s_hz) != ESP_OK)
+			s_io = NULL;
+	}
+	display_unlock();
+	return ret;
+}
+
+int lcd_mosaico_mhz(void)
+{
+	return s_hz / 1000000;
+}
+
 void lcd_mosaico_brightness(int level)
 {
 	if (!s_io)
@@ -401,7 +485,10 @@ void *lcd_init(void)
 	s_buf[0] = heap_caps_malloc(CHUNK_BYTES, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
 	s_buf[1] = heap_caps_malloc(CHUNK_BYTES, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
 	s_free = xSemaphoreCreateCounting(2, 2);
-	if (!s_fb || !s_buf[0] || !s_buf[1] || !s_free) {
+	/* what the panel shows, a hash a block: 28,800 bytes, in PSRAM */
+	uint32_t *hashes = heap_caps_malloc((size_t) PH * (PW / PD_BLOCK) * 4, MALLOC_CAP_SPIRAM);
+	uint8_t *known = heap_caps_malloc(PH, MALLOC_CAP_SPIRAM);
+	if (!s_fb || !s_buf[0] || !s_buf[1] || !s_free || !hashes || !known) {
 		ESP_LOGE(TAG, "no memory for the frame or the panel's buffers");
 		return NULL;
 	}
@@ -425,18 +512,8 @@ void *lcd_init(void)
 	for (int i = 0; i < 5; i++)
 		gpio_set_drive_capability(pins[i], GPIO_DRIVE_CAP_2);
 
-	const esp_lcd_panel_io_spi_config_t io_cfg = {
-		.cs_gpio_num = MOSAICO_LCD_CS,
-		.dc_gpio_num = -1,
-		.spi_mode = 0,
-		.pclk_hz = MOSAICO_LCD_HZ,
-		.trans_queue_depth = 4,
-		.on_color_trans_done = on_done,
-		.lcd_cmd_bits = 32,
-		.lcd_param_bits = 8,
-		.flags.quad_mode = true,
-	};
-	err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t) SPI2_HOST, &io_cfg, &s_io);
+	panel_diff_init(&s_pd, PW, PH, hashes, known);
+	err = make_io(s_hz);
 	if (err != ESP_OK) {
 		ESP_LOGE(TAG, "panel IO: %s", esp_err_to_name(err));
 		s_io = NULL;
@@ -447,11 +524,8 @@ void *lcd_init(void)
 		if (s_init[i].delay_ms)
 			vTaskDelay(pdMS_TO_TICKS(s_init[i].delay_ms));
 	}
-	/* columns 0 to 479 from now on; each piece sets its rows */
-	const uint8_t ca[4] = { 0, 0, (PW - 1) >> 8, (PW - 1) & 0xFF };
-	cmd(0x2A, ca, 4);
 	/* black, the frame being zeros */
-	send_rows(0, PH, 1, 0);
+	send_rows(0, PH, 1, 0, true);
 	wait_idle();
 	s_shown = 1;
 	s_shown_px = 0;
@@ -460,7 +534,7 @@ void *lcd_init(void)
 	if (xTaskCreatePinnedToCore(repaint_task, "lcd_view", 2560, NULL, 3,
 				    &s_repaint_task, 0) != pdPASS)
 		s_repaint_task = NULL;
-	ESP_LOGI(TAG, "CO5300 480x480 at %d MHz, frame %dx%d", MOSAICO_LCD_HZ / 1000000, FW, FH);
+	ESP_LOGI(TAG, "CO5300 480x480 at %d MHz, frame %dx%d", s_hz / 1000000, FW, FH);
 	return s_fb;
 }
 

@@ -30,7 +30,9 @@
 #define LCD_WIDTH  640
 #define LCD_HEIGHT 480
 #define LCD_ZERO_COPY
-#define LCD_FRAME_MS 30
+// A picture every 20 ms at most: only the changed blocks go to the panel
+// (lcd_mosaico.c), so pictures are cheap
+#define LCD_FRAME_MS 20
 #define MOSAICO_PANEL_W 480
 #define MOSAICO_PANEL_H 480
 
@@ -43,8 +45,9 @@
 #define MOSAICO_LCD_D3   9
 #define MOSAICO_LCD_RST  44
 #define MOSAICO_LCD_TE   43
-// The BSP's clock for it, 40 MHz quad: 20 MB/s, a whole 480x480 in 23 ms
-#define MOSAICO_LCD_HZ   (40 * 1000 * 1000)
+// Its clock: 80 MHz quad, 40 MB/s, a whole 480x480 in 12 ms (the BSP has
+// 40; [esp] lcd_mhz = 40 in the ini goes back to that)
+#define MOSAICO_LCD_HZ   (80 * 1000 * 1000)
 // VCC_3V3_CTRL, active low: the panel's supply and the headers' 3.3 V and 5 V
 #define MOSAICO_PWR_GPIO 60
 // POWER_SWITCH: driven low it asks the SAM8108 to turn the board off;
@@ -118,4 +121,8 @@
 #define VGA_RETRACE_REALTIME
 #define VGA_REDRAW_DIRTY_ROWS
 #define VGA_SHRINK_LARGE
+// Text in 8-dot characters unless the ini says vga_force_8dm = 0: 80
+// columns of 9 dots (720) do not fit the 640-wide frame, and vga.c then
+// draws nothing (DOS, ScanDisk, FreeDOS would be black)
+#define VGA_FORCE_8DM_DEFAULT 1
 #define VGA_DIRTY_BLOCKS

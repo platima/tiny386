@@ -35,6 +35,8 @@ int nand_disk_format(char *why, size_t size);
    page one after another: 142,606,336 bytes.  Written, the raw one takes a
    dump made from it back, a block at a time. */
 esp_blockdev_handle_t nand_disk_blockdev(void);
+/* The guest's disk's last writes out to the chip, if it is open */
+void nand_disk_sync(void);
 esp_blockdev_handle_t nand_raw_blockdev(bool writable);
 /* raw: blocks written back so far, and of them skipped as bad on this
    chip; pages that had an ECC error when read */
