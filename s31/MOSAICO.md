@@ -111,7 +111,7 @@ You need Linux or WSL with Python 3 and mtools, and a Windows 95 install (OSR2 o
    - the swap file (Windows' default): with 14 MB of memory, Explorer fails without it.
    - in `WINDOWS\MEDIA`, the sounds you want, such as `The Microsoft Sound.wav` and `DING.WAV`.
 
-   `MSDOS.SYS` needs `AutoScan=0` under `[Options]`. Otherwise, after any start that did not end in a clean shutdown, Windows runs ScanDisk in DOS behind the start-up logo, where it looks hung (check the drive from the PC instead, below). `mkimage-mosaico.py` writes it that way when the folder has no `MSDOS.SYS` of its own; if yours has one, add the line.
+   `MSDOS.SYS` should have `AutoScan=2` under `[Options]`: after a start that did not end in a clean shutdown (a power loss, say), ScanDisk then checks and repairs the disk by itself before Windows starts, without asking anything. `mkimage-mosaico.py` writes it that way when the folder has no `MSDOS.SYS` of its own; if yours has one, add the line.
 2. **No logon box, and 480x480.** Copy [`mosaico-win95/AUTOEXEC.BAT`](mosaico-win95/AUTOEXEC.BAT) and [`mosaico-win95/MOSAICO.REG`](mosaico-win95/MOSAICO.REG) into the top of the folder (if your install has an `AUTOEXEC.BAT`, add these lines to it). At the first start, DOS's REGEDIT puts `MOSAICO.REG` into the registry once and deletes it: Windows then starts without the network logon box, at 480x480 in 16-bit colour.
 3. **The display driver at 480x480.** VMDisp9x, as released, turns any size under 640 wide into 640x480. This changes that one constant in the folder's `WINDOWS\SYSTEM\QEMUMINI.DRV`, only for the 1.2025.0.119 driver (it checks), and keeps the original in the holding folder:
    ```sh
@@ -132,7 +132,7 @@ You need Linux or WSL with Python 3 and mtools, and a Windows 95 install (OSR2 o
    ```
    `--boot` is an existing Windows 95 disk image to take the boot sector's code and `IO.SYS` from. Without one, use `--vbr WIN95_FOLDER/WINDOWS/COMMAND/SYS.COM --io-sys WINBOOT.SYS`, with `WINBOOT.SYS` taken from the setup files' `PRECOPY1.CAB` (7-Zip opens it). If the folder is on Windows, `--attrs` keeps the files' DOS attributes; `python3 s31/mkimage-mosaico.py --help` and the script's first lines say how.
 
-The image is the NAND disk's exact size: tiny386's own boot record, one FAT16 partition with 2 KiB clusters lined up with the NAND's pages, and its free space as zeros, which the NAND does not store. Write it in USB disk mode (step 5 of the first start).
+The image is the NAND disk's exact size: tiny386's own boot record, one FAT16 partition with 2 KiB clusters lined up with the NAND's pages, ending on the last whole cylinder so that DOS (ScanDisk among it) reaches all of it, and its free space as zeros, which the NAND does not store. Write it in USB disk mode (step 5 of the first start).
 
 ## Going back to the factory firmware
 
@@ -146,7 +146,7 @@ The image is the NAND disk's exact size: tiny386's own boot record, one FAT16 pa
 
 - **A black panel and no USB drives:** look at UART0's output (TX0 is GPIO58 on the right module header, 115200 baud) with a 3.3 V USB serial adapter.
 - **A red crash screen:** photograph it. It is also shown again at the next start.
-- **Windows stops at the start-up logo** after a reset or a power loss: ScanDisk is probably running behind the logo (without `AutoScan=0`). Press Esc to see it. Or, in USB disk mode, check the NAND drive from the PC (its C: drive: Properties, Tools, Check), which also clears the mark that makes Windows scan.
+- **Windows stops at the start-up logo** after a reset or a power loss, with an image made before 16 November 2026: its partition ran past what DOS can reach, so ScanDisk stops at "cannot read from the last cluster" behind the logo and waits. Press Esc and choose Continue, or check the NAND drive from the PC in USB disk mode (its C: drive: Properties, Tools, Check). Then make the image again with the current `mkimage-mosaico.py`.
 - **It resets at start-up, often just after Wi-Fi joins:** the battery is low. Use USB power. The boot console's second line says why it last reset.
 - **The boot console waits 10 seconds:** it shows a warning or an error. Read it: that is the thing to fix.
 - **3D Pipes, or another OpenGL program, stops with an "illegal operation":** run `dci-off.py` on the image (making the image, step 4).

@@ -9,7 +9,7 @@ folder holding the C: drive's files: Linux or WSL, Python 3 and mtools.
 The image is the NAND's whole disk (119,279,616 bytes unless --size says
 less): tiny386's own master boot record (esp/main/sd_part_mbr.h, the code the
 Korvo-1's card partitions boot through), one FAT16 partition from sector 2048
-to the end, 2 KiB clusters, and the volume's data area starting on a 2 KiB
+to the last whole cylinder, 2 KiB clusters, and the volume's data area starting on a 2 KiB
 boundary, so that each cluster Windows writes is one NAND page.  Its free
 space is zeros, which the NAND does not store.
 
@@ -143,7 +143,7 @@ HostWinBootDrv=C
 BootMulti=1
 BootGUI=1
 Network=0
-AutoScan=0
+AutoScan=2
 ;
 ;The following lines are required for compatibility with other programs.
 ;Do not remove them (MSDOS.SYS needs to be >1024 bytes).
@@ -219,7 +219,12 @@ def main():
         # the volume: FAT16, 2 KiB clusters, 512 root entries, its data area
         # on a 2 KiB boundary (reserved sectors chosen for it)
         total = a.size // SECTOR
-        count = total - PART_START
+        # the partition ends on a whole cylinder (16 heads, 63 sectors), so
+        # that DOS, reading through the BIOS by cylinder, head and sector,
+        # reaches all of it: otherwise ScanDisk at start-up "cannot read
+        # from the last cluster" and waits behind the logo for an answer
+        cyl = HEADS * SPT
+        count = total // cyl * cyl - PART_START
         img = a.out + ".part"
         with open(img, "wb") as f:
             f.truncate(a.size)
@@ -301,7 +306,7 @@ def main():
             e[0] = 0x80
             e[1:4] = chs(PART_START)
             e[4] = 0x06
-            e[5:8] = chs(total - 1)
+            e[5:8] = chs(PART_START + count - 1)
             e[8:12] = struct.pack("<I", PART_START)
             e[12:16] = struct.pack("<I", count)
             mbr[446:462] = e
