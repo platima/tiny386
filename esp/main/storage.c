@@ -21,7 +21,8 @@
 #include "sd_pwr_ctrl_by_on_chip_ldo.h"
 #endif
 
-static const char *TAG = "storage";
+/* unused on a board with no card (the ESP-Mosaico) */
+static const char *TAG __attribute__((unused)) = "storage";
 void *rawsd;
 static wl_handle_t s_wl_handle = WL_INVALID_HANDLE;
 
