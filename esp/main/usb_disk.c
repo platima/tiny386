@@ -99,6 +99,17 @@ static bool ini_on_flash(void)
 	return any;
 }
 
+/* what the PC does with the port, on the panel: with no line at all, the
+   PC never set the board up as a USB device */
+static void usb_event(tinyusb_event_t *e, void *arg)
+{
+	(void) arg;
+	if (e->id == TINYUSB_EVENT_ATTACHED)
+		console_puts(CON_GOOD, "USB: the PC has set the drives up.");
+	else if (e->id == TINYUSB_EVENT_DETACHED)
+		console_puts(CON_INFO, "USB: the PC has let go of the port.");
+}
+
 bool usb_disk_wanted(void)
 {
 	s_taken = s_note_inv == ~s_note ? s_note : 0;
@@ -212,7 +223,7 @@ void usb_disk_mode(void)
 			console_printf(CON_ERROR, "USB disk mode: the NAND drive could not be "
 				       "offered (%s).", esp_err_to_name(err));
 	}
-	const tinyusb_config_t tcfg = TINYUSB_DEFAULT_CONFIG();
+	const tinyusb_config_t tcfg = TINYUSB_DEFAULT_CONFIG(usb_event);
 	if ((err = tinyusb_driver_install(&tcfg)) != ESP_OK)
 		console_fatal("USB disk mode: USB would not start (%s).", esp_err_to_name(err));
 	console_puts(CON_GOOD, "Ready: connect the Type-C port to the PC. When done, "

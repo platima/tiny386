@@ -593,11 +593,16 @@ static int raw_put_block(void)
 	return r;
 }
 
+/* the chip raw takes writes only in restore mode (nand_raw_blockdev()) */
+static bool s_raw_rw;
+
 static esp_err_t raw_write(esp_blockdev_handle_t h, const uint8_t *src, uint64_t addr,
 			   size_t len)
 {
 	(void) h;
 	esp_err_t err = ESP_OK;
+	if (!s_raw_rw)
+		return ESP_ERR_INVALID_STATE;
 	xSemaphoreTake(s_lock, portMAX_DELAY);
 	if (!s_rblk)
 		s_rblk = heap_caps_malloc(RAW_BLOCK, MALLOC_CAP_SPIRAM);
@@ -668,9 +673,12 @@ esp_blockdev_handle_t nand_raw_blockdev(bool writable)
 	s_raw_bd.ops = &s_raw_ops;
 	s_raw_bd.geometry.disk_size = RAW_BYTES;
 	s_raw_bd.geometry.read_size = 512;
-	s_raw_bd.geometry.write_size = writable ? 512 : 0;
-	s_raw_bd.geometry.erase_size = writable ? 512 : 0;
-	s_raw_bd.device_flags.read_only = !writable;
+	/* esp_tinyusb 3.0.1 refuses a read-only block device
+	   (storage_blockdev_open_medium()), so the backup drive is offered
+	   as writable and raw_write() refuses its writes */
+	s_raw_bd.geometry.write_size = 512;
+	s_raw_bd.geometry.erase_size = 512;
+	s_raw_rw = writable;
 	return &s_raw_bd;
 }
 
