@@ -231,7 +231,15 @@ static esp_err_t es8311_codec_init(void)
 		.channel_mask = 0x03,
 		.sample_rate = AUDIO_RATE,
 	};
-	if (esp_codec_dev_open(codec_handle, &sample_cfg) != ESP_CODEC_DEV_OK) {
+	/* esp_codec_dev_open() switches the I2S channels off before they
+	   have been on, and on again, and the I2S driver logs each of those
+	   as an error (three red lines on the Mosaico's boot console, which
+	   then holds 10 s); its own result is what counts */
+	esp_log_level_t i2s_lvl = esp_log_level_get("i2s_common");
+	esp_log_level_set("i2s_common", ESP_LOG_NONE);
+	int open_err = esp_codec_dev_open(codec_handle, &sample_cfg);
+	esp_log_level_set("i2s_common", i2s_lvl);
+	if (open_err != ESP_CODEC_DEV_OK) {
 		ESP_LOGE(TAG, "Open codec device failed");
 		return ESP_FAIL;
 	}
