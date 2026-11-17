@@ -177,6 +177,11 @@ void speed_total_line(uint64_t insns, uint64_t us, const char *what,
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "../../perfport.h"
+#ifdef BOARD_PERFPORT_FILL
+/* a name the board header gives, not a weak default, so that the board's
+   file is linked in (as BOARD_HOOKS in esp_main.c) */
+void BOARD_PERFPORT_FILL(uint32_t *val, uint32_t *valid);
+#endif
 #include "status_led.h"
 #endif
 
@@ -287,6 +292,11 @@ static void perf_fill(void *opaque, uint32_t *v, uint32_t *ok)
 	if (!strncmp(board, "the ", 4))
 		board += 4;
 	perfport_put_text(v, ok, PP_I_BOARD, board);
+#endif
+#ifdef BOARD_PERFPORT_FILL
+	/* 1.3: the board's own (the ESP-Mosaico's battery), copies of what
+	   its own task read: this runs inside the guest's OUT */
+	BOARD_PERFPORT_FILL(v, ok);
 #endif
 }
 #endif
