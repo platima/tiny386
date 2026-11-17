@@ -19,6 +19,8 @@
 #include "touch_mosaico.h"
 #include "usb_disk.h"
 
+#define HID_KEY_F4 0x3D
+#define HID_KEY_F5 0x3E
 #define HID_KEY_F6 0x3F
 #define HID_KEY_F7 0x40
 
@@ -100,6 +102,8 @@ void board_console_ready(void)
 
 	kbd_input_set_hotkey(HID_KEY_F7, lcd_mosaico_next_view);
 	kbd_input_set_hotkey(HID_KEY_F6, usb_disk_hotkey);
+	kbd_input_set_hotkey(HID_KEY_F5, lcd_mosaico_next_mhz);
+	kbd_input_set_hotkey(HID_KEY_F4, lcd_mosaico_next_drive);
 	if (xTaskCreatePinnedToCore(button_task, "ai_button", 2048, NULL, 2, NULL, 0) != pdPASS)
 		console_puts(CON_WARN, "No memory for the AI button's task.");
 	if (s_i2c)
@@ -109,6 +113,9 @@ void board_console_ready(void)
 		     "fills the panel.");
 	console_puts(CON_INFO, "Ctrl+Alt+F6 or the AI button held 3 s: USB disk mode "
 		     "(shut Windows down first).");
+	console_puts(CON_INFO, "Ctrl+Alt+F5: the panel's next clock (40, 48, 53, 60, 68, 80 MHz); "
+		     "Ctrl+Alt+F4: its lines' next drive strength (0 to 3). Each sends the whole "
+		     "picture again; Ctrl+Alt+F12 shows the setting.");
 }
 
 #endif /* USE_LCD_QSPI_MOSAICO */

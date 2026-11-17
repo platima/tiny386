@@ -23,7 +23,8 @@
  * the rectangle that differs is copied; FIT's pieces are made in full,
  * then compared.
  * Commands as Espressif's ESP-Mosaico BSP sends them (onboard/display.c,
- * the vendor sequence), at 80 MHz rather than its 40 ([esp] lcd_mhz); the
+ * the vendor sequence), at its 40 MHz and drive strength 2 unless [esp]
+ * lcd_mhz and lcd_drive (or Ctrl+Alt+F5 and F4) say otherwise; the
  * windows are even numbers of rows and of columns, which keeps to the
  * CO5300's rounding.
  */
@@ -79,7 +80,11 @@ static uint16_t s_tmp[FW];              /* FIT: a row blended from two */
 static struct lcd_stats s_stats;
 static struct panel_diff s_pd;         /* what the panel shows, by blocks */
 static uint32_t s_sent_px;             /* pixels sent, for the counts */
-static int s_hz = MOSAICO_LCD_HZ;
+static int s_hz = MOSAICO_LCD_HZ;      /* asked for */
+static int s_khz;                       /* what the bus makes of it */
+static int s_drive = MOSAICO_LCD_DRIVE;
+static const int s_pins[] = { MOSAICO_LCD_SCL, MOSAICO_LCD_D0, MOSAICO_LCD_D1,
+			      MOSAICO_LCD_D2, MOSAICO_LCD_D3 };
 static portMUX_TYPE s_stats_lock = portMUX_INITIALIZER_UNLOCKED;
 
 /* what the panel shows: -1 not drawn yet, 0 FIT, 1 a window at s_px */
@@ -345,8 +350,8 @@ void lcd_get_stats(struct lcd_stats *st, bool reset)
 /* ==== the view ==== */
 
 /* repaints asked for from elsewhere (a key, the button, the window
-   following the pointer), at most every 15 ms (a whole panel is 12 ms
-   at 80 MHz), under the display lock */
+   following the pointer, a new clock), at most every 15 ms (a whole panel
+   is 23 ms at 40 MHz, 12 at 80), under the display lock */
 static void repaint_task(void *arg)
 {
 	(void) arg;
@@ -424,6 +429,37 @@ static esp_err_t make_io(int hz)
 	return esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t) SPI2_HOST, &io_cfg, &s_io);
 }
 
+/* The clock the SPI master makes of hz, in kHz: asked of a device added for
+   the purpose, as esp_lcd adds its own but without a CS line, and taken
+   away again.  The bus is idle meanwhile. */
+static int actual_khz(int hz)
+{
+	const spi_device_interface_config_t dev = {
+		.clock_speed_hz = hz,
+		.mode = 0,
+		.spics_io_num = -1,
+		.queue_size = 1,
+		.flags = SPI_DEVICE_HALFDUPLEX,
+	};
+	spi_device_handle_t h;
+	int khz = hz / 1000;
+	if (spi_bus_add_device(SPI2_HOST, &dev, &h) == ESP_OK) {
+		if (spi_device_get_actual_freq(h, &khz) != ESP_OK)
+			khz = hz / 1000;
+		spi_bus_remove_device(h);
+	}
+	return khz;
+}
+
+/* the whole picture again at the next chance (the repaint task), so that
+   what the panel shows was all sent with the new setting; under the
+   display lock */
+static void resend_all(void)
+{
+	s_shown = -1;
+	ask_repaint();
+}
+
 int lcd_mosaico_set_mhz(int mhz)
 {
 	if (mhz < 10 || mhz > 80)
@@ -444,6 +480,10 @@ int lcd_mosaico_set_mhz(int mhz)
 		if (make_io(s_hz) != ESP_OK)
 			s_io = NULL;
 	}
+	if (s_io) {
+		s_khz = actual_khz(s_hz);
+		resend_all();
+	}
 	display_unlock();
 	return ret;
 }
@@ -451,6 +491,63 @@ int lcd_mosaico_set_mhz(int mhz)
 int lcd_mosaico_mhz(void)
 {
 	return s_hz / 1000000;
+}
+
+int lcd_mosaico_khz(void)
+{
+	return s_khz;
+}
+
+static void say_setting(void)
+{
+	int tenths = (s_khz + 50) / 100;
+	console_printf(CON_INFO, "Panel: clock %d.%d MHz, drive strength %d. Ctrl+Alt+F5 the next "
+		       "clock, Ctrl+Alt+F4 the next strength; [esp] lcd_mhz = %d and lcd_drive = %d "
+		       "keep them.", tenths / 10, tenths % 10, s_drive, lcd_mosaico_mhz(), s_drive);
+}
+
+/* the clocks the bus makes exactly, 480 MHz divided */
+static const int s_clocks[] = { 40, 48, 53, 60, 68, 80 };
+
+void lcd_mosaico_next_mhz(void)
+{
+	int now = lcd_mosaico_mhz(), next = s_clocks[0];
+	for (size_t i = 0; i < sizeof(s_clocks) / sizeof(s_clocks[0]); i++) {
+		if (s_clocks[i] > now) {
+			next = s_clocks[i];
+			break;
+		}
+	}
+	if (lcd_mosaico_set_mhz(next) != 0)
+		console_printf(CON_WARN, "The panel's clock would not go to %d MHz.", next);
+	say_setting();
+}
+
+int lcd_mosaico_set_drive(int level)
+{
+	if (level < 0 || level > 3)
+		return -1;
+	s_drive = level;
+	if (!s_io)
+		return 0;       /* lcd_init() sets it */
+	display_lock();
+	wait_idle();
+	for (size_t i = 0; i < sizeof(s_pins) / sizeof(s_pins[0]); i++)
+		gpio_set_drive_capability(s_pins[i], (gpio_drive_cap_t) level);
+	resend_all();
+	display_unlock();
+	return 0;
+}
+
+int lcd_mosaico_drive(void)
+{
+	return s_drive;
+}
+
+void lcd_mosaico_next_drive(void)
+{
+	lcd_mosaico_set_drive((s_drive + 1) % 4);
+	say_setting();
 }
 
 void lcd_mosaico_brightness(int level)
@@ -506,11 +603,10 @@ void *lcd_init(void)
 		ESP_LOGE(TAG, "SPI2: %s", esp_err_to_name(err));
 		return NULL;
 	}
-	/* the BSP's drive strength for the QSPI lines (its default, 2) */
-	const int pins[] = { MOSAICO_LCD_SCL, MOSAICO_LCD_D0, MOSAICO_LCD_D1,
-			     MOSAICO_LCD_D2, MOSAICO_LCD_D3 };
-	for (int i = 0; i < 5; i++)
-		gpio_set_drive_capability(pins[i], GPIO_DRIVE_CAP_2);
+	/* the QSPI lines' drive strength (the BSP's, 2, unless lcd_drive came
+	   first) */
+	for (size_t i = 0; i < sizeof(s_pins) / sizeof(s_pins[0]); i++)
+		gpio_set_drive_capability(s_pins[i], (gpio_drive_cap_t) s_drive);
 
 	panel_diff_init(&s_pd, PW, PH, hashes, known);
 	err = make_io(s_hz);
@@ -519,6 +615,7 @@ void *lcd_init(void)
 		s_io = NULL;
 		return NULL;
 	}
+	s_khz = actual_khz(s_hz);
 	for (size_t i = 0; i < sizeof(s_init) / sizeof(s_init[0]); i++) {
 		cmd(s_init[i].cmd, s_init[i].len ? s_init[i].data : NULL, s_init[i].len);
 		if (s_init[i].delay_ms)
@@ -534,7 +631,7 @@ void *lcd_init(void)
 	if (xTaskCreatePinnedToCore(repaint_task, "lcd_view", 2560, NULL, 3,
 				    &s_repaint_task, 0) != pdPASS)
 		s_repaint_task = NULL;
-	ESP_LOGI(TAG, "CO5300 480x480 at %d MHz, frame %dx%d", s_hz / 1000000, FW, FH);
+	ESP_LOGI(TAG, "CO5300 480x480 at %d kHz, frame %dx%d", s_khz, FW, FH);
 	return s_fb;
 }
 

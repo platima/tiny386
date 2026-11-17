@@ -45,9 +45,13 @@
 #define MOSAICO_LCD_D3   9
 #define MOSAICO_LCD_RST  44
 #define MOSAICO_LCD_TE   43
-// Its clock: 80 MHz quad, 40 MB/s, a whole 480x480 in 12 ms (the BSP has
-// 40; [esp] lcd_mhz = 40 in the ini goes back to that)
-#define MOSAICO_LCD_HZ   (80 * 1000 * 1000)
+// Its clock: 40 MHz quad, the BSP's, 20 MB/s, a whole 480x480 in 23 ms.
+// The lines go through the GPIO matrix (SPI2's own pins are 20 to 25 and
+// 52 to 57); at 80 MHz the board showed a stray pixel here and there
+// (test7), so faster clocks are tried with [esp] lcd_mhz or Ctrl+Alt+F5,
+// and the drive strength (2, the BSP's) with lcd_drive or Ctrl+Alt+F4.
+#define MOSAICO_LCD_HZ    (40 * 1000 * 1000)
+#define MOSAICO_LCD_DRIVE 2
 // VCC_3V3_CTRL, active low: the panel's supply and the headers' 3.3 V and 5 V
 #define MOSAICO_PWR_GPIO 60
 // POWER_SWITCH: driven low it asks the SAM8108 to turn the board off;

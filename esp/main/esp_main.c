@@ -822,7 +822,7 @@ static const char *const known_keys[] = {
 	"pc:fill_cmos", "pc:linuxstart", "pc:kernel", "pc:initrd",
 	"pc:cmdline", "pc:enable_serial", "pc:vga_force_8dm",
 #ifdef USE_LCD_QSPI_MOSAICO
-	"esp:lcd_mhz",
+	"esp:lcd_mhz", "esp:lcd_drive",
 #endif
 	"display:width", "display:height",
 	"cpu:gen", "cpu:fpu", "cpu:cpuid_vendor",
@@ -916,6 +916,11 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		if (lcd_mosaico_set_mhz(atoi(value)) != 0)
 			console_printf(CON_WARN, "%s: lcd_mhz %s: 10 to 80; the panel stays at "
 				       "%d MHz.", s_ini_name, value, lcd_mosaico_mhz());
+	} else if (NAME("lcd_drive")) {
+		/* its lines' drive strength (lcd_mosaico.c) */
+		if (lcd_mosaico_set_drive(atoi(value)) != 0)
+			console_printf(CON_WARN, "%s: lcd_drive %s: 0 to 3; the panel's lines stay "
+				       "at %d.", s_ini_name, value, lcd_mosaico_drive());
 #endif
 	} else if (NAME("lcd_invalidate")) {
 		conf->lcd_invalidate = atoi(value);

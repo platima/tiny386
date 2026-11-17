@@ -19,6 +19,7 @@
  * stopped, for a backup of what was on it before (the factory files) and
  * putting it back.
  */
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <stdio.h>
@@ -35,6 +36,7 @@
 #include "dhara/error.h"
 
 #include "esp_timer.h"
+#include "console.h"
 #include "board_disk.h"
 #include "disk_image.h"
 #include "nand_disk.h"
@@ -412,13 +414,57 @@ int board_disk_check(int drive, bool iscd, char *info, size_t isize, char *why, 
 	}
 }
 
+static uint32_t le32(const uint8_t *p)
+{
+	return p[0] | (uint32_t) p[1] << 8 | (uint32_t) p[2] << 16 | (uint32_t) p[3] << 24;
+}
+
+/* A partition that DOS reads by cylinder, head and sector but that runs
+   past what the BIOS reaches that way.  ide.c gives the disk 16 heads of
+   63 sectors and as many whole cylinders as fit, 231 here (232,848 of its
+   232,968 sectors), so its last sectors cannot be read: ScanDisk stops at
+   the last cluster, at every start it runs.  mkimage-mosaico.py ends the
+   partition on a cylinder since 16 November 2026.  LBA partitions (0Ch,
+   0Eh, 0Fh) are read past the cylinders and are left alone. */
+static void check_partitions(void)
+{
+	uint8_t *mbr = malloc(512);
+	if (!mbr)
+		return;
+	xSemaphoreTake(s_lock, portMAX_DELAY);
+	int r = nand_vol_read(&s_vol, 0, mbr, 1);
+	xSemaphoreGive(s_lock);
+	uint64_t total = nand_vol_sectors(&s_vol);
+	uint64_t cyl = total / (16 * 63);
+	if (cyl > 16383)
+		cyl = 16383;
+	uint64_t reach = cyl * 16 * 63;
+	for (int i = 0; r == 0 && mbr[510] == 0x55 && mbr[511] == 0xAA && i < 4; i++) {
+		const uint8_t *e = mbr + 446 + 16 * i;
+		uint8_t type = e[4];
+		uint64_t end = (uint64_t) le32(e + 8) + le32(e + 12);
+		if (type == 0 || type == 0x0C || type == 0x0E || type == 0x0F || end <= reach)
+			continue;
+		console_printf(CON_WARN, "The NAND disk's partition %d runs to sector %" PRIu64 ", past "
+			       "the %" PRIu64 " sectors the BIOS reaches (%u cylinders of 16 heads and 63 "
+			       "sectors): DOS cannot read its last %" PRIu64 " sectors, and ScanDisk stops at "
+			       "its last cluster. Images from mkimage-mosaico.py since 16 November 2026 "
+			       "end within reach.",
+			       i + 1, end, reach, (unsigned) cyl, end - reach);
+	}
+	free(mbr);
+}
+
 void *board_disk_open(const char *name, char *why, size_t size)
 {
 	int info_ok;
 	char info[120];
 	(void) name;
 	info_ok = board_disk_check(0, false, info, sizeof(info), why, size);
-	return info_ok == 0 ? &s_vol : NULL;
+	if (info_ok != 0)
+		return NULL;
+	check_partitions();
+	return &s_vol;
 }
 
 uint64_t board_disk_sectors(void *d)

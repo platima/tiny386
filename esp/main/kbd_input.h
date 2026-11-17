@@ -86,8 +86,9 @@ void kbd_input_set_sink(kbd_input_key_fn *fn);
 /* Ctrl+Alt+usage calls fn; that key's press and release never reach the
    PC (Ctrl and Alt do).  Up to KBD_INPUT_HOTKEYS keys at once: setting a
    key again changes its fn, and fn NULL frees its place.  (v5.1: 6, for
-   the profiler's F8 beside F9 to F12.) */
-#define KBD_INPUT_HOTKEYS 6
+   the profiler's F8 beside F9 to F12; 8 for the ESP-Mosaico's F4 to F7
+   beside those.) */
+#define KBD_INPUT_HOTKEYS 8
 void kbd_input_set_hotkey(uint8_t usage, void (*fn)(void));
 
 /* The lights the guest asked for, in the USB order: fn is called when they
