@@ -96,7 +96,7 @@ else()
     # components come from esp/mosaico/idf_component.yml
     if(BOARD STREQUAL "mosaico")
         list(APPEND srcs "lcd_mosaico.c" "panel_diff.c" "mosaico.c" "touch_mosaico.c"
-             "nand_vol.c" "nand_disk.c" "usb_disk.c")
+             "nand_vol.c" "nand_disk.c" "usb_disk.c" "battery_mosaico.c")
     endif()
     list(APPEND srcs "usb_input.c")
 endif()

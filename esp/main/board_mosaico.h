@@ -112,6 +112,8 @@
 /* mosaico.c has board_early_init() and board_console_ready(): no weak
    defaults for them in esp_main.c, so that the link takes mosaico.c */
 #define BOARD_HOOKS 1
+// the information port's battery values (battery_mosaico.c), from speed.c
+#define BOARD_PERFPORT_FILL board_perfport_fill
 
 // As on the Korvo-1 (board_korvo1.h)
 #define IDE_ENABLE_WRITE_GATHER

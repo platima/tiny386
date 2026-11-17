@@ -1764,6 +1764,15 @@ echo
 bash "$HERE/panel_diff/run_panel_diff.sh" "$OUT"
 result $? "panel_diff.c: the ESP-Mosaico panel's changed blocks against a panel in memory"
 
+# ==== the ESP-Mosaico's battery (esp/main/battery_mosaico.c) ====
+# Its readings of a fake BQ27220 into the information port's four battery
+# values: signs, minutes to empty or to full, PP_BATTERY_UNKNOWN before a
+# reading, where a value does not apply and after a failed read
+# (tests/host/battery).
+echo
+bash "$HERE/battery/run_battery.sh" "$OUT"
+result $? "battery_mosaico.c: the ESP-Mosaico's battery gauge into the information port"
+
 echo
 echo "host tests: $pass passed, $fail failed"
 [ $fail = 0 ]

@@ -1,4 +1,22 @@
 dependencies:
+  espressif/bq27220:
+    component_hash: 5d7a7fa94c02f1a1483e321cb0fb0b6a23e226ba3424734bffbe486d6919938d
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: 0.*
+    - name: espressif/i2c_bus
+      registry_url: https://components.espressif.com
+      require: public
+      version: ^1.5
+    - name: idf
+      require: private
+      version: '>=4.4'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.2.0
   espressif/cmake_utilities:
     component_hash: 351350613ceafba240b761b4ea991e0f231ac7a9f59a9ee901f751bddc0bb18f
     dependencies:
@@ -70,6 +88,20 @@ dependencies:
     - esp32h4
     - esp32s31
     version: 3.0.1
+  espressif/i2c_bus:
+    component_hash: 483112c1619c54c38d0b734fb25f1678733267858a77b7af2f48cc7db6dbbd84
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - name: idf
+      require: private
+      version: '>=4.0'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.5.2
   espressif/spi_nand_flash:
     component_hash: aa7bae693eee90b2e5e7cd63e67d41f5c30e61a501873b5c2d02838b1b9df6b8
     dependencies:
@@ -130,12 +162,13 @@ dependencies:
       type: idf
     version: 6.2.0
 direct_dependencies:
+- espressif/bq27220
 - espressif/esp_codec_dev
 - espressif/esp_lcd_touch_cst9220
 - espressif/esp_tinyusb
 - espressif/spi_nand_flash
 - espressif/usb_host_hid
 - idf
-manifest_hash: ee1fd6776534743d62a16220b892f47b6b23731f57b38b847596572a36ba55cb
+manifest_hash: 19c3099b61af100b1407adf90dae54b3c88236c274bf3a00970cdafadc9489b7
 target: esp32s31
 version: 3.0.0

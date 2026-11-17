@@ -13,6 +13,7 @@
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 
+#include "battery_mosaico.h"
 #include "console.h"
 #include "kbd_input.h"
 #include "lcd_mosaico.h"
@@ -106,8 +107,10 @@ void board_console_ready(void)
 	kbd_input_set_hotkey(HID_KEY_F4, lcd_mosaico_next_drive);
 	if (xTaskCreatePinnedToCore(button_task, "ai_button", 2048, NULL, 2, NULL, 0) != pdPASS)
 		console_puts(CON_WARN, "No memory for the AI button's task.");
-	if (s_i2c)
+	if (s_i2c) {
 		touch_mosaico_start(s_i2c);
+		battery_mosaico_start(s_i2c);
+	}
 	console_puts(CON_INFO, "Ctrl+Alt+F7 or the AI button: the whole picture at 3/4, "
 		     "or 480 of its 640 columns following the mouse. Windows at 480x480 "
 		     "fills the panel.");
