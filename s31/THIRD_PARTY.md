@@ -394,7 +394,8 @@ as GitHub gives them are in `s31/esp-idf/` (`README.md`, "Building"). The dual-b
 bootloader (`s31/dualboot/`) was built from 188e3e55bb unchanged; neither fix touches the
 bootloader. The Korvo-1's images also link espressif/usb 1.6.0
 and espressif/usb_host_hid 1.2.0 (`esp/dependencies.lock`), which the component manager fetches;
-the S31 builds take no other managed component. `esp/main/usb_input.c` began as Espressif's HID
+the Korvo-1's and the DOS board's builds take no other managed component, and the ESP-Mosaico's
+take those of the next section. `esp/main/usb_input.c` began as Espressif's HID
 host example and `esp/main/esp_main.c` as the hello world example, whose CC0 header it keeps.
 
 **Licences and notices.**
@@ -431,6 +432,45 @@ host example and `esp/main/esp_main.c` as the hello world example, whose CC0 hea
 * The examples: Unlicense OR CC0-1.0, or CC0-1.0; nothing has to go with them.
 
 
+## The ESP-Mosaico's components (BOARD=mosaico)
+
+**What.** The ESP-Mosaico's images (`s31/MOSAICO.md`) also link these managed components, named
+in `esp/mosaico/idf_component.yml` and locked in `esp/dependencies.mosaico.lock`, which the
+component manager fetches: espressif/spi_nand_flash 1.4.4 and espressif/dhara 1.1.0 (the NAND
+and its map), espressif/esp_tinyusb 3.0.1 (USB disk mode), espressif/esp_lcd_touch 1.2.1 and
+espressif/esp_lcd_touch_cst9220 0.1.2 (the touch panel), espressif/esp_codec_dev 1.6.2 (the
+ES8311), espressif/bq27220 0.2.0 and espressif/i2c_bus 1.5.2 (the battery's fuel gauge), with
+espressif/usb 1.6.1, espressif/usb_host_hid 1.2.1 and espressif/cmake_utilities 0.5.3 (build
+scripts only). `esp/main/lcd_mosaico.c` sends the panel the commands Espressif's ESP-Mosaico BSP
+sends it (`onboard/display.c`), and `esp/main/battery_mosaico.c` gives the gauge the BSP's battery
+profile and gauging settings (`onboard/battery.c`, "SPDX-FileCopyrightText: 2026 Espressif Systems
+(Shanghai) CO LTD", Apache-2.0).
+
+**Licences and notices.**
+
+* Espressif's components and the BSP's values: Apache License 2.0, as ESP-IDF; the package's copy
+  of it covers them.
+* Dhara (Daniel Beer), the NAND's map: an ISC-style licence whose notice must appear in all
+  copies, so here it is, as the component's `LICENSE` gives it (less the author's address):
+
+  ```
+  Dhara - NAND flash management layer
+  Copyright (C) 2013 Daniel Beer
+
+  Permission to use, copy, modify, and/or distribute this software for any
+  purpose with or without fee is hereby granted, provided that the above
+  copyright notice and this permission notice appear in all copies.
+
+  THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+  WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+  MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+  ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+  WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+  ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+  ```
+
+
 ## SeaBIOS and SeaVGABIOS (LGPL 3)
 
 **What.** `bios.bin` and `vgabios.bin` on the card (`bios` and `vga_bios` in the inis) are
@@ -463,7 +503,7 @@ A package of this branch's images and card files carries, beside them:
 
 * `LICENSE` (tiny386) and this file, which between them give the notices above: tiny386, the
   device models, inih, tab5-pc, esp32-s31-linux's bootloader configuration, FreeRTOS, the SD/MMC
-  driver and TLSF;
+  driver and TLSF, and for the ESP-Mosaico's images Dhara;
 * the Apache License 2.0 (ESP-IDF's `LICENSE`);
 * the GNU LGPL 2.1, for `fmopl.c`, with the line on where its source is;
 * picolibc's `COPYING.picolibc`;
