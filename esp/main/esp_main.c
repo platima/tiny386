@@ -822,7 +822,10 @@ static const char *const known_keys[] = {
 	"pc:fill_cmos", "pc:linuxstart", "pc:kernel", "pc:initrd",
 	"pc:cmdline", "pc:enable_serial", "pc:vga_force_8dm",
 #ifdef USE_LCD_QSPI_MOSAICO
-	"esp:lcd_mhz", "esp:lcd_drive",
+	"esp:lcd_mhz", "esp:lcd_drive", "esp:lcd_brightness",
+#endif
+#ifdef USE_ES8311
+	"esp:volume",
 #endif
 	"display:width", "display:height",
 	"cpu:gen", "cpu:fpu", "cpu:cpuid_vendor",
@@ -921,6 +924,20 @@ static int parse_esp_ini(struct esp_ini_config *conf,
 		if (lcd_mosaico_set_drive(atoi(value)) != 0)
 			console_printf(CON_WARN, "%s: lcd_drive %s: 0 to 3; the panel's lines stay "
 				       "at %d.", s_ini_name, value, lcd_mosaico_drive());
+	} else if (NAME("lcd_brightness")) {
+		/* the panel's brightness in per cent, the CO5300's own (51h) */
+		int pct = 100;
+		ini_whole(name, value, 1, 100, &pct);
+		lcd_mosaico_brightness((pct * 255 + 50) / 100);
+#endif
+#ifdef USE_ES8311
+	} else if (NAME("volume")) {
+		/* the codec's output volume (i2s.c), 0 muted to 100 */
+		int vol = 80;
+		ini_whole(name, value, 0, 100, &vol);
+		if (i2s_codec_volume(vol) != 0)
+			console_printf(CON_WARN, "%s: volume = %d could not be set (no sound, or the "
+				       "codec did not take it).", s_ini_name, vol);
 #endif
 	} else if (NAME("lcd_invalidate")) {
 		conf->lcd_invalidate = atoi(value);

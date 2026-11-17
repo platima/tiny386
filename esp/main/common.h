@@ -21,5 +21,10 @@ extern struct Globals globals;
    board's AUDIO_SHIFT_DEFAULT, else 4, tiny386's own /16; audio_mix.h). */
 extern int i2s_slot_bits;
 extern int i2s_audio_shift;
+#ifdef USE_ES8311
+/* i2s.c: the ES8311's output volume, 0 (muted) to 100, once i2s_main()
+   has opened it ([esp] volume): 0, or -1 */
+int i2s_codec_volume(int vol);
+#endif
 
 #endif /* COMMON_H */
